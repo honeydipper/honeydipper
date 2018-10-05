@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 )
 
 var config Config
@@ -19,23 +18,19 @@ func init() {
 }
 
 func initEnv() {
-	config = Config{initRepo: RepoInfo{}}
-
 	flag.Parse()
-	config.services = flag.Args()
+	config = Config{initRepo: RepoInfo{}, services: flag.Args()}
 
 	ok := true
-	if config.initRepo.repo, ok = os.LookupEnv("REPO"); !ok {
+	if config.initRepo.Repo, ok = os.LookupEnv("REPO"); !ok {
 		log.Fatal("REPO environment variable is required to bootstrap honey dipper")
 	}
-	if config.initRepo.branch, ok = os.LookupEnv("BRANCH"); !ok {
-		config.initRepo.branch = "master"
+	if config.initRepo.Branch, ok = os.LookupEnv("BRANCH"); !ok {
+		config.initRepo.Branch = "master"
 	}
-	if config.initRepo.path, ok = os.LookupEnv("BOOTSTRAP_PATH"); !ok {
-		config.initRepo.path = "/"
+	if config.initRepo.Path, ok = os.LookupEnv("BOOTSTRAP_PATH"); !ok {
+		config.initRepo.Path = "/"
 	}
-
-	config.revs = make(map[time.Time]ConfigRev)
 }
 
 func start() {
@@ -57,7 +52,7 @@ func start() {
 
 func main() {
 	initEnv()
-	config.bootstrap()
+	config.bootstrap(".")
 	start()
 	config.watch()
 }
