@@ -1,9 +1,5 @@
 package main
 
-import (
-	"time"
-)
-
 // Event : the runtime data representation of an event
 type Event struct {
 	System  string
@@ -84,24 +80,20 @@ type ConfigSet struct {
 	Repos    []RepoInfo            `yaml:"repos,omitempty"`
 }
 
-// ConfigRepoRuntime : used to track what has been loaded in a repo
-type ConfigRepoRuntime struct {
-	parent *ConfigRuntime
+// ConfigRepo : used to track what has been loaded in a repo
+type ConfigRepo struct {
+	parent *Config
+	repo   *RepoInfo
 	config ConfigSet
 	files  map[string]bool
 	root   string
-}
-
-// ConfigRuntime : used to track what has been loaded
-type ConfigRuntime struct {
-	config ConfigSet
-	loaded map[RepoInfo]ConfigRepoRuntime
-	wd     string
 }
 
 // Config : is the complete configration of the daemon including history and the running services
 type Config struct {
 	initRepo RepoInfo
 	services []string
-	revs     map[time.Time]ConfigRuntime
+	config   *ConfigSet
+	loaded   map[RepoInfo]*ConfigRepo
+	wd       string
 }

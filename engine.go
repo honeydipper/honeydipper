@@ -5,5 +5,5 @@ import (
 )
 
 func startEngine(cfg Config) {
-	fmt.Println("vim-go")
+	fmt.Print(cfg.config)
 }
