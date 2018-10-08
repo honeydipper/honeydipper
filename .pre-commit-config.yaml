@@ -9,3 +9,9 @@
 #   - id: gometalinter
 #   - id: golangci-lint
 #   - id: go-critic
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  sha: v1.4.0
+  hooks:
+    - id: check-yaml
+    - id: check-json
+    - id: detect-private-key
