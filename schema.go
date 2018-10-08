@@ -62,7 +62,7 @@ type Rule struct {
 }
 
 // DriverData : holds the data necessary for a driver to operate
-type DriverData interface{}
+type DriverData map[string]interface{}
 
 // RepoInfo : points a git repo where config data can be read from
 type RepoInfo struct {

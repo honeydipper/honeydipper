@@ -12,7 +12,7 @@ import (
 	"path"
 )
 
-func (c *ConfigRepo) assemble(assembled *ConfigSet, assembledList map[RepoInfo]bool) (*ConfigSet, map[RepoInfo]bool) {
+func (c *ConfigRepo) assemble(assembled *ConfigSet, assembledList map[RepoInfo]*ConfigRepo) (*ConfigSet, map[RepoInfo]*ConfigRepo) {
 	for _, repo := range c.config.Repos {
 		if _, ok := assembledList[repo]; !ok {
 			if repoRuntime, ok := c.parent.loaded[repo]; ok {
@@ -22,7 +22,7 @@ func (c *ConfigRepo) assemble(assembled *ConfigSet, assembledList map[RepoInfo]b
 	}
 
 	mergo.Merge(assembled, c.config, mergo.WithOverride)
-	assembledList[*c.repo] = true
+	assembledList[*c.repo] = c
 	return assembled, assembledList
 }
 
@@ -31,12 +31,7 @@ func (c *ConfigRepo) isFileLoaded(filename string) bool {
 }
 
 func (c *ConfigRepo) loadFile(filename string) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Resuming after error: %v\n", r)
-			log.Printf("config file [%v] skipped\n", filename)
-		}
-	}()
+	defer safeExitOnError("config file [%v] skipped\n", filename)
 
 	if !c.isFileLoaded(filename) {
 		yamlFile, err := ioutil.ReadFile(path.Join(c.root, filename[1:]))
@@ -79,12 +74,7 @@ func NewConfigRepo(c *Config, repo RepoInfo) *ConfigRepo {
 }
 
 func (c *ConfigRepo) loadRepo() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Resuming after error: %v\n", r)
-			log.Printf("repo [%v] skipped\n", c.repo.Repo)
-		}
-	}()
+	defer safeExitOnError("repo [%v] skipped\n", c.repo.Repo)
 
 	var repoObj *git.Repository
 	var err error
@@ -137,4 +127,43 @@ func (c *ConfigRepo) loadRepo() {
 	}
 	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
 	log.Printf("repo [%v] loaded", c.repo.Repo)
+}
+
+func (c *ConfigRepo) refreshRepo() bool {
+	defer func() bool { safeExitOnError("repo [%v] skipped\n", c.repo.Repo); return false }()
+	var repoObj *git.Repository
+	var err error
+	log.Printf("refreshing repo [%v]", c.repo.Repo)
+	if repoObj, err = git.PlainOpen(c.root); err != nil {
+		panic(err)
+	}
+
+	if tree, err := repoObj.Worktree(); err != nil {
+		panic(err)
+	} else {
+		branch := "master"
+		if c.repo.Branch != "" {
+			branch = c.repo.Branch
+		}
+		err = tree.Pull(&git.PullOptions{
+			RemoteName:    "origin",
+			ReferenceName: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
+		})
+		if err == git.NoErrAlreadyUpToDate {
+			log.Printf("no changes, skip repo [%s]", c.repo.Repo)
+			return false
+		} else if err != nil {
+			panic(err)
+		}
+	}
+
+	c.config = ConfigSet{}
+	c.files = map[string]bool{}
+	root := "/"
+	if c.repo.Path != "" {
+		root = c.repo.Path
+	}
+	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
+	log.Printf("repo [%v] reloaded", c.repo.Repo)
+	return true
 }
