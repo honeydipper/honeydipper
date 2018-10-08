@@ -37,9 +37,9 @@ type Function struct {
 
 // System : is an abstract construct to group data, trigger and function definitions
 type System struct {
-	Data      (interface{})       `yaml:"data,omitempty"`
-	Triggers  map[string]Trigger  `yaml:"triggers,omitempty"`
-	Functions map[string]Function `yaml:"functions,omitempty"`
+	Data      map[string](interface{}) `yaml:"data,omitempty"`
+	Triggers  map[string]Trigger       `yaml:"triggers,omitempty"`
+	Functions map[string]Function      `yaml:"functions,omitempty"`
 }
 
 // Condition : used to for conditioning in workflow
