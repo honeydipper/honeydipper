@@ -13,28 +13,28 @@ func safeExitOnError(args ...interface{}) {
 	}
 }
 
-func loadFunction(cfg *Config, service string, lookup string) (ret DriverRuntime, rerr interface{}) {
+func loadFeature(cfg *Config, service string, feature string) (ret DriverRuntime, rerr interface{}) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Resuming after error: %v\n", r)
-			log.Printf("skip loading function: %s.%s", service, lookup)
+			log.Printf("skip loading feature: %s.%s", service, feature)
 			rerr = r
 		}
 	}()
 
-	functionMap := map[string](map[string]string){}
-	if cfgItem, ok := cfg.getDriverData("daemon.functionMap"); ok {
-		functionMap = cfgItem.(map[string](map[string]string))
+	featureMap := map[string](map[string]string){}
+	if cfgItem, ok := cfg.getDriverData("daemon.featureMap"); ok {
+		featureMap = cfgItem.(map[string](map[string]string))
 	}
-	driverName, ok := functionMap[service][lookup]
+	driverName, ok := featureMap[service][feature]
 	if !ok {
-		driverName, ok = functionMap["global"][lookup]
-	}
-	if !ok {
-		driverName, ok = Defaults[lookup]
+		driverName, ok = featureMap["global"][feature]
 	}
 	if !ok {
-		return DriverRuntime{}, fmt.Sprintf("unable to find a driver for [%s]", lookup)
+		driverName, ok = Defaults[feature]
+	}
+	if !ok {
+		return DriverRuntime{}, fmt.Sprintf("unable to find a driver for [%s]", feature)
 	}
 
 	driverData, _ := cfg.getDriverData(driverName)

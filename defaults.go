@@ -5,8 +5,8 @@ var Defaults = map[string]string{
 	"eventbus": "redis_pubsub",
 }
 
-// RequiredFunctions : define the required functions that each service should provide
-var RequiredFunctions = map[string]([]string){
+// RequiredFeatures : define the required features that each service should provide
+var RequiredFeatures = map[string]([]string){
 	"receiver": []string{
 		"eventbus",
 	},
@@ -15,12 +15,12 @@ var RequiredFunctions = map[string]([]string){
 	},
 }
 
-// BuiltinDrivers : define a list of builtin function drivers
+// BuiltinDrivers : define a list of builtin feature drivers
 var BuiltinDrivers map[string]DriverMeta = map[string]DriverMeta{
 	"google_pubsub": DriverMeta{
-		Name:   "google_pubsub",
-		Lookup: "eventbus",
-		Domain: []string{"engine"},
+		Name:     "google_pubsub",
+		Feature:  "eventbus",
+		Services: []string{"engine"},
 		Data: map[string]interface{}{
 			"Package":    "github.com/honeyscience/honeydipper/googlePubSubDriver",
 			"Executable": "honeydipper-googlepubsub",
@@ -28,9 +28,9 @@ var BuiltinDrivers map[string]DriverMeta = map[string]DriverMeta{
 		},
 	},
 	"redis_pubsub": DriverMeta{
-		Name:   "redis_pubsub",
-		Lookup: "eventbus",
-		Domain: []string{"engine"},
+		Name:     "redis_pubsub",
+		Feature:  "eventbus",
+		Services: []string{"engine"},
 		Data: map[string]interface{}{
 			"Package":    "github.com/honeyscience/honeydipper/redisPubSubDriver",
 			"Executable": "honeydipper-redispubsub",

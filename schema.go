@@ -63,10 +63,10 @@ type Rule struct {
 
 // DriverMeta : holds the information about the driver itself
 type DriverMeta struct {
-	Name   string
-	Lookup string
-	Domain []string
-	Data   map[string]interface{}
+	Name     string
+	Feature  string
+	Services []string
+	Data     map[string]interface{}
 }
 
 // RepoInfo : points a git repo where config data can be read from

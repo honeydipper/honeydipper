@@ -18,26 +18,26 @@ func NewService(cfg *Config, name string) *Service {
 }
 
 func (s *Service) start() {
-	for _, lookup := range RequiredFunctions[s.name] {
-		if runtime, err := loadFunction(s.config, s.name, lookup); err == nil {
-			s.driverRuntimes[lookup] = runtime
+	for _, feature := range RequiredFeatures[s.name] {
+		if runtime, err := loadFeature(s.config, s.name, feature); err == nil {
+			s.driverRuntimes[feature] = runtime
 		} else {
-			log.Fatalf("failed to load service [%s] required function [%s]", s.name, lookup)
+			log.Fatalf("failed to load service [%s] required feature [%s]", s.name, feature)
 		}
 	}
 
-	additionalFunctions := []string{}
-	if cfgItem, ok := s.config.getDriverData("daemon.functions.global"); ok {
-		additionalFunctions = cfgItem.([]string)
+	additionalFeatures := []string{}
+	if cfgItem, ok := s.config.getDriverData("daemon.features.global"); ok {
+		additionalFeatures = cfgItem.([]string)
 	}
 	if cfgItem, ok := s.config.getDriverData(fmt.Sprintf("daemon.functions.%s", s.name)); ok {
-		additionalFunctions = append(additionalFunctions, cfgItem.([]string)...)
+		additionalFeatures = append(additionalFeatures, cfgItem.([]string)...)
 	}
 
-	for _, lookup := range additionalFunctions {
-		if _, ok := s.driverRuntimes[lookup]; !ok {
-			if runtime, err := loadFunction(s.config, s.name, lookup); err == nil {
-				s.driverRuntimes[lookup] = runtime
+	for _, feature := range additionalFeatures {
+		if _, ok := s.driverRuntimes[feature]; !ok {
+			if runtime, err := loadFeature(s.config, s.name, feature); err == nil {
+				s.driverRuntimes[feature] = runtime
 			}
 		}
 	}
