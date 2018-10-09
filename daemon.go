@@ -41,7 +41,7 @@ func start() {
 	for _, service := range services {
 		switch service {
 		case "engine":
-			startEngine(config)
+			startEngine(&config)
 		case "receiver":
 			startReceiver(config)
 		default:

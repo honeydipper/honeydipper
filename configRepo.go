@@ -129,8 +129,8 @@ func (c *ConfigRepo) loadRepo() {
 	log.Printf("repo [%v] loaded", c.repo.Repo)
 }
 
-func (c *ConfigRepo) refreshRepo() bool {
-	defer func() bool { safeExitOnError("repo [%v] skipped\n", c.repo.Repo); return false }()
+func (c *ConfigRepo) refreshRepo() (ret bool) {
+	defer func() { safeExitOnError("repo [%v] skipped\n", c.repo.Repo); ret = false }()
 	var repoObj *git.Repository
 	var err error
 	log.Printf("refreshing repo [%v]", c.repo.Repo)

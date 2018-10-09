@@ -61,8 +61,13 @@ type Rule struct {
 	Do   Function
 }
 
-// DriverData : holds the data necessary for a driver to operate
-type DriverData map[string]interface{}
+// DriverMeta : holds the information about the driver itself
+type DriverMeta struct {
+	Name   string
+	Lookup string
+	Domain []string
+	Data   map[string]interface{}
+}
 
 // RepoInfo : points a git repo where config data can be read from
 type RepoInfo struct {
@@ -73,11 +78,11 @@ type RepoInfo struct {
 
 // ConfigSet : is a complete set of configuration at a specific moment
 type ConfigSet struct {
-	Systems  map[string]System     `yaml:"systems,omitempty"`
-	Rules    map[string]Rule       `yaml:"rules,omitempty"`
-	Drivers  map[string]DriverData `yaml:"drivers,omitempty"`
-	Includes []string              `yaml:"includes,omitempty"`
-	Repos    []RepoInfo            `yaml:"repos,omitempty"`
+	Systems  map[string]System      `yaml:"systems,omitempty"`
+	Rules    map[string]Rule        `yaml:"rules,omitempty"`
+	Drivers  map[string]interface{} `yaml:"drivers,omitempty"`
+	Includes []string               `yaml:"includes,omitempty"`
+	Repos    []RepoInfo             `yaml:"repos,omitempty"`
 }
 
 // ConfigRepo : used to track what has been loaded in a repo
@@ -96,4 +101,13 @@ type Config struct {
 	config   *ConfigSet
 	loaded   map[RepoInfo]*ConfigRepo
 	wd       string
+}
+
+// DriverRuntime : the runtime information of the running driver
+type DriverRuntime struct {
+	meta   *DriverMeta
+	data   *interface{}
+	input  int
+	output int
+	pid    int
 }

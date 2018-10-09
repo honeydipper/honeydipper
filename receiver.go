@@ -5,5 +5,5 @@ import (
 )
 
 func startReceiver(cfg Config) {
-	fmt.Println("vim-go")
+	fmt.Print(cfg.config)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -15,8 +16,8 @@ func (c *Config) watch() {
 	for {
 		defaultInterval, _ := time.ParseDuration("1m")
 		var interval time.Duration
-		if intervalStr, ok := c.config.Drivers["daemon"]["configPollInterval"].(string); ok {
-			interval, _ = time.ParseDuration(intervalStr)
+		if intervalStr, ok := c.getDriverData("daemon.configPollInterval"); ok {
+			interval, _ = time.ParseDuration(intervalStr.(string))
 		}
 		if interval == 0 {
 			time.Sleep(defaultInterval)
@@ -53,4 +54,17 @@ func (c *Config) loadRepo(repo RepoInfo) {
 		}
 		c.loaded[repo] = repoRuntime
 	}
+}
+
+func (c *Config) getDriverData(path string) (ret interface{}, ok bool) {
+	components := strings.Split(path, ".")
+	var current interface{}
+	current = (*c).config.Drivers
+	for _, component := range components {
+		if current, ok = current.(map[string]interface{})[component]; !ok {
+			return nil, ok
+		}
+	}
+
+	return current, true
 }
