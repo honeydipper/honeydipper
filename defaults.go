@@ -5,7 +5,18 @@ var Defaults = map[string]string{
 	"eventbus": "redis_pubsub",
 }
 
-var builtinDrivers map[string]DriverMeta = map[string]DriverMeta{
+// RequiredFunctions : define the required functions that each service should provide
+var RequiredFunctions = map[string]([]string){
+	"receiver": []string{
+		"eventbus",
+	},
+	"engine": []string{
+		"eventbus",
+	},
+}
+
+// BuiltinDrivers : define a list of builtin function drivers
+var BuiltinDrivers map[string]DriverMeta = map[string]DriverMeta{
 	"google_pubsub": DriverMeta{
 		Name:   "google_pubsub",
 		Lookup: "eventbus",

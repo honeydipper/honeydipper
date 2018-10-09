@@ -39,7 +39,7 @@ func loadFunction(cfg *Config, service string, lookup string) (ret DriverRuntime
 
 	driverData, _ := cfg.getDriverData(driverName)
 
-	driverMeta, ok := builtinDrivers[driverName]
+	driverMeta, ok := BuiltinDrivers[driverName]
 	if !ok {
 		var cfgItem interface{}
 		if cfgItem, ok = cfg.getDriverData(fmt.Sprintf("daemon.drivers.%s", driverName)); ok {
