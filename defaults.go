@@ -22,19 +22,17 @@ var BuiltinDrivers map[string]DriverMeta = map[string]DriverMeta{
 		Feature:  "eventbus",
 		Services: []string{"engine"},
 		Data: map[string]interface{}{
-			"Package":    "github.com/honeyscience/honeydipper/googlePubSubDriver",
-			"Executable": "honeydipper-googlepubsub",
-			"Arguments":  []interface{}{},
+			"Type":    "go",
+			"Package": "github.com/honeyscience/honeydipper/honeydipper-googlepubsub",
 		},
 	},
 	"redis_pubsub": DriverMeta{
 		Name:     "redis_pubsub",
 		Feature:  "eventbus",
-		Services: []string{"engine"},
+		Services: []string{"engine", "receiver"},
 		Data: map[string]interface{}{
-			"Package":    "github.com/honeyscience/honeydipper/redisPubSubDriver",
-			"Executable": "honeydipper-redispubsub",
-			"Arguments":  []interface{}{},
+			"Type":    "go",
+			"Package": "github.com/honeyscience/honeydipper/honeydipper-redispubsub",
 		},
 	},
 }

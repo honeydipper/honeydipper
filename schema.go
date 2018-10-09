@@ -1,5 +1,9 @@
 package main
 
+import (
+	"io"
+)
+
 // Event : the runtime data representation of an event
 type Event struct {
 	System  string
@@ -103,11 +107,16 @@ type Config struct {
 	wd       string
 }
 
+// Driver : the parent class for all driver types
+type Driver struct {
+	Type string
+}
+
 // DriverRuntime : the runtime information of the running driver
 type DriverRuntime struct {
 	meta   *DriverMeta
 	data   *interface{}
-	input  int
-	output int
-	pid    int
+	input  *io.ReadCloser
+	output *io.WriteCloser
+	driver *Driver
 }

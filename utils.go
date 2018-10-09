@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/mitchellh/mapstructure"
 	"log"
+	"strings"
 )
 
 func safeExitOnError(args ...interface{}) {
@@ -53,6 +54,34 @@ func loadFeature(cfg *Config, service string, feature string) (ret DriverRuntime
 		return DriverRuntime{}, fmt.Sprintf("driver metadata is not defined for [%s]", driverName)
 	}
 
-	// execute
-	return DriverRuntime{&driverMeta, &driverData, 0, 0, 0}, nil
+	driverRuntime := DriverRuntime{&driverMeta, &driverData, nil, nil, nil}
+
+	switch Type := driverMeta.Data["Type"]; Type {
+	case "go":
+		driver := NewGoDriver(driverMeta.Data)
+		driver.start(&driverRuntime)
+	}
+
+	return driverRuntime, nil
+}
+
+func getMapData(from interface{}, path string) (ret interface{}, ok bool) {
+	components := strings.Split(path, ".")
+	var current = from
+	for _, component := range components {
+		if current, ok = current.(map[string]interface{})[component]; !ok {
+			return nil, ok
+		}
+	}
+
+	return current, true
+}
+
+func getMapDataStr(from interface{}, path string) (ret string, ok bool) {
+	if data, ok := getMapData(from, path); ok {
+		str, ok := data.(string)
+		return str, ok
+	}
+
+	return "", ok
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -57,14 +56,9 @@ func (c *Config) loadRepo(repo RepoInfo) {
 }
 
 func (c *Config) getDriverData(path string) (ret interface{}, ok bool) {
-	components := strings.Split(path, ".")
-	var current interface{}
-	current = (*c).config.Drivers
-	for _, component := range components {
-		if current, ok = current.(map[string]interface{})[component]; !ok {
-			return nil, ok
-		}
-	}
+	return getMapData(c.config.Drivers, path)
+}
 
-	return current, true
+func (c *Config) getDriverDataStr(path string) (ret string, ok bool) {
+	return getMapDataStr(c.config.Drivers, path)
 }
