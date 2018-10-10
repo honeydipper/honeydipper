@@ -18,6 +18,7 @@ func NewService(cfg *Config, name string) *Service {
 }
 
 func (s *Service) start() {
+	log.Printf("starting service %s\n", s.name)
 	for _, feature := range RequiredFeatures[s.name] {
 		if runtime, err := loadFeature(s.config, s.name, feature); err == nil {
 			s.driverRuntimes[feature] = runtime
@@ -30,7 +31,7 @@ func (s *Service) start() {
 	if cfgItem, ok := s.config.getDriverData("daemon.features.global"); ok {
 		additionalFeatures = cfgItem.([]string)
 	}
-	if cfgItem, ok := s.config.getDriverData(fmt.Sprintf("daemon.functions.%s", s.name)); ok {
+	if cfgItem, ok := s.config.getDriverData(fmt.Sprintf("daemon.features.%s", s.name)); ok {
 		additionalFeatures = append(additionalFeatures, cfgItem.([]string)...)
 	}
 

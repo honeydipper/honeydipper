@@ -70,7 +70,7 @@ type DriverMeta struct {
 	Name     string
 	Feature  string
 	Services []string
-	Data     map[string]interface{}
+	Data     interface{}
 }
 
 // RepoInfo : points a git repo where config data can be read from

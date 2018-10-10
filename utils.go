@@ -23,6 +23,7 @@ func loadFeature(cfg *Config, service string, feature string) (ret DriverRuntime
 		}
 	}()
 
+	log.Printf("loading feature %s.%s\n", service, feature)
 	featureMap := map[string](map[string]string){}
 	if cfgItem, ok := cfg.getDriverData("daemon.featureMap"); ok {
 		featureMap = cfgItem.(map[string](map[string]string))
@@ -56,10 +57,10 @@ func loadFeature(cfg *Config, service string, feature string) (ret DriverRuntime
 
 	driverRuntime := DriverRuntime{&driverMeta, &driverData, nil, nil, nil}
 
-	switch Type := driverMeta.Data["Type"]; Type {
+	switch Type, _ := getMapDataStr(driverMeta.Data, "Type"); Type {
 	case "go":
-		driver := NewGoDriver(driverMeta.Data)
-		driver.start(&driverRuntime)
+		driver := NewGoDriver(driverMeta.Data.(map[string]interface{}))
+		driver.start(service, &driverRuntime)
 	}
 
 	return driverRuntime, nil
@@ -84,4 +85,15 @@ func getMapDataStr(from interface{}, path string) (ret string, ok bool) {
 	}
 
 	return "", ok
+}
+
+func forEachRecursive(prefixes []interface{}, from interface{}, routine func(key []interface{}, val string)) {
+	if str, ok := from.(string); ok {
+		routine(prefixes, str)
+	} else if mp, ok := from.(map[interface{}]interface{}); ok {
+		for key, value := range mp {
+			childParts := prefixes
+			forEachRecursive(append(childParts, key), value, routine)
+		}
+	}
 }

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // GoDriver : a driver type that runs a golang program process
@@ -41,7 +45,7 @@ func NewGoDriver(data map[string]interface{}) GoDriver {
 	return driver
 }
 
-func (g *GoDriver) start(runtime *DriverRuntime) {
+func (g *GoDriver) start(service string, runtime *DriverRuntime) {
 	check := exec.Command("go", "list", g.Package)
 	if err := check.Run(); err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
@@ -52,7 +56,8 @@ func (g *GoDriver) start(runtime *DriverRuntime) {
 		}
 	}
 
-	run := exec.Command(g.Executable, g.Arguments...)
+	args := append([]string{service}, g.Arguments...)
+	run := exec.Command(g.Executable, args...)
 	if input, err := run.StdoutPipe(); err != nil {
 		log.Panicf("Unable to link to driver stdout %v", err)
 	} else {
@@ -63,8 +68,48 @@ func (g *GoDriver) start(runtime *DriverRuntime) {
 	} else {
 		runtime.output = &(output)
 	}
+	run.Stderr = os.Stderr
 	if err := run.Start(); err != nil {
 		log.Panicf("Failed to start driver %v", err)
 	}
 	runtime.driver = &g.Driver
+
+	forEachRecursive([]interface{}{}, *runtime.data, func(keyObjs []interface{}, val string) {
+		key := []string{}
+		for _, obj := range keyObjs {
+			key = append(key, fmt.Sprintf("%v", obj))
+		}
+		log.Printf("sending to driver option:%s\\n%s\n", strings.Join(key, "."), val)
+		fmt.Fprintf((*runtime.output).(io.Writer), "option:%s\n%s\n", strings.Join(key, "."), val)
+	})
+
+	fmt.Fprintf((*runtime.output).(io.Writer), "action:go\n")
+	retry := 3
+	for ; retry > 0; retry-- {
+		fmt.Fprintf((*runtime.output).(io.Writer), "action:ping\n")
+		started := false
+		alive := false
+		ch := make(chan int)
+		go func() {
+			fmt.Fscanf((*runtime.input).(io.Reader), "signal:pong{started:%t,alive:%t}\n", &started, &alive)
+			ch <- 1
+		}()
+
+		select {
+		case <-ch:
+			log.Printf("pong received")
+		case <-time.After(3 * time.Second):
+			log.Printf("pong not received after 3 seconds")
+		}
+		if alive {
+			log.Printf("driver is alive")
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	if retry == 0 {
+		fmt.Fprintf((*runtime.output).(io.Writer), "action:quit\n")
+		log.Panic("driver is not alive")
+	}
 }
