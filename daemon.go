@@ -44,9 +44,9 @@ func start() {
 	for _, service := range services {
 		switch service {
 		case "engine":
-			go startEngine(&config)
+			startEngine(&config)
 		case "receiver":
-			go startReceiver(&config)
+			startReceiver(&config)
 		default:
 			log.Fatalf("'%v' service is not implemented\n", service)
 		}

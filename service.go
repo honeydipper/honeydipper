@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/mitchellh/mapstructure"
 	"log"
 	"syscall"
@@ -15,7 +16,7 @@ func NewService(cfg *Config, name string) *Service {
 		name:           name,
 		config:         cfg,
 		driverRuntimes: map[string]DriverRuntime{},
-		expects:        map[string][]func(*Message){},
+		expects:        map[string][]func(*dipper.Message){},
 	}
 }
 
@@ -67,7 +68,7 @@ func (s *Service) loadFeature(feature string) (rerr error) {
 		data: &driverData,
 	}
 
-	switch Type, _ := getMapDataStr(driverMeta.Data, "Type"); Type {
+	switch Type, _ := dipper.GetMapDataStr(driverMeta.Data, "Type"); Type {
 	case "go":
 		godriver := NewGoDriver(driverMeta.Data.(map[string]interface{})).Driver
 		driverRuntime.driver = &godriver
@@ -91,7 +92,7 @@ func (s *Service) start() {
 		driverName := s.driverRuntimes[feature].meta.Name
 		s.addExpect(
 			"state:alive:"+driverName,
-			func(*Message) {},
+			func(*dipper.Message) {},
 			5*time.Second,
 			func() { log.Fatalf("failed to start driver %s.%s", s.name, driverName) },
 		)
@@ -113,7 +114,7 @@ func (s *Service) start() {
 			driverName := driverRuntime.meta.Name
 			s.addExpect(
 				"state:alive:"+driverName,
-				func(*Message) {},
+				func(*dipper.Message) {},
 				5*time.Second,
 				func() { log.Printf("failed to start driver %s.%s", s.name, driverName) },
 			)
@@ -127,9 +128,9 @@ func (s *Service) serviceLoop() {
 	timeout := &syscall.Timeval{}
 	timeout.Sec = 1
 	for {
-		fdZero(fds)
+		dipper.FdZero(fds)
 		for _, runtime := range s.driverRuntimes {
-			fdSet(fds, runtime.input)
+			dipper.FdSet(fds, runtime.input)
 			if runtime.input > max {
 				max = runtime.input
 			}
@@ -137,13 +138,13 @@ func (s *Service) serviceLoop() {
 
 		err := syscall.Select(max+1, fds, nil, nil, timeout)
 		if err != nil {
-			log.Printf("select error")
+			log.Printf("select error %v", err)
 			time.Sleep(time.Second)
 		} else {
 			for _, runtime := range s.driverRuntimes {
-				if fdIsSet(fds, runtime.input) {
+				if dipper.FdIsSet(fds, runtime.input) {
 					msgs := runtime.fetchMessages()
-					log.Printf("incoming message from %s.%s %+v", s.name, runtime.meta.Name, msgs)
+					log.Printf("incoming messages from %s.%s %+v", s.name, runtime.meta.Name, msgs)
 					go s.process(msgs, &runtime)
 				}
 			}
@@ -151,13 +152,13 @@ func (s *Service) serviceLoop() {
 	}
 }
 
-func (s *Service) process(msgs []Message, runtime *DriverRuntime) {
+func (s *Service) process(msgs []*dipper.Message, runtime *DriverRuntime) {
 	// process expect
 	for _, msg := range msgs {
 		expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.meta.Name)
 		if expects, ok := s.deleteExpect(expectKey); ok {
 			for _, f := range expects {
-				go f(&msg)
+				go f(msg)
 			}
 		}
 	}
@@ -167,28 +168,28 @@ func (s *Service) process(msgs []Message, runtime *DriverRuntime) {
 		// responder
 		if responders, ok := s.responders[key]; ok {
 			for _, f := range responders {
-				go f(runtime, &msg)
+				go f(runtime, msg)
 			}
 		}
 
-		go func() {
+		go func(msg *dipper.Message) {
 			// transformer
 			if transformers, ok := s.transformers[key]; ok {
 				for _, f := range transformers {
-					msg = f(runtime, &msg)
+					msg = f(runtime, msg)
 				}
 			}
 
 			// router
-			// routedMsgs := s.Route(&msg)
+			// routedMsgs := s.Route(msg)
 			// for _, routedMsg := range routedMsgs {
 			// 	routedMsg.driverRuntime.sendMessage(routedMsg.message)
 			// }
-		}()
+		}(msg)
 	}
 }
 
-func (s *Service) addExpect(expectKey string, processor func(*Message), timeout time.Duration, except func()) {
+func (s *Service) addExpect(expectKey string, processor func(*dipper.Message), timeout time.Duration, except func()) {
 	defer s.expectLock.Unlock()
 	s.expectLock.Lock()
 	s.expects[expectKey] = append(s.expects[expectKey], processor)
@@ -214,14 +215,14 @@ func (s *Service) addExpect(expectKey string, processor func(*Message), timeout 
 	}()
 }
 
-func (s *Service) isExpecting(expectKey string) ([]func(*Message), bool) {
+func (s *Service) isExpecting(expectKey string) ([]func(*dipper.Message), bool) {
 	defer s.expectLock.Unlock()
 	s.expectLock.Lock()
 	ret, ok := s.expects[expectKey]
 	return ret, ok
 }
 
-func (s *Service) deleteExpect(expectKey string) ([]func(*Message), bool) {
+func (s *Service) deleteExpect(expectKey string) ([]func(*dipper.Message), bool) {
 	defer s.expectLock.Unlock()
 	s.expectLock.Lock()
 	ret, ok := s.expects[expectKey]

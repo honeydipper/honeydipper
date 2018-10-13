@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/honeyscience/honeydipper/dipper"
 	"io"
 	"log"
 	"os"
@@ -63,13 +64,13 @@ func (runtime *DriverRuntime) start(service string) {
 		log.Panicf("Failed to start driver %v", err)
 	}
 
-	msg := &Message{
+	msg := &dipper.Message{
 		Channel:     "command",
 		Subject:     "options",
 		PayloadType: "kv",
 	}
 
-	forEachRecursive("", *runtime.data, func(key string, val string) {
+	dipper.ForEachRecursive("", *runtime.data, func(key string, val string) {
 		log.Printf("sending to driver option:%s=%s\n", key, val)
 		msg.Payload = append(msg.Payload, key+"="+val)
 	})
@@ -78,7 +79,7 @@ func (runtime *DriverRuntime) start(service string) {
 		runtime.sendMessage(msg)
 	}
 
-	startInst := &Message{
+	startInst := &dipper.Message{
 		Channel:     "command",
 		Subject:     "start",
 		PayloadType: "",
@@ -87,7 +88,7 @@ func (runtime *DriverRuntime) start(service string) {
 	runtime.sendMessage(startInst)
 }
 
-func (runtime *DriverRuntime) sendMessage(msg *Message) {
+func (runtime *DriverRuntime) sendMessage(msg *dipper.Message) {
 	fmt.Fprintf(*runtime.output, "%s:%s:%s\n", msg.Channel, msg.Subject, msg.PayloadType)
 	if len(msg.PayloadType) > 0 {
 		for _, line := range msg.Payload {
@@ -97,12 +98,12 @@ func (runtime *DriverRuntime) sendMessage(msg *Message) {
 	}
 }
 
-func (runtime *DriverRuntime) fetchMessages() []Message {
-	defer func() {
-		if e := recover(); e != nil {
-			log.Printf("failed to fetching messages from driver %s.%s I/O error %v", runtime.service, runtime.meta.Name, e)
-		}
-	}()
+func (runtime *DriverRuntime) fetchMessages() (messages []*dipper.Message) {
+	defer dipper.SafeExitOnError(
+		"failed to fetching messages from driver %s.%s",
+		runtime.service,
+		runtime.meta.Name,
+	)
 	var buf []byte
 	var err error
 	landing := make([]byte, 256)
@@ -118,33 +119,13 @@ func (runtime *DriverRuntime) fetchMessages() []Message {
 	}
 
 	rd := bufio.NewReader(bytes.NewReader(buf))
-	var messages []Message
 	func() {
-		defer func() {
-			if x := recover(); x != nil && x != io.EOF {
-				panic(x)
-			}
-		}()
+		defer dipper.IgnoreError(io.EOF)
 		for {
-			message := Message{
-				Channel:     readField(rd, ':'),
-				Subject:     readField(rd, ':'),
-				PayloadType: readField(rd, '\n'),
-			}
-			if len(message.PayloadType) > 0 {
-				line := "init payload"
-				for {
-					line = readField(rd, '\n')
-					if len(line) > 0 {
-						message.Payload = append(message.Payload, line)
-					} else {
-						break
-					}
-				}
-			}
-			messages = append(messages, message)
+			message := dipper.FetchMessage(rd)
+			messages = append(messages, &message)
 		}
 	}()
 
-	return messages
+	return
 }

@@ -5,11 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"github.com/go-redis/redis"
+	"github.com/honeyscience/honeydipper/dipper"
 	"log"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 func init() {
@@ -23,22 +23,11 @@ func init() {
 // Options : received from the honeydipper daemon
 var Options map[string]string
 
-// Sender : lock to protecting the sending operation
-var Sender = sync.Mutex{}
-
 // State : the state of the driver
 var State = "loaded"
 
 var service = ""
 var in = bufio.NewReader(os.Stdin)
-
-func readField(sep byte) string {
-	val, err := in.ReadString(sep)
-	if err != nil {
-		panic(err)
-	}
-	return val[:len(val)-1]
-}
 
 func main() {
 	flag.Parse()
@@ -47,31 +36,13 @@ func main() {
 
 	log.Printf("[%s-redispubsub] receiving configurations\n", service)
 	for {
-		var channel string
-		var subject string
-		var payloadType string
-		var payload []string
+		msg := dipper.FetchMessage(in)
 
-		channel = readField(':')
-		subject = readField(':')
-		payloadType = readField('\n')
-		log.Printf("[%s-redispubsub] getting data from daemon %s:%s:%s\n", service, channel, subject, payloadType)
-		if payloadType != "" {
-			for {
-				line := readField('\n')
-				if len(line) > 0 {
-					payload = append(payload, line)
-				} else {
-					break
-				}
-			}
-		}
-
-		switch channel {
+		switch msg.Channel {
 		case "command":
-			runCommand(subject, payloadType, payload)
+			runCommand(msg.Subject, msg.PayloadType, msg.Payload)
 		default:
-			log.Panicf("[%s-redispubsub] message in unknown channel: %s", service, channel)
+			log.Panicf("[%s-redispubsub] message in unknown channel: %s", service, msg.Channel)
 		}
 	}
 }
@@ -91,7 +62,7 @@ func runCommand(cmd string, payloadType string, payload []string) {
 		}
 		log.Printf("%+v", Options)
 	case "ping":
-		sendMessage("state", State, "", nil)
+		dipper.SendRawMessage(os.Stdout, "state", State, "", nil)
 	case "start":
 		connect()
 	case "quit":
@@ -123,18 +94,15 @@ func connect() {
 }
 
 func reconnect(opts *redis.Options) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[%s-redispubsub] recovering after error %v", service, r)
-			State = "failed"
-			sendMessage("state", State, "", nil)
-		}
-	}()
+	defer dipper.SafeExitOnError("[%s-redispubsub] reconnecting", service)
+
 	client := redis.NewClient(opts)
 	subscription := client.Subscribe("honeydipper-eventbus")
 	log.Printf("[%s-redispubsub] start receiving messages\n", service)
-	State = "alive"
-	sendMessage("state", State, "", nil)
+	if State != "alive" {
+		State = "alive"
+		dipper.SendRawMessage(os.Stdout, "state", State, "", nil)
+	}
 	for {
 		message, err := subscription.ReceiveMessage()
 		if err != nil {
@@ -144,18 +112,6 @@ func reconnect(opts *redis.Options) {
 			"channel=" + message.Channel,
 			"payload=" + message.Payload,
 		}
-		sendMessage("eventbus", "message", "kv", payload)
+		dipper.SendRawMessage(os.Stdout, "eventbus", "message", "kv", payload)
 	}
-}
-
-func sendMessage(channel string, subject string, payloadType string, payload []string) {
-	Sender.Lock()
-	fmt.Printf("%s:%s:%s\n", channel, subject, payloadType)
-	if len(payload) > 0 {
-		for _, line := range payload {
-			fmt.Println(line)
-		}
-		fmt.Println()
-	}
-	Sender.Unlock()
 }

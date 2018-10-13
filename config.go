@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/honeyscience/honeydipper/dipper"
 	"log"
 	"time"
 )
@@ -55,9 +56,9 @@ func (c *Config) loadRepo(repo RepoInfo) {
 }
 
 func (c *Config) getDriverData(path string) (ret interface{}, ok bool) {
-	return getMapData(c.config.Drivers, path)
+	return dipper.GetMapData(c.config.Drivers, path)
 }
 
 func (c *Config) getDriverDataStr(path string) (ret string, ok bool) {
-	return getMapDataStr(c.config.Drivers, path)
+	return dipper.GetMapDataStr(c.config.Drivers, path)
 }

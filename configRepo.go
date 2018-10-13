@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/imdario/mergo"
 	"gopkg.in/src-d/go-git.v4"
 	gitCfg "gopkg.in/src-d/go-git.v4/config"
@@ -31,7 +32,7 @@ func (c *ConfigRepo) isFileLoaded(filename string) bool {
 }
 
 func (c *ConfigRepo) loadFile(filename string) {
-	defer safeExitOnError("config file [%v] skipped\n", filename)
+	defer dipper.SafeExitOnError("config file [%v] skipped\n", filename)
 
 	if !c.isFileLoaded(filename) {
 		yamlFile, err := ioutil.ReadFile(path.Join(c.root, filename[1:]))
@@ -74,7 +75,7 @@ func NewConfigRepo(c *Config, repo RepoInfo) *ConfigRepo {
 }
 
 func (c *ConfigRepo) loadRepo() {
-	defer safeExitOnError("repo [%v] skipped\n", c.repo.Repo)
+	defer dipper.SafeExitOnError("repo [%v] skipped\n", c.repo.Repo)
 
 	var repoObj *git.Repository
 	var err error
@@ -130,7 +131,7 @@ func (c *ConfigRepo) loadRepo() {
 }
 
 func (c *ConfigRepo) refreshRepo() (ret bool) {
-	defer func() { safeExitOnError("repo [%v] skipped\n", c.repo.Repo); ret = false }()
+	defer func() { dipper.SafeExitOnError("repo [%v] skipped\n", c.repo.Repo); ret = false }()
 	var repoObj *git.Repository
 	var err error
 	log.Printf("refreshing repo [%v]", c.repo.Repo)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/honeyscience/honeydipper/dipper"
 	"io"
 	"sync"
 )
@@ -105,10 +106,10 @@ type Service struct {
 	name           string
 	config         *Config
 	driverRuntimes map[string]DriverRuntime
-	expects        map[string][]func(*Message)
-	responders     map[string][]func(*DriverRuntime, *Message)
-	transformers   map[string][]func(*DriverRuntime, *Message) Message
-	Route          func(*Message) []RoutedMessage
+	expects        map[string][]func(*dipper.Message)
+	responders     map[string][]func(*DriverRuntime, *dipper.Message)
+	transformers   map[string][]func(*DriverRuntime, *dipper.Message) *dipper.Message
+	Route          func(*dipper.Message) []RoutedMessage
 	expectLock     sync.Mutex
 }
 
@@ -141,13 +142,5 @@ type DriverRuntime struct {
 // RoutedMessage : a service process a message and use the routed message to send to drivers
 type RoutedMessage struct {
 	driverRuntime *DriverRuntime
-	message       *Message
-}
-
-// Message : the message passed between components of the system
-type Message struct {
-	Channel     string
-	Subject     string
-	PayloadType string
-	Payload     []string
+	message       *dipper.Message
 }
