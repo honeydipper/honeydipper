@@ -150,7 +150,7 @@ func (c *ConfigRepo) refreshRepo() (ret bool) {
 			ReferenceName: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
 		})
 		if err == git.NoErrAlreadyUpToDate {
-			log.Printf("no changes, skip repo [%s]", c.repo.Repo)
+			log.Printf("no changes skip repo [%s]", c.repo.Repo)
 			return false
 		} else if err != nil {
 			panic(err)

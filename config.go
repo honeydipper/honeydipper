@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"time"
 )
 
@@ -13,24 +13,23 @@ func (c *Config) bootstrap(wd string) {
 
 func (c *Config) watch() {
 	for {
-		defaultInterval, _ := time.ParseDuration("1m")
-		var interval time.Duration
-		if intervalStr, ok := c.getDriverData("daemon.configPollInterval"); ok {
-			interval, _ = time.ParseDuration(intervalStr.(string))
+		interval := time.Minute
+		if intervalStr, ok := c.getDriverDataStr("daemon.configPollInterval"); ok {
+			value, err := time.ParseDuration(intervalStr)
+			if err != nil {
+				log.Printf("invalid drivers.daemon.configPollInterval %v", err)
+			}
+			interval = value
 		}
-		if interval == 0 {
-			time.Sleep(defaultInterval)
-		} else {
-			time.Sleep(interval)
-		}
+		time.Sleep(interval)
 
 		changeDetected := false
 		for _, repoRuntime := range c.loaded {
 			changeDetected = repoRuntime.refreshRepo() || changeDetected
 		}
 		if changeDetected {
+			log.Printf("reassembling configset")
 			c.assemble()
-			fmt.Print(c.config)
 		}
 	}
 }

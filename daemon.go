@@ -9,6 +9,9 @@ import (
 
 var config Config
 
+// Services : a catalog of running services in this daemon process
+var Services = map[string]*Service{}
+
 func init() {
 	flag.Usage = func() {
 		fmt.Printf("%v [ -h ] service1 service2 ...\n", os.Args[0])
@@ -43,7 +46,7 @@ func start() {
 		case "engine":
 			go startEngine(&config)
 		case "receiver":
-			go startReceiver(config)
+			go startReceiver(&config)
 		default:
 			log.Fatalf("'%v' service is not implemented\n", service)
 		}

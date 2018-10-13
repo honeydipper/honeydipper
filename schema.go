@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"sync"
 )
 
 // Event : the runtime data representation of an event
@@ -25,7 +26,7 @@ type Trigger struct {
 	RawEvent   string                   `yaml:"rawevent,omitempty"`
 	Conditions (interface{})            `yaml:"conditions,omitempty"`
 	Fields     map[string](interface{}) `yaml:"fields,omitempty"`
-	Base       Event                    `yaml:"base,omitempty"`
+	Source     Event                    `yaml:"source,omitempty"`
 	Filters    []Filter                 `yaml:"filters,omitempty"`
 }
 
@@ -35,7 +36,7 @@ type Function struct {
 	RawAction  string                   `yaml:"rawaction,omitempty"`
 	Parameters map[string](interface{}) `yaml:"parameters,omitempty"`
 	Results    map[string](interface{}) `yaml:"results,omitempty"`
-	Base       Action                   `yaml:"base,omitempty"`
+	Target     Action                   `yaml:"target,omitempty"`
 	Filters    []Filter                 `yaml:"filters,omitempty"`
 }
 
@@ -62,15 +63,7 @@ type Workflow struct {
 // Rule : is a data structure defining what action to take upon an event
 type Rule struct {
 	When Trigger
-	Do   Function
-}
-
-// DriverMeta : holds the information about the driver itself
-type DriverMeta struct {
-	Name     string
-	Feature  string
-	Services []string
-	Data     interface{}
+	Do   Workflow
 }
 
 // RepoInfo : points a git repo where config data can be read from
@@ -107,16 +100,54 @@ type Config struct {
 	wd       string
 }
 
+// Service : service is a collection of daemon's feature
+type Service struct {
+	name           string
+	config         *Config
+	driverRuntimes map[string]DriverRuntime
+	expects        map[string][]func(*Message)
+	responders     map[string][]func(*DriverRuntime, *Message)
+	transformers   map[string][]func(*DriverRuntime, *Message) Message
+	Route          func(*Message) []RoutedMessage
+	expectLock     sync.Mutex
+}
+
 // Driver : the parent class for all driver types
 type Driver struct {
-	Type string
+	Type       string
+	Executable string
+	Arguments  []string
+	PreStart   func(string, *DriverRuntime)
+}
+
+// DriverMeta : holds the information about the driver itself
+type DriverMeta struct {
+	Name     string
+	Feature  string
+	Services []string
+	Data     interface{}
 }
 
 // DriverRuntime : the runtime information of the running driver
 type DriverRuntime struct {
-	meta   *DriverMeta
-	data   *interface{}
-	input  *io.ReadCloser
-	output *io.WriteCloser
-	driver *Driver
+	meta    *DriverMeta
+	data    *interface{}
+	input   int
+	output  *io.WriteCloser
+	driver  *Driver
+	service string
+}
+
+// RoutedMessage : a service process a message and use the routed message to send to drivers
+type RoutedMessage struct {
+	driverRuntime *DriverRuntime
+	message       *Message
+}
+
+// Message : the message passed between components of the system
+type Message struct {
+	Channel     string
+	Subject     string
+	PayloadType string
+	Payload     []string
 }

@@ -16,7 +16,7 @@ var RequiredFeatures = map[string]([]string){
 }
 
 // BuiltinDrivers : define a list of builtin feature drivers
-var BuiltinDrivers map[string]DriverMeta = map[string]DriverMeta{
+var BuiltinDrivers = map[string]DriverMeta{
 	"google_pubsub": DriverMeta{
 		Name:     "google_pubsub",
 		Feature:  "eventbus",
