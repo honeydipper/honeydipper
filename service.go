@@ -21,19 +21,19 @@ func NewService(cfg *Config, name string) *Service {
 		responders:     map[string][]func(*DriverRuntime, *dipper.Message){},
 	}
 
-	service.responders["state:cold"] = []func(*DriverRuntime, *dipper.Message){coldReload}
+	service.responders["state:cold"] = []func(*DriverRuntime, *dipper.Message){coldReloadDriverRuntime}
 
 	return service
 }
 
-func coldReload(d *DriverRuntime, m *dipper.Message) {
+func coldReloadDriverRuntime(d *DriverRuntime, m *dipper.Message) {
 	s, _ := Services[d.service]
 	s.checkDeleteDriverRuntime(d.feature, d)
 	(*d.output).Close()
-	s.reloadFeature(d.feature)
+	s.loadFeature(d.feature)
 }
 
-func (s *Service) reloadFeature(feature string) (affected bool, driverName string, rerr error) {
+func (s *Service) loadFeature(feature string) (affected bool, driverName string, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Resuming after error: %v\n", r)
@@ -122,13 +122,15 @@ func (s *Service) reloadFeature(feature string) (affected bool, driverName strin
 
 func (s *Service) start() {
 	log.Printf("[%s] starting service\n", s.name)
-	s.reloadRequiredFeatures(true)
+	featureList := s.getFeatureList()
+	s.loadRequiredFeatures(featureList, true)
 	go s.serviceLoop()
-	s.reloadAdditionalFeatures()
+	s.loadAdditionalFeatures(featureList)
 }
 
 func (s *Service) reload() {
 	log.Printf("[%s] reloading service\n", s.name)
+	featureList := s.getFeatureList()
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -136,67 +138,87 @@ func (s *Service) reload() {
 				s.config.rollBack()
 			}
 		}()
-		s.reloadRequiredFeatures(false)
+		s.loadRequiredFeatures(featureList, false)
 	}()
-	s.reloadAdditionalFeatures()
+	s.loadAdditionalFeatures(featureList)
+	s.removeUnusedFeatures(featureList)
 }
 
-func (s *Service) reloadRequiredFeatures(boot bool) {
-	for _, feature := range RequiredFeatures[s.name] {
-		affected, driverName, err := s.reloadFeature(feature)
-		if err != nil {
-			if boot {
-				log.Fatalf("[%s] failed to load required feature [%s]", s.name, feature)
-			} else {
-				log.Panicf("[%] failed to reload required feature [%s]", s.name, feature)
-			}
-		}
-		if affected {
-			s.addExpect(
-				"state:alive:"+driverName,
-				func(*dipper.Message) {},
-				10*time.Second,
-				func() {
-					if boot {
-						log.Fatalf("failed to start driver %s.%s", s.name, driverName)
-					} else {
-						log.Printf("failed to reload driver %s.%s", s.name, driverName)
-						s.config.rollBack()
-					}
-				},
-			)
-		}
-	}
-}
-
-func (s *Service) reloadAdditionalFeatures() {
-	var additionalFeatures []interface{}
+func (s *Service) getFeatureList() map[interface{}]bool {
+	featureList := map[interface{}]bool{}
 	if cfgItem, ok := s.config.getDriverData("daemon.features.global"); ok {
-		additionalFeatures = cfgItem.([]interface{})
+		for _, feature := range cfgItem.([]interface{}) {
+			featureList[feature.(string)] = false
+		}
 	}
 	if cfgItem, ok := s.config.getDriverData("daemon.features." + s.name); ok {
 		log.Printf("[%s] loaded data: %v", s.name, cfgItem)
-		additionalFeatures = append(additionalFeatures, cfgItem.([]interface{})...)
+		for _, feature := range cfgItem.([]interface{}) {
+			featureList[feature.(string)] = false
+		}
 	}
-	log.Printf("[%s] features: %v", s.name, additionalFeatures)
+	for _, feature := range RequiredFeatures[s.name] {
+		featureList[feature] = true
+	}
+	return featureList
+}
 
-	for _, ifeature := range additionalFeatures {
+func (s *Service) removeUnusedFeatures(featureList map[interface{}]bool) {
+	for feature, runtime := range s.driverRuntimes {
+		if _, ok := featureList[feature]; !ok {
+			s.checkDeleteDriverRuntime(feature, nil)
+			(*runtime.output).Close()
+		}
+	}
+}
+
+func (s *Service) loadRequiredFeatures(featureList map[interface{}]bool, boot bool) {
+	for ifeature, required := range featureList {
 		feature := ifeature.(string)
-		if _, ok := RequiredFeatures[feature]; ok {
-			log.Printf("[%s] builtin feature %s already processed", s.name, feature)
-			break
+		if required {
+			affected, driverName, err := s.loadFeature(feature)
+			if err != nil {
+				if boot {
+					log.Fatalf("[%s] failed to load required feature [%s]", s.name, feature)
+				} else {
+					log.Panicf("[%] failed to reload required feature [%s]", s.name, feature)
+				}
+			}
+			if affected {
+				s.addExpect(
+					"state:alive:"+driverName,
+					func(*dipper.Message) {},
+					10*time.Second,
+					func() {
+						if boot {
+							log.Fatalf("failed to start driver %s.%s", s.name, driverName)
+						} else {
+							log.Printf("failed to reload driver %s.%s", s.name, driverName)
+							s.config.rollBack()
+						}
+					},
+				)
+			}
 		}
-		affected, driverName, err := s.reloadFeature(feature)
-		if err != nil {
-			log.Printf("[%s] skip feature %s error %v", s.name, feature, err)
-		}
-		if affected {
-			s.addExpect(
-				"state:alive:"+driverName,
-				func(*dipper.Message) {},
-				10*time.Second,
-				func() { log.Printf("[%s] failed to start or reload driver %s", s.name, driverName) },
-			)
+	}
+}
+
+func (s *Service) loadAdditionalFeatures(featureList map[interface{}]bool) {
+	for ifeature, required := range featureList {
+		feature := ifeature.(string)
+		if !required {
+			affected, driverName, err := s.loadFeature(feature)
+			if err != nil {
+				log.Printf("[%s] skip feature %s error %v", s.name, feature, err)
+			}
+			if affected {
+				s.addExpect(
+					"state:alive:"+driverName,
+					func(*dipper.Message) {},
+					10*time.Second,
+					func() { log.Printf("[%s] failed to start or reload driver %s", s.name, driverName) },
+				)
+			}
 		}
 	}
 }
