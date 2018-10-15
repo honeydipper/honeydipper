@@ -13,7 +13,7 @@ import (
 )
 
 // NewDriver : create a driver object to run the program process
-func NewDriver(data map[string]interface{}) Driver {
+func NewDriver(data map[interface{}]interface{}) Driver {
 	cmd, ok := data["Executable"].(string)
 	if !ok {
 		cmd = ""
@@ -41,9 +41,10 @@ func (runtime *DriverRuntime) start(service string) {
 	args := append([]string{service}, runtime.driver.Arguments...)
 	run := exec.Command(runtime.driver.Executable, args...)
 	if input, err := run.StdoutPipe(); err != nil {
-		log.Panicf("Unable to link to driver stdout %v", err)
+		log.Panicf("[%s] Unable to link to driver stdout %v", service, err)
 	} else {
 		runtime.input = int(input.(*os.File).Fd())
+		log.Printf("[%s] driver %s input fd %v and %v", service, runtime.meta.Name, runtime.input, input.(*os.File).Fd())
 		flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(runtime.input), syscall.F_GETFL, 0)
 		if errno != 0 {
 			panic(errno.Error())
@@ -55,15 +56,20 @@ func (runtime *DriverRuntime) start(service string) {
 		}
 	}
 	if output, err := run.StdinPipe(); err != nil {
-		log.Panicf("Unable to link to driver stdin %v", err)
+		log.Panicf("[%s] Unable to link to driver stdin %v", service, err)
 	} else {
 		runtime.output = &(output)
 	}
 	run.Stderr = os.Stderr
 	if err := run.Start(); err != nil {
-		log.Panicf("Failed to start driver %v", err)
+		log.Panicf("[%s] Failed to start driver %v", service, err)
 	}
 
+	runtime.Run = run
+	runtime.sendOptions()
+}
+
+func (runtime *DriverRuntime) sendOptions() {
 	msg := &dipper.Message{
 		Channel:     "command",
 		Subject:     "options",
@@ -71,7 +77,7 @@ func (runtime *DriverRuntime) start(service string) {
 	}
 
 	dipper.ForEachRecursive("", *runtime.data, func(key string, val string) {
-		log.Printf("sending to driver option:%s=%s\n", key, val)
+		log.Printf("[%s] sending to driver option:%s=%s\n", runtime.service, key, val)
 		msg.Payload = append(msg.Payload, key+"="+val)
 	})
 
@@ -127,5 +133,5 @@ func (runtime *DriverRuntime) fetchMessages() (messages []*dipper.Message) {
 		}
 	}()
 
-	return
+	return messages
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"io"
+	"os/exec"
 	"sync"
 )
 
@@ -94,23 +95,28 @@ type ConfigRepo struct {
 
 // Config : is the complete configration of the daemon including history and the running services
 type Config struct {
-	initRepo RepoInfo
-	services []string
-	config   *ConfigSet
-	loaded   map[RepoInfo]*ConfigRepo
-	wd       string
+	initRepo          RepoInfo
+	services          []string
+	config            *ConfigSet
+	loaded            map[RepoInfo]*ConfigRepo
+	wd                string
+	lastRunningConfig struct {
+		config *ConfigSet
+		loaded map[RepoInfo]*ConfigRepo
+	}
 }
 
 // Service : service is a collection of daemon's feature
 type Service struct {
 	name           string
 	config         *Config
-	driverRuntimes map[string]DriverRuntime
+	driverRuntimes map[string]*DriverRuntime
 	expects        map[string][]func(*dipper.Message)
 	responders     map[string][]func(*DriverRuntime, *dipper.Message)
 	transformers   map[string][]func(*DriverRuntime, *dipper.Message) *dipper.Message
 	Route          func(*dipper.Message) []RoutedMessage
 	expectLock     sync.Mutex
+	driverLock     sync.Mutex
 }
 
 // Driver : the parent class for all driver types
@@ -133,10 +139,12 @@ type DriverMeta struct {
 type DriverRuntime struct {
 	meta    *DriverMeta
 	data    *interface{}
+	feature string
 	input   int
 	output  *io.WriteCloser
 	driver  *Driver
 	service string
+	Run     *exec.Cmd
 }
 
 // RoutedMessage : a service process a message and use the routed message to send to drivers

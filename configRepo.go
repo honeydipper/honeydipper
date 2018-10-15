@@ -131,7 +131,7 @@ func (c *ConfigRepo) loadRepo() {
 }
 
 func (c *ConfigRepo) refreshRepo() (ret bool) {
-	defer func() { dipper.SafeExitOnError("repo [%v] skipped\n", c.repo.Repo); ret = false }()
+	defer dipper.SafeExitOnError("repo [%v] skipped\n", c.repo.Repo)
 	var repoObj *git.Repository
 	var err error
 	log.Printf("refreshing repo [%v]", c.repo.Repo)
@@ -166,5 +166,6 @@ func (c *ConfigRepo) refreshRepo() (ret bool) {
 	}
 	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
 	log.Printf("repo [%v] reloaded", c.repo.Repo)
-	return true
+	ret = true
+	return ret
 }

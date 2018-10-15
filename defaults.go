@@ -30,7 +30,7 @@ var BuiltinDrivers = map[string]DriverMeta{
 		Name:     "redis_pubsub",
 		Feature:  "eventbus",
 		Services: []string{"engine", "receiver"},
-		Data: map[string]interface{}{
+		Data: map[interface{}]interface{}{
 			"Type":    "go",
 			"Package": "github.com/honeyscience/honeydipper/honeydipper-redispubsub",
 		},

@@ -6,25 +6,38 @@ import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/mitchellh/mapstructure"
 	"log"
+	"reflect"
 	"syscall"
 	"time"
 )
 
 // NewService : create a Service with given config and name
 func NewService(cfg *Config, name string) *Service {
-	return &Service{
+	service := &Service{
 		name:           name,
 		config:         cfg,
-		driverRuntimes: map[string]DriverRuntime{},
+		driverRuntimes: map[string]*DriverRuntime{},
 		expects:        map[string][]func(*dipper.Message){},
+		responders:     map[string][]func(*DriverRuntime, *dipper.Message){},
 	}
+
+	service.responders["state:cold"] = []func(*DriverRuntime, *dipper.Message){coldReload}
+
+	return service
 }
 
-func (s *Service) loadFeature(feature string) (rerr error) {
+func coldReload(d *DriverRuntime, m *dipper.Message) {
+	s, _ := Services[d.service]
+	s.checkDeleteDriverRuntime(d.feature, d)
+	(*d.output).Close()
+	s.reloadFeature(d.feature)
+}
+
+func (s *Service) reloadFeature(feature string) (affected bool, driverName string, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Resuming after error: %v\n", r)
-			log.Printf("skip loading feature: %s.%s", s.name, feature)
+			log.Printf("[%s] skip reloading feature: %s", s.name, feature)
 			if err, ok := r.(error); ok {
 				rerr = err
 			} else {
@@ -32,15 +45,16 @@ func (s *Service) loadFeature(feature string) (rerr error) {
 			}
 		}
 	}()
+	log.Printf("[%s] reloading feature %s\n", s.name, feature)
 
-	log.Printf("loading feature %s.%s\n", s.name, feature)
-	featureMap := map[string](map[string]string){}
-	if cfgItem, ok := s.config.getDriverData("daemon.featureMap"); ok {
-		featureMap = cfgItem.(map[string](map[string]string))
-	}
-	driverName, ok := featureMap[s.name][feature]
-	if !ok {
-		driverName, ok = featureMap["global"][feature]
+	oldRuntime := s.getDriverRuntime(feature)
+
+	featureMap, ok := s.config.getDriverData("daemon.featureMap")
+	if ok {
+		driverName, ok = dipper.GetMapDataStr(featureMap, s.name+"."+feature)
+		if !ok {
+			driverName, ok = dipper.GetMapDataStr(featureMap, "global."+feature)
+		}
 	}
 	if !ok {
 		driverName, ok = Defaults[feature]
@@ -48,6 +62,7 @@ func (s *Service) loadFeature(feature string) (rerr error) {
 	if !ok {
 		panic("driver not defined for the feature")
 	}
+	log.Printf("[%s] mapping feature %s to driver %s", s.name, feature, driverName)
 
 	driverData, _ := s.config.getDriverData(driverName)
 
@@ -63,60 +78,124 @@ func (s *Service) loadFeature(feature string) (rerr error) {
 		}
 	}
 
+	log.Printf("[%s] driver %s meta %v", s.name, driverName, driverMeta)
 	driverRuntime := DriverRuntime{
-		meta: &driverMeta,
-		data: &driverData,
+		feature: feature,
+		meta:    &driverMeta,
+		data:    &driverData,
 	}
 
-	switch Type, _ := dipper.GetMapDataStr(driverMeta.Data, "Type"); Type {
-	case "go":
-		godriver := NewGoDriver(driverMeta.Data.(map[string]interface{})).Driver
-		driverRuntime.driver = &godriver
-		driverRuntime.start(s.name)
-	default:
-		panic(fmt.Sprintf("unknown driver type %s", Type))
-	}
+	if oldRuntime != nil && reflect.DeepEqual(*oldRuntime.meta, *driverRuntime.meta) {
+		if reflect.DeepEqual(*oldRuntime.data, *driverRuntime.data) {
+			log.Printf("[%s] driver not affected: %s", s.name, driverName)
+		} else {
+			// hot reload
+			affected = true
+			oldRuntime.data = driverRuntime.data
+			oldRuntime.sendOptions()
+		}
+	} else {
+		// cold reload
+		affected = true
+		switch Type, _ := dipper.GetMapDataStr(driverMeta.Data, "Type"); Type {
+		case "go":
+			godriver := NewGoDriver(driverMeta.Data.(map[interface{}]interface{})).Driver
+			driverRuntime.driver = &godriver
+			driverRuntime.start(s.name)
+		default:
+			panic(fmt.Sprintf("unknown driver type %s", Type))
+		}
 
-	s.driverRuntimes[feature] = driverRuntime
-	return nil
+		s.setDriverRuntime(feature, &driverRuntime)
+		go func(s *Service, feature string, runtime *DriverRuntime) {
+			runtime.Run.Wait()
+			s.checkDeleteDriverRuntime(feature, runtime)
+		}(s, feature, &driverRuntime)
+
+		if oldRuntime != nil {
+			// closing the output writer will cause child process to panic
+			(*oldRuntime.output).Close()
+		}
+	}
+	return affected, driverName, nil
 }
 
 func (s *Service) start() {
-	log.Printf("starting service %s\n", s.name)
+	log.Printf("[%s] starting service\n", s.name)
+	s.reloadRequiredFeatures(true)
 	go s.serviceLoop()
-	for _, feature := range RequiredFeatures[s.name] {
-		if err := s.loadFeature(feature); err != nil {
-			log.Fatalf("failed to load service [%s] required feature [%s]", s.name, feature)
-		}
+	s.reloadAdditionalFeatures()
+}
 
-		driverName := s.driverRuntimes[feature].meta.Name
-		s.addExpect(
-			"state:alive:"+driverName,
-			func(*dipper.Message) {},
-			5*time.Second,
-			func() { log.Fatalf("failed to start driver %s.%s", s.name, driverName) },
-		)
-	}
-
-	additionalFeatures := []string{}
-	if cfgItem, ok := s.config.getDriverData("daemon.features.global"); ok {
-		additionalFeatures = cfgItem.([]string)
-	}
-	if cfgItem, ok := s.config.getDriverData(fmt.Sprintf("daemon.features.%s", s.name)); ok {
-		additionalFeatures = append(additionalFeatures, cfgItem.([]string)...)
-	}
-
-	for _, feature := range additionalFeatures {
-		if driverRuntime, ok := s.driverRuntimes[feature]; !ok {
-			if err := s.loadFeature(feature); err != nil {
-				log.Printf("skip feature %s.%s error %v", s.name, feature, err)
+func (s *Service) reload() {
+	log.Printf("[%s] reloading service\n", s.name)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[%s] reverting config due to fatal failure %v\n", s.name, r)
+				s.config.rollBack()
 			}
-			driverName := driverRuntime.meta.Name
+		}()
+		s.reloadRequiredFeatures(false)
+	}()
+	s.reloadAdditionalFeatures()
+}
+
+func (s *Service) reloadRequiredFeatures(boot bool) {
+	for _, feature := range RequiredFeatures[s.name] {
+		affected, driverName, err := s.reloadFeature(feature)
+		if err != nil {
+			if boot {
+				log.Fatalf("[%s] failed to load required feature [%s]", s.name, feature)
+			} else {
+				log.Panicf("[%] failed to reload required feature [%s]", s.name, feature)
+			}
+		}
+		if affected {
 			s.addExpect(
 				"state:alive:"+driverName,
 				func(*dipper.Message) {},
-				5*time.Second,
-				func() { log.Printf("failed to start driver %s.%s", s.name, driverName) },
+				10*time.Second,
+				func() {
+					if boot {
+						log.Fatalf("failed to start driver %s.%s", s.name, driverName)
+					} else {
+						log.Printf("failed to reload driver %s.%s", s.name, driverName)
+						s.config.rollBack()
+					}
+				},
+			)
+		}
+	}
+}
+
+func (s *Service) reloadAdditionalFeatures() {
+	var additionalFeatures []interface{}
+	if cfgItem, ok := s.config.getDriverData("daemon.features.global"); ok {
+		additionalFeatures = cfgItem.([]interface{})
+	}
+	if cfgItem, ok := s.config.getDriverData("daemon.features." + s.name); ok {
+		log.Printf("[%s] loaded data: %v", s.name, cfgItem)
+		additionalFeatures = append(additionalFeatures, cfgItem.([]interface{})...)
+	}
+	log.Printf("[%s] features: %v", s.name, additionalFeatures)
+
+	for _, ifeature := range additionalFeatures {
+		feature := ifeature.(string)
+		if _, ok := RequiredFeatures[feature]; ok {
+			log.Printf("[%s] builtin feature %s already processed", s.name, feature)
+			break
+		}
+		affected, driverName, err := s.reloadFeature(feature)
+		if err != nil {
+			log.Printf("[%s] skip feature %s error %v", s.name, feature, err)
+		}
+		if affected {
+			s.addExpect(
+				"state:alive:"+driverName,
+				func(*dipper.Message) {},
+				10*time.Second,
+				func() { log.Printf("[%s] failed to start or reload driver %s", s.name, driverName) },
 			)
 		}
 	}
@@ -129,25 +208,33 @@ func (s *Service) serviceLoop() {
 	timeout.Sec = 1
 	for {
 		dipper.FdZero(fds)
-		for _, runtime := range s.driverRuntimes {
-			dipper.FdSet(fds, runtime.input)
-			if runtime.input > max {
-				max = runtime.input
+		func() {
+			s.driverLock.Lock()
+			defer s.driverLock.Unlock()
+			for _, runtime := range s.driverRuntimes {
+				dipper.FdSet(fds, runtime.input)
+				if runtime.input > max {
+					max = runtime.input
+				}
 			}
-		}
+		}()
 
 		err := syscall.Select(max+1, fds, nil, nil, timeout)
 		if err != nil {
-			log.Printf("select error %v", err)
+			log.Printf("[%s] select error %v", s.name, err)
 			time.Sleep(time.Second)
 		} else {
-			for _, runtime := range s.driverRuntimes {
-				if dipper.FdIsSet(fds, runtime.input) {
-					msgs := runtime.fetchMessages()
-					log.Printf("incoming messages from %s.%s %+v", s.name, runtime.meta.Name, msgs)
-					go s.process(msgs, &runtime)
+			func() {
+				s.driverLock.Lock()
+				defer s.driverLock.Unlock()
+				for _, runtime := range s.driverRuntimes {
+					if dipper.FdIsSet(fds, runtime.input) {
+						msgs := runtime.fetchMessages()
+						log.Printf("[%s] incoming messages from %s", s.name, runtime.meta.Name)
+						go s.process(msgs, runtime)
+					}
 				}
-			}
+			}()
 		}
 	}
 }
@@ -181,10 +268,10 @@ func (s *Service) process(msgs []*dipper.Message, runtime *DriverRuntime) {
 			}
 
 			// router
-			// routedMsgs := s.Route(msg)
-			// for _, routedMsg := range routedMsgs {
-			// 	routedMsg.driverRuntime.sendMessage(routedMsg.message)
-			// }
+			routedMsgs := s.Route(msg)
+			for _, routedMsg := range routedMsgs {
+				routedMsg.driverRuntime.sendMessage(routedMsg.message)
+			}
 		}(msg)
 	}
 }
@@ -230,4 +317,28 @@ func (s *Service) deleteExpect(expectKey string) ([]func(*dipper.Message), bool)
 		delete(s.expects, expectKey)
 	}
 	return ret, ok
+}
+
+func (s *Service) getDriverRuntime(feature string) *DriverRuntime {
+	runtime, ok := dipper.LockGetMap(&s.driverLock, s.driverRuntimes, feature)
+	if ok && runtime != nil {
+		return runtime.(*DriverRuntime)
+	}
+	return nil
+}
+
+func (s *Service) setDriverRuntime(feature string, runtime *DriverRuntime) *DriverRuntime {
+	oldone := dipper.LockSetMap(&s.driverLock, s.driverRuntimes, feature, runtime)
+	if oldone != nil {
+		return oldone.(*DriverRuntime)
+	}
+	return nil
+}
+
+func (s *Service) checkDeleteDriverRuntime(feature string, check *DriverRuntime) *DriverRuntime {
+	oldone := dipper.LockCheckDeleteMap(&s.driverLock, s.driverRuntimes, feature, check)
+	if oldone != nil {
+		return oldone.(*DriverRuntime)
+	}
+	return nil
 }

@@ -26,11 +26,34 @@ func (c *Config) watch() {
 
 		changeDetected := false
 		for _, repoRuntime := range c.loaded {
-			changeDetected = repoRuntime.refreshRepo() || changeDetected
+			changeDetected = (repoRuntime.refreshRepo() || changeDetected)
 		}
 		if changeDetected {
+			c.lastRunningConfig.config = c.config
+			c.lastRunningConfig.loaded = map[RepoInfo]*ConfigRepo{}
+			for k, v := range c.loaded {
+				c.lastRunningConfig.loaded[k] = v
+			}
 			log.Printf("reassembling configset")
 			c.assemble()
+
+			for _, service := range Services {
+				go service.reload()
+			}
+		}
+	}
+}
+
+func (c *Config) rollBack() {
+	if c.lastRunningConfig.config != c.config {
+		c.config = c.lastRunningConfig.config
+		c.loaded = map[RepoInfo]*ConfigRepo{}
+		for k, v := range c.lastRunningConfig.loaded {
+			c.loaded[k] = v
+		}
+		log.Printf("config rolled back to last running version")
+		for _, service := range Services {
+			service.reload()
 		}
 	}
 }

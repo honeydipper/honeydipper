@@ -13,7 +13,7 @@ type GoDriver struct {
 }
 
 // NewGoDriver : create a driver object to run the golang program process
-func NewGoDriver(data map[string]interface{}) GoDriver {
+func NewGoDriver(data map[interface{}]interface{}) GoDriver {
 	driver := NewDriver(data)
 
 	pack, ok := data["Package"].(string)
@@ -36,7 +36,7 @@ func NewGoDriver(data map[string]interface{}) GoDriver {
 }
 
 func (g *GoDriver) preStart(service string, runtime *DriverRuntime) {
-	log.Printf("pre-start dirver %s.%s", service, runtime.meta.Name)
+	log.Printf("[%s] pre-start dirver %s", service, runtime.meta.Name)
 	check := exec.Command("go", "list", g.Package)
 	if err := check.Run(); err != nil {
 		if _, ok := err.(*exec.ExitError); ok {

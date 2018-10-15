@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"github.com/go-redis/redis"
@@ -20,98 +19,92 @@ func init() {
 	}
 }
 
-// Options : received from the honeydipper daemon
-var Options map[string]string
-
-// State : the state of the driver
-var State = "loaded"
-
-var service = ""
-var in = bufio.NewReader(os.Stdin)
+var driver *dipper.Driver
+var redisClient *redis.Client
+var subscription *redis.PubSub
 
 func main() {
 	flag.Parse()
 
-	service = os.Args[1]
-
-	log.Printf("[%s-redispubsub] receiving configurations\n", service)
-	for {
-		msg := dipper.FetchMessage(in)
-
-		switch msg.Channel {
-		case "command":
-			runCommand(msg.Subject, msg.PayloadType, msg.Payload)
-		default:
-			log.Panicf("[%s-redispubsub] message in unknown channel: %s", service, msg.Channel)
-		}
+	driver = dipper.NewDriver(os.Args[1], "redispubsub")
+	if driver.Service == "receiver" {
+		driver.MessageHandlers["eventbus:message"] = relayToRedis
+	} else {
+		driver.Start = subscribeToRedis
 	}
-}
-
-func runCommand(cmd string, payloadType string, payload []string) {
-	switch cmd {
-	case "options":
-		for _, line := range payload {
-			parts := strings.Split(line, "=")
-			key := parts[0]
-			val := strings.Join(parts[1:], "=")
-			if Options == nil {
-				Options = make(map[string]string)
-			}
-			log.Printf("%s=%s", key, val)
-			Options[key] = val
-		}
-		log.Printf("%+v", Options)
-	case "ping":
-		dipper.SendRawMessage(os.Stdout, "state", State, "", nil)
-	case "start":
-		connect()
-	case "quit":
-		log.Fatalf("[%s-redispubsub] terminating on signal\n", service)
-	default:
-		log.Panicf("[%s-redispubsub] unkown command %s\n", service, cmd)
-	}
+	driver.Run()
 }
 
 func connect() {
-	opts := redis.Options{}
-	if addr, ok := Options["Addr"]; ok {
+	opts := &redis.Options{}
+	if addr, ok := driver.Options["Addr"]; ok {
 		opts.Addr = addr
 	}
-	if passwd, ok := Options["Password"]; ok {
+	if passwd, ok := driver.Options["Password"]; ok {
 		opts.Password = passwd
 	}
-	if DB, ok := Options["DB"]; ok {
+	if DB, ok := driver.Options["DB"]; ok {
 		DBnum, err := strconv.Atoi(DB)
 		if err != nil {
-			log.Panicf("[%s-redispubsub] invalid db number %s", DB)
+			log.Panicf("[%s-%s] invalid db number %s", driver.Service, driver.Name, DB)
 		}
 		opts.DB = DBnum
 	}
-	log.Printf("[%s-redispubsub] connecting to redis\n", service)
-	for {
-		reconnect(&opts)
+	log.Printf("[%s-%s] connecting to redis\n", driver.Service, driver.Name)
+	redisClient = redis.NewClient(opts)
+	if err := redisClient.Ping().Err(); err != nil {
+		panic(err)
 	}
 }
 
-func reconnect(opts *redis.Options) {
-	defer dipper.SafeExitOnError("[%s-redispubsub] reconnecting", service)
+func relayToRedis(msg *dipper.Message) {
+	if redisClient == nil {
+		connect()
+		subscription = nil
+	}
+	channel, ok := driver.Options["redis_channel"]
+	if !ok {
+		channel = "honeydipper:eventbus"
+	}
+	message := strings.Join(msg.Payload, "\n")
+	if err := redisClient.Publish(channel, message).Err(); err != nil {
+		panic(err)
+	}
+}
 
-	client := redis.NewClient(opts)
-	subscription := client.Subscribe("honeydipper-eventbus")
-	log.Printf("[%s-redispubsub] start receiving messages\n", service)
-	if State != "alive" {
-		State = "alive"
-		dipper.SendRawMessage(os.Stdout, "state", State, "", nil)
+func connectForSubscription() {
+	if redisClient == nil {
+		connect()
 	}
-	for {
-		message, err := subscription.ReceiveMessage()
-		if err != nil {
-			panic(err)
+	if subscription == nil {
+		channel, ok := driver.Options["redis_channel"]
+		if !ok {
+			channel = "honeydipper:eventbus"
 		}
-		payload := []string{
-			"channel=" + message.Channel,
-			"payload=" + message.Payload,
-		}
-		dipper.SendRawMessage(os.Stdout, "eventbus", "message", "kv", payload)
+		subscription = redisClient.Subscribe(channel)
+		log.Printf("[%s-%s] start receiving messages on channel: %s\n", driver.Service, driver.Name, channel)
 	}
+}
+
+func subscribeToRedis(msg *dipper.Message) {
+	connectForSubscription()
+	go func() {
+		for {
+			func() {
+				defer dipper.SafeExitOnError("[%s-%s] reconnecting to redis\n", driver.Service, driver.Name)
+				connectForSubscription()
+				for {
+					message, err := subscription.ReceiveMessage()
+					if err != nil {
+						panic(err)
+					}
+					payload := []string{
+						"channel=" + message.Channel,
+						"payload=" + message.Payload,
+					}
+					driver.SendRawMessage("eventbus", "message", "kv", payload)
+				}
+			}()
+		}
+	}()
 }

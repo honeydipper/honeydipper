@@ -18,3 +18,14 @@ func IgnoreError(expectedError interface{}) {
 		panic(x)
 	}
 }
+
+// CatchError : use this in defer to catch a certain error
+func CatchError(err interface{}, handler func()) {
+	if x := recover(); x != nil {
+		if x == err {
+			handler()
+		} else {
+			panic(x)
+		}
+	}
+}
