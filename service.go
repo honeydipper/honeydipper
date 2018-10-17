@@ -29,7 +29,7 @@ func NewService(cfg *Config, name string) *Service {
 func coldReloadDriverRuntime(d *DriverRuntime, m *dipper.Message) {
 	s, _ := Services[d.service]
 	s.checkDeleteDriverRuntime(d.feature, d)
-	(*d.output).Close()
+	d.output.Close()
 	s.loadFeature(d.feature)
 }
 
@@ -82,11 +82,11 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 	driverRuntime := DriverRuntime{
 		feature: feature,
 		meta:    &driverMeta,
-		data:    &driverData,
+		data:    driverData,
 	}
 
 	if oldRuntime != nil && reflect.DeepEqual(*oldRuntime.meta, *driverRuntime.meta) {
-		if reflect.DeepEqual(*oldRuntime.data, *driverRuntime.data) {
+		if reflect.DeepEqual(oldRuntime.data, driverRuntime.data) {
 			log.Printf("[%s] driver not affected: %s", s.name, driverName)
 		} else {
 			// hot reload
@@ -99,7 +99,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		affected = true
 		switch Type, _ := dipper.GetMapDataStr(driverMeta.Data, "Type"); Type {
 		case "go":
-			godriver := NewGoDriver(driverMeta.Data.(map[interface{}]interface{})).Driver
+			godriver := NewGoDriver(driverMeta.Data.(map[string]interface{})).Driver
 			driverRuntime.driver = &godriver
 			driverRuntime.start(s.name)
 		default:
@@ -114,7 +114,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 
 		if oldRuntime != nil {
 			// closing the output writer will cause child process to panic
-			(*oldRuntime.output).Close()
+			oldRuntime.output.Close()
 		}
 	}
 	return affected, driverName, nil
@@ -144,8 +144,8 @@ func (s *Service) reload() {
 	s.removeUnusedFeatures(featureList)
 }
 
-func (s *Service) getFeatureList() map[interface{}]bool {
-	featureList := map[interface{}]bool{}
+func (s *Service) getFeatureList() map[string]bool {
+	featureList := map[string]bool{}
 	if cfgItem, ok := s.config.getDriverData("daemon.features.global"); ok {
 		for _, feature := range cfgItem.([]interface{}) {
 			featureList[feature.(string)] = false
@@ -163,18 +163,17 @@ func (s *Service) getFeatureList() map[interface{}]bool {
 	return featureList
 }
 
-func (s *Service) removeUnusedFeatures(featureList map[interface{}]bool) {
+func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 	for feature, runtime := range s.driverRuntimes {
 		if _, ok := featureList[feature]; !ok {
 			s.checkDeleteDriverRuntime(feature, nil)
-			(*runtime.output).Close()
+			runtime.output.Close()
 		}
 	}
 }
 
-func (s *Service) loadRequiredFeatures(featureList map[interface{}]bool, boot bool) {
-	for ifeature, required := range featureList {
-		feature := ifeature.(string)
+func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
+	for feature, required := range featureList {
 		if required {
 			affected, driverName, err := s.loadFeature(feature)
 			if err != nil {
@@ -203,9 +202,8 @@ func (s *Service) loadRequiredFeatures(featureList map[interface{}]bool, boot bo
 	}
 }
 
-func (s *Service) loadAdditionalFeatures(featureList map[interface{}]bool) {
-	for ifeature, required := range featureList {
-		feature := ifeature.(string)
+func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
+	for feature, required := range featureList {
 		if !required {
 			affected, driverName, err := s.loadFeature(feature)
 			if err != nil {
@@ -234,14 +232,15 @@ func (s *Service) serviceLoop() {
 			s.driverLock.Lock()
 			defer s.driverLock.Unlock()
 			for _, runtime := range s.driverRuntimes {
-				dipper.FdSet(fds, runtime.input)
-				if runtime.input > max {
-					max = runtime.input
+				dipper.FdSet(fds, runtime.readfd)
+				if runtime.readfd > max {
+					max = runtime.readfd
 				}
 			}
 		}()
 
 		err := syscall.Select(max+1, fds, nil, nil, timeout)
+		log.Printf("[%s] no select error-----------------------------------------", s.name)
 		if err != nil {
 			log.Printf("[%s] select error %v", s.name, err)
 			time.Sleep(time.Second)
@@ -250,7 +249,7 @@ func (s *Service) serviceLoop() {
 				s.driverLock.Lock()
 				defer s.driverLock.Unlock()
 				for _, runtime := range s.driverRuntimes {
-					if dipper.FdIsSet(fds, runtime.input) {
+					if dipper.FdIsSet(fds, runtime.readfd) {
 						msgs := runtime.fetchMessages()
 						log.Printf("[%s] incoming messages from %s", s.name, runtime.meta.Name)
 						go s.process(msgs, runtime)

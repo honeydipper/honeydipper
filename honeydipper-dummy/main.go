@@ -31,6 +31,6 @@ func main() {
 func waitAndSendDummyEvent(msg *dipper.Message) {
 	go func() {
 		time.Sleep(20 * time.Second)
-		driver.SendRawMessage("state", "cold", "", nil)
+		driver.SendMessage("eventbus", "message", []string{"line 1", "line 2"})
 	}()
 }

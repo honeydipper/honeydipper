@@ -1,11 +1,9 @@
 package dipper
 
 import (
-	"bufio"
 	"io"
 	"log"
 	"os"
-	"strings"
 )
 
 // Driver : the helper stuct for creating a honey-dipper driver in golang
@@ -13,9 +11,9 @@ type Driver struct {
 	Name            string
 	Service         string
 	State           string
-	In              *bufio.Reader
+	In              io.Reader
 	Out             io.Writer
-	Options         map[string]string
+	Options         interface{}
 	MessageHandlers map[string]func(*Message)
 	Start           func(*Message)
 	Stop            func(*Message)
@@ -28,7 +26,7 @@ func NewDriver(service string, name string) *Driver {
 		Name:    name,
 		Service: service,
 		State:   "loaded",
-		In:      bufio.NewReader(os.Stdin),
+		In:      os.Stdin,
 		Out:     os.Stdout,
 	}
 
@@ -48,13 +46,13 @@ func (d *Driver) Run() {
 	func() {
 		defer SafeExitOnError("[%s-%s] Resuming driver message loop", d.Service, d.Name)
 		defer CatchError(io.EOF, func() {
-			log.Fatalf("[%s-%s] daemon exited", d.Service, d.Name)
+			log.Fatalf("[%s-%s] daemon closed channel", d.Service, d.Name)
 		})
 		for {
 			msg := FetchMessage(d.In)
 
 			if handler, ok := d.MessageHandlers[msg.Channel+":"+msg.Subject]; ok {
-				handler(&msg)
+				handler(msg)
 			} else {
 				log.Printf("[%s-%s] skipping message without handler: %s:%s", d.Service, d.Name, msg.Channel, msg.Subject)
 			}
@@ -64,21 +62,15 @@ func (d *Driver) Run() {
 
 // Ping : respond to daemon ping request with driver state
 func (d *Driver) Ping(msg *Message) {
-	d.SendRawMessage("state", d.State, "", nil)
+	d.SendMessage("state", d.State, nil)
 }
 
 // ReceiveOptions : receive options from daemon
 func (d *Driver) ReceiveOptions(msg *Message) {
-	for _, line := range msg.Payload {
-		parts := strings.Split(line, "=")
-		key := parts[0]
-		val := strings.Join(parts[1:], "=")
-		if d.Options == nil {
-			d.Options = make(map[string]string)
-		}
-		log.Printf("[%s-%s] receiving option %s", d.Service, d.Name, key)
-		d.Options[key] = val
+	if msg.IsRaw {
+		msg = DeserializePayload(msg)
 	}
+	d.Options = msg.Payload
 }
 
 func (d *Driver) start(msg *Message) {
@@ -98,21 +90,32 @@ func (d *Driver) start(msg *Message) {
 }
 
 func (d *Driver) stop(msg *Message) {
+	d.State = "quiting"
 	if d.Stop != nil {
 		d.Stop(msg)
 	}
-	d.State = "left"
 	d.Ping(msg)
+	log.Fatalf("[%s-%s] quiting on daemon request", d.Service, d.Name)
 }
 
 // SendRawMessage : construct and send a message to daemon
-func (d *Driver) SendRawMessage(channel string, subject string, payloadType string, payload []string) {
+func (d *Driver) SendRawMessage(channel string, subject string, payload []byte) {
 	log.Printf("[%s-%s] sending raw message to daemon %s:%s", d.Service, d.Name, channel, subject)
-	SendRawMessage(d.Out, channel, subject, payloadType, payload)
+	SendRawMessage(d.Out, channel, subject, payload)
 }
 
 // SendMessage : send a prepared message to daemon
-func (d *Driver) SendMessage(msg *Message) {
-	log.Printf("[%s-%s] sending raw message to daemon %s:%s", d.Service, d.Name, msg.Channel, msg.Subject)
-	SendMessage(d.Out, msg)
+func (d *Driver) SendMessage(channel string, subject string, payload interface{}) {
+	log.Printf("[%s-%s] sending raw message to daemon %s:%s", d.Service, d.Name, channel, subject)
+	SendMessage(d.Out, channel, subject, payload)
+}
+
+// GetOption : get the data from options map with the key
+func (d *Driver) GetOption(path string) (interface{}, bool) {
+	return GetMapData(d.Options, path)
+}
+
+// GetOptionStr : get the string data from options map with the key
+func (d *Driver) GetOptionStr(path string) (string, bool) {
+	return GetMapDataStr(d.Options, path)
 }

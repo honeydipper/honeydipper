@@ -8,20 +8,22 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
+	"time"
 )
 
 func init() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports all services including engine, receiver, workflow, operator etc")
-		fmt.Printf("  This program provides honeydipper with capability of accessing redis pug/sub")
+		fmt.Printf("  This program provides honeydipper with capability of accessing redis as message queue")
 	}
 }
 
 var driver *dipper.Driver
 var redisClient *redis.Client
 var subscription *redis.PubSub
+var eventTopic string
+var ok bool
 
 func main() {
 	flag.Parse()
@@ -36,14 +38,18 @@ func main() {
 }
 
 func connect() {
+	eventTopic, ok = driver.GetOptionStr("eventTopic")
+	if !ok {
+		eventTopic = "honeydipper:events"
+	}
 	opts := &redis.Options{}
-	if addr, ok := driver.Options["Addr"]; ok {
-		opts.Addr = addr
+	if value, ok := driver.GetOptionStr("Addr"); ok {
+		opts.Addr = value
 	}
-	if passwd, ok := driver.Options["Password"]; ok {
-		opts.Password = passwd
+	if value, ok := driver.GetOptionStr("Password"); ok {
+		opts.Password = value
 	}
-	if DB, ok := driver.Options["DB"]; ok {
+	if DB, ok := driver.GetOptionStr("DB"); ok {
 		DBnum, err := strconv.Atoi(DB)
 		if err != nil {
 			log.Panicf("[%s-%s] invalid db number %s", driver.Service, driver.Name, DB)
@@ -53,58 +59,46 @@ func connect() {
 	log.Printf("[%s-%s] connecting to redis\n", driver.Service, driver.Name)
 	redisClient = redis.NewClient(opts)
 	if err := redisClient.Ping().Err(); err != nil {
-		panic(err)
+		log.Panicf("[%s-%s] redis error: %v", driver.Service, driver.Name, err)
 	}
 }
 
 func relayToRedis(msg *dipper.Message) {
 	if redisClient == nil {
 		connect()
-		subscription = nil
 	}
-	channel, ok := driver.Options["redis_channel"]
-	if !ok {
-		channel = "honeydipper:eventbus"
+	var buf []byte
+	if !msg.IsRaw {
+		buf = dipper.SerializePayload(msg.Payload)
+	} else {
+		buf = msg.Payload.([]byte)
 	}
-	message := strings.Join(msg.Payload, "\n")
-	if err := redisClient.Publish(channel, message).Err(); err != nil {
-		panic(err)
-	}
-}
-
-func connectForSubscription() {
-	if redisClient == nil {
-		connect()
-	}
-	if subscription == nil {
-		channel, ok := driver.Options["redis_channel"]
-		if !ok {
-			channel = "honeydipper:eventbus"
-		}
-		subscription = redisClient.Subscribe(channel)
-		log.Printf("[%s-%s] start receiving messages on channel: %s\n", driver.Service, driver.Name, channel)
+	if err := redisClient.RPush(eventTopic, string(buf)).Err(); err != nil {
+		log.Panicf("[%s-%s] redis error: %v", driver.Service, driver.Name, err)
 	}
 }
 
 func subscribeToRedis(msg *dipper.Message) {
-	connectForSubscription()
+	log.Printf("[%s-%s] start receiving messages on topic: %s\n", driver.Service, driver.Name, eventTopic)
+	connect()
 	go func() {
 		for {
 			func() {
 				defer dipper.SafeExitOnError("[%s-%s] reconnecting to redis\n", driver.Service, driver.Name)
-				connectForSubscription()
+				connect()
 				for {
-					message, err := subscription.ReceiveMessage()
-					if err != nil {
-						panic(err)
+					messages, err := redisClient.BLPop(time.Second, eventTopic).Result()
+					if err != nil && err != redis.Nil {
+						log.Panicf("[%s-%s] redis error: %v", driver.Service, driver.Name, err)
 					}
-					payload := []string{
-						"channel=" + message.Channel,
-						"payload=" + message.Payload,
+					if len(messages) > 1 {
+						for _, m := range messages[1:] {
+							driver.SendRawMessage("eventbus", "message", []byte(m))
+						}
 					}
-					driver.SendRawMessage("eventbus", "message", "kv", payload)
 				}
 			}()
+			time.Sleep(time.Second)
 		}
 	}()
 }

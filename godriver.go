@@ -13,7 +13,7 @@ type GoDriver struct {
 }
 
 // NewGoDriver : create a driver object to run the golang program process
-func NewGoDriver(data map[interface{}]interface{}) GoDriver {
+func NewGoDriver(data map[string]interface{}) GoDriver {
 	driver := NewDriver(data)
 
 	pack, ok := data["Package"].(string)

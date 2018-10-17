@@ -24,41 +24,41 @@ type Filter interface{}
 
 // Trigger : is the datastructure hold the information to match and process an event
 type Trigger struct {
-	Driver     string                   `yaml:"driver,omitempty"`
-	RawEvent   string                   `yaml:"rawevent,omitempty"`
-	Conditions (interface{})            `yaml:"conditions,omitempty"`
-	Fields     map[string](interface{}) `yaml:"fields,omitempty"`
-	Source     Event                    `yaml:"source,omitempty"`
-	Filters    []Filter                 `yaml:"filters,omitempty"`
+	Driver     string                   `json:"driver,omitempty"`
+	RawEvent   string                   `json:"rawevent,omitempty"`
+	Conditions (interface{})            `json:"conditions,omitempty"`
+	Fields     map[string](interface{}) `json:"fields,omitempty"`
+	Source     Event                    `json:"source,omitempty"`
+	Filters    []Filter                 `json:"filters,omitempty"`
 }
 
 // Function : is the datastructure hold the information to run actions
 type Function struct {
-	Driver     string                   `yaml:"driver,omitempty"`
-	RawAction  string                   `yaml:"rawaction,omitempty"`
-	Parameters map[string](interface{}) `yaml:"parameters,omitempty"`
-	Results    map[string](interface{}) `yaml:"results,omitempty"`
-	Target     Action                   `yaml:"target,omitempty"`
-	Filters    []Filter                 `yaml:"filters,omitempty"`
+	Driver     string                   `json:"driver,omitempty"`
+	RawAction  string                   `json:"rawaction,omitempty"`
+	Parameters map[string](interface{}) `json:"parameters,omitempty"`
+	Results    map[string](interface{}) `json:"results,omitempty"`
+	Target     Action                   `json:"target,omitempty"`
+	Filters    []Filter                 `json:"filters,omitempty"`
 }
 
 // System : is an abstract construct to group data, trigger and function definitions
 type System struct {
-	Data      map[string](interface{}) `yaml:"data,omitempty"`
-	Triggers  map[string]Trigger       `yaml:"triggers,omitempty"`
-	Functions map[string]Function      `yaml:"functions,omitempty"`
+	Data      map[string](interface{}) `json:"data,omitempty"`
+	Triggers  map[string]Trigger       `json:"triggers,omitempty"`
+	Functions map[string]Function      `json:"functions,omitempty"`
 }
 
 // Condition : used to for conditioning in workflow
 type Condition struct {
-	Op     string `yaml:"op,omitempty"`
+	Op     string `json:"op,omitempty"`
 	Values []string
 }
 
 // Workflow : defines the steps, and relationship of the actions
 type Workflow struct {
 	Block      string
-	Conditions []Condition `yaml:"conditions,omitempty"`
+	Conditions []Condition `json:"conditions,omitempty"`
 	Content    [](interface{})
 }
 
@@ -71,17 +71,17 @@ type Rule struct {
 // RepoInfo : points a git repo where config data can be read from
 type RepoInfo struct {
 	Repo   string
-	Branch string `yaml:"branch,omitempty"`
-	Path   string `yaml:"path,omitempty"`
+	Branch string `json:"branch,omitempty"`
+	Path   string `json:"path,omitempty"`
 }
 
 // ConfigSet : is a complete set of configuration at a specific moment
 type ConfigSet struct {
-	Systems  map[string]System      `yaml:"systems,omitempty"`
-	Rules    map[string]Rule        `yaml:"rules,omitempty"`
-	Drivers  map[string]interface{} `yaml:"drivers,omitempty"`
-	Includes []string               `yaml:"includes,omitempty"`
-	Repos    []RepoInfo             `yaml:"repos,omitempty"`
+	Systems  map[string]System      `json:"systems,omitempty"`
+	Rules    map[string]Rule        `json:"rules,omitempty"`
+	Drivers  map[string]interface{} `json:"drivers,omitempty"`
+	Includes []string               `json:"includes,omitempty"`
+	Repos    []RepoInfo             `json:"repos,omitempty"`
 }
 
 // ConfigRepo : used to track what has been loaded in a repo
@@ -138,10 +138,11 @@ type DriverMeta struct {
 // DriverRuntime : the runtime information of the running driver
 type DriverRuntime struct {
 	meta    *DriverMeta
-	data    *interface{}
+	data    interface{}
 	feature string
-	input   int
-	output  *io.WriteCloser
+	input   io.ReadCloser
+	readfd  int
+	output  io.WriteCloser
 	driver  *Driver
 	service string
 	Run     *exec.Cmd

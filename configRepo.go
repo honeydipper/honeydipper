@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/ghodss/yaml"
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/imdario/mergo"
 	"gopkg.in/src-d/go-git.v4"
 	gitCfg "gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
 	"path"
@@ -40,7 +40,7 @@ func (c *ConfigRepo) loadFile(filename string) {
 			panic(err)
 		}
 		var content ConfigSet
-		err = yaml.UnmarshalStrict(yamlFile, &content)
+		err = yaml.Unmarshal(yamlFile, &content)
 		if err != nil {
 			panic(err)
 		}

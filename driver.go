@@ -1,9 +1,6 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
 	"io"
 	"log"
@@ -13,7 +10,7 @@ import (
 )
 
 // NewDriver : create a driver object to run the program process
-func NewDriver(data map[interface{}]interface{}) Driver {
+func NewDriver(data map[string]interface{}) Driver {
 	cmd, ok := data["Executable"].(string)
 	if !ok {
 		cmd = ""
@@ -43,14 +40,15 @@ func (runtime *DriverRuntime) start(service string) {
 	if input, err := run.StdoutPipe(); err != nil {
 		log.Panicf("[%s] Unable to link to driver stdout %v", service, err)
 	} else {
-		runtime.input = int(input.(*os.File).Fd())
-		log.Printf("[%s] driver %s input fd %v and %v", service, runtime.meta.Name, runtime.input, input.(*os.File).Fd())
-		flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(runtime.input), syscall.F_GETFL, 0)
+		runtime.input = input
+		runtime.readfd = int(input.(*os.File).Fd())
+		log.Printf("[%s] driver %s input fd %v", service, runtime.meta.Name, runtime.readfd)
+		flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(runtime.readfd), syscall.F_GETFL, 0)
 		if errno != 0 {
 			panic(errno.Error())
 		}
 		flags |= syscall.O_NONBLOCK
-		_, _, errno = syscall.Syscall(syscall.SYS_FCNTL, uintptr(runtime.input), syscall.F_SETFL, uintptr(flags))
+		_, _, errno = syscall.Syscall(syscall.SYS_FCNTL, uintptr(runtime.readfd), syscall.F_SETFL, uintptr(flags))
 		if errno != 0 {
 			panic(errno.Error())
 		}
@@ -58,7 +56,7 @@ func (runtime *DriverRuntime) start(service string) {
 	if output, err := run.StdinPipe(); err != nil {
 		log.Panicf("[%s] Unable to link to driver stdin %v", service, err)
 	} else {
-		runtime.output = &(output)
+		runtime.output = output
 	}
 	run.Stderr = os.Stderr
 	if err := run.Start(); err != nil {
@@ -70,37 +68,23 @@ func (runtime *DriverRuntime) start(service string) {
 }
 
 func (runtime *DriverRuntime) sendOptions() {
-	msg := &dipper.Message{
-		Channel:     "command",
-		Subject:     "options",
-		PayloadType: "kv",
-	}
-
-	dipper.ForEachRecursive("", *runtime.data, func(key string, val string) {
-		log.Printf("[%s] sending to driver option:%s=%s\n", runtime.service, key, val)
-		msg.Payload = append(msg.Payload, key+"="+val)
+	runtime.sendMessage(&dipper.Message{
+		Channel: "command",
+		Subject: "options",
+		IsRaw:   false,
+		Payload: runtime.data,
 	})
-
-	if len(msg.Payload) > 0 {
-		runtime.sendMessage(msg)
-	}
-
-	startInst := &dipper.Message{
-		Channel:     "command",
-		Subject:     "start",
-		PayloadType: "",
-	}
-
-	runtime.sendMessage(startInst)
+	runtime.sendMessage(&dipper.Message{
+		Channel: "command",
+		Subject: "start",
+	})
 }
 
 func (runtime *DriverRuntime) sendMessage(msg *dipper.Message) {
-	fmt.Fprintf(*runtime.output, "%s:%s:%s\n", msg.Channel, msg.Subject, msg.PayloadType)
-	if len(msg.PayloadType) > 0 {
-		for _, line := range msg.Payload {
-			fmt.Fprintln(*runtime.output, line)
-		}
-		fmt.Fprintln(*runtime.output, "")
+	if msg.IsRaw && msg.Payload != nil {
+		dipper.SendRawMessage(runtime.output, msg.Channel, msg.Subject, msg.Payload.([]byte))
+	} else {
+		dipper.SendMessage(runtime.output, msg.Channel, msg.Subject, msg.Payload)
 	}
 }
 
@@ -110,26 +94,12 @@ func (runtime *DriverRuntime) fetchMessages() (messages []*dipper.Message) {
 		runtime.service,
 		runtime.meta.Name,
 	)
-	var buf []byte
-	var err error
-	landing := make([]byte, 256)
-
-	for l := 0; err == nil; {
-		l, err = syscall.Read(runtime.input, landing)
-		if l > 0 {
-			buf = append(buf, landing[:l]...)
-		}
-		if err != nil && err != syscall.EAGAIN {
-			panic(err)
-		}
-	}
-
-	rd := bufio.NewReader(bytes.NewReader(buf))
 	func() {
 		defer dipper.IgnoreError(io.EOF)
 		for {
-			message := dipper.FetchMessage(rd)
-			messages = append(messages, &message)
+			message := dipper.FetchMessage(runtime.input)
+			log.Printf("[%s-%s] driver fetched message %+v", runtime.service, runtime.meta.Name, *message)
+			messages = append(messages, message)
 		}
 	}()
 

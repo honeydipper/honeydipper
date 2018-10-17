@@ -1,9 +1,10 @@
 package dipper
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 )
 
@@ -15,59 +16,92 @@ var MasterCommLock = sync.Mutex{}
 
 // Message : the message passed between components of the system
 type Message struct {
-	Channel     string
-	Subject     string
-	PayloadType string
-	Payload     []string
+	Channel string
+	Subject string
+	Size    int
+	IsRaw   bool
+	Payload interface{}
 }
 
-// ReadField : read a field from the input use sep as separater
-func ReadField(in *bufio.Reader, sep byte) string {
-	val, err := in.ReadString(sep)
-	if err != nil {
-		panic(err)
+// SerializePayload : encode a message payload into bytes
+func SerializePayload(payload interface{}) (ret []byte) {
+	var err error
+	if payload != nil {
+		ret, err = json.Marshal(payload)
+		if err != nil {
+			panic(err)
+		}
+		return ret
 	}
-	return val[:len(val)-1]
+	return []byte{}
+}
+
+// DeserializePayload : decode a message payload from bytes
+func DeserializePayload(msg *Message) *Message {
+	ret := map[string]interface{}{}
+	if msg.Payload != nil && msg.IsRaw {
+		if err := json.Unmarshal(msg.Payload.([]byte), &ret); err != nil {
+			panic(err)
+		}
+		msg.Payload = ret
+	}
+	msg.IsRaw = false
+	return msg
 }
 
 // FetchMessage : fetch message from input from daemon service
 //   may block or throw io.EOF based on the fcntl setting
-func FetchMessage(in *bufio.Reader) (msg Message) {
-	msg = Message{
-		Channel:     ReadField(in, ':'),
-		Subject:     ReadField(in, ':'),
-		PayloadType: ReadField(in, '\n'),
-	}
-	if len(msg.PayloadType) > 0 {
-		line := "init payload"
-		for {
-			line = ReadField(in, '\n')
-			if len(line) > 0 {
-				msg.Payload = append(msg.Payload, line)
-			} else {
-				break
-			}
-		}
+func FetchMessage(in io.Reader) (msg *Message) {
+	return DeserializePayload(FetchRawMessage(in))
+}
+
+// FetchRawMessage : fetch encoded message from input from daemon service
+//   may block or throw io.EOF based on the fcntl setting
+func FetchRawMessage(in io.Reader) (msg *Message) {
+	var channel string
+	var subject string
+	var size int
+
+	_, err := fmt.Fscanln(in, &channel, &subject, &size)
+	if err != nil {
+		log.Panicf("invalid message envelope: %v", err)
 	}
 
-	return
+	msg = &Message{
+		Channel: channel,
+		Subject: subject,
+		IsRaw:   true,
+		Size:    size,
+	}
+
+	if size > 0 {
+		buf := make([]byte, size)
+		_, err := io.ReadFull(in, buf)
+		if err != nil {
+			panic(err)
+		}
+		msg.Payload = buf
+	}
+
+	return msg
 }
 
 // SendMessage : send a message back to the daemon service
-func SendMessage(out io.Writer, msg *Message) {
-	SendRawMessage(out, msg.Channel, msg.Subject, msg.PayloadType, msg.Payload)
+func SendMessage(out io.Writer, channel string, subject string, payload interface{}) {
+	SendRawMessage(out, channel, subject, SerializePayload(payload))
 }
 
 // SendRawMessage : send unpackaged message back to the daemon service
-func SendRawMessage(out io.Writer, channel string, subject string, payloadType string, payload []string) {
+func SendRawMessage(out io.Writer, channel string, subject string, payload []byte) {
 	LockComm(out)
 	defer UnlockComm(out)
-	fmt.Fprintf(out, "%s:%s:%s\n", channel, subject, payloadType)
-	if len(payload) > 0 {
-		for _, line := range payload {
-			fmt.Fprintln(out, line)
+	size := len(payload)
+	fmt.Fprintf(out, "%s %s %d\n", channel, subject, size)
+	if size > 0 {
+		_, err := out.Write(payload)
+		if err != nil {
+			panic(err)
 		}
-		fmt.Fprintln(out, "")
 	}
 }
 

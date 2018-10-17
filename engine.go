@@ -15,6 +15,6 @@ func startEngine(cfg *Config) {
 }
 
 func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
-	log.Printf("[engine] routing message %s.%s", msg.Channel, msg.Subject)
+	log.Printf("[engine] routing message %s.%s %+v", msg.Channel, msg.Subject, msg.Payload)
 	return ret
 }
