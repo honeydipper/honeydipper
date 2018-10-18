@@ -90,7 +90,7 @@ func (d *Driver) start(msg *Message) {
 }
 
 func (d *Driver) stop(msg *Message) {
-	d.State = "quiting"
+	d.State = "exit"
 	if d.Stop != nil {
 		d.Stop(msg)
 	}

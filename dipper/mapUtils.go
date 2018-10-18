@@ -1,6 +1,7 @@
 package dipper
 
 import (
+	"log"
 	"reflect"
 	"strings"
 	"sync"
@@ -33,18 +34,39 @@ func GetMapDataStr(from interface{}, path string) (ret string, ok bool) {
 	return "", ok
 }
 
-// ForEachRecursive : enumerate all the data element deep into the map call the function provided
-func ForEachRecursive(prefixes string, from interface{}, process func(key string, val string)) {
+// Recursive : enumerate all the data element deep into the map call the function provided
+func Recursive(from interface{}, process func(key string, val string) (newval interface{}, ok bool)) {
+	RecursiveWithPrefix(nil, "", "", from, process)
+}
+
+// RecursiveWithPrefix : enumerate all the data element deep into the map call the function provided
+func RecursiveWithPrefix(
+	parent map[string]interface{},
+	prefixes string,
+	key string,
+	from interface{},
+	process func(key string, val string) (newval interface{}, ok bool),
+) {
+	newPrefixes := key
+	if len(prefixes) > 0 && len(key) > 0 {
+		newPrefixes = prefixes + "." + key
+	}
 	if str, ok := from.(string); ok {
-		process(prefixes, str)
-	} else if mp, ok := from.(map[interface{}]interface{}); ok {
-		for key, value := range mp {
-			newkey := key.(string)
-			if len(prefixes) > 0 {
-				newkey = prefixes + "." + newkey
+		if newval, ok := process(newPrefixes, str); ok {
+			if parent != nil {
+				if newval != nil {
+					parent[key] = newval
+				} else {
+					delete(parent, key)
+				}
 			}
-			ForEachRecursive(newkey, value, process)
 		}
+	} else if mp, ok := from.(map[string]interface{}); ok {
+		for k, value := range mp {
+			RecursiveWithPrefix(mp, newPrefixes, k, value, process)
+		}
+	} else {
+		log.Panicf("*********** Passed a map but not map[string]interface{} *********************")
 	}
 }
 

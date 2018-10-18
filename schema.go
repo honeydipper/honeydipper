@@ -117,6 +117,7 @@ type Service struct {
 	Route          func(*dipper.Message) []RoutedMessage
 	expectLock     sync.Mutex
 	driverLock     sync.Mutex
+	selectLock     sync.Mutex
 }
 
 // Driver : the parent class for all driver types
@@ -140,8 +141,8 @@ type DriverRuntime struct {
 	meta    *DriverMeta
 	data    interface{}
 	feature string
+	stream  chan dipper.Message
 	input   io.ReadCloser
-	readfd  int
 	output  io.WriteCloser
 	driver  *Driver
 	service string

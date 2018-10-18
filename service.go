@@ -7,7 +7,6 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"log"
 	"reflect"
-	"syscall"
 	"time"
 )
 
@@ -109,6 +108,11 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		s.setDriverRuntime(feature, &driverRuntime)
 		go func(s *Service, feature string, runtime *DriverRuntime) {
 			runtime.Run.Wait()
+			func() {
+				s.selectLock.Lock()
+				defer s.selectLock.Unlock()
+				close(runtime.stream)
+			}()
 			s.checkDeleteDriverRuntime(feature, runtime)
 		}(s, feature, &driverRuntime)
 
@@ -222,79 +226,81 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 }
 
 func (s *Service) serviceLoop() {
-	max := 0
-	fds := &syscall.FdSet{}
-	timeout := &syscall.Timeval{}
-	timeout.Sec = 1
 	for {
-		dipper.FdZero(fds)
+		var cases []reflect.SelectCase
+		var orderedRuntimes []*DriverRuntime
 		func() {
 			s.driverLock.Lock()
 			defer s.driverLock.Unlock()
+			cases = make([]reflect.SelectCase, len(s.driverRuntimes)+1)
+			orderedRuntimes = make([]*DriverRuntime, len(s.driverRuntimes))
+			i := 0
 			for _, runtime := range s.driverRuntimes {
-				dipper.FdSet(fds, runtime.readfd)
-				if runtime.readfd > max {
-					max = runtime.readfd
+				cases[i] = reflect.SelectCase{
+					Dir:  reflect.SelectRecv,
+					Chan: reflect.ValueOf(runtime.stream),
 				}
+				orderedRuntimes[i] = runtime
+				i++
 			}
 		}()
+		cases[len(cases)-1] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(time.After(time.Second)),
+		}
 
-		err := syscall.Select(max+1, fds, nil, nil, timeout)
-		log.Printf("[%s] no select error-----------------------------------------", s.name)
-		if err != nil {
-			log.Printf("[%s] select error %v", s.name, err)
-			time.Sleep(time.Second)
-		} else {
+		var chosen int
+		var value reflect.Value
+		var ok bool
+		func() {
+			s.selectLock.Lock()
+			defer s.selectLock.Unlock()
+			chosen, value, ok = reflect.Select(cases)
+		}()
+
+		if !ok {
+			chosenRuntime := orderedRuntimes[chosen]
+			s.checkDeleteDriverRuntime(chosenRuntime.feature, chosenRuntime)
+		} else if chosen < len(orderedRuntimes) {
 			func() {
 				s.driverLock.Lock()
 				defer s.driverLock.Unlock()
-				for _, runtime := range s.driverRuntimes {
-					if dipper.FdIsSet(fds, runtime.readfd) {
-						msgs := runtime.fetchMessages()
-						log.Printf("[%s] incoming messages from %s", s.name, runtime.meta.Name)
-						go s.process(msgs, runtime)
-					}
-				}
+				go s.process(value.Interface().(dipper.Message), orderedRuntimes[chosen])
 			}()
 		}
 	}
 }
 
-func (s *Service) process(msgs []*dipper.Message, runtime *DriverRuntime) {
-	// process expect
-	for _, msg := range msgs {
-		expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.meta.Name)
-		if expects, ok := s.deleteExpect(expectKey); ok {
-			for _, f := range expects {
-				go f(msg)
-			}
+func (s *Service) process(msg dipper.Message, runtime *DriverRuntime) {
+	expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.meta.Name)
+	if expects, ok := s.deleteExpect(expectKey); ok {
+		for _, f := range expects {
+			go f(&msg)
 		}
 	}
 
-	for _, msg := range msgs {
-		key := fmt.Sprintf("%s:%s", msg.Channel, msg.Subject)
-		// responder
-		if responders, ok := s.responders[key]; ok {
-			for _, f := range responders {
-				go f(runtime, msg)
+	key := fmt.Sprintf("%s:%s", msg.Channel, msg.Subject)
+	// responder
+	if responders, ok := s.responders[key]; ok {
+		for _, f := range responders {
+			go f(runtime, &msg)
+		}
+	}
+
+	go func(msg *dipper.Message) {
+		// transformer
+		if transformers, ok := s.transformers[key]; ok {
+			for _, f := range transformers {
+				msg = f(runtime, msg)
 			}
 		}
 
-		go func(msg *dipper.Message) {
-			// transformer
-			if transformers, ok := s.transformers[key]; ok {
-				for _, f := range transformers {
-					msg = f(runtime, msg)
-				}
-			}
-
-			// router
-			routedMsgs := s.Route(msg)
-			for _, routedMsg := range routedMsgs {
-				routedMsg.driverRuntime.sendMessage(routedMsg.message)
-			}
-		}(msg)
-	}
+		// router
+		routedMsgs := s.Route(msg)
+		for _, routedMsg := range routedMsgs {
+			routedMsg.driverRuntime.sendMessage(routedMsg.message)
+		}
+	}(&msg)
 }
 
 func (s *Service) addExpect(expectKey string, processor func(*dipper.Message), timeout time.Duration, except func()) {

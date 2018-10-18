@@ -64,7 +64,8 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 
 	_, err := fmt.Fscanln(in, &channel, &subject, &size)
 	if err != nil {
-		log.Panicf("invalid message envelope: %v", err)
+		log.Printf("invalid message envelope: %v", err)
+		panic(err)
 	}
 
 	msg = &Message{

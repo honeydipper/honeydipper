@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -26,7 +27,10 @@ func init() {
 var driver *dipper.Driver
 var ok bool
 var server *http.Server
-var hooks map[string]map[string]interface{}
+var hooks map[string]interface{}
+
+// Addr : listening address and port of the webhook
+var Addr string
 
 func main() {
 	flag.Parse()
@@ -34,7 +38,8 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "webhook")
 	if driver.Service == "receiver" {
 		driver.Start = startWebhook
-		driver.Reload = stopWebhook
+		driver.Stop = stopWebhook
+		driver.Reload = loadOptions
 	}
 	driver.Run()
 }
@@ -43,30 +48,49 @@ func stopWebhook(*dipper.Message) {
 	server.Shutdown(context.Background())
 }
 
-func startWebhook(m *dipper.Message) {
-	Addr, ok := driver.GetOptionStr("Addr")
-	if !ok {
-		Addr = ":8080"
-	}
+func loadOptions(m *dipper.Message) {
 	systems, ok := driver.GetOption("Systems")
 	if !ok {
-		log.Panicf("[%s-%s] no system defined")
+		log.Panicf("[%s-%s] no system defined", driver.Service, driver.Name)
 	}
-	hooks = map[string]map[string]interface{}{}
-	for system, events := range systems.(map[string]interface{}) {
-	NextEvent:
-		for event, hook := range events.(map[string]interface{}) {
-			if pattern, ok := dipper.GetMapDataStr(hook, "pattern"); ok {
-				re, err := regexp.Compile(pattern)
-				if err != nil {
-					log.Printf("[%s-%s] skipping invalid pattern %s in %s.%s", driver.Service, driver.Name, pattern, system, event)
-					break NextEvent
-				}
-				hook.(map[string]interface{})["pattern"] = re
-			}
-			hooks[system+"."+event] = hook.(map[string]interface{})
+	systemMap, ok := systems.(map[string]interface{})
+	if !ok {
+		log.Panicf("[%s-%s] systems should be a map", driver.Service, driver.Name)
+	}
+
+	hooks = map[string]interface{}{}
+	for system, events := range systemMap {
+		eventMap, ok := events.(map[string]interface{})
+		if !ok {
+			log.Panicf("[%s-%s] every system should map to a list of events", driver.Service, driver.Name)
+		}
+		for event, definition := range eventMap {
+			hooks[system+"."+event] = definition.(map[string]interface{})
 		}
 	}
+
+	dipper.Recursive(hooks, func(key string, val string) (ret interface{}, ok bool) {
+		if strings.HasPrefix(val, ":regex:") {
+			if newval, err := regexp.Compile(val[7:]); err == nil {
+				return newval, true
+			}
+			log.Printf("[%s-%s] skipping invalid regex pattern %s", driver.Service, driver.Name, val[7:])
+		}
+		return nil, false
+	})
+
+	NewAddr, ok := driver.GetOptionStr("Addr")
+	if !ok {
+		NewAddr = ":8080"
+	}
+	if driver.State == "alive" && NewAddr != Addr {
+		stopWebhook(m) // the webhook will be restarted automatically in the loop
+	}
+	Addr = NewAddr
+}
+
+func startWebhook(m *dipper.Message) {
+	loadOptions(m)
 	server = &http.Server{
 		Addr:    Addr,
 		Handler: http.HandlerFunc(hookHandler),
@@ -74,45 +98,82 @@ func startWebhook(m *dipper.Message) {
 	go func() {
 		log.Printf("[%s-%s] start listening for webhook requests", driver.Service, driver.Name)
 		log.Printf("[%s-%s] listener stopped: %+v", driver.Service, driver.Name, server.ListenAndServe())
-		if driver.State != "quiting" && driver.State != "cold" {
+		if driver.State != "exit" && driver.State != "cold" {
 			startWebhook(m)
 		}
 	}()
 }
 
+func compare(left string, right interface{}) bool {
+	strVal, ok := right.(string)
+	if ok {
+		return (strVal == left)
+	}
+
+	re, ok := right.(*regexp.Regexp)
+	if ok {
+		return re.Match([]byte(left))
+	}
+
+	listVal, ok := right.([]interface{})
+	if ok {
+		for _, subVal := range listVal {
+			if compare(left, subVal) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func checkForm(form url.Values, values interface{}) bool {
+	formChecks, ok := values.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	for field, value := range formChecks {
+		actual := form.Get(field)
+		if !compare(actual, value) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkHeader(headers http.Header, values interface{}) bool {
+	headerChecks, ok := values.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	for header, expected := range headerChecks {
+		actual := headers.Get(header)
+		if !compare(actual, expected) {
+			return false
+		}
+	}
+	return true
+}
+
 func hookHandler(w http.ResponseWriter, r *http.Request) {
 	matched := []string{}
 	r.ParseForm()
-NextEntry:
 	for SystemEvent, hook := range hooks {
 		meet := true
-		for check, value := range hook {
-			switch check {
-			case "auth_token":
-				if r.Form.Get("auth_token") != value.(string) {
-					meet = false
-					break NextEntry
-				}
-			case "token":
-				if r.Form.Get("token") != value.(string) {
-					meet = false
-					break NextEntry
-				}
-			case "pattern":
-				if !value.(*regexp.Regexp).MatchString(r.URL.Path) {
-					meet = false
-					break NextEntry
-				}
-			case "remoteaddr":
-				if r.RemoteAddr != value.(string) {
-					meet = false
-					break NextEntry
-				}
-			case "method":
-				if r.Method != value.(string) {
-					meet = false
-					break NextEntry
-				}
+		for check, value := range hook.(map[string]interface{}) {
+			if check == "url" {
+				meet = compare(r.URL.Path, value)
+			} else if check == "form" {
+				meet = checkForm(r.Form, value)
+			} else if check == "header" {
+				meet = checkHeader(r.Header, value)
+			} else if check == "method" {
+				meet = compare(r.Method, value)
+			} else {
+				meet = false
+			}
+
+			if !meet {
+				break
 			}
 		}
 
@@ -122,13 +183,11 @@ NextEntry:
 	}
 
 	if len(matched) > 0 {
-		payload := map[string]interface{}{
-			"events":     matched,
-			"url":        r.URL.Path,
-			"method":     r.Method,
-			"form":       r.Form.Encode(),
-			"headers":    r.Header,
-			"remoteaddr": r.RemoteAddr,
+		eventData := map[string]interface{}{
+			"url":     r.URL.Path,
+			"method":  r.Method,
+			"form":    r.Form.Encode(),
+			"headers": r.Header,
 		}
 
 		if r.Method == http.MethodPost {
@@ -142,15 +201,20 @@ NextEntry:
 			if len(contentType) > 0 && strings.EqualFold(contentType, "application/json") {
 				bodyObj := map[string]interface{}{}
 				err := json.Unmarshal(bodyBytes, bodyObj)
-				payload["body"] = bodyObj
+				eventData["body"] = bodyObj
 				if err != nil {
 					log.Printf("[%s-%s] invalid json in post body", driver.Service, driver.Name)
 					badRequest(w, r)
 					return
 				}
 			} else {
-				payload["body"] = string(bodyBytes)
+				eventData["body"] = string(bodyBytes)
 			}
+		}
+
+		payload := map[string]interface{}{
+			"events": matched,
+			"data":   eventData,
 		}
 
 		driver.SendMessage("eventbus", "message", payload)

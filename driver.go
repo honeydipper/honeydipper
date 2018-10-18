@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"syscall"
 )
 
 // NewDriver : create a driver object to run the program process
@@ -41,17 +40,8 @@ func (runtime *DriverRuntime) start(service string) {
 		log.Panicf("[%s] Unable to link to driver stdout %v", service, err)
 	} else {
 		runtime.input = input
-		runtime.readfd = int(input.(*os.File).Fd())
-		log.Printf("[%s] driver %s input fd %v", service, runtime.meta.Name, runtime.readfd)
-		flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(runtime.readfd), syscall.F_GETFL, 0)
-		if errno != 0 {
-			panic(errno.Error())
-		}
-		flags |= syscall.O_NONBLOCK
-		_, _, errno = syscall.Syscall(syscall.SYS_FCNTL, uintptr(runtime.readfd), syscall.F_SETFL, uintptr(flags))
-		if errno != 0 {
-			panic(errno.Error())
-		}
+		runtime.stream = make(chan dipper.Message, 10)
+		go runtime.fetchMessages()
 	}
 	if output, err := run.StdinPipe(); err != nil {
 		log.Panicf("[%s] Unable to link to driver stdin %v", service, err)
@@ -88,20 +78,21 @@ func (runtime *DriverRuntime) sendMessage(msg *dipper.Message) {
 	}
 }
 
-func (runtime *DriverRuntime) fetchMessages() (messages []*dipper.Message) {
-	defer dipper.SafeExitOnError(
-		"failed to fetching messages from driver %s.%s",
-		runtime.service,
-		runtime.meta.Name,
-	)
-	func() {
-		defer dipper.IgnoreError(io.EOF)
-		for {
-			message := dipper.FetchMessage(runtime.input)
-			log.Printf("[%s-%s] driver fetched message %+v", runtime.service, runtime.meta.Name, *message)
-			messages = append(messages, message)
-		}
-	}()
-
-	return messages
+func (runtime *DriverRuntime) fetchMessages() {
+	quit := false
+	for !quit {
+		func() {
+			defer dipper.SafeExitOnError(
+				"failed to fetching messages from driver %s.%s",
+				runtime.service,
+				runtime.meta.Name,
+			)
+			defer dipper.CatchError(io.EOF, func() { quit = true })
+			for {
+				message := dipper.FetchMessage(runtime.input)
+				log.Printf("[%s-%s] driver fetched message %+v", runtime.service, runtime.meta.Name, *message)
+				runtime.stream <- *message
+			}
+		}()
+	}
 }
