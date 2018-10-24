@@ -62,7 +62,10 @@ func (runtime *DriverRuntime) sendOptions() {
 		Channel: "command",
 		Subject: "options",
 		IsRaw:   false,
-		Payload: runtime.data,
+		Payload: map[string]interface{}{
+			"data":        runtime.data,
+			"dynamicData": runtime.dynamicData,
+		},
 	})
 	runtime.sendMessage(&dipper.Message{
 		Channel: "command",
@@ -89,8 +92,7 @@ func (runtime *DriverRuntime) fetchMessages() {
 			)
 			defer dipper.CatchError(io.EOF, func() { quit = true })
 			for {
-				message := dipper.FetchMessage(runtime.input)
-				log.Printf("[%s-%s] driver fetched message %+v", runtime.service, runtime.meta.Name, *message)
+				message := dipper.FetchRawMessage(runtime.input)
 				runtime.stream <- *message
 			}
 		}()

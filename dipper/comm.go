@@ -23,11 +23,11 @@ type Message struct {
 	Payload interface{}
 }
 
-// SerializePayload : encode a message payload into bytes
-func SerializePayload(payload interface{}) (ret []byte) {
+// SerializeContent : encode a message payload into bytes
+func SerializeContent(content interface{}) (ret []byte) {
 	var err error
-	if payload != nil {
-		ret, err = json.Marshal(payload)
+	if content != nil {
+		ret, err = json.Marshal(content)
 		if err != nil {
 			panic(err)
 		}
@@ -36,16 +36,23 @@ func SerializePayload(payload interface{}) (ret []byte) {
 	return []byte{}
 }
 
-// DeserializePayload : decode a message payload from bytes
-func DeserializePayload(msg *Message) *Message {
-	ret := map[string]interface{}{}
-	if msg.Payload != nil && msg.IsRaw {
-		if err := json.Unmarshal(msg.Payload.([]byte), &ret); err != nil {
+// DeserializeContent : decode the content into interface
+func DeserializeContent(content []byte) (ret interface{}) {
+	ret = map[string]interface{}{}
+	if len(content) > 0 {
+		if err := json.Unmarshal(content, &ret); err != nil {
 			panic(err)
 		}
-		msg.Payload = ret
+		return ret
 	}
-	msg.IsRaw = false
+	return nil
+}
+
+// DeserializePayload : decode a message payload from bytes
+func DeserializePayload(msg *Message) *Message {
+	if msg.IsRaw {
+		msg.Payload = DeserializeContent(msg.Payload.([]byte))
+	}
 	return msg
 }
 
@@ -89,7 +96,7 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 
 // SendMessage : send a message back to the daemon service
 func SendMessage(out io.Writer, channel string, subject string, payload interface{}) {
-	SendRawMessage(out, channel, subject, SerializePayload(payload))
+	SendRawMessage(out, channel, subject, SerializeContent(payload))
 }
 
 // SendRawMessage : send unpackaged message back to the daemon service

@@ -7,6 +7,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"log"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -48,23 +49,30 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 
 	oldRuntime := s.getDriverRuntime(feature)
 
-	featureMap, ok := s.config.getDriverData("daemon.featureMap")
-	if ok {
-		driverName, ok = dipper.GetMapDataStr(featureMap, s.name+"."+feature)
-		if !ok {
-			driverName, ok = dipper.GetMapDataStr(featureMap, "global."+feature)
+	if strings.HasPrefix(feature, "driver:") {
+		driverName = feature[7:]
+	} else {
+		featureMap, ok := s.config.getDriverData("daemon.featureMap")
+		if ok {
+			driverName, ok = dipper.GetMapDataStr(featureMap, s.name+"."+feature)
+			if !ok {
+				driverName, ok = dipper.GetMapDataStr(featureMap, "global."+feature)
+			}
 		}
-	}
-	if !ok {
-		driverName, ok = Defaults[feature]
-	}
-	if !ok {
-		panic("driver not defined for the feature")
+		if !ok {
+			driverName, ok = Defaults[feature]
+		}
+		if !ok {
+			panic("driver not defined for the feature")
+		}
 	}
 	log.Printf("[%s] mapping feature %s to driver %s", s.name, feature, driverName)
 
 	driverData, _ := s.config.getDriverData(driverName)
-
+	var dynamicData interface{}
+	if strings.HasPrefix(feature, "driver:") {
+		dynamicData, _ = s.dynamicFeatureData[feature]
+	}
 	driverMeta, ok := BuiltinDrivers[driverName]
 	if !ok {
 		if cfgItem, ok := s.config.getDriverData(fmt.Sprintf("daemon.drivers.%s", driverName)); ok {
@@ -79,18 +87,20 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 
 	log.Printf("[%s] driver %s meta %v", s.name, driverName, driverMeta)
 	driverRuntime := DriverRuntime{
-		feature: feature,
-		meta:    &driverMeta,
-		data:    driverData,
+		feature:     feature,
+		meta:        &driverMeta,
+		data:        driverData,
+		dynamicData: dynamicData,
 	}
 
 	if oldRuntime != nil && reflect.DeepEqual(*oldRuntime.meta, *driverRuntime.meta) {
-		if reflect.DeepEqual(oldRuntime.data, driverRuntime.data) {
+		if reflect.DeepEqual(oldRuntime.data, driverRuntime.data) && reflect.DeepEqual(oldRuntime.dynamicData, driverRuntime.dynamicData) {
 			log.Printf("[%s] driver not affected: %s", s.name, driverName)
 		} else {
 			// hot reload
 			affected = true
 			oldRuntime.data = driverRuntime.data
+			oldRuntime.dynamicData = driverRuntime.dynamicData
 			oldRuntime.sendOptions()
 		}
 	} else {
@@ -134,6 +144,9 @@ func (s *Service) start() {
 
 func (s *Service) reload() {
 	log.Printf("[%s] reloading service\n", s.name)
+	if s.ServiceReload != nil {
+		s.ServiceReload(s.config)
+	}
 	featureList := s.getFeatureList()
 	func() {
 		defer func() {
@@ -163,6 +176,12 @@ func (s *Service) getFeatureList() map[string]bool {
 	}
 	for _, feature := range RequiredFeatures[s.name] {
 		featureList[feature] = true
+	}
+	if s.DiscoverFeatures != nil {
+		s.dynamicFeatureData = s.DiscoverFeatures(s.config.config)
+		for name := range s.dynamicFeatureData {
+			featureList[name] = false
+		}
 	}
 	return featureList
 }
@@ -279,6 +298,11 @@ func (s *Service) process(msg dipper.Message, runtime *DriverRuntime) {
 		}
 	}
 
+	if strings.HasPrefix(msg.Channel, "rpc") {
+		s.handleRPC(runtime, &msg)
+		return
+	}
+
 	key := fmt.Sprintf("%s:%s", msg.Channel, msg.Subject)
 	// responder
 	if responders, ok := s.responders[key]; ok {
@@ -301,6 +325,31 @@ func (s *Service) process(msg dipper.Message, runtime *DriverRuntime) {
 			routedMsg.driverRuntime.sendMessage(routedMsg.message)
 		}
 	}(&msg)
+}
+
+func (s *Service) handleRPC(from *DriverRuntime, m *dipper.Message) bool {
+	if m.Channel == "rpc" {
+		parts := strings.SplitN(m.Subject, ".", 2)
+		feature := parts[0]
+		method := parts[1]
+		callee := s.getDriverRuntime(feature)
+		if callee == nil {
+			log.Panicf("[%s] unable to find the rpc callee %s", s.name, feature)
+		}
+		dipper.SendRawMessage(callee.output, m.Channel, method+"."+from.feature, m.Payload.([]byte))
+		return true
+	} else if m.Channel == "rpcReply" {
+		parts := strings.SplitN(m.Subject, ".", 2)
+		feature := parts[0]
+		rpcID := parts[1]
+		caller := s.getDriverRuntime(feature)
+		if caller == nil {
+			log.Panicf("[%s] unable to find the rpc caller %s", s.name, feature)
+		}
+		dipper.SendRawMessage(caller.output, m.Channel, rpcID, m.Payload.([]byte))
+		return true
+	}
+	return false
 }
 
 func (s *Service) addExpect(expectKey string, processor func(*dipper.Message), timeout time.Duration, except func()) {

@@ -1,16 +1,25 @@
 package dipper
 
 import (
-	"log"
+	"bytes"
+	"encoding/gob"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 )
 
+func init() {
+	gob.Register(map[string]interface{}{})
+}
+
 // GetMapData : get the data from the deep map following a KV path
 func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 	components := strings.Split(path, ".")
 	var current = reflect.ValueOf(from)
+	if !current.IsValid() {
+		return nil, ok
+	}
 	for _, component := range components {
 		if current.Kind() != reflect.Map {
 			return nil, ok
@@ -21,7 +30,6 @@ func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 		}
 		current = reflect.ValueOf(nextValue.Interface())
 	}
-
 	return current.Interface(), true
 }
 
@@ -35,38 +43,42 @@ func GetMapDataStr(from interface{}, path string) (ret string, ok bool) {
 }
 
 // Recursive : enumerate all the data element deep into the map call the function provided
-func Recursive(from interface{}, process func(key string, val string) (newval interface{}, ok bool)) {
+func Recursive(from interface{}, process func(key string, val interface{}) (newval interface{}, ok bool)) {
 	RecursiveWithPrefix(nil, "", "", from, process)
 }
 
 // RecursiveWithPrefix : enumerate all the data element deep into the map call the function provided
 func RecursiveWithPrefix(
-	parent map[string]interface{},
+	parent interface{},
 	prefixes string,
-	key string,
+	key interface{},
 	from interface{},
-	process func(key string, val string) (newval interface{}, ok bool),
+	process func(key string, val interface{}) (newval interface{}, ok bool),
 ) {
-	newPrefixes := key
-	if len(prefixes) > 0 && len(key) > 0 {
-		newPrefixes = prefixes + "." + key
+	keyStr := fmt.Sprintf("%v", key)
+	newPrefixes := keyStr
+	if len(prefixes) > 0 && len(keyStr) > 0 {
+		newPrefixes = prefixes + "." + keyStr
 	}
-	if str, ok := from.(string); ok {
-		if newval, ok := process(newPrefixes, str); ok {
-			if parent != nil {
-				if newval != nil {
-					parent[key] = newval
-				} else {
-					delete(parent, key)
-				}
-			}
-		}
-	} else if mp, ok := from.(map[string]interface{}); ok {
+	if mp, ok := from.(map[string]interface{}); ok {
 		for k, value := range mp {
 			RecursiveWithPrefix(mp, newPrefixes, k, value, process)
 		}
 	} else {
-		log.Panicf("*********** Passed a map but not map[string]interface{} *********************")
+		if parent == nil {
+			return
+		}
+		if newval, ok := process(newPrefixes, from); ok {
+			if parentArray, ok := parent.([]interface{}); ok {
+				parentArray[key.(int)] = newval
+			} else if parentMap, ok := parent.(map[string]interface{}); ok {
+				if newval != nil {
+					parentMap[key.(string)] = newval
+				} else {
+					delete(parentMap, key.(string))
+				}
+			}
+		}
 	}
 }
 
@@ -113,8 +125,12 @@ func LockCheckDeleteMap(lock *sync.Mutex, resource interface{}, key interface{},
 	keyVal := reflect.ValueOf(key)
 	if !resVal.IsNil() {
 		retVal = resVal.MapIndex(keyVal)
-		if checkValue != nil && retVal.IsValid() && retVal.Interface() == checkValue {
-			resVal.SetMapIndex(keyVal, reflect.Value{})
+		if checkValue != nil && retVal.IsValid() {
+			if retVal.Interface() == checkValue {
+				resVal.SetMapIndex(keyVal, reflect.Value{})
+			} else {
+				resVal.SetMapIndex(keyVal, reflect.Value{})
+			}
 		} else if checkValue == nil {
 			resVal.SetMapIndex(keyVal, reflect.Value{})
 		}
@@ -124,4 +140,24 @@ func LockCheckDeleteMap(lock *sync.Mutex, resource interface{}, key interface{},
 		return retVal.Interface()
 	}
 	return nil
+}
+
+// DeepCopy : performs a deep copy of the given map m.
+func DeepCopy(m map[string]interface{}) (map[string]interface{}, error) {
+	var buf bytes.Buffer
+	if m == nil {
+		return nil, nil
+	}
+	enc := gob.NewEncoder(&buf)
+	dec := gob.NewDecoder(&buf)
+	err := enc.Encode(m)
+	if err != nil {
+		return nil, err
+	}
+	var copy map[string]interface{}
+	err = dec.Decode(&copy)
+	if err != nil {
+		return nil, err
+	}
+	return copy, nil
 }

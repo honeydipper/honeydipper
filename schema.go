@@ -26,7 +26,7 @@ type Filter interface{}
 type Trigger struct {
 	Driver     string                   `json:"driver,omitempty"`
 	RawEvent   string                   `json:"rawevent,omitempty"`
-	Conditions (interface{})            `json:"conditions,omitempty"`
+	Conditions interface{}              `json:"conditions,omitempty"`
 	Fields     map[string](interface{}) `json:"fields,omitempty"`
 	Source     Event                    `json:"source,omitempty"`
 	Filters    []Filter                 `json:"filters,omitempty"`
@@ -57,9 +57,9 @@ type Condition struct {
 
 // Workflow : defines the steps, and relationship of the actions
 type Workflow struct {
-	Block      string
+	Type       string      `json:"type,omitempty"`
 	Conditions []Condition `json:"conditions,omitempty"`
-	Content    [](interface{})
+	Content    interface{}
 }
 
 // Rule : is a data structure defining what action to take upon an event
@@ -77,11 +77,12 @@ type RepoInfo struct {
 
 // ConfigSet : is a complete set of configuration at a specific moment
 type ConfigSet struct {
-	Systems  map[string]System      `json:"systems,omitempty"`
-	Rules    map[string]Rule        `json:"rules,omitempty"`
-	Drivers  map[string]interface{} `json:"drivers,omitempty"`
-	Includes []string               `json:"includes,omitempty"`
-	Repos    []RepoInfo             `json:"repos,omitempty"`
+	Systems   map[string]System      `json:"systems,omitempty"`
+	Rules     []Rule                 `json:"rules,omitempty"`
+	Drivers   map[string]interface{} `json:"drivers,omitempty"`
+	Includes  []string               `json:"includes,omitempty"`
+	Repos     []RepoInfo             `json:"repos,omitempty"`
+	Workflows map[string]Workflow    `json:"workflows,omitempty"`
 }
 
 // ConfigRepo : used to track what has been loaded in a repo
@@ -108,16 +109,19 @@ type Config struct {
 
 // Service : service is a collection of daemon's feature
 type Service struct {
-	name           string
-	config         *Config
-	driverRuntimes map[string]*DriverRuntime
-	expects        map[string][]func(*dipper.Message)
-	responders     map[string][]func(*DriverRuntime, *dipper.Message)
-	transformers   map[string][]func(*DriverRuntime, *dipper.Message) *dipper.Message
-	Route          func(*dipper.Message) []RoutedMessage
-	expectLock     sync.Mutex
-	driverLock     sync.Mutex
-	selectLock     sync.Mutex
+	name               string
+	config             *Config
+	driverRuntimes     map[string]*DriverRuntime
+	expects            map[string][]func(*dipper.Message)
+	responders         map[string][]func(*DriverRuntime, *dipper.Message)
+	transformers       map[string][]func(*DriverRuntime, *dipper.Message) *dipper.Message
+	dynamicFeatureData map[string]interface{}
+	expectLock         sync.Mutex
+	driverLock         sync.Mutex
+	selectLock         sync.Mutex
+	Route              func(*dipper.Message) []RoutedMessage
+	DiscoverFeatures   func(*ConfigSet) map[string]interface{}
+	ServiceReload      func(*Config)
 }
 
 // Driver : the parent class for all driver types
@@ -138,15 +142,16 @@ type DriverMeta struct {
 
 // DriverRuntime : the runtime information of the running driver
 type DriverRuntime struct {
-	meta    *DriverMeta
-	data    interface{}
-	feature string
-	stream  chan dipper.Message
-	input   io.ReadCloser
-	output  io.WriteCloser
-	driver  *Driver
-	service string
-	Run     *exec.Cmd
+	meta        *DriverMeta
+	data        interface{}
+	dynamicData interface{}
+	feature     string
+	stream      chan dipper.Message
+	input       io.ReadCloser
+	output      io.WriteCloser
+	driver      *Driver
+	service     string
+	Run         *exec.Cmd
 }
 
 // RoutedMessage : a service process a message and use the routed message to send to drivers

@@ -49,7 +49,7 @@ func stopWebhook(*dipper.Message) {
 }
 
 func loadOptions(m *dipper.Message) {
-	systems, ok := driver.GetOption("Systems")
+	systems, ok := driver.GetOption("dynamicData")
 	if !ok {
 		log.Panicf("[%s-%s] no system defined", driver.Service, driver.Name)
 	}
@@ -69,17 +69,21 @@ func loadOptions(m *dipper.Message) {
 		}
 	}
 
-	dipper.Recursive(hooks, func(key string, val string) (ret interface{}, ok bool) {
-		if strings.HasPrefix(val, ":regex:") {
-			if newval, err := regexp.Compile(val[7:]); err == nil {
-				return newval, true
+	dipper.Recursive(hooks, func(key string, val interface{}) (ret interface{}, ok bool) {
+		if str, ok := val.(string); ok {
+			if strings.HasPrefix(str, ":regex:") {
+				if newval, err := regexp.Compile(str[7:]); err == nil {
+					return newval, true
+				}
+				log.Printf("[%s-%s] skipping invalid regex pattern %s", driver.Service, driver.Name, str[7:])
 			}
-			log.Printf("[%s-%s] skipping invalid regex pattern %s", driver.Service, driver.Name, val[7:])
+			return nil, false
 		}
-		return nil, false
+		str := fmt.Sprintf("%v", val)
+		return str, true
 	})
 
-	NewAddr, ok := driver.GetOptionStr("Addr")
+	NewAddr, ok := driver.GetOptionStr("data.Addr")
 	if !ok {
 		NewAddr = ":8080"
 	}
@@ -198,17 +202,16 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			contentType := r.Header.Get("Content-type")
+			eventData["body"] = string(bodyBytes)
 			if len(contentType) > 0 && strings.EqualFold(contentType, "application/json") {
 				bodyObj := map[string]interface{}{}
 				err := json.Unmarshal(bodyBytes, bodyObj)
-				eventData["body"] = bodyObj
+				eventData["json"] = bodyObj
 				if err != nil {
 					log.Printf("[%s-%s] invalid json in post body", driver.Service, driver.Name)
 					badRequest(w, r)
 					return
 				}
-			} else {
-				eventData["body"] = string(bodyBytes)
 			}
 		}
 

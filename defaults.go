@@ -2,12 +2,15 @@ package main
 
 // Defaults : contains the default settings of the system
 var Defaults = map[string]string{
-	"eventbus": "redis_pubsub",
+	"eventbus": "redispubsub",
 }
 
 // RequiredFeatures : define the required features that each service should provide
 var RequiredFeatures = map[string]([]string){
 	"receiver": []string{
+		"eventbus",
+	},
+	"operator": []string{
 		"eventbus",
 	},
 	"engine": []string{
@@ -26,8 +29,8 @@ var BuiltinDrivers = map[string]DriverMeta{
 			"Package": "github.com/honeyscience/honeydipper/honeydipper-googlepubsub",
 		},
 	},
-	"redis_pubsub": DriverMeta{
-		Name:     "redis_pubsub",
+	"redispubsub": DriverMeta{
+		Name:     "redispubsub",
 		Feature:  "eventbus",
 		Services: []string{"engine", "receiver"},
 		Data: map[string]interface{}{

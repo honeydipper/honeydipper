@@ -39,7 +39,7 @@ func initEnv() {
 func start() {
 	services := config.services
 	if len(services) == 0 {
-		services = []string{"engine", "receiver"}
+		services = []string{"engine", "receiver", "operator"}
 	}
 	for _, service := range services {
 		switch service {
@@ -47,6 +47,8 @@ func start() {
 			startEngine(&config)
 		case "receiver":
 			startReceiver(&config)
+		case "operator":
+			startOperator(&config)
 		default:
 			log.Fatalf("'%v' service is not implemented\n", service)
 		}
