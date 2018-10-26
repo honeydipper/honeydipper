@@ -22,7 +22,7 @@ func (c *ConfigRepo) assemble(assembled *ConfigSet, assembledList map[RepoInfo]*
 		}
 	}
 
-	mergo.Merge(assembled, c.config, mergo.WithOverride)
+	mergo.Merge(assembled, c.config, mergo.WithOverride, mergo.WithAppendSlice)
 	assembledList[*c.repo] = c
 	return assembled, assembledList
 }
@@ -63,7 +63,7 @@ func (c *ConfigRepo) loadFile(filename string) {
 			}
 		}
 
-		mergo.Merge(&(c.config), content, mergo.WithOverride)
+		mergo.Merge(&(c.config), content, mergo.WithOverride, mergo.WithAppendSlice)
 		c.files[filename] = true
 		log.Printf("config file [%v] loaded\n", filename)
 	}

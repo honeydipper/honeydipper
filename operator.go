@@ -85,7 +85,7 @@ func collapseFunction(s *System, f *Function) (string, string, map[string]interf
 		sysData, ok := dipper.GetMapData(s.Data, driver+".parameters")
 		if ok {
 			sysDataCopy, _ := dipper.DeepCopy(sysData.(map[string]interface{}))
-			err := mergo.Merge(&subData, sysDataCopy, mergo.WithOverride)
+			err := mergo.Merge(&subData, sysDataCopy, mergo.WithOverride, mergo.WithAppendSlice)
 			if err != nil {
 				log.Panicf("[operator] unable to merge parameters %+v", err)
 			}
@@ -93,7 +93,7 @@ func collapseFunction(s *System, f *Function) (string, string, map[string]interf
 	}
 	if f.Parameters != nil {
 		dataCopy, _ := dipper.DeepCopy(f.Parameters)
-		err := mergo.Merge(&subData, dataCopy, mergo.WithOverride)
+		err := mergo.Merge(&subData, dataCopy, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
 			log.Panicf("[operator] unable to merge parameters %+v", err)
 		}

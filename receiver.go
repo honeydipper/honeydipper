@@ -50,7 +50,7 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 	for i := len(stack) - 1; i >= 0; i-- {
 		c, _ := stack[i].(map[string]interface{})
 		cp, _ := dipper.DeepCopy(c)
-		err := mergo.Merge(&conditions, cp, mergo.WithOverride)
+		err := mergo.Merge(&conditions, cp, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
 			panic(err)
 		}
@@ -83,7 +83,7 @@ func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 		}
 
 		log.Printf("[receiver] collapsed %+v total %+v", delta, dynamicData)
-		err := mergo.Merge(&dynamicData, delta, mergo.WithOverride)
+		err := mergo.Merge(&dynamicData, delta, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
 			panic(err)
 		}
