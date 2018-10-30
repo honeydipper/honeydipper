@@ -18,6 +18,7 @@ A IFTTT style event-driven, policy-based orchestration system that, is tailored 
 
 ## Design
 The core of the Honey Dipper is comprised of an event bus, and a rules engine.  Raw events from various sources are received by corresponding event drivers, and then packaged in a standard format then published to the event bus.  The rules engine picks up the event from the bus, and, based on the rules, triggers the actions or a workflow. 
+![Dipper Architecture](./DipperDiagram1.png)
 
 ### Core Concepts
 In order for users to compose the rules, a few abstract concept is introduced.
@@ -46,6 +47,8 @@ Drivers make up an important part of the Honey Dipper ecosystem.  Most of the d
 
 #### Abstraction
 As mentioned in the concepts, one of Honey Dipper's main selling points is "abstraction".  Events, actions can be defined traditionally using whatever characteristics provided by a driver, but also can be defined as an extension of another event/action with additional or override parameters.  Events and actions can be grouped together into systems where data can be shared across.  With this abstraction, we can separate the composing of complex workflows from defining low level event/action hook ups.  Whenever a low level component changes, the high level workflow doesn't have to change, just hook the abstract events with the new component native events.
+
+![Dipper Daemon](./DipperDaemon.png)
 
 ## TODO
  * Test framework and CI
