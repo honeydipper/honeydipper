@@ -8,6 +8,9 @@ import (
 	"os/exec"
 )
 
+// replace the func variable with mock during testing
+var execCommand = exec.Command
+
 // NewDriver : create a driver object to run the program process
 func NewDriver(data map[string]interface{}) Driver {
 	cmd, ok := data["Executable"].(string)
@@ -35,7 +38,7 @@ func (runtime *DriverRuntime) start(service string) {
 	}
 
 	args := append([]string{service}, runtime.driver.Arguments...)
-	run := exec.Command(runtime.driver.Executable, args...)
+	run := execCommand(runtime.driver.Executable, args...)
 	if input, err := run.StdoutPipe(); err != nil {
 		log.Panicf("[%s] Unable to link to driver stdout %v", service, err)
 	} else {

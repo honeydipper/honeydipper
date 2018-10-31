@@ -203,7 +203,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 				if boot {
 					log.Fatalf("[%s] failed to load required feature [%s]", s.name, feature)
 				} else {
-					log.Panicf("[%] failed to reload required feature [%s]", s.name, feature)
+					log.Panicf("[%s] failed to reload required feature [%s]", s.name, feature)
 				}
 			}
 			if affected {

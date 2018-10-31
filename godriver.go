@@ -37,13 +37,16 @@ func NewGoDriver(data map[string]interface{}) GoDriver {
 
 func (g *GoDriver) preStart(service string, runtime *DriverRuntime) {
 	log.Printf("[%s] pre-start dirver %s", service, runtime.meta.Name)
-	check := exec.Command("go", "list", g.Package)
-	if err := check.Run(); err != nil {
+	check := execCommand("go", "list", g.Package)
+	outp, err := check.CombinedOutput()
+	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
-			install := exec.Command("go", "get", g.Package)
-			if err := install.Run(); err != nil {
-				log.Panic("Unable to install the go package for driver")
+			install := execCommand("go", "get", g.Package)
+			if outp, err := install.CombinedOutput(); err != nil {
+				log.Panicf("[%s] Unable to install the go package for driver [%s] %+v", service, runtime.meta.Name, string(outp))
 			}
+		} else {
+			log.Panicf("[%s] driver [%s] prestart failed %+v %+v", service, runtime.meta.Name, err, string(outp))
 		}
 	}
 }
