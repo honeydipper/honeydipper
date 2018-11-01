@@ -15,11 +15,11 @@ func init() {
 
 // GetMapData : get the data from the deep map following a KV path
 func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
-	components := strings.Split(path, ".")
 	var current = reflect.ValueOf(from)
 	if !current.IsValid() {
 		return nil, ok
 	}
+	components := strings.Split(path, ".")
 	for _, component := range components {
 		if current.Kind() != reflect.Map {
 			return nil, ok

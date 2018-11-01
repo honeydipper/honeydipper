@@ -4,7 +4,6 @@ import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/imdario/mergo"
 	"github.com/mitchellh/mapstructure"
-	"log"
 )
 
 var operator *Service
@@ -17,7 +16,7 @@ func startOperator(cfg *Config) {
 }
 
 func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
-	log.Printf("[operator] routing message %s.%s", msg.Channel, msg.Subject)
+	log.Infof("[operator] routing message %s.%s", msg.Channel, msg.Subject)
 	if msg.Channel == "eventbus" && msg.Subject == "command" {
 		var driver string
 		var params map[string]interface{}
@@ -33,9 +32,9 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			log.Panicf("[operator] invalid function received")
 		}
 
-		log.Printf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
+		log.Infof("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
 		driver, rawaction, params := collapseFunction(nil, &function)
-		log.Printf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
+		log.Infof("[operator] collapsed function %s %s %+v", driver, rawaction, params)
 
 		worker := operator.getDriverRuntime("driver:" + driver)
 		ret = []RoutedMessage{

@@ -3,7 +3,6 @@ package main
 import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/imdario/mergo"
-	"log"
 )
 
 var receiver *Service
@@ -17,7 +16,7 @@ func startReceiver(cfg *Config) {
 }
 
 func receiverRoute(msg *dipper.Message) (ret []RoutedMessage) {
-	log.Printf("[receiver] routing message %s.%s", msg.Channel, msg.Subject)
+	log.Infof("[receiver] routing message %s.%s", msg.Channel, msg.Subject)
 	if msg.Channel == "eventbus" && msg.Subject == "message" {
 		rtmsg := RoutedMessage{
 			driverRuntime: receiver.getDriverRuntime("eventbus"),
@@ -61,7 +60,7 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 // ReceiverFeatures : Receiver needs to load the event drivers before hand based on the rules
 func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 	var dynamicData = map[string]interface{}{}
-	log.Printf("rules %+v", c.Rules)
+	log.Infof("rules %+v", c.Rules)
 	for _, rule := range c.Rules {
 		trigger, conditions := collapseTrigger(rule.When, c)
 
@@ -82,7 +81,7 @@ func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 			},
 		}
 
-		log.Printf("[receiver] collapsed %+v total %+v", delta, dynamicData)
+		log.Infof("[receiver] collapsed %+v total %+v", delta, dynamicData)
 		err := mergo.Merge(&dynamicData, delta, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
 			panic(err)

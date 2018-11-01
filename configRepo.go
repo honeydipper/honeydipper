@@ -9,7 +9,6 @@ import (
 	gitCfg "gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"io/ioutil"
-	"log"
 	"path"
 )
 
@@ -65,7 +64,7 @@ func (c *ConfigRepo) loadFile(filename string) {
 
 		mergo.Merge(&(c.config), content, mergo.WithOverride, mergo.WithAppendSlice)
 		c.files[filename] = true
-		log.Printf("config file [%v] loaded\n", filename)
+		log.Infof("config file [%v] loaded\n", filename)
 	}
 }
 
@@ -80,9 +79,9 @@ func (c *ConfigRepo) loadRepo() {
 	var repoObj *git.Repository
 	var err error
 	if c.root == "" {
-		log.Printf("cloning repo [%v]", c.repo.Repo)
+		log.Infof("cloning repo [%v]", c.repo.Repo)
 		if c.root, err = ioutil.TempDir(c.parent.wd, "git"); err != nil {
-			log.Printf("%v", err)
+			log.Infof("%v", err)
 			log.Fatalf("Unable to create subdirectory in %v", c.parent.wd)
 		}
 
@@ -97,7 +96,7 @@ func (c *ConfigRepo) loadRepo() {
 		panic(err)
 	}
 
-	log.Printf("fetching repo [%v]", c.repo.Repo)
+	log.Infof("fetching repo [%v]", c.repo.Repo)
 	branch := "master"
 	if c.repo.Branch != "" {
 		branch = c.repo.Branch
@@ -109,7 +108,7 @@ func (c *ConfigRepo) loadRepo() {
 		panic(err)
 	}
 
-	log.Printf("using branch [%v] in repo [%v]", branch, c.repo.Repo)
+	log.Infof("using branch [%v] in repo [%v]", branch, c.repo.Repo)
 	if tree, err := repoObj.Worktree(); err != nil {
 		panic(err)
 	} else {
@@ -121,20 +120,20 @@ func (c *ConfigRepo) loadRepo() {
 		}
 	}
 
-	log.Printf("start loading repo [%v]", c.repo.Repo)
+	log.Infof("start loading repo [%v]", c.repo.Repo)
 	root := "/"
 	if c.repo.Path != "" {
 		root = c.repo.Path
 	}
 	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
-	log.Printf("repo [%v] loaded", c.repo.Repo)
+	log.Infof("repo [%v] loaded", c.repo.Repo)
 }
 
 func (c *ConfigRepo) refreshRepo() (ret bool) {
 	defer dipper.SafeExitOnError("repo [%v] skipped\n", c.repo.Repo)
 	var repoObj *git.Repository
 	var err error
-	log.Printf("refreshing repo [%v]", c.repo.Repo)
+	log.Infof("refreshing repo [%v]", c.repo.Repo)
 	if repoObj, err = git.PlainOpen(c.root); err != nil {
 		panic(err)
 	}
@@ -151,7 +150,7 @@ func (c *ConfigRepo) refreshRepo() (ret bool) {
 			ReferenceName: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
 		})
 		if err == git.NoErrAlreadyUpToDate {
-			log.Printf("no changes skip repo [%s]", c.repo.Repo)
+			log.Infof("no changes skip repo [%s]", c.repo.Repo)
 			return false
 		} else if err != nil {
 			panic(err)
@@ -165,7 +164,7 @@ func (c *ConfigRepo) refreshRepo() (ret bool) {
 		root = c.repo.Path
 	}
 	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
-	log.Printf("repo [%v] reloaded", c.repo.Repo)
+	log.Infof("repo [%v] reloaded", c.repo.Repo)
 	ret = true
 	return ret
 }

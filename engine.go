@@ -3,7 +3,6 @@ package main
 import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/mitchellh/mapstructure"
-	"log"
 	"sync"
 )
 
@@ -21,12 +20,12 @@ func startEngine(cfg *Config) {
 }
 
 func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
-	log.Printf("[engine] routing message %s.%s", msg.Channel, msg.Subject)
+	log.Infof("[engine] routing message %s.%s", msg.Channel, msg.Subject)
 	if msg.Channel == "eventbus" && msg.Subject == "message" {
 		msg = dipper.DeserializePayload(msg)
 		eventsObj, _ := dipper.GetMapData(msg.Payload, "events")
 		events := eventsObj.([]interface{})
-		log.Printf("[engine] fired events %+v", events)
+		log.Infof("[engine] fired events %+v", events)
 		for _, eventObj := range events {
 			event, _ := eventObj.(string)
 			workflows, _ := ruleMap[event]
@@ -48,8 +47,8 @@ func startWorkflow(w *Workflow, msg *dipper.Message) {
 		if err != nil {
 			log.Panicf("[engine] invalid function definition %+v", err)
 		}
-		// log.Printf("[engine] workflow content %+v", w.Content)
-		log.Printf("[engine] function from workflow %+v", function)
+		// log.Infof("[engine] workflow content %+v", w.Content)
+		log.Infof("[engine] function from workflow %+v", function)
 
 		worker := engine.getDriverRuntime("eventbus")
 		payload := map[string]interface{}{}
@@ -59,6 +58,7 @@ func startWorkflow(w *Workflow, msg *dipper.Message) {
 	}
 }
 
+// buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable
 func buildRuleMap(cfg *Config) {
 	ruleMapLock.Lock()
 	ruleMap = map[string][]*Workflow{}
@@ -75,12 +75,12 @@ func buildRuleMap(cfg *Config) {
 		if len(rule.Do.Type) == 0 {
 			todoName, ok := rule.Do.Content.(string)
 			if !ok {
-				log.Printf("workflow without type should have a name in content pointing to real workflow")
+				log.Warningf("workflow without type should have a name in content pointing to real workflow")
 				break
 			}
 			todo, ok = cfg.config.Workflows[todoName]
 			if !ok {
-				log.Printf("workflow points to a non-exist workflow %s", todoName)
+				log.Warningf("workflow points to a non-exist workflow %s", todoName)
 				break
 			}
 		}

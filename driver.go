@@ -3,7 +3,6 @@ package main
 import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 )

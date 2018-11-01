@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os/exec"
 	"strings"
 )
@@ -36,7 +35,7 @@ func NewGoDriver(data map[string]interface{}) GoDriver {
 }
 
 func (g *GoDriver) preStart(service string, runtime *DriverRuntime) {
-	log.Printf("[%s] pre-start dirver %s", service, runtime.meta.Name)
+	log.Infof("[%s] pre-start dirver %s", service, runtime.meta.Name)
 	check := execCommand("go", "list", g.Package)
 	outp, err := check.CombinedOutput()
 	if err != nil {

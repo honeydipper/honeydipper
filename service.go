@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/mitchellh/mapstructure"
-	"log"
 	"reflect"
 	"strings"
 	"time"
@@ -36,8 +35,8 @@ func coldReloadDriverRuntime(d *DriverRuntime, m *dipper.Message) {
 func (s *Service) loadFeature(feature string) (affected bool, driverName string, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("Resuming after error: %v\n", r)
-			log.Printf("[%s] skip reloading feature: %s", s.name, feature)
+			log.Infof("Resuming after error: %v\n", r)
+			log.Infof("[%s] skip reloading feature: %s", s.name, feature)
 			if err, ok := r.(error); ok {
 				rerr = err
 			} else {
@@ -45,7 +44,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			}
 		}
 	}()
-	log.Printf("[%s] reloading feature %s\n", s.name, feature)
+	log.Infof("[%s] reloading feature %s\n", s.name, feature)
 
 	oldRuntime := s.getDriverRuntime(feature)
 
@@ -66,7 +65,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			panic("driver not defined for the feature")
 		}
 	}
-	log.Printf("[%s] mapping feature %s to driver %s", s.name, feature, driverName)
+	log.Infof("[%s] mapping feature %s to driver %s", s.name, feature, driverName)
 
 	driverData, _ := s.config.getDriverData(driverName)
 	var dynamicData interface{}
@@ -85,7 +84,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		}
 	}
 
-	log.Printf("[%s] driver %s meta %v", s.name, driverName, driverMeta)
+	log.Infof("[%s] driver %s meta %v", s.name, driverName, driverMeta)
 	driverRuntime := DriverRuntime{
 		feature:     feature,
 		meta:        &driverMeta,
@@ -95,7 +94,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 
 	if oldRuntime != nil && reflect.DeepEqual(*oldRuntime.meta, *driverRuntime.meta) {
 		if reflect.DeepEqual(oldRuntime.data, driverRuntime.data) && reflect.DeepEqual(oldRuntime.dynamicData, driverRuntime.dynamicData) {
-			log.Printf("[%s] driver not affected: %s", s.name, driverName)
+			log.Infof("[%s] driver not affected: %s", s.name, driverName)
 		} else {
 			// hot reload
 			affected = true
@@ -135,7 +134,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 }
 
 func (s *Service) start() {
-	log.Printf("[%s] starting service\n", s.name)
+	log.Infof("[%s] starting service\n", s.name)
 	featureList := s.getFeatureList()
 	s.loadRequiredFeatures(featureList, true)
 	go s.serviceLoop()
@@ -143,7 +142,7 @@ func (s *Service) start() {
 }
 
 func (s *Service) reload() {
-	log.Printf("[%s] reloading service\n", s.name)
+	log.Infof("[%s] reloading service\n", s.name)
 	if s.ServiceReload != nil {
 		s.ServiceReload(s.config)
 	}
@@ -151,7 +150,7 @@ func (s *Service) reload() {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[%s] reverting config due to fatal failure %v\n", s.name, r)
+				log.Infof("[%s] reverting config due to fatal failure %v\n", s.name, r)
 				s.config.rollBack()
 			}
 		}()
@@ -169,7 +168,7 @@ func (s *Service) getFeatureList() map[string]bool {
 		}
 	}
 	if cfgItem, ok := s.config.getDriverData("daemon.features." + s.name); ok {
-		log.Printf("[%s] loaded data: %v", s.name, cfgItem)
+		log.Infof("[%s] loaded data: %v", s.name, cfgItem)
 		for _, feature := range cfgItem.([]interface{}) {
 			featureList[feature.(string)] = false
 		}
@@ -215,7 +214,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 						if boot {
 							log.Fatalf("failed to start driver %s.%s", s.name, driverName)
 						} else {
-							log.Printf("failed to reload driver %s.%s", s.name, driverName)
+							log.Infof("failed to reload driver %s.%s", s.name, driverName)
 							s.config.rollBack()
 						}
 					},
@@ -230,14 +229,14 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 		if !required {
 			affected, driverName, err := s.loadFeature(feature)
 			if err != nil {
-				log.Printf("[%s] skip feature %s error %v", s.name, feature, err)
+				log.Infof("[%s] skip feature %s error %v", s.name, feature, err)
 			}
 			if affected {
 				s.addExpect(
 					"state:alive:"+driverName,
 					func(*dipper.Message) {},
 					10*time.Second,
-					func() { log.Printf("[%s] failed to start or reload driver %s", s.name, driverName) },
+					func() { log.Infof("[%s] failed to start or reload driver %s", s.name, driverName) },
 				)
 			}
 		}

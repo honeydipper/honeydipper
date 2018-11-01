@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/honeyscience/honeydipper/dipper"
-	"log"
 	"time"
 )
 
@@ -18,7 +17,7 @@ func (c *Config) watch() {
 		if intervalStr, ok := c.getDriverDataStr("daemon.configPollInterval"); ok {
 			value, err := time.ParseDuration(intervalStr)
 			if err != nil {
-				log.Printf("invalid drivers.daemon.configPollInterval %v", err)
+				log.Warningf("invalid drivers.daemon.configPollInterval %v", err)
 			}
 			interval = value
 		}
@@ -34,7 +33,7 @@ func (c *Config) watch() {
 			for k, v := range c.loaded {
 				c.lastRunningConfig.loaded[k] = v
 			}
-			log.Printf("reassembling configset")
+			log.Infof("reassembling configset")
 			c.assemble()
 
 			for _, service := range Services {
@@ -45,13 +44,13 @@ func (c *Config) watch() {
 }
 
 func (c *Config) rollBack() {
-	if c.lastRunningConfig.config != c.config {
+	if c.lastRunningConfig.config != nil && c.lastRunningConfig.config != c.config {
 		c.config = c.lastRunningConfig.config
 		c.loaded = map[RepoInfo]*ConfigRepo{}
 		for k, v := range c.lastRunningConfig.loaded {
 			c.loaded[k] = v
 		}
-		log.Printf("config rolled back to last running version")
+		log.Infof("config rolled back to last running version")
 		for _, service := range Services {
 			service.reload()
 		}
@@ -79,9 +78,15 @@ func (c *Config) loadRepo(repo RepoInfo) {
 }
 
 func (c *Config) getDriverData(path string) (ret interface{}, ok bool) {
+	if c.config == nil || c.config.Drivers == nil {
+		return nil, false
+	}
 	return dipper.GetMapData(c.config.Drivers, path)
 }
 
 func (c *Config) getDriverDataStr(path string) (ret string, ok bool) {
+	if c.config == nil || c.config.Drivers == nil {
+		return "", false
+	}
 	return dipper.GetMapDataStr(c.config.Drivers, path)
 }

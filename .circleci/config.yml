@@ -1,0 +1,29 @@
+---
+defaults: &defaults
+  docker:
+    - image: golang:1.11.1-alpine3.8
+  environment:
+    TZ: "/usr/share/zoneinfo/America/Los_Angeles"
+
+version: 2
+jobs:
+  lint:
+    <<: *defaults
+    steps:
+      - checkout
+      - run:
+          name: gofmt
+          command: go fmt
+      - run:
+          name: govet
+          command: go vet
+      - run:
+          name: golint
+          command: golint
+  test:
+    <<: *defaults
+    steps:
+      - checkout
+      - run:
+          name: gotest
+          command: go test -v

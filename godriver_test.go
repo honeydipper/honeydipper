@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/stretchr/testify/assert"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -25,7 +24,7 @@ func TestNewGoDriver(t *testing.T) {
 	assert.Equal(t, "test2", testGoDriver.Executable, "NewGoDriver should be able to override executable with 'Executable' = 'test2'")
 }
 
-func TestPreStart(t *testing.T) {
+func TestGoDriverPreStart(t *testing.T) {
 	mockDriverRuntime := DriverRuntime{
 		meta: &DriverMeta{
 			Name: "mock",
@@ -83,7 +82,7 @@ func TestGoDriverPreStartProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
 	}
-	log.Printf("%+v", os.Args)
+	log.Infof("%+v", os.Args)
 	if strings.Join(os.Args[3:6], " ") == "go list test.com/test" {
 		os.Exit(1)
 	}
