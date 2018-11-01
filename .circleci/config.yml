@@ -15,18 +15,24 @@ jobs:
           name: gofmt
           command: go fmt
       - run:
-          name: govet
-          command: go vet
-      - run:
           name: golint
           command: golint
   test:
     <<: *defaults
     steps:
+      - run:
+          name: addinggit
+          command: apk add git
+      - run:
+          name: addingdep
+          command: go get -u github.com/golang/dep/cmd/dep
       - checkout
       - run:
-          name: install
-          command: go install ./...
+          name: dependencies
+          command: dep ensure
+      - run:
+          name: govet
+          command: go vet
       - run:
           name: gotest
           command: go test -v
