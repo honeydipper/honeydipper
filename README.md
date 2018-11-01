@@ -10,6 +10,7 @@
     + [Pluggable Architecture](#pluggable-architecture)
     + [Abstraction](#abstraction)
 - [TODO](#todo)
+- [Get Started On Developing](#get-started-on-developing)
 
 <!-- tocstop -->
 
@@ -66,3 +67,42 @@ As mentioned in the concepts, one of Honey Dipper's main selling points is "abst
  * Data/parameter templating
  * Repo jailing
  * RBAC
+
+## Get Started On Developing
+
+ * Setup a directory as your go work directory and add it to GOPATH. Assuming go 1.11 or up is installed, gvm is recommended to manage multiple versions of go. You may want to persist the GOPATH in your bash_profile
+```bash
+mkdir gocode
+export GOPATH=$GOPATH:$PWD/gocode
+```
+ * Clone the code
+```bash
+cd gocode
+mkdir src
+cd src
+git clone git@github.com:honeyscience/honeydipper.git
+```
+ * Load the dependencies
+```bash
+brew install dep
+cd honeydipper
+dep ensure
+```
+ * Run test
+```bash
+go test -v
+```
+ * (Optional) For colored test results
+```bash
+go get -u github.com/rakyll/gotest
+gotest -v
+```
+ * (Optional) For pre-commit hooks
+```bash
+brew install pre-commit
+pre-commit install --install-hooks
+```
+ * Start your local dipper daemon, see admin guide(coming soon) for detail
+```bash
+REPO=file:///path/to/your/rule/repo honeydipper
+```
