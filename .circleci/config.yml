@@ -4,26 +4,49 @@ defaults: &defaults
     - image: golang:1.11.1-alpine3.8
   environment:
     TZ: "/usr/share/zoneinfo/America/Los_Angeles"
+  working_directory: /go/src/github.com/honeyscience/honeydipper
 
 version: 2
 jobs:
   lint:
     <<: *defaults
     steps:
+      - run:
+          name: addinggit
+          command: apk add git
+      - run:
+          name: addinggolint
+          command: go get -u golang.org/x/lint/golint
       - checkout
       - run:
           name: gofmt
           command: go fmt
-      - run:
-          name: govet
-          command: go vet
       - run:
           name: golint
           command: golint
   test:
     <<: *defaults
     steps:
+      - run:
+          name: addingosdeps
+          command: apk add git gcc libc-dev
+      - run:
+          name: addingdep
+          command: go get -u github.com/golang/dep/cmd/dep
       - checkout
+      - run:
+          name: dependencies
+          command: dep ensure
+      - run:
+          name: govet
+          command: go vet
       - run:
           name: gotest
           command: go test -v
+
+workflows:
+  version: 2
+  run_tests:
+    jobs:
+      - lint
+      - test

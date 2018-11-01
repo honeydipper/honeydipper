@@ -81,7 +81,7 @@ func (c *ConfigRepo) loadRepo() {
 	if c.root == "" {
 		log.Infof("cloning repo [%v]", c.repo.Repo)
 		if c.root, err = ioutil.TempDir(c.parent.wd, "git"); err != nil {
-			log.Infof("%v", err)
+			log.Errorf("%v", err)
 			log.Fatalf("Unable to create subdirectory in %v", c.parent.wd)
 		}
 
