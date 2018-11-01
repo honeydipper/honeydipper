@@ -12,6 +12,9 @@ jobs:
     <<: *defaults
     steps:
       - run:
+          name: addinggit
+          command: apk add git
+      - run:
           name: addinggolint
           command: go get -u golang.org/x/lint/golint
       - checkout
@@ -30,6 +33,9 @@ jobs:
       - run:
           name: addingdep
           command: go get -u github.com/golang/dep/cmd/dep
+      - run:
+          name: addinggcc
+          command: apk add gcc
       - checkout
       - run:
           name: dependencies
