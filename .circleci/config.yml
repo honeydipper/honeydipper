@@ -25,6 +25,9 @@ jobs:
     steps:
       - checkout
       - run:
+          name: install
+          command: go install ./...
+      - run:
           name: gotest
           command: go test -v
 
