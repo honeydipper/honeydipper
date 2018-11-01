@@ -4,12 +4,16 @@ defaults: &defaults
     - image: golang:1.11.1-alpine3.8
   environment:
     TZ: "/usr/share/zoneinfo/America/Los_Angeles"
+  working_directory: /go/src/github.com/honeyscience/honeydipper
 
 version: 2
 jobs:
   lint:
     <<: *defaults
     steps:
+      - run:
+          name: addinggolint
+          command: go get -u golang.org/x/lint/golint
       - checkout
       - run:
           name: gofmt
