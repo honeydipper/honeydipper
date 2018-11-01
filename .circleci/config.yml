@@ -28,14 +28,11 @@ jobs:
     <<: *defaults
     steps:
       - run:
-          name: addinggit
-          command: apk add git
+          name: addingosdeps
+          command: apk add git gcc libc-dev
       - run:
           name: addingdep
           command: go get -u github.com/golang/dep/cmd/dep
-      - run:
-          name: addinggcc
-          command: apk add gcc
       - checkout
       - run:
           name: dependencies
