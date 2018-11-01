@@ -78,8 +78,8 @@ export GOPATH=$GOPATH:$PWD/gocode
  * Clone the code
 ```bash
 cd gocode
-mkdir src
-cd src
+mkdir -p src/github.com/honeyscience/
+cd src/github.com/honeyscience/
 git clone git@github.com:honeyscience/honeydipper.git
 ```
  * Load the dependencies
