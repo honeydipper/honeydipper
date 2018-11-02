@@ -37,17 +37,19 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		log.Infof("[operator] collapsed function %s %s %+v", driver, rawaction, params)
 
 		worker := operator.getDriverRuntime("driver:" + driver)
+		payload := map[string]interface{}{
+			"param": params,
+			"data":  eventData,
+		}
+		dipper.Recursive(payload, operator.processDriverData)
 		ret = []RoutedMessage{
 			{
 				driverRuntime: worker,
 				message: &dipper.Message{
 					Channel: "execute",
 					Subject: rawaction,
-					Payload: map[string]interface{}{
-						"param": params,
-						"data":  eventData,
-					},
-					IsRaw: false,
+					Payload: payload,
+					IsRaw:   false,
 				},
 			},
 		}

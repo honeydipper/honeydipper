@@ -10,7 +10,6 @@ import (
 	"k8s.io/client-go/rest"
 	"log"
 	"os"
-	"strings"
 )
 
 func init() {
@@ -36,25 +35,6 @@ func main() {
 
 func recycleDeployment(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
-	dipper.Recursive(m.Payload, func(key string, val interface{}) (ret interface{}, ok bool) {
-		if str, ok := val.(string); ok {
-			if strings.HasPrefix(str, ":enc:") {
-				parts := strings.Split(str, ":")
-				if len(parts) != 4 {
-					log.Panicf("[%s-%s] encrypted data shoud be :enc:<driver>:<base64 encoded data>", driver.Service, driver.Name)
-				}
-				encDriver := parts[2]
-				data := []byte(parts[3])
-				decoded, err := base64.StdEncoding.DecodeString(string(data))
-				if err != nil {
-					log.Panicf("[%s-%s] encrypted data shoud be base64 encoded", driver.Service, driver.Name)
-				}
-				decrypted, err := driver.RPCCallRaw("driver:"+encDriver+".decrypt", decoded)
-				return string(decrypted), true
-			}
-		}
-		return nil, false
-	})
 	deploymentName, ok := dipper.GetMapDataStr(m.Payload, "param.deployment")
 	log.Printf("[%s-%s] got deploymentName %s", driver.Service, driver.Name, deploymentName)
 	if !ok {
