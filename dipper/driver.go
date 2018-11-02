@@ -1,12 +1,10 @@
 package dipper
 
 import (
-	"errors"
 	"io"
 	"log"
 	"os"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -18,6 +16,7 @@ type RPCHandler func(string, string, []byte)
 
 // Driver : the helper stuct for creating a honey-dipper driver in golang
 type Driver struct {
+	RPCCaller
 	Name            string
 	Service         string
 	State           string
@@ -28,8 +27,6 @@ type Driver struct {
 	Start           MessageHandler
 	Stop            MessageHandler
 	Reload          MessageHandler
-	RPCSig          map[string]chan interface{}
-	RPCLock         sync.Mutex
 	RPCHandlers     map[string]RPCHandler
 	ReadySignal     chan bool
 }
@@ -43,7 +40,6 @@ func NewDriver(service string, name string) *Driver {
 		In:          os.Stdin,
 		Out:         os.Stdout,
 		RPCHandlers: map[string]RPCHandler{},
-		RPCSig:      map[string]chan interface{}{},
 	}
 
 	driver.MessageHandlers = map[string]MessageHandler{
@@ -52,6 +48,8 @@ func NewDriver(service string, name string) *Driver {
 		"command:start":   driver.start,
 		"command:stop":    driver.stop,
 	}
+
+	driver.Sender = &driver
 
 	return &driver
 }
@@ -70,7 +68,7 @@ func (d *Driver) Run() {
 				go func() {
 					defer SafeExitOnError("[%s-%s] Continuing driver message loop", d.Service, d.Name)
 					if msg.Channel == "rpcReply" {
-						d.handleRPCReturn(msg)
+						d.HandleRPCReturn(msg)
 					} else if msg.Channel == "rpc" {
 						d.handleRPC(msg)
 					} else if handler, ok := d.MessageHandlers[msg.Channel+":"+msg.Subject]; ok {
@@ -162,74 +160,6 @@ func (d *Driver) RPCReturn(from string, rpcID string, retval interface{}) {
 // RPCReturnRaw : return a raw value to rpc caller
 func (d *Driver) RPCReturnRaw(from string, rpcID string, retval []byte) {
 	d.SendRawMessage("rpcReply", from+"."+rpcID, retval)
-}
-
-// RPCCallRaw : making a RPC call to another driver with raw data
-func (d *Driver) RPCCallRaw(method string, params []byte) ([]byte, error) {
-	var rpcID string
-	sig := make(chan interface{}, 1)
-	func() {
-		d.RPCLock.Lock()
-		defer d.RPCLock.Unlock()
-		for ok := true; ok; _, ok = d.RPCSig[rpcID] {
-			rpcID = RandString(6)
-		}
-		d.RPCSig[rpcID] = sig
-	}()
-	defer func() {
-		d.RPCLock.Lock()
-		defer d.RPCLock.Unlock()
-		if _, ok := d.RPCSig[rpcID]; ok {
-			delete(d.RPCSig, rpcID)
-		}
-	}()
-	d.SendRawMessage("rpc", method+"."+rpcID, params)
-	select {
-	case msg := <-sig:
-		if e, ok := msg.(error); ok {
-			return nil, e
-		}
-		return msg.([]byte), nil
-	case <-time.After(time.Second * 10):
-		return nil, errors.New("timeout")
-	}
-}
-
-// RPCCall : making a RPC call to another driver
-func (d *Driver) RPCCall(method string, params interface{}) ([]byte, error) {
-	return d.RPCCallRaw(method, SerializeContent(params))
-}
-
-func (d *Driver) handleRPCReturn(m *Message) {
-	log.Printf("[%s-%s] handling rpc return", d.Service, d.Name)
-	parts := strings.Split(m.Subject, ".")
-	rpcID := parts[0]
-	hasErr := len(parts) > 1
-	var sig chan interface{}
-	var ok bool
-	func() {
-		d.RPCLock.Lock()
-		defer d.RPCLock.Unlock()
-		sig, ok = d.RPCSig[rpcID]
-	}()
-	if !ok {
-		log.Printf("[%s-%s] rpcID not found or expired %s", d.Service, d.Name, rpcID)
-	} else {
-		if hasErr {
-			m = DeserializePayload(m)
-			reason, _ := GetMapDataStr(m.Payload, "reason")
-			sig <- errors.New(reason)
-		} else {
-			sig <- m.Payload
-		}
-		func() {
-			d.RPCLock.Lock()
-			defer d.RPCLock.Unlock()
-			if _, ok := d.RPCSig[rpcID]; ok {
-				delete(d.RPCSig, rpcID)
-			}
-		}()
-	}
 }
 
 func (d *Driver) handleRPC(msg *Message) {

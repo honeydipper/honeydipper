@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/mitchellh/mapstructure"
+	"io"
 	"reflect"
 	"strings"
 	"time"
@@ -21,6 +23,7 @@ func NewService(cfg *Config, name string) *Service {
 	}
 
 	service.responders["state:cold"] = []func(*DriverRuntime, *dipper.Message){coldReloadDriverRuntime}
+	service.Sender = service
 
 	return service
 }
@@ -30,6 +33,26 @@ func coldReloadDriverRuntime(d *DriverRuntime, m *dipper.Message) {
 	s.checkDeleteDriverRuntime(d.feature, d)
 	d.output.Close()
 	s.loadFeature(d.feature)
+}
+
+func (s *Service) processDriverData(key string, val interface{}) (ret interface{}, replace bool) {
+	if str, ok := val.(string); ok {
+		if strings.HasPrefix(str, ":enc:") {
+			parts := strings.Split(str, ":")
+			if len(parts) != 4 {
+				log.Panicf("encrypted data shoud be :enc:<driver>:<base64 encoded data>")
+			}
+			encDriver := parts[2]
+			data := []byte(parts[3])
+			decoded, err := base64.StdEncoding.DecodeString(string(data))
+			if err != nil {
+				log.Panicf("encrypted data shoud be base64 encoded")
+			}
+			decrypted, err := s.RPCCallRaw("driver:"+encDriver+".decrypt", decoded)
+			return string(decrypted), true
+		}
+	}
+	return nil, false
 }
 
 func (s *Service) loadFeature(feature string) (affected bool, driverName string, rerr error) {
@@ -83,6 +106,9 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			panic("unable to get driver metadata")
 		}
 	}
+
+	dipper.Recursive(driverData, s.processDriverData)
+	dipper.Recursive(dynamicData, s.processDriverData)
 
 	log.Infof("[%s] driver %s meta %v", s.name, driverName, driverMeta)
 	driverRuntime := DriverRuntime{
@@ -214,7 +240,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 						if boot {
 							log.Fatalf("failed to start driver %s.%s", s.name, driverName)
 						} else {
-							log.Infof("failed to reload driver %s.%s", s.name, driverName)
+							log.Warningf("failed to reload driver %s.%s", s.name, driverName)
 							s.config.rollBack()
 						}
 					},
@@ -236,7 +262,7 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 					"state:alive:"+driverName,
 					func(*dipper.Message) {},
 					10*time.Second,
-					func() { log.Infof("[%s] failed to start or reload driver %s", s.name, driverName) },
+					func() { log.Warningf("[%s] failed to start or reload driver %s", s.name, driverName) },
 				)
 			}
 		}
@@ -341,11 +367,15 @@ func (s *Service) handleRPC(from *DriverRuntime, m *dipper.Message) bool {
 		parts := strings.SplitN(m.Subject, ".", 2)
 		feature := parts[0]
 		rpcID := parts[1]
-		caller := s.getDriverRuntime(feature)
-		if caller == nil {
-			log.Panicf("[%s] unable to find the rpc caller %s", s.name, feature)
+		if feature == "service" {
+			s.HandleRPCReturn(m)
+		} else {
+			caller := s.getDriverRuntime(feature)
+			if caller == nil {
+				log.Panicf("[%s] unable to find the rpc caller %s", s.name, feature)
+			}
+			dipper.SendRawMessage(caller.output, m.Channel, rpcID, m.Payload.([]byte))
 		}
-		dipper.SendRawMessage(caller.output, m.Channel, rpcID, m.Payload.([]byte))
 		return true
 	}
 	return false
@@ -416,4 +446,9 @@ func (s *Service) checkDeleteDriverRuntime(feature string, check *DriverRuntime)
 		return oldone.(*DriverRuntime)
 	}
 	return nil
+}
+
+// GetFeatureComm : provide output stream for rpc caller to make calls
+func (s *Service) GetFeatureComm(feature string) io.Writer {
+	return s.getDriverRuntime(feature).output
 }

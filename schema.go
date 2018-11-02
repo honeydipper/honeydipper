@@ -122,6 +122,7 @@ type Service struct {
 	Route              func(*dipper.Message) []RoutedMessage
 	DiscoverFeatures   func(*ConfigSet) map[string]interface{}
 	ServiceReload      func(*Config)
+	dipper.RPCCaller
 }
 
 // Driver : the parent class for all driver types
