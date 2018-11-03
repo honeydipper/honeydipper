@@ -52,7 +52,7 @@ func start() {
 		case "operator":
 			startOperator(&config)
 		default:
-			log.Fatalf("'%v' service is not implemented\n", service)
+			log.Fatalf("'%v' service is not implemented", service)
 		}
 	}
 }

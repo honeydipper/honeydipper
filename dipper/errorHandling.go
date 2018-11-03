@@ -1,14 +1,10 @@
 package dipper
 
-import (
-	"github.com/op/go-logging"
-)
-
 // SafeExitOnError : use this function in defer statement to ignore errors
-func SafeExitOnError(l *logging.Logger, args ...interface{}) {
+func SafeExitOnError(args ...interface{}) {
 	if r := recover(); r != nil {
-		l.Warningf("Resuming after error: %v\n", r)
-		l.Warningf(args[0].(string), args[1:]...)
+		log.Warningf("Resuming after error: %v", r)
+		log.Warningf(args[0].(string), args[1:]...)
 	}
 }
 

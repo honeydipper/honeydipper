@@ -88,7 +88,6 @@ func (runtime *DriverRuntime) fetchMessages() {
 	for !quit {
 		func() {
 			defer dipper.SafeExitOnError(
-				log,
 				"failed to fetching messages from driver %s.%s",
 				runtime.service,
 				runtime.meta.Name,
