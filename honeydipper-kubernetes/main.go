@@ -8,9 +8,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"log"
 	"os"
 )
+
+var log = dipper.GetLogger("kubernetes")
 
 func init() {
 	flag.Usage = func() {
@@ -36,9 +37,9 @@ func main() {
 func recycleDeployment(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	deploymentName, ok := dipper.GetMapDataStr(m.Payload, "param.deployment")
-	log.Printf("[%s-%s] got deploymentName %s", driver.Service, driver.Name, deploymentName)
+	log.Infof("[%s] got deploymentName %s", driver.Service, deploymentName)
 	if !ok {
-		log.Panicf("[%s-%s] deployment is missing in parameters", driver.Service, driver.Name)
+		log.Panicf("[%s] deployment is missing in parameters", driver.Service)
 	}
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "param.namespace")
 	if !ok {
@@ -46,45 +47,45 @@ func recycleDeployment(m *dipper.Message) {
 	}
 	source, ok := dipper.GetMapData(m.Payload, "param.source")
 	if !ok {
-		log.Panicf("[%s-%s] source is missing in parameters", driver.Service, driver.Name)
+		log.Panicf("[%s] source is missing in parameters", driver.Service)
 	}
 	stype, ok := dipper.GetMapDataStr(source, "type")
 	if !ok {
-		log.Panicf("[%s-%s] source type is missing in parameters", driver.Service, driver.Name)
+		log.Panicf("[%s] source type is missing in parameters", driver.Service)
 	}
-	log.Printf("[%s-%s] fetching k8config from source %+v", driver.Service, driver.Name, source)
+	log.Debugf("[%s] fetching k8config from source", driver.Service)
 	var kubeConfig *rest.Config
 	if stype == "gke" {
 		kubeConfig = getGKEConfig(source.(map[string]interface{}))
 	} else {
-		log.Panicf("[%s-%s] unsupported kubernetes source type: %s", driver.Service, driver.Name, stype)
+		log.Panicf("[%s] unsupported kubernetes source type: %s", driver.Service, stype)
 	}
 	if kubeConfig == nil {
-		log.Panicf("[%s-%s] unable to get kubeconfig", driver.Service, driver.Name)
+		log.Panicf("[%s] unable to get kubeconfig", driver.Service)
 	}
 
 	k8client, err := kubernetes.NewForConfig(kubeConfig)
 	if err != nil {
-		log.Panicf("[%s-%s] unable to create k8 client", driver.Service, driver.Name)
+		log.Panicf("[%s] unable to create k8 client", driver.Service)
 	}
 
 	rsclient := k8client.AppsV1().ReplicaSets(nameSpace)
 	rs, err := rsclient.List(metav1.ListOptions{LabelSelector: "app=" + deploymentName})
 	if err != nil || len(rs.Items) == 0 {
-		log.Panicf("[%s-%s] unable to find the replicaset for the deployment %+v", driver.Service, driver.Name, err)
+		log.Panicf("[%s] unable to find the replicaset for the deployment %+v", driver.Service, err)
 	}
 	rsName := rs.Items[0].Name
 	err = rsclient.Delete(rsName, &metav1.DeleteOptions{})
 	if err != nil {
-		log.Panicf("[%s-%s] failed to recycle replicaset %+v", driver.Service, driver.Name, err)
+		log.Panicf("[%s] failed to recycle replicaset %+v", driver.Service, err)
 	}
-	log.Printf("[%s-%s] deployment recycled %s.%s", driver.Service, driver.Name, nameSpace, rsName)
+	log.Infof("[%s] deployment recycled %s.%s", driver.Service, nameSpace, rsName)
 }
 
 func getGKEConfig(cfg map[string]interface{}) *rest.Config {
 	retbytes, err := driver.RPCCall("driver:gcloud.getKubeCfg", cfg)
 	if err != nil {
-		log.Panicf("[%s-%s] failed call gcloud to get kubeconfig %+v", driver.Service, driver.Name, err)
+		log.Panicf("[%s] failed call gcloud to get kubeconfig %+v", driver.Service, err)
 	}
 
 	ret := dipper.DeserializeContent(retbytes)

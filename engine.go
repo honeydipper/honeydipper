@@ -47,7 +47,7 @@ func startWorkflow(w *Workflow, msg *dipper.Message) {
 		if err != nil {
 			log.Panicf("[engine] invalid function definition %+v", err)
 		}
-		// log.Infof("[engine] workflow content %+v", w.Content)
+		log.Debugf("[engine] workflow content %+v", w.Content)
 		log.Infof("[engine] function from workflow %+v", function)
 
 		worker := engine.getDriverRuntime("eventbus")

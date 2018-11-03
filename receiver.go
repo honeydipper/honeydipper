@@ -60,7 +60,7 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 // ReceiverFeatures : Receiver needs to load the event drivers before hand based on the rules
 func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 	var dynamicData = map[string]interface{}{}
-	log.Infof("rules %+v", c.Rules)
+	log.Debugf("rules %+v", c.Rules)
 	for _, rule := range c.Rules {
 		trigger, conditions := collapseTrigger(rule.When, c)
 
@@ -81,7 +81,7 @@ func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 			},
 		}
 
-		log.Infof("[receiver] collapsed %+v total %+v", delta, dynamicData)
+		log.Debugf("[receiver] collapsed %+v total %+v", delta, dynamicData)
 		err := mergo.Merge(&dynamicData, delta, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
 			panic(err)

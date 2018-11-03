@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 )
 
@@ -71,8 +70,7 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 
 	_, err := fmt.Fscanln(in, &channel, &subject, &size)
 	if err != nil {
-		log.Printf("invalid message envelope: %v", err)
-		panic(err)
+		panic(fmt.Errorf("invalid message envelope: %+v", err))
 	}
 
 	msg = &Message{

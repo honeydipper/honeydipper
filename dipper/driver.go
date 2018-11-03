@@ -1,8 +1,8 @@
 package dipper
 
 import (
+	"github.com/op/go-logging"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -29,6 +29,7 @@ type Driver struct {
 	Reload          MessageHandler
 	RPCHandlers     map[string]RPCHandler
 	ReadySignal     chan bool
+	Logger          *logging.Logger
 }
 
 // NewDriver : create a blank driver object
@@ -40,6 +41,7 @@ func NewDriver(service string, name string) *Driver {
 		In:          os.Stdin,
 		Out:         os.Stdout,
 		RPCHandlers: map[string]RPCHandler{},
+		Logger:      GetLogger(name),
 	}
 
 	driver.MessageHandlers = map[string]MessageHandler{
@@ -56,17 +58,17 @@ func NewDriver(service string, name string) *Driver {
 
 // Run : start a loop to communicate with daemon
 func (d *Driver) Run() {
-	log.Printf("[%s-%s] driver loaded\n", d.Service, d.Name)
+	d.Logger.Infof("[%s] driver loaded\n", d.Service)
 	for {
 		func() {
-			defer SafeExitOnError("[%s-%s] Resuming driver message loop", d.Service, d.Name)
+			defer SafeExitOnError(d.Logger, "[%s] Resuming driver message loop", d.Service)
 			defer CatchError(io.EOF, func() {
-				log.Fatalf("[%s-%s] daemon closed channel", d.Service, d.Name)
+				d.Logger.Fatalf("[%s] daemon closed channel", d.Service)
 			})
 			for {
 				msg := FetchRawMessage(d.In)
 				go func() {
-					defer SafeExitOnError("[%s-%s] Continuing driver message loop", d.Service, d.Name)
+					defer SafeExitOnError(d.Logger, "[%s] Continuing driver message loop", d.Service)
 					if msg.Channel == "rpcReply" {
 						d.HandleRPCReturn(msg)
 					} else if msg.Channel == "rpc" {
@@ -74,7 +76,7 @@ func (d *Driver) Run() {
 					} else if handler, ok := d.MessageHandlers[msg.Channel+":"+msg.Subject]; ok {
 						handler(msg)
 					} else {
-						log.Printf("[%s-%s] skipping message without handler: %s:%s", d.Service, d.Name, msg.Channel, msg.Subject)
+						d.Logger.Infof("[%s] skipping message without handler: %s:%s", d.Service, msg.Channel, msg.Subject)
 					}
 				}()
 			}
@@ -121,18 +123,18 @@ func (d *Driver) stop(msg *Message) {
 		d.Stop(msg)
 	}
 	d.Ping(msg)
-	log.Fatalf("[%s-%s] quiting on daemon request", d.Service, d.Name)
+	d.Logger.Fatalf("[%s] quiting on daemon request", d.Service)
 }
 
 // SendRawMessage : construct and send a message to daemon
 func (d *Driver) SendRawMessage(channel string, subject string, payload []byte) {
-	log.Printf("[%s-%s] sending raw message to daemon %s:%s", d.Service, d.Name, channel, subject)
+	d.Logger.Infof("[%s] sending raw message to daemon %s:%s", d.Service, channel, subject)
 	SendRawMessage(d.Out, channel, subject, payload)
 }
 
 // SendMessage : send a prepared message to daemon
 func (d *Driver) SendMessage(channel string, subject string, payload interface{}) {
-	log.Printf("[%s-%s] sending raw message to daemon %s:%s", d.Service, d.Name, channel, subject)
+	d.Logger.Infof("[%s] sending raw message to daemon %s:%s", d.Service, channel, subject)
 	SendMessage(d.Out, channel, subject, payload)
 }
 
@@ -149,7 +151,7 @@ func (d *Driver) GetOptionStr(path string) (string, bool) {
 // RPCError : return error to rpc caller
 func (d *Driver) RPCError(from string, rpcID string, reason string) {
 	d.SendMessage("rpcReply", from+"."+rpcID+"."+"err", map[string]interface{}{"reason": reason})
-	log.Panicf("[%s-%s] rpc returning err %s", d.Service, d.Name, reason)
+	d.Logger.Panicf("[%s] rpc returning err %s", d.Service, reason)
 }
 
 // RPCReturn : return a value to rpc caller
@@ -165,7 +167,7 @@ func (d *Driver) RPCReturnRaw(from string, rpcID string, retval []byte) {
 func (d *Driver) handleRPC(msg *Message) {
 	parts := strings.SplitN(msg.Subject, ".", 3)
 	if len(parts) < 3 {
-		log.Panicf("[%s-%s] malformated subject for rpc call %s", d.Service, d.Name, msg.Subject)
+		d.Logger.Panicf("[%s] malformated subject for rpc call %s", d.Service, msg.Subject)
 	}
 	method := parts[0]
 	rpcID := parts[1]
@@ -176,7 +178,7 @@ func (d *Driver) handleRPC(msg *Message) {
 	} else {
 		f, ok := d.RPCHandlers[method]
 		if !ok {
-			log.Panicf("[%s-%s] RPC handler not defined for method %s", d.Service, d.Name, method)
+			d.Logger.Panicf("[%s] RPC handler not defined for method %s", d.Service, method)
 		}
 		f(from, rpcID, msg.Payload.([]byte))
 	}

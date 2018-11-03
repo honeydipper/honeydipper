@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/go-redis/redis"
 	"github.com/honeyscience/honeydipper/dipper"
-	"log"
 	"os"
 	"strconv"
 	"time"
@@ -52,7 +51,7 @@ func connect() {
 		eventTopic = "honeydipper:events"
 	}
 	opts := &redis.Options{}
-	log.Printf("[%s-%s] receiving driver data %+v", driver.Service, driver.Name, driver.Options)
+	driver.Logger.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
 	if value, ok := driver.GetOptionStr("data.Addr"); ok {
 		opts.Addr = value
 	}
@@ -62,14 +61,14 @@ func connect() {
 	if DB, ok := driver.GetOptionStr("data.DB"); ok {
 		DBnum, err := strconv.Atoi(DB)
 		if err != nil {
-			log.Panicf("[%s-%s] invalid db number %s", driver.Service, driver.Name, DB)
+			driver.Logger.Panicf("[%s] invalid db number %s", driver.Service, DB)
 		}
 		opts.DB = DBnum
 	}
-	log.Printf("[%s-%s] connecting to redis\n", driver.Service, driver.Name)
+	driver.Logger.Infof("[%s] connecting to redis\n", driver.Service)
 	redisClient = redis.NewClient(opts)
 	if err := redisClient.Ping().Err(); err != nil {
-		log.Panicf("[%s-%s] redis error: %v", driver.Service, driver.Name, err)
+		driver.Logger.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
 }
 
@@ -88,17 +87,17 @@ func relayToRedis(msg *dipper.Message) {
 		topic = commandTopic
 	}
 	if err := redisClient.RPush(topic, string(buf)).Err(); err != nil {
-		log.Panicf("[%s-%s] redis error: %v", driver.Service, driver.Name, err)
+		driver.Logger.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
 }
 
 func subscribeToRedis(msg *dipper.Message) {
-	log.Printf("[%s-%s] start receiving messages on topic: %s\n", driver.Service, driver.Name, eventTopic)
+	driver.Logger.Infof("[%s] start receiving messages on topic: %s", driver.Service, eventTopic)
 	connect()
 	go func() {
 		for {
 			func() {
-				defer dipper.SafeExitOnError("[%s-%s] reconnecting to redis\n", driver.Service, driver.Name)
+				defer dipper.SafeExitOnError(driver.Logger, "[%s] reconnecting to redis\n", driver.Service)
 				connect()
 				for {
 					topic := eventTopic
@@ -107,7 +106,7 @@ func subscribeToRedis(msg *dipper.Message) {
 					}
 					messages, err := redisClient.BLPop(time.Second, topic).Result()
 					if err != nil && err != redis.Nil {
-						log.Panicf("[%s-%s] redis error: %v", driver.Service, driver.Name, err)
+						driver.Logger.Panicf("[%s] redis error: %v", driver.Service, err)
 					}
 					if len(messages) > 1 {
 						for _, m := range messages[1:] {
