@@ -31,7 +31,7 @@ func (c *ConfigRepo) isFileLoaded(filename string) bool {
 }
 
 func (c *ConfigRepo) loadFile(filename string) {
-	defer dipper.SafeExitOnError("config file [%v] skipped\n", filename)
+	defer dipper.SafeExitOnError(log, "config file [%v] skipped\n", filename)
 
 	if !c.isFileLoaded(filename) {
 		yamlFile, err := ioutil.ReadFile(path.Join(c.root, filename[1:]))
@@ -74,7 +74,7 @@ func NewConfigRepo(c *Config, repo RepoInfo) *ConfigRepo {
 }
 
 func (c *ConfigRepo) loadRepo() {
-	defer dipper.SafeExitOnError("repo [%v] skipped\n", c.repo.Repo)
+	defer dipper.SafeExitOnError(log, "repo [%v] skipped\n", c.repo.Repo)
 
 	var repoObj *git.Repository
 	var err error
@@ -130,7 +130,7 @@ func (c *ConfigRepo) loadRepo() {
 }
 
 func (c *ConfigRepo) refreshRepo() (ret bool) {
-	defer dipper.SafeExitOnError("repo [%v] skipped\n", c.repo.Repo)
+	defer dipper.SafeExitOnError(log, "repo [%v] skipped\n", c.repo.Repo)
 	var repoObj *git.Repository
 	var err error
 	log.Infof("refreshing repo [%v]", c.repo.Repo)
@@ -164,7 +164,7 @@ func (c *ConfigRepo) refreshRepo() (ret bool) {
 		root = c.repo.Path
 	}
 	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
-	log.Infof("repo [%v] reloaded", c.repo.Repo)
+	log.Warningf("repo [%v] reloaded", c.repo.Repo)
 	ret = true
 	return ret
 }

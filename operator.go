@@ -32,9 +32,9 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			log.Panicf("[operator] invalid function received")
 		}
 
-		log.Infof("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
+		log.Debugf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
 		driver, rawaction, params := collapseFunction(nil, &function)
-		log.Infof("[operator] collapsed function %s %s %+v", driver, rawaction, params)
+		log.Debugf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
 
 		worker := operator.getDriverRuntime("driver:" + driver)
 		payload := map[string]interface{}{

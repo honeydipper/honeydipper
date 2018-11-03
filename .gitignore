@@ -13,3 +13,9 @@
 
 # vim swap file
 **/*.swp
+
+# go dependencies at runtime
+vendor/**
+
+# test log
+test.log

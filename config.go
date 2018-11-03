@@ -33,7 +33,7 @@ func (c *Config) watch() {
 			for k, v := range c.loaded {
 				c.lastRunningConfig.loaded[k] = v
 			}
-			log.Infof("reassembling configset")
+			log.Debug("reassembling configset")
 			c.assemble()
 
 			for _, service := range Services {
@@ -50,7 +50,7 @@ func (c *Config) rollBack() {
 		for k, v := range c.lastRunningConfig.loaded {
 			c.loaded[k] = v
 		}
-		log.Infof("config rolled back to last running version")
+		log.Warning("config rolled back to last running version")
 		for _, service := range Services {
 			service.reload()
 		}

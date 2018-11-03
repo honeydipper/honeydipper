@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/honeyscience/honeydipper/dipper"
 	"os"
 )
 
@@ -10,6 +11,8 @@ var config Config
 
 // Services : a catalog of running services in this daemon process
 var Services = map[string]*Service{}
+
+var log = dipper.GetLogger("honeydipper")
 
 func init() {
 	flag.Usage = func() {

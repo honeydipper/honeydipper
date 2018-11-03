@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/mitchellh/mapstructure"
+	"github.com/op/go-logging"
 	"io"
 	"reflect"
 	"strings"
@@ -67,7 +68,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			}
 		}
 	}()
-	log.Infof("[%s] reloading feature %s\n", s.name, feature)
+	log.Warningf("[%s] reloading feature %s\n", s.name, feature)
 
 	oldRuntime := s.getDriverRuntime(feature)
 
@@ -110,7 +111,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 	dipper.Recursive(driverData, s.processDriverData)
 	dipper.Recursive(dynamicData, s.processDriverData)
 
-	log.Infof("[%s] driver %s meta %v", s.name, driverName, driverMeta)
+	log.Debugf("[%s] driver %s meta %v", s.name, driverName, driverMeta)
 	driverRuntime := DriverRuntime{
 		feature:     feature,
 		meta:        &driverMeta,
@@ -176,7 +177,7 @@ func (s *Service) reload() {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Infof("[%s] reverting config due to fatal failure %v\n", s.name, r)
+				log.Errorf("[%s] reverting config due to fatal failure %v\n", s.name, r)
 				s.config.rollBack()
 			}
 		}()
@@ -451,4 +452,14 @@ func (s *Service) checkDeleteDriverRuntime(feature string, check *DriverRuntime)
 // GetFeatureComm : provide output stream for rpc caller to make calls
 func (s *Service) GetFeatureComm(feature string) io.Writer {
 	return s.getDriverRuntime(feature).output
+}
+
+// GetLogger : provide logger for rpc caller to record log
+func (s *Service) GetLogger() *logging.Logger {
+	return log
+}
+
+// GetName : provide a name to use as log prefix in rpc caller
+func (s *Service) GetName() string {
+	return s.name
 }
