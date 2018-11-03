@@ -88,14 +88,18 @@ brew install dep
 cd honeydipper
 dep ensure
 ```
+ * Build
+```bash
+go install ./...
+```
  * Run test
 ```bash
-go test -v
+go test -v ./...
 ```
  * (Optional) For colored test results
 ```bash
 go get -u github.com/rakyll/gotest
-gotest -v
+gotest -v ./...
 ```
  * (Optional) For pre-commit hooks
 ```bash
