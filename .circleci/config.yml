@@ -42,7 +42,7 @@ jobs:
           command: go vet
       - run:
           name: gotest
-          command: go test -v
+          command: go test -v ./...
 
 workflows:
   version: 2
