@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/mitchellh/mapstructure"
-	"github.com/op/go-logging"
-	"io"
 	"reflect"
 	"strings"
 	"time"
@@ -21,10 +19,10 @@ func NewService(cfg *Config, name string) *Service {
 		driverRuntimes: map[string]*DriverRuntime{},
 		expects:        map[string][]func(*dipper.Message){},
 		responders:     map[string][]func(*DriverRuntime, *dipper.Message){},
+		rpc:            dipper.RPCCaller{Name: "service:" + name},
 	}
 
 	service.responders["state:cold"] = []func(*DriverRuntime, *dipper.Message){coldReloadDriverRuntime}
-	service.Sender = service
 
 	return service
 }
@@ -49,7 +47,7 @@ func (s *Service) processDriverData(key string, val interface{}) (ret interface{
 			if err != nil {
 				log.Panicf("encrypted data shoud be base64 encoded")
 			}
-			decrypted, err := s.RPCCallRaw("driver:"+encDriver+".decrypt", decoded)
+			decrypted, err := s.RPCCallRaw("driver:"+encDriver, "decrypt", decoded)
 			return string(decrypted), true
 		}
 	}
@@ -59,7 +57,7 @@ func (s *Service) processDriverData(key string, val interface{}) (ret interface{
 func (s *Service) loadFeature(feature string) (affected bool, driverName string, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Infof("Resuming after error: %v\n", r)
+			log.Infof("Resuming after error: %v", r)
 			log.Infof("[%s] skip reloading feature: %s", s.name, feature)
 			if err, ok := r.(error); ok {
 				rerr = err
@@ -68,7 +66,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			}
 		}
 	}()
-	log.Warningf("[%s] reloading feature %s\n", s.name, feature)
+	log.Warningf("[%s] reloading feature %s", s.name, feature)
 
 	oldRuntime := s.getDriverRuntime(feature)
 
@@ -161,7 +159,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 }
 
 func (s *Service) start() {
-	log.Infof("[%s] starting service\n", s.name)
+	log.Infof("[%s] starting service", s.name)
 	featureList := s.getFeatureList()
 	s.loadRequiredFeatures(featureList, true)
 	go s.serviceLoop()
@@ -169,7 +167,7 @@ func (s *Service) start() {
 }
 
 func (s *Service) reload() {
-	log.Infof("[%s] reloading service\n", s.name)
+	log.Infof("[%s] reloading service", s.name)
 	if s.ServiceReload != nil {
 		s.ServiceReload(s.config)
 	}
@@ -177,7 +175,7 @@ func (s *Service) reload() {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Errorf("[%s] reverting config due to fatal failure %v\n", s.name, r)
+				log.Errorf("[%s] reverting config due to fatal failure %v", s.name, r)
 				s.config.rollBack()
 			}
 		}()
@@ -369,7 +367,7 @@ func (s *Service) handleRPC(from *DriverRuntime, m *dipper.Message) bool {
 		feature := parts[0]
 		rpcID := parts[1]
 		if feature == "service" {
-			s.HandleRPCReturn(m)
+			s.rpc.HandleRPCReturn(m)
 		} else {
 			caller := s.getDriverRuntime(feature)
 			if caller == nil {
@@ -449,17 +447,12 @@ func (s *Service) checkDeleteDriverRuntime(feature string, check *DriverRuntime)
 	return nil
 }
 
-// GetFeatureComm : provide output stream for rpc caller to make calls
-func (s *Service) GetFeatureComm(feature string) io.Writer {
-	return s.getDriverRuntime(feature).output
+// RPCCallRaw : making a PRC call with raw bytes from driver to another driver
+func (s *Service) RPCCallRaw(feature string, method string, params []byte) ([]byte, error) {
+	return s.rpc.RPCCallRaw(s.getDriverRuntime(feature).output, method, params)
 }
 
-// GetLogger : provide logger for rpc caller to record log
-func (s *Service) GetLogger() *logging.Logger {
-	return log
-}
-
-// GetName : provide a name to use as log prefix in rpc caller
-func (s *Service) GetName() string {
-	return s.name
+// RPCCall : making a PRC call from driver to another driver
+func (s *Service) RPCCall(feature string, method string, params interface{}) ([]byte, error) {
+	return s.rpc.RPCCall(s.getDriverRuntime(feature).output, method, params)
 }

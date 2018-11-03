@@ -2,7 +2,6 @@ package dipper
 
 import (
 	"errors"
-	"github.com/op/go-logging"
 	"io"
 	"strings"
 	"sync"
@@ -11,23 +10,13 @@ import (
 
 // RPCCaller : an object that makes RPC calls
 type RPCCaller struct {
-	Sender  interface{}
+	Name    string
 	RPCSig  map[string]chan interface{}
 	RPCLock sync.Mutex
 }
 
-// FeatureProvider : an object that can get the comm channel for a feature, usually a service
-type FeatureProvider interface {
-	// GetFeatureComm : get the output writer channel of a feature for communicating
-	GetFeatureComm(feature string) io.Writer
-	// GetLogger : get the logger for record logs
-	GetLogger() *logging.Logger
-	// GetName : get the name for distinguish logs
-	GetName() string
-}
-
 // RPCCallRaw : making a RPC call to another driver with raw data
-func (c *RPCCaller) RPCCallRaw(method string, params []byte) ([]byte, error) {
+func (c *RPCCaller) RPCCallRaw(out io.Writer, method string, params []byte) ([]byte, error) {
 	var rpcID string
 	sig := make(chan interface{}, 1)
 	func() {
@@ -48,15 +37,12 @@ func (c *RPCCaller) RPCCallRaw(method string, params []byte) ([]byte, error) {
 			delete(c.RPCSig, rpcID)
 		}
 	}()
-	if driver, ok := c.Sender.(*Driver); ok {
-		driver.SendRawMessage("rpc", method+"."+rpcID, params)
-	} else if provider, ok := c.Sender.(FeatureProvider); ok {
-		parts := strings.SplitN(method, ".", 2)
-		output := provider.GetFeatureComm(parts[0])
-		SendRawMessage(output, "rpc", parts[1]+"."+rpcID+".service", params)
-	} else {
-		panic(errors.New("unable to convert to a driver or feature provider"))
+
+	subject := method + "." + rpcID
+	if strings.HasPrefix(c.Name, "service:") {
+		subject = subject + ".service"
 	}
+	SendRawMessage(out, "rpc", subject, params)
 
 	select {
 	case msg := <-sig:
@@ -70,24 +56,13 @@ func (c *RPCCaller) RPCCallRaw(method string, params []byte) ([]byte, error) {
 }
 
 // RPCCall : making a RPC call to another driver
-func (c *RPCCaller) RPCCall(method string, params interface{}) ([]byte, error) {
-	return c.RPCCallRaw(method, SerializeContent(params))
+func (c *RPCCaller) RPCCall(out io.Writer, method string, params interface{}) ([]byte, error) {
+	return c.RPCCallRaw(out, method, SerializeContent(params))
 }
 
 // HandleRPCReturn : receiving return of a RPC call
 func (c *RPCCaller) HandleRPCReturn(m *Message) {
-	var log *logging.Logger
-	var service string
-	if driver, ok := c.Sender.(*Driver); ok {
-		log = driver.Logger
-		service = driver.Service
-	} else if provider, ok := c.Sender.(FeatureProvider); ok {
-		log = provider.GetLogger()
-		service = provider.GetName()
-	} else {
-		panic(errors.New("unable to convert to a driver or feature provider"))
-	}
-	log.Debugf("[%s] handling rpc return", service)
+	log.Debugf("[%s] handling rpc return", c.Name)
 	parts := strings.Split(m.Subject, ".")
 	if parts[0] == "service" {
 		parts = parts[1:]
@@ -102,7 +77,7 @@ func (c *RPCCaller) HandleRPCReturn(m *Message) {
 		sig, ok = c.RPCSig[rpcID]
 	}()
 	if !ok {
-		log.Warningf("[%s] rpcID not found or expired %s", service, rpcID)
+		log.Warningf("[%s] rpcID not found or expired %s", c.Name, rpcID)
 	} else {
 		if hasErr {
 			m = DeserializePayload(m)

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
+	"github.com/op/go-logging"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"regexp"
 	"strings"
 )
+
+var log *logging.Logger = dipper.GetLogger("redispubsub")
 
 func init() {
 	flag.Usage = func() {
@@ -50,18 +53,18 @@ func stopWebhook(*dipper.Message) {
 func loadOptions(m *dipper.Message) {
 	systems, ok := driver.GetOption("dynamicData")
 	if !ok {
-		driver.Logger.Panicf("[%s] no system defined", driver.Service)
+		log.Panicf("[%s] no system defined", driver.Service)
 	}
 	systemMap, ok := systems.(map[string]interface{})
 	if !ok {
-		driver.Logger.Panicf("[%s] systems should be a map", driver.Service)
+		log.Panicf("[%s] systems should be a map", driver.Service)
 	}
 
 	hooks = map[string]interface{}{}
 	for system, events := range systemMap {
 		eventMap, ok := events.(map[string]interface{})
 		if !ok {
-			driver.Logger.Panicf("[%s] every system should map to a list of events", driver.Service)
+			log.Panicf("[%s] every system should map to a list of events", driver.Service)
 		}
 		for event, definition := range eventMap {
 			hooks[system+"."+event] = definition.(map[string]interface{})
@@ -74,7 +77,7 @@ func loadOptions(m *dipper.Message) {
 				if newval, err := regexp.Compile(str[7:]); err == nil {
 					return newval, true
 				}
-				driver.Logger.Warningf("[%s] skipping invalid regex pattern %s", driver.Service, str[7:])
+				log.Warningf("[%s] skipping invalid regex pattern %s", driver.Service, str[7:])
 			}
 			return nil, false
 		}
@@ -99,8 +102,8 @@ func startWebhook(m *dipper.Message) {
 		Handler: http.HandlerFunc(hookHandler),
 	}
 	go func() {
-		driver.Logger.Infof("[%s] start listening for webhook requests", driver.Service)
-		driver.Logger.Infof("[%s] listener stopped: %+v", driver.Service, server.ListenAndServe())
+		log.Infof("[%s] start listening for webhook requests", driver.Service)
+		log.Infof("[%s] listener stopped: %+v", driver.Service, server.ListenAndServe())
 		if driver.State != "exit" && driver.State != "cold" {
 			startWebhook(m)
 		}
@@ -196,7 +199,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			bodyBytes, err := ioutil.ReadAll(r.Body)
 			if err != nil {
-				driver.Logger.Warningf("[%s] unable to read post body", driver.Service)
+				log.Warningf("[%s] unable to read post body", driver.Service)
 				badRequest(w, r)
 				return
 			}
@@ -207,7 +210,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 				err := json.Unmarshal(bodyBytes, bodyObj)
 				eventData["json"] = bodyObj
 				if err != nil {
-					driver.Logger.Warningf("[%s] invalid json in post body", driver.Service)
+					log.Warningf("[%s] invalid json in post body", driver.Service)
 					badRequest(w, r)
 					return
 				}
