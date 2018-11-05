@@ -71,20 +71,6 @@ func loadOptions(m *dipper.Message) {
 		}
 	}
 
-	dipper.Recursive(hooks, func(key string, val interface{}) (ret interface{}, ok bool) {
-		if str, ok := val.(string); ok {
-			if strings.HasPrefix(str, ":regex:") {
-				if newval, err := regexp.Compile(str[7:]); err == nil {
-					return newval, true
-				}
-				log.Warningf("[%s] skipping invalid regex pattern %s", driver.Service, str[7:])
-			}
-			return nil, false
-		}
-		str := fmt.Sprintf("%v", val)
-		return str, true
-	})
-
 	NewAddr, ok := driver.GetOptionStr("data.Addr")
 	if !ok {
 		NewAddr = ":8080"
