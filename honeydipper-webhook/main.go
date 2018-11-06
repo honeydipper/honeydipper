@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-var log *logging.Logger = dipper.GetLogger("redispubsub")
+var log *logging.Logger = dipper.GetLogger("webhook")
 
 func init() {
 	flag.Usage = func() {
@@ -49,25 +49,16 @@ func stopWebhook(*dipper.Message) {
 }
 
 func loadOptions(m *dipper.Message) {
-	systems, ok := driver.GetOption("dynamicData")
+	hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
 	if !ok {
-		log.Panicf("[%s] no system defined", driver.Service)
+		log.Panicf("[%s] no hooks defined for webhook driver", driver.Service)
 	}
-	systemMap, ok := systems.(map[string]interface{})
+	hooks, ok = hooksObj.(map[string]interface{})
 	if !ok {
-		log.Panicf("[%s] systems should be a map", driver.Service)
+		log.Panicf("[%s] hook data should be a map of event to conditions", driver.Service)
 	}
 
-	hooks = map[string]interface{}{}
-	for system, events := range systemMap {
-		eventMap, ok := events.(map[string]interface{})
-		if !ok {
-			log.Panicf("[%s] every system should map to a list of events", driver.Service)
-		}
-		for event, definition := range eventMap {
-			hooks[system+"."+event] = definition.(map[string]interface{})
-		}
-	}
+	log.Debugf("[%s] hook data : %+v", driver.Service, hooks)
 
 	NewAddr, ok := driver.GetOptionStr("data.Addr")
 	if !ok {
@@ -99,8 +90,11 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 
 	matched := []string{}
 	for SystemEvent, hook := range hooks {
-		if dipper.CompareAll(eventData, hook) {
-			matched = append(matched, SystemEvent)
+		for _, condition := range hook.([]interface{}) {
+			if dipper.CompareAll(eventData, condition) {
+				matched = append(matched, SystemEvent)
+				break
+			}
 		}
 	}
 
@@ -127,21 +121,12 @@ func badRequest(w http.ResponseWriter, r *http.Request) {
 
 func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interface{} {
 	r.ParseForm()
-	formValues := map[string]interface{}{}
-	for key, vals := range r.Form {
-		formValues[key] = vals
-	}
-
-	headerValues := map[string]interface{}{}
-	for key, vals := range r.Header {
-		headerValues[key] = vals
-	}
 
 	eventData := map[string]interface{}{
 		"url":     r.URL.Path,
 		"method":  r.Method,
-		"form":    map[string]interface{}{},
-		"headers": map[string]interface{}{},
+		"form":    r.Form,
+		"headers": r.Header,
 	}
 
 	if r.Method == http.MethodPost {
