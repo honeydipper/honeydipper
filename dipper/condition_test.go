@@ -58,4 +58,6 @@ func TestCompareAllMap(t *testing.T) {
 	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{":absent:": "key3"}), "map should have key3 absent")
 	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{":absent:": regexp.MustCompile("key3[1-3]")}), "map should have key3* absent")
 	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, map[string]interface{}{":absent:": regexp.MustCompile("key3[1-3]*")}), "map should have key3* absent and fail")
+	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, "invalid condition"), "fail with invalid condition for map value")
+	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, map[string]interface{}{"key4": "111"}), "fail with condition that missing value")
 }

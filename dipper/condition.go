@@ -1,6 +1,7 @@
 package dipper
 
 import (
+	"reflect"
 	"regexp"
 )
 
@@ -36,18 +37,21 @@ func Compare(actual string, criteria interface{}) bool {
 
 // CompareAll : compare all conditions against an event data structure
 func CompareAll(actual interface{}, criteria interface{}) bool {
-	strVal, ok := actual.(string)
-	if ok {
-		return Compare(strVal, criteria)
+	if criteria == nil {
+		return true
 	}
 
-	listVal, ok := actual.([]interface{})
-	if ok {
+	value := reflect.ValueOf(actual)
+	switch kind := value.Kind(); kind {
+	case reflect.String:
+		return Compare(actual.(string), criteria)
+
+	case reflect.Slice:
 		strCriteria, ok := criteria.([]interface{})
 		if ok && strCriteria[0] == ":all:" {
 			// all elements in the list have to match
-			for _, subVal := range listVal {
-				if !CompareAll(subVal, strCriteria[1]) {
+			for i := 0; i < value.Len(); i++ {
+				if !CompareAll(value.Index(i).Interface(), strCriteria[1]) {
 					return false
 				}
 			}
@@ -55,43 +59,38 @@ func CompareAll(actual interface{}, criteria interface{}) bool {
 		}
 
 		// any one element in the list needs to match
-		for _, subVal := range listVal {
-			if CompareAll(subVal, criteria) {
+		for i := 0; i < value.Len(); i++ {
+			if CompareAll(value.Index(i).Interface(), criteria) {
 				return true
 			}
 		}
 		return false
-	}
 
-	mapVal, ok := actual.(map[string]interface{})
-	if ok {
-		if criteria == nil {
-			return true
-		}
+	case reflect.Map:
 		if mapCriteria, ok := criteria.(map[string]interface{}); ok {
-			for key, subVal := range mapVal {
-				if subCriteria, ok := mapCriteria[key]; ok {
-					if !CompareAll(subVal, subCriteria) {
+			for key, subCriteria := range mapCriteria {
+				if key == ":absent:" {
+					keys := []interface{}{}
+					for _, k := range value.MapKeys() {
+						keys = append(keys, k.Interface())
+					}
+					if CompareAll(keys, subCriteria) {
+						// key not absent
 						return false
 					}
+				} else if subVal := value.MapIndex(reflect.ValueOf(key)); subVal.IsValid() {
+					if !CompareAll(subVal.Interface(), subCriteria) {
+						return false
+					}
+				} else {
+					// value not present for this criteria
+					return false
 				}
-			}
-
-			// check if anything needs to be absent
-			if absents, ok := mapCriteria[":absent:"]; ok {
-				absentList, ok := absents.([]interface{})
-				if !ok {
-					absentList = []interface{}{absents}
-				}
-				keys := []interface{}{}
-				for k := range mapVal {
-					keys = append(keys, k)
-				}
-				// if any key matches any in the absent list, return false
-				return !CompareAll(keys, absentList)
 			}
 			return true
 		}
+		// map value with a non-map criteria
+		return false
 	}
 
 	// unable to handle a nil value or unknown criteria

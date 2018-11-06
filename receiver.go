@@ -59,33 +59,40 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 
 // ReceiverFeatures : Receiver needs to load the event drivers before hand based on the rules
 func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
-	var dynamicData = map[string]interface{}{}
+	dynamicData := map[string]interface{}{}
+
 	log.Debugf("rules %+v", c.Rules)
 	for _, rule := range c.Rules {
-		trigger, conditions := collapseTrigger(rule.When, c)
+		rawTrigger, conditions := collapseTrigger(rule.When, c)
+		var driverData map[string]interface{}
+		data, ok := dynamicData["driver:"+rawTrigger.Driver]
+		if !ok {
+			driverData = map[string]interface{}{"collapsedEvents": map[string]interface{}{}}
+			dynamicData["driver:"+rawTrigger.Driver] = driverData
+		} else {
+			driverData, _ = data.(map[string]interface{})
+		}
 
-		systemName := "_"
-		triggerName := rule.When.RawEvent
+		var eventName string
 		if len(rule.When.Driver) == 0 {
-			systemName = rule.When.Source.System
-			triggerName = rule.When.Source.Trigger
-		}
-		if len(triggerName) == 0 {
-			log.Panicf("[receiver] trigger should have a source trigger or a raw event name %+v", rule.When)
-		}
-		delta := map[string]interface{}{
-			"driver:" + trigger.Driver: map[string]interface{}{
-				systemName: map[string]interface{}{
-					triggerName: conditions,
-				},
-			},
+			eventName = rule.When.Source.System + "." + rule.When.Source.Trigger
+		} else {
+			eventName = "_." + rule.When.Driver + ":" + rule.When.RawEvent
 		}
 
-		log.Debugf("[receiver] collapsed %+v total %+v", delta, dynamicData)
-		err := mergo.Merge(&dynamicData, delta, mergo.WithOverride, mergo.WithAppendSlice)
-		if err != nil {
-			panic(err)
+		list, found := driverData["collapsedEvents"].(map[string]interface{})[eventName]
+		var collapsedEvent []interface{}
+		if !found {
+			collapsedEvent = []interface{}{}
+		} else {
+			collapsedEvent, _ = list.([]interface{})
 		}
+		collapsedEvent = append(collapsedEvent, conditions)
+
+		driverData["collapsedEvents"].(map[string]interface{})[eventName] = collapsedEvent
+
+		log.Debugf("[receiver] collapsed %+v total %+v", eventName, collapsedEvent)
 	}
+	log.Debugf("[receiver] dynamicData return: %+v", dynamicData)
 	return dynamicData
 }
