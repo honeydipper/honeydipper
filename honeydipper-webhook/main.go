@@ -10,9 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
-	"regexp"
 	"strings"
 )
 
@@ -96,113 +94,17 @@ func startWebhook(m *dipper.Message) {
 	}()
 }
 
-func compare(left string, right interface{}) bool {
-	strVal, ok := right.(string)
-	if ok {
-		return (strVal == left)
-	}
-
-	re, ok := right.(*regexp.Regexp)
-	if ok {
-		return re.Match([]byte(left))
-	}
-
-	listVal, ok := right.([]interface{})
-	if ok {
-		for _, subVal := range listVal {
-			if compare(left, subVal) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func checkForm(form url.Values, values interface{}) bool {
-	formChecks, ok := values.(map[string]interface{})
-	if !ok {
-		return false
-	}
-	for field, value := range formChecks {
-		actual := form.Get(field)
-		if !compare(actual, value) {
-			return false
-		}
-	}
-	return true
-}
-
-func checkHeader(headers http.Header, values interface{}) bool {
-	headerChecks, ok := values.(map[string]interface{})
-	if !ok {
-		return false
-	}
-	for header, expected := range headerChecks {
-		actual := headers.Get(header)
-		if !compare(actual, expected) {
-			return false
-		}
-	}
-	return true
-}
-
 func hookHandler(w http.ResponseWriter, r *http.Request) {
+	eventData := extractEventData(w, r)
+
 	matched := []string{}
-	r.ParseForm()
 	for SystemEvent, hook := range hooks {
-		meet := true
-		for check, value := range hook.(map[string]interface{}) {
-			if check == "url" {
-				meet = compare(r.URL.Path, value)
-			} else if check == "form" {
-				meet = checkForm(r.Form, value)
-			} else if check == "header" {
-				meet = checkHeader(r.Header, value)
-			} else if check == "method" {
-				meet = compare(r.Method, value)
-			} else {
-				meet = false
-			}
-
-			if !meet {
-				break
-			}
-		}
-
-		if meet {
+		if dipper.CompareAll(eventData, hook) {
 			matched = append(matched, SystemEvent)
 		}
 	}
 
 	if len(matched) > 0 {
-		eventData := map[string]interface{}{
-			"url":     r.URL.Path,
-			"method":  r.Method,
-			"form":    r.Form.Encode(),
-			"headers": r.Header,
-		}
-
-		if r.Method == http.MethodPost {
-			bodyBytes, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				log.Warningf("[%s] unable to read post body", driver.Service)
-				badRequest(w, r)
-				return
-			}
-			contentType := r.Header.Get("Content-type")
-			eventData["body"] = string(bodyBytes)
-			if len(contentType) > 0 && strings.EqualFold(contentType, "application/json") {
-				bodyObj := map[string]interface{}{}
-				err := json.Unmarshal(bodyBytes, bodyObj)
-				eventData["json"] = bodyObj
-				if err != nil {
-					log.Warningf("[%s] invalid json in post body", driver.Service)
-					badRequest(w, r)
-					return
-				}
-			}
-		}
-
 		payload := map[string]interface{}{
 			"events": matched,
 			"data":   eventData,
@@ -221,4 +123,45 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 func badRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusBadRequest)
 	io.WriteString(w, "Bad Request\n")
+}
+
+func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interface{} {
+	r.ParseForm()
+	formValues := map[string]interface{}{}
+	for key, vals := range r.Form {
+		formValues[key] = vals
+	}
+
+	headerValues := map[string]interface{}{}
+	for key, vals := range r.Header {
+		headerValues[key] = vals
+	}
+
+	eventData := map[string]interface{}{
+		"url":     r.URL.Path,
+		"method":  r.Method,
+		"form":    map[string]interface{}{},
+		"headers": map[string]interface{}{},
+	}
+
+	if r.Method == http.MethodPost {
+		bodyBytes, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			badRequest(w, r)
+			log.Panicf("[%s] unable to read post body", driver.Service)
+		}
+		contentType := r.Header.Get("Content-type")
+		eventData["body"] = string(bodyBytes)
+		if len(contentType) > 0 && strings.EqualFold(contentType, "application/json") {
+			bodyObj := map[string]interface{}{}
+			err := json.Unmarshal(bodyBytes, &bodyObj)
+			if err != nil {
+				badRequest(w, r)
+				log.Panicf("[%s] invalid json in post body", driver.Service)
+			}
+			eventData["json"] = bodyObj
+		}
+	}
+
+	return eventData
 }
