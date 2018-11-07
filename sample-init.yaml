@@ -1,0 +1,174 @@
+# Honeydipper bootstrap configuration
+#
+# You can use this file as a template to build you own configuration
+# files to boot strap honeydipper system.
+#
+# Honey dipper looks for a init.yaml in the root of every loaded repo.
+# init.yaml can include other yaml files in the same repo, and it can
+# also load other repos. While it is possible to fit everything into a
+# single file, it is recommended to organzie your configurations into 
+# smaller chunks in a way that each chunk contains only relevant
+# settings.
+#
+# For example, a file can define just a system and all its functions and
+# triggers. Or, a file can define all the infomation about a driver a
+# single file. Another example would be to define a workflow in a file
+# separately.
+#
+# Generally, there are 5 types of settings that are allowed in a file.
+# See below example sections for the types.
+
+
+# Repos
+# A list of dependency repos to be loaded before the current repo is
+# fully loaded. Circular dependency will cause system to crash at this
+# moment. You can specify which branch to use for each repo, and which
+# path to be used as root (the location of the init.yaml). By default,
+# master branch will be used, and the root of the repo will be used.
+# Currently, ssh git repos, https repos and local file repos are
+# supported.
+
+repos:
+  - repo: file:///Users/chunhuang/tmp/rules
+    # branch: master
+    # path: /
+
+# Includes
+# A list of files to be loaded before the current file is fully loaded.
+# Again, circular dependency is not supported, and will cause system
+# to crash at this time. The path to the included file is relative to
+# the path of the loading file.
+
+includes:
+  - systems/system1.yaml
+  - systems/system2.yaml
+  - workflows/workflow1.yaml
+  - teams/core.yaml
+  # - ../relative/path/supported.yaml
+
+# Systems
+# A list of systems that each holds a group of relevant data, function
+# and trigger definitions. The data section holds the data shared across
+# functions and triggers, and is organized according to the drivers that
+# needs the data. See, system definition guide for detail.
+
+systems:
+  system1:
+    data:
+      kubernetes:       # driver
+        parameters:     # used in functions
+          namespace: default
+          source:
+            type: gke
+            service_account: xxxREDACTEDxxx
+            project: project-name
+            location: us-central1-a
+            cluster: cluster-name
+      webhook:          # driver
+        conditions:     # used in triggers
+          method: GET
+          form:
+            token: token_for_system1_to_access_webhook
+  triggers:
+    queue_exceeded:
+      driver: webhook
+      rawevent: requested
+      conditions:
+        url: /webhook/system1/queue_exceeded
+  functions:
+    recycle:
+      driver: kubernetes
+      rawaction: recycleDeployment
+      parameters:
+        deployment: sleep
+
+
+# Rules
+# A list of rules that each defines an event and what happens when it happens.
+# An event is either defined using system/trigger pair under source, or a pair
+# of driver/rawevent.  Either way, you can override the conditions.
+
+rules:
+  - when:
+      source:
+        system: system1
+        trigger: queue_exceeded
+    do:
+      target:
+        system: system1
+        function: recycle
+  - when:
+      driver: webhook
+      rawevent: requested
+      conditions:
+        url: /webhook/someotherthing
+    do:
+      driver: kubernetes
+      rawaction: recycleDeployment
+      parameters:
+        cluster: another_cluster
+        deployment: another_deployment
+
+# Drivers
+# A list of drivers that can provide rawevents, rawactions, RPC and/or other features.
+# Each driver has its own specific data. There is a special driver named daemon in this
+# section, which contains a lot of important configurations. See daemon configuration
+# guide for detail
+
+drivers:
+  daemon:
+    features:             # the features that will be loaded at bootstrap
+      # global:           # applies to all services
+      #   - eventbus      # this is default
+      # engine:           # features to be loaded for engine service
+      #   - eventbus
+      # receiver:         # features to be loaded for receiver service
+      #   - eventbus
+      operator:           # features to be loaded for operator service
+        # - eventbus
+        - driver:gcloud
+        - driver:kubernetes
+        - driver:kms
+    # featureMap:          # for named features, map it to a driver
+    #   global:            # global section applies to all service
+    #     eventbus: redispubsub  # default
+    drivers:              # meta info for the drivers
+      gcloud:
+        name: gcloud
+        data:
+          Type: go        # captial keyword
+          Package: github.com/honeyscience/honeydipper/honeydipper-gcloud
+      kms:
+        name: kms
+        data:
+          Type: go
+          Package: github.com/honeyscience/honeydipper/honeydipper-kms
+      kubernetes:
+        name: kubernetes
+        data:
+          Type: go
+          Package: github.com/honeyscience/honeydipper/honeydipper-kubernetes
+      webhook:
+        name: webhook
+        data:
+          Type: go
+          Package: github.com/honeyscience/honeydipper/honeydipper-webhook
+      # redispubsub:      # hardcoded in default, not overridable
+      #   name: redispubsub
+      #   data:
+      #     Type: go
+      #     Package: github.com/honeyscience/honeydipper/honeydipper-redispubsub
+
+
+  # other driver specific data
+  redispubsub:
+    Addr: localhost:6379
+    # Password: *ifneeded*use_kms_to_encrypt
+    # eventTopic: honeydipper:events
+    # commandTopic: honeydipper:commands
+  webhook:
+    Addr: ":8080"
+  kms:
+    # kms uses default google client when running in google cloud, if you have gauth
+    # setup locally, you should be able to use this. You do need cloudkms.encryptorDecrytor role
+    keyname: projects/projectname/locations/us-xxxxxx/keyRings/kingRingName/cryptoKeys/keyName
