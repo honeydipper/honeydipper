@@ -11,6 +11,7 @@ now, there is a go library named honeydipper/dipper that makes it easier to do t
 - [Driver lifecycle and states](#driver-lifecycle-and-states)
 - [Messages](#messages)
 - [RPC](#rpc)
+- [Driver Options](#driver-options)
 
 <!-- tocstop -->
 
@@ -162,3 +163,70 @@ func decrypt(from string, rpcID string, payload []byte) {
   ...
 	driver.RPCReturnRaw(from, rpcID, resp.Plaintext)
 ```
+
+## Driver Options
+
+As mentioned earlier, the driver receives the options/configuratins from daemon automatically through the
+helper object. As the data is stored in hashmap, the helper method *driver.GetOption* will accept a path and return an
+*Interface()* ojbect.  The path is a dot separated key names traverse into the data structure. If the returned data is
+also a map, you can use *dipper.GetMapData* or *dipper.GetMapDataStr* to retrive information from them as well.
+If you are sure the data is a *string*, you can use *driver.GetOptionStr* to directly receive it as *string*.
+
+The helper functions follow the golang idiologic style, that returns the value along with a bool to indicate if it is
+acceptable or not. See below for example.
+```go
+	NewAddr, ok := driver.GetOptionStr("data.Addr")
+	if !ok {
+		NewAddr = ":8080"
+	}
+```
+```go
+	hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
+  ...
+  somedata, ok := dipper.GetMapDataStr(hooksObj, "key1.subkey")
+  ...
+```
+
+There is always a *data* section in the driver options, which comes from the configuration file like below
+```yaml
+---
+...
+drivers:
+  webhook:
+    Addr: :880
+...
+```
+
+For event receivers, there is a "dynamicData.collapsedEvents" section that stores a mapping between event names to their
+conditions, driver uses this to determine if an event should be fired or not. For example
+```go
+func hookHandler(w http.ResponseWriter, r *http.Request) {
+	eventData := extractEventData(w, r)
+
+	matched := []string{}
+	for SystemEvent, hook := range hooks {
+		for _, condition := range hook.([]interface{}) {
+			if dipper.CompareAll(eventData, condition) {
+				matched = append(matched, SystemEvent)
+				break
+			}
+		}
+	}
+
+	if len(matched) > 0 {
+		payload := map[string]interface{}{
+			"events": matched,
+			"data":   eventData,
+		}
+
+		driver.SendMessage("eventbus", "message", payload)
+
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, "Done\n")
+		return
+	}
+
+	http.NotFound(w, r)
+}
+```
+The helper function *dipperCompareAll* will try to match your event data to the conditions.
