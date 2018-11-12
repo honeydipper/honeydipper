@@ -43,6 +43,29 @@ jobs:
       - run:
           name: gotest
           command: go test -v ./...
+  integration:
+    <<: *defaults
+    steps:
+      - run:
+          name: addingosdeps
+          command: apk add git gcc libc-dev redis
+      - run:
+          name: addingdep
+          command: go get -u github.com/golang/dep/cmd/dep
+      - checkout
+      - run:
+          name: dependencies
+          command: dep ensure
+      - run:
+          name: govet
+          command: go vet
+      - run:
+          name: redis
+          command: redis-server --port 127.0.0.1:6379
+          background: true
+      - run:
+          name: gointegrationtest
+          command: go test -tags=integration -v ./...
 
 workflows:
   version: 2
@@ -50,3 +73,4 @@ workflows:
     jobs:
       - lint
       - test
+      - integration
