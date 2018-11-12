@@ -1,12 +1,14 @@
 package main
 
 import (
+	"flag"
 	"github.com/op/go-logging"
 	"os"
 	"testing"
 )
 
 func TestMain(m *testing.M) {
+	flag.Parse()
 	logFile, err := os.Create("test.log")
 	if err != nil {
 		panic(err)

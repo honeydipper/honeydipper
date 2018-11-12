@@ -1,3 +1,5 @@
+// +build !integration
+
 package main
 
 import (
@@ -89,4 +91,6 @@ func TestConfigReload(t *testing.T) {
 	assert.NotEqual(t, oldConfigSet, mockConfig.config, "should change the config when reload with lastRunningConfig")
 	assert.True(t, service1reloaded, "service1 should reload when reloading with last running config")
 	assert.True(t, service2reloaded, "service2 should reload when reloading with last running config")
+
+	Services = map[string]*Service{}
 }

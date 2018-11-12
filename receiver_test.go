@@ -1,3 +1,5 @@
+// +build !integration
+
 package main
 
 import (
@@ -49,7 +51,9 @@ func TestReceiverCollapseTrigger(t *testing.T) {
 }
 
 func TestReceiverFeatures(t *testing.T) {
+
 }
 
 func TestReceiverRoute(t *testing.T) {
+
 }

@@ -12,7 +12,7 @@ func startOperator(cfg *Config) {
 	operator = NewService(cfg, "operator")
 	operator.Route = operatorRoute
 	Services["operator"] = operator
-	go operator.start()
+	operator.start()
 }
 
 func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {

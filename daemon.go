@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
 	"os"
+	"sync"
 )
 
 var config Config
+var shuttingDown bool
+var daemonChildren = &sync.WaitGroup{}
 
 // Services : a catalog of running services in this daemon process
 var Services = map[string]*Service{}
@@ -62,4 +65,9 @@ func main() {
 	config.bootstrap(".")
 	start()
 	config.watch()
+}
+
+func shutDown() {
+	shuttingDown = true
+	daemonChildren.Wait()
 }

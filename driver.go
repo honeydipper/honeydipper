@@ -85,7 +85,9 @@ func (runtime *DriverRuntime) sendMessage(msg *dipper.Message) {
 
 func (runtime *DriverRuntime) fetchMessages() {
 	quit := false
-	for !quit {
+	daemonChildren.Add(1)
+	defer daemonChildren.Done()
+	for !quit && !shuttingDown {
 		func() {
 			defer dipper.SafeExitOnError(
 				"failed to fetching messages from driver %s.%s",
@@ -93,10 +95,11 @@ func (runtime *DriverRuntime) fetchMessages() {
 				runtime.meta.Name,
 			)
 			defer dipper.CatchError(io.EOF, func() { quit = true })
-			for {
+			for !quit && !shuttingDown {
 				message := dipper.FetchRawMessage(runtime.input)
 				runtime.stream <- *message
 			}
 		}()
 	}
+	log.Warningf("[%s-%s] driver close for business", runtime.service, runtime.meta.Name)
 }

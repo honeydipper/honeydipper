@@ -13,6 +13,7 @@ import (
 )
 
 func (c *ConfigRepo) assemble(assembled *ConfigSet, assembledList map[RepoInfo]*ConfigRepo) (*ConfigSet, map[RepoInfo]*ConfigRepo) {
+	assembledList[*c.repo] = c
 	for _, repo := range c.config.Repos {
 		if _, ok := assembledList[repo]; !ok {
 			if repoRuntime, ok := c.parent.loaded[repo]; ok {
@@ -22,7 +23,6 @@ func (c *ConfigRepo) assemble(assembled *ConfigSet, assembledList map[RepoInfo]*
 	}
 
 	mergo.Merge(assembled, c.config, mergo.WithOverride, mergo.WithAppendSlice)
-	assembledList[*c.repo] = c
 	return assembled, assembledList
 }
 

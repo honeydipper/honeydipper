@@ -159,11 +159,13 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 }
 
 func (s *Service) start() {
-	log.Infof("[%s] starting service", s.name)
-	featureList := s.getFeatureList()
-	s.loadRequiredFeatures(featureList, true)
-	go s.serviceLoop()
-	s.loadAdditionalFeatures(featureList)
+	go func() {
+		log.Infof("[%s] starting service", s.name)
+		featureList := s.getFeatureList()
+		s.loadRequiredFeatures(featureList, true)
+		go s.serviceLoop()
+		s.loadAdditionalFeatures(featureList)
+	}()
 }
 
 func (s *Service) reload() {
@@ -269,7 +271,9 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 }
 
 func (s *Service) serviceLoop() {
-	for {
+	daemonChildren.Add(1)
+	defer daemonChildren.Done()
+	for !shuttingDown {
 		var cases []reflect.SelectCase
 		var orderedRuntimes []*DriverRuntime
 		func() {
@@ -312,6 +316,10 @@ func (s *Service) serviceLoop() {
 			}()
 		}
 	}
+	for _, runtime := range s.driverRuntimes {
+		runtime.output.Close()
+	}
+	log.Warningf("[%s] service closed for business", s.name)
 }
 
 func (s *Service) process(msg dipper.Message, runtime *DriverRuntime) {

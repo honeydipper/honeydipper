@@ -12,7 +12,7 @@ func startReceiver(cfg *Config) {
 	receiver.Route = receiverRoute
 	receiver.DiscoverFeatures = ReceiverFeatures
 	Services["receiver"] = receiver
-	go receiver.start()
+	receiver.start()
 }
 
 func receiverRoute(msg *dipper.Message) (ret []RoutedMessage) {

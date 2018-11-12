@@ -16,7 +16,7 @@ func startEngine(cfg *Config) {
 	engine.ServiceReload = buildRuleMap
 	Services["engine"] = engine
 	buildRuleMap(cfg)
-	go engine.start()
+	engine.start()
 }
 
 func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
