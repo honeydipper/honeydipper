@@ -64,6 +64,9 @@ jobs:
           command: redis-server --port 127.0.0.1:6379
           background: true
       - run:
+          name: build
+          command: go install ./...
+      - run:
           name: gointegrationtest
           command: go test -tags=integration -v ./...
 
