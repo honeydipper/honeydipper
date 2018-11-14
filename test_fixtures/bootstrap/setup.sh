@@ -12,7 +12,7 @@ repo_dir=/tmp/honeydipper-test-config
   cd $repo_dir
   git init .
   git add *
-  git commit -m 'init' -a
+  git -c user.name='circle' -c user.email='circle@nomail.com' commit -m 'init' -a
 ) &> /dev/null
 
 echo $repo_dir
