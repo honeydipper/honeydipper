@@ -61,7 +61,7 @@ jobs:
           command: go vet
       - run:
           name: redis
-          command: redis-server --port 127.0.0.1:6379
+          command: redis-server --bind 127.0.0.1
           background: true
       - run:
           name: build
