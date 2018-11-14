@@ -1,0 +1,42 @@
+---
+drivers:
+  daemon:
+    features:
+      operator:
+        - "driver:gcloud"
+        - "driver:kubernetes"
+        - "driver:kms"
+    drivers:
+      webhook:
+        name: webhook
+        feature: webhook
+        services:
+          - receiver
+        data:
+          Type: go
+          Package: github.com/honeyscience/honeydipper/honeydipper-webhook
+      gcloud:
+        name: gcloud
+        feature: rpc
+        services:
+          - engine
+        data:
+          Type: go
+          Package: github.com/honeyscience/honeydipper/honeydipper-gcloud
+      kms:
+        name: kms
+        feature: decryption
+        services:
+          - engine
+        data:
+          Type: go
+          Package: github.com/honeyscience/honeydipper/honeydipper-kms
+      kubernetes:
+        name: kubernetes
+        feature: operator
+        services:
+          - engine
+        data:
+          Type: go
+          Package: github.com/honeyscience/honeydipper/honeydipper-kubernetes
+

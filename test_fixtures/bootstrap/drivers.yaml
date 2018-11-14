@@ -1,0 +1,8 @@
+---
+drivers:
+  redispubsub:
+    Addr: localhost:6379
+  webhook:
+    Addr: ":8081"
+  kms:
+    keyname: projects/test-project/locations/us-central1/keyRings/secure_config/cryptoKeys/kube_secrets

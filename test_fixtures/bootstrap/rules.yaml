@@ -1,0 +1,22 @@
+---
+rules:
+  - when:
+      source:
+        system: test1_queue
+        trigger: exceeded
+    do:
+      type: function
+      content:
+        target:
+          system: test1_queue
+          function: recycleDeployment
+  - when:
+      source:
+        system: test2_queue
+        trigger: exceeded
+    do:
+      type: function
+      content:
+        target:
+          system: test2_queue
+          function: recycleDeployment

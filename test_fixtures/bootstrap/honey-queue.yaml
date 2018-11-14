@@ -1,0 +1,54 @@
+---
+systems:
+  honey_queue:
+    data:
+      kubernetes:
+        parameters:
+          namespace: default
+          source:
+            type: gke
+            service_account: :enc:kms:***redacted***
+            project: test-project
+            location: us-central1-a
+            cluster: test-cluster
+    triggers:
+      exceeded:
+        driver: webhook
+        conditions:
+          method: GET
+          form:
+            token: 283hiwejsamcsjfoiw8833a
+    functions:
+      recycleDeployment:
+        driver: kubernetes
+        rawaction: recycleDeployment
+  test1_queue:
+    triggers:
+      exceeded:
+        source:
+          system: honey_queue
+          trigger: exceeded
+        conditions:
+          url: "/test29"
+    functions:
+      recycleDeployment:
+        target:
+          system: honey_queue
+          function: recycleDeployment
+        parameters:
+          deployment: sleep
+  test2_queue:
+    triggers:
+      exceeded:
+        source:
+          system: honey_queue
+          trigger: exceeded
+        conditions:
+          url: "/test21"
+    functions:
+      recycleDeployment:
+        target:
+          system: honey_queue
+          function: recycleDeployment
+        parameters:
+          deployment: test2

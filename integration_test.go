@@ -12,20 +12,33 @@ import (
 	"time"
 )
 
-var testDone bool
+var bootstrapPath string
 
 func TestIntegrationStart(t *testing.T) {
-	t.Run("starting up daemon", intTestDaemonStartup)
+	if !t.Run("initialize a repo", intTestInitRepo) {
+		t.FailNow()
+	}
+	if !t.Run("starting up daemon", intTestDaemonStartup) {
+		t.FailNow()
+	}
+	defer t.Run("shutting down daemon", intTestDaemonShutdown)
 	t.Run("checking services", intTestServices)
 	t.Run("checking drivers", intTestDrivers)
 	t.Run("checking processes", intTestProcesses)
-	t.Run("shutting down daemon", intTestDaemonShutdown)
+}
+
+func intTestInitRepo(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	cmdOutput, err := exec.CommandContext(ctx, "test_fixtures/bootstrap/setup.sh").CombinedOutput()
+	assert.Nil(t, err, "Needs to init a test repo to bootstrap test daemon")
+	bootstrapPath = strings.TrimSpace(string(cmdOutput))
 }
 
 func intTestDaemonStartup(t *testing.T) {
 	config = Config{
 		initRepo: RepoInfo{
-			Repo:   "git@github.com:honeyscience/honeydipper-test-config.git",
+			Repo:   "file://" + bootstrapPath,
 			Branch: "master",
 			Path:   "/",
 		},
