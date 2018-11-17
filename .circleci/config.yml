@@ -67,14 +67,13 @@ jobs:
           name: gointegrationtest
           command: go test -tags=integration -v ./...
   build:
-    <<: *defaults
-    deploy:
-      docker:
-        image: google/cloud-sdk
+    docker:
+      - image: google/cloud-sdk
+    environment:
+      TZ: "/usr/share/zoneinfo/America/Los_Angeles"
+    working_directory: /go/src/github.com/honeyscience/honeydipper
     steps:
-      - run:
-          name: setupgitssh
-          command: apt-get -y install git ssh
+      - setup_remote_docker
       - checkout
       - run:
           name: dockerbuildpush
@@ -82,7 +81,7 @@ jobs:
             export VERSION=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
             export TAG=us.gcr.io/$GOOGLE_PROJECT_ID/honeydipper:$VERSION
             docker build -t $TAG .
-            echo $GCLOUD_CIRCLE_CI_ACCOUNT | base64 --decode | sudo gcloud auth activate-service-account --key-file=-
+            echo $GCLOUD_CIRCLE_CI_ACCOUNT | base64 --decode | gcloud auth activate-service-account --key-file=-
             gcloud config set project $GOOGLE_PROJECT_ID
             gcloud config set compute/zone $GOOGLE_COMPUTE_ZONE
             gcloud docker -- push $TAG
