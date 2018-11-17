@@ -57,9 +57,6 @@ jobs:
           name: dependencies
           command: dep ensure
       - run:
-          name: govet
-          command: go vet
-      - run:
           name: redis
           command: redis-server --bind 127.0.0.1
           background: true
@@ -69,11 +66,79 @@ jobs:
       - run:
           name: gointegrationtest
           command: go test -tags=integration -v ./...
+  build:
+    <<: *defaults
+    deploy:
+      docker:
+        image: google/cloud-sdk
+    steps:
+      - checkout
+      - run:
+          name: dockerbuildpush
+          command: |
+            export VERSION=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
+            export TAG=us.gcr.io/$GOOGLE_PROJECT_ID/honeydipper:$VERSION
+            docker build -t $TAG .
+            echo $GCLOUD_CIRCLE_CI_ACCOUNT | base64 --decode | sudo gcloud auth activate-service-account --key-file=-
+            gcloud config set project $GOOGLE_PROJECT_ID
+            gcloud config set compute/zone $GOOGLE_COMPUTE_ZONE
+            gcloud docker -- push $TAG
 
 workflows:
   version: 2
   run_tests:
     jobs:
-      - lint
-      - test
-      - integration
+      - lint:
+          filters:
+            tags:
+              ignore: /[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              only: /.*/
+      - test:
+          requires:
+            - lint
+          filters:
+            tags:
+              ignore: /[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              only: /.*/
+      - integration:
+          requires:
+            - test
+          filters:
+            tags:
+              ignore: /[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              only: /.*/
+  build:
+    jobs:
+      - lint:
+          filters:
+            tags:
+              only: /[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              ignore: /.*/
+      - test:
+          requires:
+            - lint
+          filters:
+            tags:
+              only: /[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              ignore: /.*/
+      - integration:
+          requires:
+            - test
+          filters:
+            tags:
+              only: /[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              ignore: /.*/
+      - build:
+          requires:
+            - integration
+          filters:
+            tags:
+              only: /[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              ignore: /.*/
