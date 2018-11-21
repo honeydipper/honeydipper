@@ -85,7 +85,8 @@ jobs:
             eval 'echo $'$SA_VAR_NAME | base64 --decode | gcloud auth activate-service-account --key-file=-
             gcloud config set project $GOOGLE_PROJECT_ID
             gcloud config set compute/zone $GOOGLE_COMPUTE_ZONE
-            gcloud docker -- push $TAG
+            gcloud auth configure-docker
+            docker push $TAG
 
 workflows:
   version: 2
