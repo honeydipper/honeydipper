@@ -61,14 +61,14 @@ func (d *Driver) Run() {
 	log.Infof("[%s] driver loaded", d.Service)
 	for {
 		func() {
-			defer SafeExitOnError(log, "[%s] Resuming driver message loop", d.Service)
+			defer SafeExitOnError("[%s] Resuming driver message loop", d.Service)
 			defer CatchError(io.EOF, func() {
 				log.Fatalf("[%s] daemon closed channel", d.Service)
 			})
 			for {
 				msg := FetchRawMessage(d.In)
 				go func() {
-					defer SafeExitOnError(log, "[%s] Continuing driver message loop", d.Service)
+					defer SafeExitOnError("[%s] Continuing driver message loop", d.Service)
 					if msg.Channel == "rpcReply" {
 						d.rpc.HandleRPCReturn(msg)
 					} else if msg.Channel == "rpc" {

@@ -10,6 +10,7 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"io/ioutil"
 	"path"
+	"strings"
 )
 
 func (c *ConfigRepo) assemble(assembled *ConfigSet, assembledList map[RepoInfo]*ConfigRepo) (*ConfigSet, map[RepoInfo]*ConfigRepo) {
@@ -76,6 +77,7 @@ func NewConfigRepo(c *Config, repo RepoInfo) *ConfigRepo {
 func (c *ConfigRepo) loadRepo() {
 	defer dipper.SafeExitOnError("repo [%v] skipped", c.repo.Repo)
 
+	opts := &git.CloneOptions{URL: c.repo.Repo}
 	var repoObj *git.Repository
 	var err error
 	if c.root == "" {
@@ -85,10 +87,13 @@ func (c *ConfigRepo) loadRepo() {
 			log.Fatalf("Unable to create subdirectory in %v", c.parent.wd)
 		}
 
-		repoObj, err = git.PlainClone(c.root, false, &git.CloneOptions{
-			URL: c.repo.Repo,
-		})
+		if strings.HasPrefix(c.repo.Repo, "git@") {
+			if auth := GetGitSSHAuth(); auth != nil {
+				opts.Auth = auth
+			}
+		}
 
+		repoObj, err = git.PlainClone(c.root, false, opts)
 		if err != nil {
 			panic(err)
 		}
@@ -103,6 +108,7 @@ func (c *ConfigRepo) loadRepo() {
 	}
 	err = repoObj.Fetch(&git.FetchOptions{
 		RefSpecs: []gitCfg.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
+		Auth:     opts.Auth,
 	})
 	if err != nil {
 		panic(err)
@@ -145,10 +151,18 @@ func (c *ConfigRepo) refreshRepo() (ret bool) {
 		if c.repo.Branch != "" {
 			branch = c.repo.Branch
 		}
-		err = tree.Pull(&git.PullOptions{
+
+		opts := &git.PullOptions{
 			RemoteName:    "origin",
 			ReferenceName: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
-		})
+		}
+		if strings.HasPrefix(c.repo.Repo, "git@") {
+			if auth := GetGitSSHAuth(); auth != nil {
+				opts.Auth = auth
+			}
+		}
+
+		err = tree.Pull(opts)
 		if err == git.NoErrAlreadyUpToDate {
 			log.Infof("no changes skip repo [%s]", c.repo.Repo)
 			return false
