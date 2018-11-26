@@ -94,21 +94,24 @@ jobs:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
     working_directory: /go/src/github.com/honeyscience/honeydipper
     steps:
+      - run:
+          name: addingosdeps
+          command: apk add git curl
       - checkout
       - run:
           name: buildpushcharts
           command: |
-            apk add git
             export VERSION=$(git describe --match 'chart-*' --tags $(git log -n1 --pretty='%h') | sed 's/^chart-//g')
             cd helm
-            sed -i .bak 's/^version: .*$/version: '${VERSION}'/g' honeydipper/Chart.yaml
+            sed -i.bak 's/^version: .*$/version: '${VERSION}'/g' honeydipper/Chart.yaml
+            helm init --client-only
             helm package honeydipper
             helm plugin install https://github.com/nouney/helm-gcs
             SA_VAR_NAME=$(echo ${GOOGLE_PROJECT_ID#*-} |awk '{print toupper($0)}'| sed 's/-/_/g')_ACCT_AUTH
-            eval 'echo $'$SA_VAR_NAME | base64 --decode > sa.json
-            helm gcs init --service-account sa.json gs://honey-helm-charts/
-            helm repo add honey gs://honey-helm-charts/
-            helm gcs push --service-account sa.json --force --retry honeydipper-${VERSION}.tgz
+            eval 'echo $'$SA_VAR_NAME | base64 -d > sa.json
+            GOOGLE_APPLICATION_CREDENTIALS=$PWD/sa.json helm gcs init gs://honey-helm-charts/
+            GOOGLE_APPLICATION_CREDENTIALS=$PWD/sa.json helm repo add honey gs://honey-helm-charts/
+            GOOGLE_APPLICATION_CREDENTIALS=$PWD/sa.json helm gcs push --force --retry honeydipper-${VERSION}.tgz honey
 
 workflows:
   version: 2
