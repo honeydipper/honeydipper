@@ -78,7 +78,7 @@ jobs:
       - run:
           name: dockerbuildpush
           command: |
-            export VERSION=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
+            export VERSION=$(git describe --match '[0-9]*' --tags $(git log -n1 --pretty='%h'))
             export TAG=us.gcr.io/$GOOGLE_PROJECT_ID/honeydipper:$VERSION
             docker build -t $TAG .
             SA_VAR_NAME=$(echo ${GOOGLE_PROJECT_ID#*-} |awk '{print toupper($0)}'| sed 's/-/_/g')_ACCT_AUTH
@@ -87,6 +87,28 @@ jobs:
             gcloud config set compute/zone $GOOGLE_COMPUTE_ZONE
             gcloud auth configure-docker
             docker push $TAG
+  buildcharts:
+    docker:
+      - image: alpine/helm
+    environment:
+      TZ: "/usr/share/zoneinfo/America/Los_Angeles"
+    working_directory: /go/src/github.com/honeyscience/honeydipper
+    steps:
+      - checkout
+      - run:
+          name: buildpushcharts
+          command: |
+            apk add git
+            export VERSION=$(git describe --match 'chart-*' --tags $(git log -n1 --pretty='%h') | sed 's/^chart-//g')
+            cd helm
+            sed -i .bak 's/^version: .*$/version: '${VERSION}'/g' honeydipper/Chart.yaml
+            helm package honeydipper
+            helm plugin install https://github.com/nouney/helm-gcs
+            SA_VAR_NAME=$(echo ${GOOGLE_PROJECT_ID#*-} |awk '{print toupper($0)}'| sed 's/-/_/g')_ACCT_AUTH
+            eval 'echo $'$SA_VAR_NAME | base64 --decode > sa.json
+            helm gcs init --service-account sa.json gs://honey-helm-charts/
+            helm repo add honey gs://honey-helm-charts/
+            helm gcs push --service-account sa.json --force --retry honeydipper-${VERSION}.tgz
 
 workflows:
   version: 2
@@ -95,7 +117,7 @@ workflows:
       - lint:
           filters:
             tags:
-              ignore: /[0-9]+\.[0-9]+\.[0-9]+/
+              ignore: /.+/
             branches:
               only: /.*/
       - test:
@@ -103,7 +125,7 @@ workflows:
             - lint
           filters:
             tags:
-              ignore: /[0-9]+\.[0-9]+\.[0-9]+/
+              ignore: /.+/
             branches:
               only: /.*/
       - integration:
@@ -111,7 +133,7 @@ workflows:
             - test
           filters:
             tags:
-              ignore: /[0-9]+\.[0-9]+\.[0-9]+/
+              ignore: /.+/
             branches:
               only: /.*/
   build:
@@ -145,5 +167,15 @@ workflows:
           filters:
             tags:
               only: /[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              ignore: /.*/
+
+  buildcharts:
+    jobs:
+      - buildcharts:
+          context: org-global
+          filters:
+            tags:
+              only: /chart-[0-9]+\.[0-9]+\.[0-9]+/
             branches:
               ignore: /.*/
