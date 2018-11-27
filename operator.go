@@ -33,22 +33,25 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		}
 
 		log.Debugf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
-		driver, rawaction, params := collapseFunction(nil, &function)
+		driver, rawaction, params, sysData := collapseFunction(nil, &function)
 		log.Debugf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
 
 		worker := operator.getDriverRuntime("driver:" + driver)
-		payload := map[string]interface{}{
-			"param": params,
-			"data":  eventData,
+		finalParams := params
+		if params != nil {
+			finalParams = dipper.Interpolate(params, map[string]interface{}{
+				"sysData": sysData,
+				"event":   eventData,
+			}).(map[string]interface{})
 		}
-		dipper.Recursive(payload, operator.processDriverData)
+		dipper.Recursive(finalParams, operator.processDriverData)
 		ret = []RoutedMessage{
 			{
 				driverRuntime: worker,
 				message: &dipper.Message{
 					Channel: "execute",
 					Subject: rawaction,
-					Payload: payload,
+					Payload: finalParams,
 					IsRaw:   false,
 				},
 			},
@@ -57,8 +60,9 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	return ret
 }
 
-func collapseFunction(s *System, f *Function) (string, string, map[string]interface{}) {
-	var subData map[string]interface{}
+func collapseFunction(s *System, f *Function) (string, string, map[string]interface{}, map[string]interface{}) {
+	var sysData map[string]interface{}
+	var params map[string]interface{}
 	var driver string
 	var rawaction string
 	if len(f.Driver) == 0 {
@@ -70,7 +74,7 @@ func collapseFunction(s *System, f *Function) (string, string, map[string]interf
 		if !ok {
 			log.Panicf("[operator] function not defined %s.%s", f.Target.System, f.Target.Function)
 		}
-		driver, rawaction, subData = collapseFunction(&subSystem, &subFunction)
+		driver, rawaction, params, sysData = collapseFunction(&subSystem, &subFunction)
 	} else {
 		driver = f.Driver
 		rawaction = f.RawAction
@@ -79,26 +83,26 @@ func collapseFunction(s *System, f *Function) (string, string, map[string]interf
 		}
 	}
 
-	if subData == nil {
-		subData = map[string]interface{}{}
-	}
-	if s != nil {
-		sysData, ok := dipper.GetMapData(s.Data, driver+".parameters")
-		if ok {
-			sysDataCopy, _ := dipper.DeepCopy(sysData.(map[string]interface{}))
-			err := mergo.Merge(&subData, sysDataCopy, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				log.Panicf("[operator] unable to merge parameters %+v", err)
-			}
+	if s != nil && s.Data != nil {
+		currentSysDataCopy, _ := dipper.DeepCopy(s.Data)
+		if sysData == nil {
+			sysData = map[string]interface{}{}
+		}
+		err := mergo.Merge(&sysData, currentSysDataCopy, mergo.WithOverride, mergo.WithAppendSlice)
+		if err != nil {
+			log.Panicf("[operator] unable to merge parameters %+v", err)
 		}
 	}
 	if f.Parameters != nil {
-		dataCopy, _ := dipper.DeepCopy(f.Parameters)
-		err := mergo.Merge(&subData, dataCopy, mergo.WithOverride, mergo.WithAppendSlice)
+		currentParamCopy, _ := dipper.DeepCopy(f.Parameters)
+		if params == nil {
+			params = map[string]interface{}{}
+		}
+		err := mergo.Merge(&params, currentParamCopy, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
 			log.Panicf("[operator] unable to merge parameters %+v", err)
 		}
 	}
 
-	return driver, rawaction, subData
+	return driver, rawaction, params, sysData
 }

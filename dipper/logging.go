@@ -6,14 +6,15 @@ import (
 )
 
 var log *logging.Logger
-var backend = logging.NewLogBackend(os.Stderr, "", 0)
-var format = logging.MustStringFormatter(
-	`%{color}%{time:15:04:05.000} %{module}.%{shortfunc} ▶ %{level:.4s} %{id:03x} %{message}%{color:reset}`,
-)
-var backendFormatter = logging.NewBackendFormatter(backend, format)
-var backendLeveled = logging.AddModuleLevel(backendFormatter)
 
 func init() {
+	var backend = logging.NewLogBackend(os.Stderr, "", 0)
+	var format = logging.MustStringFormatter(
+		`%{color}%{time:15:04:05.000} %{module}.%{shortfunc} ▶ %{level:.4s} %{id:03x} %{message}%{color:reset}`,
+	)
+	var backendFormatter = logging.NewBackendFormatter(backend, format)
+	var backendLeveled = logging.AddModuleLevel(backendFormatter)
+
 	backendLeveled.SetLevel(logging.DEBUG, "")
 	logging.SetBackend(backendLeveled)
 }

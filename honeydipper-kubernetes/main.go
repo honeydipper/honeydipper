@@ -36,16 +36,16 @@ func main() {
 
 func recycleDeployment(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
-	deploymentName, ok := dipper.GetMapDataStr(m.Payload, "param.deployment")
+	deploymentName, ok := dipper.GetMapDataStr(m.Payload, "deployment")
 	log.Infof("[%s] got deploymentName %s", driver.Service, deploymentName)
 	if !ok {
 		log.Panicf("[%s] deployment is missing in parameters", driver.Service)
 	}
-	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "param.namespace")
+	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
 	if !ok {
 		nameSpace = "default"
 	}
-	source, ok := dipper.GetMapData(m.Payload, "param.source")
+	source, ok := dipper.GetMapData(m.Payload, "source")
 	if !ok {
 		log.Panicf("[%s] source is missing in parameters", driver.Service)
 	}
