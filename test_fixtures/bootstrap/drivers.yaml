@@ -1,7 +1,8 @@
 ---
 drivers:
   redispubsub:
-    Addr: localhost:6379
+    connection:
+      Addr: localhost:6379
   webhook:
     Addr: ":8081"
   kms:
