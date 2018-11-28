@@ -21,11 +21,11 @@ func TestInterpolateStr(t *testing.T) {
 func TestInterpolate(t *testing.T) {
 	parsed := Interpolate(map[string]interface{}{
 		"notmpl":    "raw",
-		"templated": ":tmpl: this is used by {{ index . \"user\" }}",
+		"templated": " this is used by {{ index . \"user\" }}",
 		"map_with_template": map[string]interface{}{
-			"deep": ":tmpl: another {{ index . \"type\" }}",
+			"deep": " another {{ index . \"type\" }}",
 		},
-		"yaml_with_template": `:tmpl::yaml:
+		"yaml_with_template": `:yaml:
 ---
 test:
   - 1 {{ index (index . "list") "one" }}

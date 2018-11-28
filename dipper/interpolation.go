@@ -32,14 +32,11 @@ func ParseYaml(pattern string) interface{} {
 func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:
-		if strings.HasPrefix(v, ":tmpl:") {
-			ret := InterpolateStr(v[6:], data)
-			if strings.HasPrefix(ret, ":yaml:") {
-				return ParseYaml(ret[6:])
-			}
-			return ret
+		ret := InterpolateStr(v, data)
+		if strings.HasPrefix(ret, ":yaml:") {
+			return ParseYaml(ret[6:])
 		}
-		return v
+		return ret
 	case map[string]interface{}:
 		ret := map[string]interface{}{}
 		for k, val := range v {
