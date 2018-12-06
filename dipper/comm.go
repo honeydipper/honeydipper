@@ -15,14 +15,23 @@ var MasterCommLock = sync.Mutex{}
 
 // Message : the message passed between components of the system
 type Message struct {
+	// on the wire
 	Channel string
 	Subject string
 	Size    int
-	IsRaw   bool
+	Labels  map[string]string
 	Payload interface{}
+
+	// runtime meta info in memory
+	IsRaw    bool
+	Reply    chan Message
+	ReturnTo io.Writer
 }
 
-// SerializeContent : encode a message payload into bytes
+// MessageHandler : a type of functions that take a pointer to a message and handle it
+type MessageHandler func(*Message)
+
+// SerializeContent : encode payload content into bytes
 func SerializeContent(content interface{}) (ret []byte) {
 	var err error
 	if content != nil {
@@ -33,6 +42,17 @@ func SerializeContent(content interface{}) (ret []byte) {
 		return ret
 	}
 	return []byte{}
+}
+
+// SerializePayload : encode a message payload return the modified message
+func SerializePayload(msg *Message) *Message {
+	if !msg.IsRaw {
+		if msg.Payload != nil {
+			msg.Payload = SerializeContent(msg.Payload.([]byte))
+		}
+		msg.IsRaw = true
+	}
+	return msg
 }
 
 // DeserializeContent : decode the content into interface
@@ -50,7 +70,10 @@ func DeserializeContent(content []byte) (ret interface{}) {
 // DeserializePayload : decode a message payload from bytes
 func DeserializePayload(msg *Message) *Message {
 	if msg.IsRaw {
-		msg.Payload = DeserializeContent(msg.Payload.([]byte))
+		if msg.Payload != nil {
+			msg.Payload = DeserializeContent(msg.Payload.([]byte))
+		}
+		msg.IsRaw = false
 	}
 	return msg
 }
@@ -67,14 +90,13 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 	var channel string
 	var subject string
 	var size int
+	var numLabels int
 
-	_, err := fmt.Fscanln(in, &channel, &subject, &size)
-	if err != nil {
-		if err != io.EOF {
-			panic(fmt.Errorf("invalid message envelope: %+v", err))
-		} else {
-			panic(err)
-		}
+	_, err := fmt.Fscanln(in, &channel, &subject, &numLabels, &size)
+	if err == io.EOF {
+		panic(err)
+	} else if err != nil {
+		panic(fmt.Errorf("invalid message envelope: %+v", err))
 	}
 
 	msg = &Message{
@@ -82,6 +104,28 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 		Subject: subject,
 		IsRaw:   true,
 		Size:    size,
+	}
+
+	if numLabels > 0 {
+		msg.Labels = map[string]string{}
+		for ; numLabels > 0; numLabels-- {
+			var lname string
+			var vl int
+			_, err := fmt.Fscanln(in, &lname, &vl)
+			if err != nil {
+				panic(fmt.Errorf("unable to fetch message label name: %+v", err))
+			}
+			if vl > 0 {
+				lvalue := make([]byte, vl)
+				_, err = io.ReadFull(in, lvalue)
+				if err != nil {
+					panic(fmt.Errorf("unable to fetch value for label %s: %+v", lname, err))
+				}
+				msg.Labels[lname] = string(lvalue)
+			} else {
+				msg.Labels[lname] = ""
+			}
+		}
 	}
 
 	if size > 0 {
@@ -96,17 +140,32 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 	return msg
 }
 
-// SendMessage : send a message back to the daemon service
-func SendMessage(out io.Writer, channel string, subject string, payload interface{}) {
-	SendRawMessage(out, channel, subject, SerializeContent(payload))
-}
+// SendMessage : send a message to the io.Writer, may change the message to raw
+func SendMessage(out io.Writer, msg *Message) {
+	payload := []byte{}
+	if msg.Payload != nil {
+		if !msg.IsRaw {
+			payload = SerializeContent(msg.Payload)
+		} else {
+			payload = msg.Payload.([]byte)
+		}
+	}
+	size := len(payload)
+	numLabels := len(msg.Labels)
 
-// SendRawMessage : send unpackaged message back to the daemon service
-func SendRawMessage(out io.Writer, channel string, subject string, payload []byte) {
 	LockComm(out)
 	defer UnlockComm(out)
-	size := len(payload)
-	fmt.Fprintf(out, "%s %s %d\n", channel, subject, size)
+
+	fmt.Fprintf(out, "%s %s %d %d\n", msg.Channel, msg.Subject, numLabels, size)
+	if numLabels > 0 {
+		for lname, lval := range msg.Labels {
+			fmt.Fprintf(out, "%s %d\n", lname, len(lval))
+			_, err := out.Write([]byte(lval))
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 	if size > 0 {
 		_, err := out.Write(payload)
 		if err != nil {

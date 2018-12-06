@@ -99,12 +99,14 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(matched) > 0 {
-		payload := map[string]interface{}{
-			"events": matched,
-			"data":   eventData,
-		}
-
-		driver.SendMessage("eventbus", "message", payload)
+		driver.SendMessage(&dipper.Message{
+			Channel: "eventbus",
+			Subject: "message",
+			Payload: map[string]interface{}{
+				"events": matched,
+				"data":   eventData,
+			},
+		})
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "Done\n")

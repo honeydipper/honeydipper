@@ -35,6 +35,23 @@ func main() {
 }
 
 func recycleDeployment(m *dipper.Message) {
+	sessionID, _ := m.Labels["sessionID"]
+	if sessionID != "" {
+		defer func() {
+			if r := recover(); r != nil {
+				retMsg := &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels:  m.Labels,
+				}
+				retMsg.Labels["status"] = "failure"
+				retMsg.Labels["reason"] = fmt.Sprintf("%+v", r)
+				driver.SendMessage(retMsg)
+				panic(r)
+			}
+		}()
+	}
+
 	m = dipper.DeserializePayload(m)
 	deploymentName, ok := dipper.GetMapDataStr(m.Payload, "deployment")
 	log.Infof("[%s] got deploymentName %s", driver.Service, deploymentName)
@@ -80,10 +97,21 @@ func recycleDeployment(m *dipper.Message) {
 		log.Panicf("[%s] failed to recycle replicaset %+v", driver.Service, err)
 	}
 	log.Infof("[%s] deployment recycled %s.%s", driver.Service, nameSpace, rsName)
+	if ok {
+		retMsg := &dipper.Message{
+			Channel: "eventbus",
+			Subject: "return",
+			Labels:  m.Labels,
+		}
+
+		retMsg.Labels["status"] = "success"
+
+		driver.SendMessage(retMsg)
+	}
 }
 
 func getGKEConfig(cfg map[string]interface{}) *rest.Config {
-	retbytes, err := driver.RPCCall("driver:gcloud.getKubeCfg", cfg)
+	retbytes, err := driver.RPCCall("driver:gcloud", "getKubeCfg", cfg)
 	if err != nil {
 		log.Panicf("[%s] failed call gcloud to get kubeconfig %+v", driver.Service, err)
 	}

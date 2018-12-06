@@ -17,24 +17,19 @@ func NewService(cfg *Config, name string) *Service {
 		name:           name,
 		config:         cfg,
 		driverRuntimes: map[string]*DriverRuntime{},
-		expects:        map[string][]func(*dipper.Message){},
-		responders:     map[string][]func(*DriverRuntime, *dipper.Message){},
-		rpc:            dipper.RPCCaller{Name: "service:" + name},
+		expects:        map[string][]ExpectHandler{},
+		responders:     map[string][]MessageResponder{},
 	}
+	service.RPC.Caller.Init("rpc", "call")
 
-	service.responders["state:cold"] = []func(*DriverRuntime, *dipper.Message){coldReloadDriverRuntime}
+	service.responders["state:cold"] = []MessageResponder{coldReloadDriverRuntime}
+	service.responders["rpc:call"] = []MessageResponder{handleRPCCall}
+	service.responders["rpc:return"] = []MessageResponder{handleRPCReturn}
 
 	return service
 }
 
-func coldReloadDriverRuntime(d *DriverRuntime, m *dipper.Message) {
-	s, _ := Services[d.service]
-	s.checkDeleteDriverRuntime(d.feature, d)
-	d.output.Close()
-	s.loadFeature(d.feature)
-}
-
-func (s *Service) processDriverData(key string, val interface{}) (ret interface{}, replace bool) {
+func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{}, replace bool) {
 	if str, ok := val.(string); ok {
 		if strings.HasPrefix(str, ":enc:") {
 			parts := strings.Split(str, ":")
@@ -47,7 +42,7 @@ func (s *Service) processDriverData(key string, val interface{}) (ret interface{
 			if err != nil {
 				log.Panicf("encrypted data shoud be base64 encoded")
 			}
-			decrypted, err := s.RPCCallRaw("driver:"+encDriver, "decrypt", decoded)
+			decrypted, _ := s.RPCCallRaw("driver:"+encDriver, "decrypt", decoded)
 			return string(decrypted), true
 		}
 	}
@@ -106,8 +101,8 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		}
 	}
 
-	dipper.Recursive(driverData, s.processDriverData)
-	dipper.Recursive(dynamicData, s.processDriverData)
+	dipper.Recursive(driverData, s.decryptDriverData)
+	dipper.Recursive(dynamicData, s.decryptDriverData)
 
 	log.Debugf("[%s] driver %s meta %v", s.name, driverName, driverMeta)
 	driverRuntime := DriverRuntime{
@@ -323,16 +318,12 @@ func (s *Service) serviceLoop() {
 }
 
 func (s *Service) process(msg dipper.Message, runtime *DriverRuntime) {
+	defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
 	expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.meta.Name)
 	if expects, ok := s.deleteExpect(expectKey); ok {
 		for _, f := range expects {
 			go f(&msg)
 		}
-	}
-
-	if strings.HasPrefix(msg.Channel, "rpc") {
-		s.handleRPC(runtime, &msg)
-		return
 	}
 
 	key := fmt.Sprintf("%s:%s", msg.Channel, msg.Subject)
@@ -359,36 +350,7 @@ func (s *Service) process(msg dipper.Message, runtime *DriverRuntime) {
 	}(&msg)
 }
 
-func (s *Service) handleRPC(from *DriverRuntime, m *dipper.Message) bool {
-	if m.Channel == "rpc" {
-		parts := strings.SplitN(m.Subject, ".", 2)
-		feature := parts[0]
-		method := parts[1]
-		callee := s.getDriverRuntime(feature)
-		if callee == nil {
-			log.Panicf("[%s] unable to find the rpc callee %s", s.name, feature)
-		}
-		dipper.SendRawMessage(callee.output, m.Channel, method+"."+from.feature, m.Payload.([]byte))
-		return true
-	} else if m.Channel == "rpcReply" {
-		parts := strings.SplitN(m.Subject, ".", 2)
-		feature := parts[0]
-		rpcID := parts[1]
-		if feature == "service" {
-			s.rpc.HandleRPCReturn(m)
-		} else {
-			caller := s.getDriverRuntime(feature)
-			if caller == nil {
-				log.Panicf("[%s] unable to find the rpc caller %s", s.name, feature)
-			}
-			dipper.SendRawMessage(caller.output, m.Channel, rpcID, m.Payload.([]byte))
-		}
-		return true
-	}
-	return false
-}
-
-func (s *Service) addExpect(expectKey string, processor func(*dipper.Message), timeout time.Duration, except func()) {
+func (s *Service) addExpect(expectKey string, processor ExpectHandler, timeout time.Duration, except func()) {
 	defer s.expectLock.Unlock()
 	s.expectLock.Lock()
 	s.expects[expectKey] = append(s.expects[expectKey], processor)
@@ -414,14 +376,14 @@ func (s *Service) addExpect(expectKey string, processor func(*dipper.Message), t
 	}()
 }
 
-func (s *Service) isExpecting(expectKey string) ([]func(*dipper.Message), bool) {
+func (s *Service) isExpecting(expectKey string) ([]ExpectHandler, bool) {
 	defer s.expectLock.Unlock()
 	s.expectLock.Lock()
 	ret, ok := s.expects[expectKey]
 	return ret, ok
 }
 
-func (s *Service) deleteExpect(expectKey string) ([]func(*dipper.Message), bool) {
+func (s *Service) deleteExpect(expectKey string) ([]ExpectHandler, bool) {
 	defer s.expectLock.Unlock()
 	s.expectLock.Lock()
 	ret, ok := s.expects[expectKey]
@@ -457,10 +419,34 @@ func (s *Service) checkDeleteDriverRuntime(feature string, check *DriverRuntime)
 
 // RPCCallRaw : making a PRC call with raw bytes from driver to another driver
 func (s *Service) RPCCallRaw(feature string, method string, params []byte) ([]byte, error) {
-	return s.rpc.RPCCallRaw(s.getDriverRuntime(feature).output, method, params)
+	return s.RPC.Caller.CallRaw(s.getDriverRuntime(feature).output, feature, method, params)
 }
 
 // RPCCall : making a PRC call from driver to another driver
 func (s *Service) RPCCall(feature string, method string, params interface{}) ([]byte, error) {
-	return s.rpc.RPCCall(s.getDriverRuntime(feature).output, method, params)
+	return s.RPC.Caller.Call(s.getDriverRuntime(feature).output, feature, method, params)
+}
+
+func coldReloadDriverRuntime(d *DriverRuntime, m *dipper.Message) {
+	s := Services[d.service]
+	s.checkDeleteDriverRuntime(d.feature, d)
+	d.output.Close()
+	s.loadFeature(d.feature)
+}
+
+func handleRPCCall(from *DriverRuntime, m *dipper.Message) {
+	feature := m.Labels["feature"]
+	m.Labels["caller"] = from.feature
+	s := Services[from.service]
+	dipper.SendMessage(s.getDriverRuntime(feature).output, m)
+}
+
+func handleRPCReturn(from *DriverRuntime, m *dipper.Message) {
+	caller := m.Labels["caller"]
+	s := Services[from.service]
+	if caller == "-" {
+		s.RPC.Caller.HandleReturn(m)
+	} else {
+		dipper.SendMessage(s.getDriverRuntime(caller).output, m)
+	}
 }

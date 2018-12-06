@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/imdario/mergo"
 	"github.com/mitchellh/mapstructure"
@@ -18,6 +19,23 @@ func startOperator(cfg *Config) {
 func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	log.Infof("[operator] routing message %s.%s", msg.Channel, msg.Subject)
 	if msg.Channel == "eventbus" && msg.Subject == "command" {
+		defer func() {
+			if r := recover(); r != nil {
+				if sessionID, ok := msg.Labels["sessionID"]; ok && sessionID != "" {
+					newLabels := msg.Labels
+					newLabels["status"] = "blocked"
+					newLabels["reason"] = fmt.Sprintf("%+v", r)
+					eventbus := operator.getDriverRuntime("eventbus")
+					dipper.SendMessage(eventbus.output, &dipper.Message{
+						Channel: "eventbus",
+						Subject: "return",
+						Labels:  newLabels,
+					})
+				}
+				panic(r)
+			}
+		}()
+
 		var driver string
 		var params map[string]interface{}
 		msg = dipper.DeserializePayload(msg)
@@ -42,9 +60,10 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			finalParams = dipper.Interpolate(params, map[string]interface{}{
 				"sysData": sysData,
 				"event":   eventData,
+				"labels":  msg.Labels,
 			}).(map[string]interface{})
 		}
-		dipper.Recursive(finalParams, operator.processDriverData)
+		dipper.Recursive(finalParams, operator.decryptDriverData)
 		ret = []RoutedMessage{
 			{
 				driverRuntime: worker,
@@ -53,7 +72,15 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 					Subject: rawaction,
 					Payload: finalParams,
 					IsRaw:   false,
+					Labels:  msg.Labels,
 				},
+			},
+		}
+	} else if msg.Channel == "eventbus" && msg.Subject == "return" {
+		ret = []RoutedMessage{
+			{
+				driverRuntime: operator.getDriverRuntime("eventbus"),
+				message:       msg,
 			},
 		}
 	}

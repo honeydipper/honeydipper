@@ -96,17 +96,6 @@
   version = "v1.2.0"
 
 [[projects]]
-  digest = "1:38ec74012390146c45af1f92d46e5382b50531247929ff3a685d2b2be65155ac"
-  name = "github.com/gomodule/redigo"
-  packages = [
-    "internal",
-    "redis",
-  ]
-  pruneopts = "UT"
-  revision = "9c11da706d9b7902c6da69c592f75637793fe121"
-  version = "v2.0.0"
-
-[[projects]]
   branch = "master"
   digest = "1:0bfbe13936953a98ae3cfe8ed6670d396ad81edf069a806d2f6515d7bb6950df"
   name = "github.com/google/btree"
@@ -512,14 +501,6 @@
   version = "v0.9.0"
 
 [[projects]]
-  digest = "1:f62580f284500de77403734891fe857320113e995a9d9b1cab6630c05d179576"
-  name = "gopkg.in/redsync.v1"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "355e2d8c1d50620c86836ef200e76047996dc843"
-  version = "v1.1.0"
-
-[[projects]]
   digest = "1:866df945fc92cd221d2b384dca7de5f3131a6113b9f72a7a8019ae5046abe828"
   name = "gopkg.in/src-d/go-billy.v4"
   packages = [
@@ -747,19 +728,20 @@
     "cloud.google.com/go/kms/apiv1",
     "github.com/ghodss/yaml",
     "github.com/go-redis/redis",
-    "github.com/gomodule/redigo/redis",
     "github.com/imdario/mergo",
     "github.com/mitchellh/mapstructure",
     "github.com/op/go-logging",
     "github.com/stretchr/testify/assert",
+    "golang.org/x/crypto/ssh",
     "golang.org/x/oauth2",
     "golang.org/x/oauth2/google",
     "google.golang.org/api/container/v1",
     "google.golang.org/genproto/googleapis/cloud/kms/v1",
-    "gopkg.in/redsync.v1",
     "gopkg.in/src-d/go-git.v4",
     "gopkg.in/src-d/go-git.v4/config",
     "gopkg.in/src-d/go-git.v4/plumbing",
+    "gopkg.in/src-d/go-git.v4/plumbing/transport",
+    "gopkg.in/src-d/go-git.v4/plumbing/transport/ssh",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/rest",

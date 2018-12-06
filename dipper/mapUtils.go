@@ -30,6 +30,9 @@ func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 		}
 		current = reflect.ValueOf(nextValue.Interface())
 	}
+	if !current.IsValid() {
+		return nil, ok
+	}
 	return current.Interface(), true
 }
 

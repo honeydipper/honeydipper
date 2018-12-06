@@ -31,7 +31,11 @@ func main() {
 func waitAndSendDummyEvent(msg *dipper.Message) {
 	go func() {
 		time.Sleep(20 * time.Second)
-		driver.SendMessage("eventbus", "message", map[string]interface{}{"data": []string{"line 1", "line 2"}})
+		driver.SendMessage(&dipper.Message{
+			Channel: "eventbus",
+			Subject: "message",
+			Payload: map[string]interface{}{"data": []string{"line 1", "line 2"}},
+		})
 		driver.State = "cold"
 		driver.Ping(msg)
 	}()

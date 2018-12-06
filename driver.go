@@ -76,11 +76,7 @@ func (runtime *DriverRuntime) sendOptions() {
 }
 
 func (runtime *DriverRuntime) sendMessage(msg *dipper.Message) {
-	if msg.IsRaw && msg.Payload != nil {
-		dipper.SendRawMessage(runtime.output, msg.Channel, msg.Subject, msg.Payload.([]byte))
-	} else {
-		dipper.SendMessage(runtime.output, msg.Channel, msg.Subject, msg.Payload)
-	}
+	dipper.SendMessage(runtime.output, msg)
 }
 
 func (runtime *DriverRuntime) fetchMessages() {

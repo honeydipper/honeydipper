@@ -2,96 +2,166 @@ package dipper
 
 import (
 	"errors"
+	"fmt"
 	"io"
-	"strings"
 	"sync"
 	"time"
 )
 
 // RPCCaller : an object that makes RPC calls
 type RPCCaller struct {
-	Name    string
-	RPCSig  map[string]chan interface{}
-	RPCLock sync.Mutex
+	Channel string
+	Subject string
+	Result  map[string]chan interface{}
+	Lock    sync.Mutex
+	Counter int
 }
 
-// RPCCallRaw : making a RPC call to another driver with raw data
-func (c *RPCCaller) RPCCallRaw(out io.Writer, method string, params []byte) ([]byte, error) {
-	var rpcID string
-	sig := make(chan interface{}, 1)
-	func() {
-		c.RPCLock.Lock()
-		defer c.RPCLock.Unlock()
-		for ok := true; ok; _, ok = c.RPCSig[rpcID] {
-			rpcID = RandString(6)
-		}
-		if c.RPCSig == nil {
-			c.RPCSig = map[string]chan interface{}{}
-		}
-		c.RPCSig[rpcID] = sig
-	}()
-	defer func() {
-		c.RPCLock.Lock()
-		defer c.RPCLock.Unlock()
-		if _, ok := c.RPCSig[rpcID]; ok {
-			delete(c.RPCSig, rpcID)
-		}
-	}()
+// Init : initializing rpc caller
+func (c *RPCCaller) Init(channel string, subject string) {
+	c.Result = map[string]chan interface{}{}
+	InitIDMap(&c.Result)
+	c.Counter = 0
+	c.Channel = channel
+	c.Subject = subject
+}
 
-	subject := method + "." + rpcID
-	if strings.HasPrefix(c.Name, "service:") {
-		subject = subject + ".service"
-	}
-	SendRawMessage(out, "rpc", subject, params)
+// Call : making a RPC call to another driver with structured data
+func (c *RPCCaller) Call(out io.Writer, feature string, method string, params interface{}) ([]byte, error) {
+	ret, err := c.CallRaw(out, feature, method, SerializeContent(params))
+	return ret, err
+}
 
+// CallRaw : making a RPC call to another driver with raw data
+func (c *RPCCaller) CallRaw(out io.Writer, feature string, method string, params []byte) ([]byte, error) {
+
+	// keep track the call in the map
+	var result = make(chan interface{}, 1)
+	var rpcID = IDMapPut(&c.Result, result)
+
+	// clean up the call from the map when done
+	defer IDMapDel(&c.Result, rpcID)
+
+	// making the call by sending a message
+	SendMessage(out, &Message{
+		Channel: c.Channel,
+		Subject: c.Subject,
+		Labels: map[string]string{
+			"rpcID":   rpcID,
+			"feature": feature,
+			"method":  method,
+			"caller":  "-",
+		},
+		Payload: params,
+		IsRaw:   true,
+	})
+
+	// waiting for the result to come back
 	select {
-	case msg := <-sig:
+	case msg := <-result:
 		if e, ok := msg.(error); ok {
 			return nil, e
 		}
 		return msg.([]byte), nil
-	case <-time.After(time.Second * 10):
+	case <-time.After(time.Second * 10): // TODO: make timeout configurable
 		return nil, errors.New("timeout")
 	}
 }
 
-// RPCCall : making a RPC call to another driver
-func (c *RPCCaller) RPCCall(out io.Writer, method string, params interface{}) ([]byte, error) {
-	return c.RPCCallRaw(out, method, SerializeContent(params))
+// HandleReturn : receiving return of a RPC call
+func (c *RPCCaller) HandleReturn(m *Message) {
+	rpcID := m.Labels["rpcID"]
+	result := c.Result[rpcID]
+
+	reason, ok := m.Labels["error"]
+
+	if ok {
+		result <- errors.New(reason)
+	} else {
+		result <- m.Payload
+	}
 }
 
-// HandleRPCReturn : receiving return of a RPC call
-func (c *RPCCaller) HandleRPCReturn(m *Message) {
-	log.Debugf("[%s] handling rpc return", c.Name)
-	parts := strings.Split(m.Subject, ".")
-	if parts[0] == "service" {
-		parts = parts[1:]
+// RPCProvider : an interface for providing RPC handling feature
+type RPCProvider struct {
+	RPCHandlers   map[string]MessageHandler
+	DefaultReturn io.Writer
+	Channel       string
+	Subject       string
+}
+
+// Init : initializing rpc provider
+func (p *RPCProvider) Init(channel string, subject string, defaultWriter io.Writer) {
+	p.RPCHandlers = map[string]MessageHandler{}
+	p.DefaultReturn = defaultWriter
+	p.Channel = channel
+	p.Subject = subject
+}
+
+// ReturnError : return error to rpc caller
+func (p *RPCProvider) ReturnError(call *Message, reason string) {
+	var returnTo = call.ReturnTo
+	if returnTo == nil {
+		returnTo = p.DefaultReturn
 	}
-	rpcID := parts[0]
-	hasErr := len(parts) > 1
-	var sig chan interface{}
-	var ok bool
-	func() {
-		c.RPCLock.Lock()
-		defer c.RPCLock.Unlock()
-		sig, ok = c.RPCSig[rpcID]
-	}()
-	if !ok {
-		log.Warningf("[%s] rpcID not found or expired %s", c.Name, rpcID)
-	} else {
-		if hasErr {
-			m = DeserializePayload(m)
-			reason, _ := GetMapDataStr(m.Payload, "reason")
-			sig <- errors.New(reason)
-		} else {
-			sig <- m.Payload
-		}
-		func() {
-			c.RPCLock.Lock()
-			defer c.RPCLock.Unlock()
-			if _, ok := c.RPCSig[rpcID]; ok {
-				delete(c.RPCSig, rpcID)
+	SendMessage(returnTo, &Message{
+		Channel: p.Channel,
+		Subject: p.Subject,
+		Labels: map[string]string{
+			"rpcID":  call.Labels["rpcID"],
+			"caller": call.Labels["caller"],
+			"error":  reason,
+		},
+	})
+}
+
+// Return : return a value to rpc caller
+func (p *RPCProvider) Return(call *Message, retval *Message) {
+	var returnTo = call.ReturnTo
+	if returnTo == nil {
+		returnTo = p.DefaultReturn
+	}
+	SendMessage(returnTo, &Message{
+		Channel: p.Channel,
+		Subject: p.Subject,
+		Labels: map[string]string{
+			"rpcID":  call.Labels["rpcID"],
+			"caller": call.Labels["caller"],
+		},
+		Payload: retval.Payload,
+		IsRaw:   retval.IsRaw,
+	})
+}
+
+// Router : route the message to rpc handlers
+func (p *RPCProvider) Router(msg *Message) {
+	method := msg.Labels["method"]
+	f := p.RPCHandlers[method]
+	msg.Reply = make(chan Message, 1)
+
+	go func() {
+		defer close(msg.Reply)
+		select {
+		case reply := <-msg.Reply:
+			if reason, ok := reply.Labels["error"]; ok {
+				p.ReturnError(msg, reason)
+			} else {
+				p.Return(msg, &reply)
 			}
-		}()
-	}
+		case <-time.After(time.Second * 10):
+			p.ReturnError(msg, "timeout")
+		}
+	}()
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg.Reply <- Message{
+				Labels: map[string]string{
+					"error": fmt.Sprintf("%+v", r),
+				},
+			}
+			panic(r)
+		}
+	}()
+	f(msg)
 }

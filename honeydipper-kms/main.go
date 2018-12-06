@@ -3,6 +3,7 @@ package main
 import (
 	"cloud.google.com/go/kms/apiv1"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
@@ -25,29 +26,33 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "kms")
-	driver.RPCHandlers["decrypt"] = decrypt
+	driver.RPC.Provider.RPCHandlers["decrypt"] = decrypt
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
 
-func decrypt(from string, rpcID string, payload []byte) {
+func decrypt(msg *dipper.Message) {
 	name, ok := driver.GetOptionStr("data.keyname")
 	if !ok {
-		driver.RPCError(from, rpcID, "key not configured")
+		panic(errors.New("key not configured"))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	req := &kmspb.DecryptRequest{
 		Name:       name,
-		Ciphertext: payload,
+		Ciphertext: msg.Payload.([]byte),
 	}
 	client, err := kms.NewKeyManagementClient(ctx)
 	if err != nil {
-		driver.RPCError(from, rpcID, "failed to create kms client")
+		panic(errors.New("failed to create kms client"))
 	}
 	resp, err := client.Decrypt(ctx, req)
 	if err != nil {
-		driver.RPCError(from, rpcID, "failed to decrypt")
+		panic(errors.New("failed to decrypt"))
 	}
-	driver.RPCReturnRaw(from, rpcID, resp.Plaintext)
+
+	msg.Reply <- dipper.Message{
+		Payload: resp.Plaintext,
+		IsRaw:   true,
+	}
 }

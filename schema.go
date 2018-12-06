@@ -49,16 +49,10 @@ type System struct {
 	Functions map[string]Function      `json:"functions,omitempty"`
 }
 
-// Condition : used to for conditioning in workflow
-type Condition struct {
-	Op     string `json:"op,omitempty"`
-	Values []string
-}
-
 // Workflow : defines the steps, and relationship of the actions
 type Workflow struct {
-	Type       string      `json:"type,omitempty"`
-	Conditions []Condition `json:"conditions,omitempty"`
+	Type       string `json:"type,omitempty"`
+	Conditions string `json:"conditions,omitempty"`
 	Content    interface{}
 }
 
@@ -107,13 +101,19 @@ type Config struct {
 	}
 }
 
+// MessageResponder : a function type that respond to messages
+type MessageResponder func(*DriverRuntime, *dipper.Message)
+
+// ExpectHandler : a function type that handles expected message
+type ExpectHandler func(*dipper.Message)
+
 // Service : service is a collection of daemon's feature
 type Service struct {
 	name               string
 	config             *Config
 	driverRuntimes     map[string]*DriverRuntime
-	expects            map[string][]func(*dipper.Message)
-	responders         map[string][]func(*DriverRuntime, *dipper.Message)
+	expects            map[string][]ExpectHandler
+	responders         map[string][]MessageResponder
 	transformers       map[string][]func(*DriverRuntime, *dipper.Message) *dipper.Message
 	dynamicFeatureData map[string]interface{}
 	expectLock         sync.Mutex
@@ -122,7 +122,9 @@ type Service struct {
 	Route              func(*dipper.Message) []RoutedMessage
 	DiscoverFeatures   func(*ConfigSet) map[string]interface{}
 	ServiceReload      func(*Config)
-	rpc                dipper.RPCCaller
+	RPC                struct {
+		Caller dipper.RPCCaller
+	}
 }
 
 // Driver : the parent class for all driver types

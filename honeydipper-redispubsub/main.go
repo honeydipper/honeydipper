@@ -34,16 +34,13 @@ func init() {
 func main() {
 	flag.Parse()
 	driver = dipper.NewDriver(os.Args[1], "redispubsub")
+	driver.Start = start
 	if driver.Service == "receiver" {
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
-		driver.Start = start
 	} else if driver.Service == "engine" {
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
-		driver.Start = start
 	} else if driver.Service == "operator" {
-		driver.MessageHandlers["eventbus:message"] = relayToRedis
 		driver.MessageHandlers["eventbus:return"] = relayToRedis
-		driver.Start = start
 	}
 	driver.Run()
 }
@@ -102,43 +99,34 @@ func start(msg *dipper.Message) {
 }
 
 func relayToRedis(msg *dipper.Message) {
-	client := redis.NewClient(redisOptions)
-	defer client.Close()
-
-	var buf []byte
-	var returnTo string
-
-	if !msg.IsRaw {
-		if msg.Subject == "command" {
-			msg.Payload.(map[string]interface{})["from"] = dipper.GetIP()
-		}
-		buf = dipper.SerializeContent(msg.Payload)
-	} else {
-		buf = msg.Payload.([]byte)
-		msg = dipper.DeserializePayload(msg)
-		if msg.Subject == "command" {
-			msg.Payload.(map[string]interface{})["from"] = dipper.GetIP()
-			buf = dipper.SerializeContent(msg.Payload)
-		}
-	}
-
-	returnTo, _ = dipper.GetMapDataStr(msg.Payload, "return_to")
-
 	topic := eventbus.EventTopic
-	isReturn := false
 	if msg.Subject == "command" {
+		sessionID, ok := msg.Labels["sessionID"]
+		if ok && sessionID != "" {
+			msg.Labels["engine"] = dipper.GetIP()
+		}
 		topic = eventbus.CommandTopic
 	} else if msg.Subject == "return" {
+		returnTo, ok := msg.Labels["engine"]
+		if !ok {
+			log.Panicf("[%s] return message without receipient", driver.Service)
+		}
 		topic = eventbus.ReturnTopic + returnTo
-		isReturn = true
 	}
 
+	payload := map[string]interface{}{
+		"labels": msg.Labels,
+	}
+	if msg.Payload != nil {
+		payload["data"] = string(msg.Payload.([]byte))
+	}
+	buf := dipper.SerializeContent(payload)
+	client := redis.NewClient(redisOptions)
+	defer client.Close()
 	if err := client.RPush(topic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
-	if isReturn {
-		client.Expire(topic, time.Second*1800)
-	}
+	client.Expire(topic, time.Second*1800)
 }
 
 func subscribe(topic string, subject string) {
@@ -147,19 +135,34 @@ func subscribe(topic string, subject string) {
 			defer dipper.SafeExitOnError("[%s] re-subscribing to redis %s", driver.Service, topic)
 			client := redis.NewClient(redisOptions)
 			defer client.Close()
-			log.Infof("[%s] start receiving messages on topic: %s", driver.Service, topic)
+			realTopic := topic
+			if topic == eventbus.ReturnTopic {
+				realTopic = topic + dipper.GetIP()
+			}
+			log.Infof("[%s] start receiving messages on topic: %s", driver.Service, realTopic)
 			for {
-				realTopic := topic
-				if topic == eventbus.ReturnTopic {
-					realTopic = topic + dipper.GetIP()
-				}
 				messages, err := client.BLPop(time.Second, realTopic).Result()
 				if err != nil && err != redis.Nil {
 					log.Panicf("[%s] redis error: %v", driver.Service, err)
 				}
 				if len(messages) > 1 {
 					for _, m := range messages[1:] {
-						driver.SendRawMessage("eventbus", subject, []byte(m))
+						payload := dipper.DeserializeContent([]byte(m))
+						labels := map[string]string{}
+						labelMap, ok := dipper.GetMapData(payload, "labels")
+						if ok {
+							for k, v := range labelMap.(map[string]interface{}) {
+								labels[k] = v.(string)
+							}
+						}
+						data, _ := dipper.GetMapDataStr(payload, "data")
+						driver.SendMessage(&dipper.Message{
+							Channel: "eventbus",
+							Subject: subject,
+							Payload: []byte(data),
+							Labels:  labels,
+							IsRaw:   true,
+						})
 					}
 				}
 			}

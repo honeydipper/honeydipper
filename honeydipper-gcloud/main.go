@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
@@ -26,24 +27,25 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "gcloud")
-	driver.RPCHandlers["getKubeCfg"] = getKubeCfg
+	driver.RPC.Provider.RPCHandlers["getKubeCfg"] = getKubeCfg
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
 
-func getKubeCfg(from string, rpcID string, payload []byte) {
-	params := dipper.DeserializeContent(payload)
+func getKubeCfg(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
 	serviceAccountBytes, ok := dipper.GetMapDataStr(params, "service_account")
 	if !ok {
-		driver.RPCError(from, rpcID, "service_account required")
+		panic(errors.New("service_account required"))
 	}
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
-		driver.RPCError(from, rpcID, "project required")
+		panic(errors.New("project required"))
 	}
 	location, ok := dipper.GetMapDataStr(params, "location")
 	if !ok {
-		driver.RPCError(from, rpcID, "location required")
+		panic(errors.New("location required"))
 	}
 	regional := false
 	if regionalData, ok := dipper.GetMapData(params, "regional"); ok {
@@ -51,15 +53,15 @@ func getKubeCfg(from string, rpcID string, payload []byte) {
 	}
 	cluster, ok := dipper.GetMapDataStr(params, "cluster")
 	if !ok {
-		driver.RPCError(from, rpcID, "cluster required")
+		panic(errors.New("cluster required"))
 	}
 	conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
-		driver.RPCError(from, rpcID, "invalid service account")
+		panic(errors.New("invalid service account"))
 	}
 	containerService, err := container.New(conf.Client(oauth2.NoContext))
 	if err != nil {
-		driver.RPCError(from, rpcID, "unable to create gcloud client")
+		panic(errors.New("unable to create gcloud client"))
 	}
 	var name string
 	if regional {
@@ -74,16 +76,18 @@ func getKubeCfg(from string, rpcID string, payload []byte) {
 		clusterObj, err = containerService.Projects.Locations.Clusters.Get(name).Context(execContext).Do()
 	}()
 	if err != nil {
-		driver.RPCError(from, rpcID, "failed to fetch cluster info from gcloud")
+		panic(errors.New("failed to fetch cluster info from gcloud"))
 	}
 	tokenSource := conf.TokenSource(oauth2.NoContext)
 	token, err := tokenSource.Token()
 	if err != nil {
-		driver.RPCError(from, rpcID, "failed to fetch a access_token")
+		panic(errors.New("failed to fetch a access_token"))
 	}
-	driver.RPCReturn(from, rpcID, map[string]interface{}{
-		"Host":   clusterObj.Endpoint,
-		"Token":  token.AccessToken,
-		"CACert": clusterObj.MasterAuth.ClusterCaCertificate,
-	})
+	msg.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"Host":   clusterObj.Endpoint,
+			"Token":  token.AccessToken,
+			"CACert": clusterObj.MasterAuth.ClusterCaCertificate,
+		},
+	}
 }
