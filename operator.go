@@ -43,6 +43,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		function := Function{}
 		data, _ := dipper.GetMapData(msg.Payload, "data")
 		event, _ := dipper.GetMapData(msg.Payload, "event")
+		wfdata, _ := dipper.GetMapData(msg.Payload, "wfdata")
 		funcDef, ok := dipper.GetMapData(msg.Payload, "function")
 		if !ok {
 			log.Panicf("[operator] no function received")
@@ -65,6 +66,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 				"data":    data,
 				"event":   event,
 				"labels":  msg.Labels,
+				"wfdata":  wfdata,
 				"params":  params,
 			}).(map[string]interface{})
 		}

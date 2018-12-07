@@ -54,6 +54,7 @@ type Workflow struct {
 	Type      string `json:"type,omitempty"`
 	Condition string `json:"condition,omitempty"`
 	Content   interface{}
+	Data      map[string]interface{}
 }
 
 // Rule : is a data structure defining what action to take upon an event

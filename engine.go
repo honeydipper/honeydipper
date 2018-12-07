@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
+	"github.com/imdario/mergo"
 	"github.com/mitchellh/mapstructure"
 	"sync"
 )
@@ -15,6 +16,7 @@ type WorkflowSession struct {
 	Type   string
 	parent string
 	event  interface{}
+	wfdata map[string]interface{}
 }
 
 var sessions = map[string]*WorkflowSession{}
@@ -120,6 +122,27 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 	switch w.Type {
 	case "":
 		next := engine.config.config.Workflows[w.Content.(string)]
+		var session = &WorkflowSession{
+			Type:   w.Type,
+			parent: sessionID,
+			step:   0,
+			data:   msg.Payload,
+		}
+		if sessionID != "" {
+			session.event = sessions[sessionID].event
+			wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
+			err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
+			if err != nil {
+				panic(err)
+			}
+			session.wfdata = wfdata
+		} else {
+			session.event = msg.Payload
+			session.wfdata = w.Data
+		}
+
+		sessionID := dipper.IDMapPut(&sessions, session)
+		log.Infof("[engine] starting named session %s %s", w.Content.(string), sessionID)
 		executeWorkflow(sessionID, &next, msg)
 
 	case "function":
@@ -143,6 +166,7 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		}
 		if sessionID != "" {
 			payload["event"] = sessions[sessionID].event
+			payload["wfdata"] = sessions[sessionID].wfdata
 		}
 		cmdmsg := &dipper.Message{
 			Channel: "eventbus",
@@ -170,9 +194,17 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		}
 		if sessionID != "" {
 			session.event = sessions[sessionID].event
+			wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
+			err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
+			if err != nil {
+				panic(err)
+			}
+			session.wfdata = wfdata
 		} else {
 			session.event = msg.Payload
+			session.wfdata = w.Data
 		}
+
 		for _, v := range w.Content.([]interface{}) {
 			w := &Workflow{}
 			err := mapstructure.Decode(v, w)
@@ -184,6 +216,7 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		sessionID := dipper.IDMapPut(&sessions, session)
 		// TODO: global session timeout should be handled
 
+		log.Infof("[engine] starting pipe session %s", sessionID)
 		executeWorkflow(sessionID, session.work[0], msg)
 
 	case "if":
@@ -195,9 +228,17 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		}
 		if sessionID != "" {
 			session.event = sessions[sessionID].event
+			wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
+			err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
+			if err != nil {
+				panic(err)
+			}
+			session.wfdata = wfdata
 		} else {
 			session.event = msg.Payload
+			session.wfdata = w.Data
 		}
+
 		if w.Condition == "" {
 			log.Panicf("[engine] no condition speicified for if workflow")
 		}
@@ -222,6 +263,7 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		if value == "false" || value == "0" || value == "nil" || value == "" {
 			if len(choices) > 1 {
 				childSessionID := dipper.IDMapPut(&sessions, session)
+				log.Infof("[engine] starting if session %s", childSessionID)
 				executeWorkflow(childSessionID, session.work[1], msg)
 			} else {
 				if sessionID != "" {
@@ -234,6 +276,7 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 			}
 		} else {
 			childSessionID := dipper.IDMapPut(&sessions, session)
+			log.Infof("[engine] starting if session %s", childSessionID)
 			executeWorkflow(childSessionID, session.work[0], msg)
 		}
 
@@ -247,9 +290,17 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		}
 		if sessionID != "" {
 			session.event = sessions[sessionID].event
+			wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
+			err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
+			if err != nil {
+				panic(err)
+			}
+			session.wfdata = wfdata
 		} else {
 			session.event = msg.Payload
+			session.wfdata = w.Data
 		}
+
 		var threads []Workflow
 		err := mapstructure.Decode(w.Content, &threads)
 		if err != nil {
@@ -261,12 +312,12 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 			session.work = append(session.work, &current)
 		}
 		childSessionID := dipper.IDMapPut(&sessions, session)
+		log.Infof("[engine] parallel pipe session %s", childSessionID)
 		for _, cw := range session.work {
 			mcopy, err := dipper.MessageCopy(msg)
 			if err != nil {
 				panic(err)
 			}
-			log.Debugf("%+v", *cw)
 			go executeWorkflow(childSessionID, cw, mcopy)
 		}
 
@@ -300,18 +351,18 @@ func buildRuleMap(cfg *Config) {
 		}
 
 		todo := rule.Do
-		if len(rule.Do.Type) == 0 {
-			todoName, ok := rule.Do.Content.(string)
-			if !ok {
-				log.Warningf("workflow without type should have a name in content pointing to real workflow")
-				break
-			}
-			todo, ok = cfg.config.Workflows[todoName]
-			if !ok {
-				log.Warningf("workflow points to a non-exist workflow %s", todoName)
-				break
-			}
-		}
+		// if len(rule.Do.Type) == 0 {
+		// 	todoName, ok := rule.Do.Content.(string)
+		// 	if !ok {
+		// 		log.Warningf("workflow without type should have a name in content pointing to real workflow")
+		// 		break
+		// 	}
+		// 	todo, ok = cfg.config.Workflows[todoName]
+		// 	if !ok {
+		// 		log.Warningf("workflow points to a non-exist workflow %s", todoName)
+		// 		break
+		// 	}
+		// }
 
 		ruleMap[system+"."+trigger] = append(ruleMap[system+"."+trigger], &todo)
 	}
