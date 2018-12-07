@@ -97,7 +97,7 @@ func recycleDeployment(m *dipper.Message) {
 		log.Panicf("[%s] failed to recycle replicaset %+v", driver.Service, err)
 	}
 	log.Infof("[%s] deployment recycled %s.%s", driver.Service, nameSpace, rsName)
-	if ok {
+	if sessionID, ok := m.Labels["sessionID"]; ok && sessionID != "" {
 		retMsg := &dipper.Message{
 			Channel: "eventbus",
 			Subject: "return",

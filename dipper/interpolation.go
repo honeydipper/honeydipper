@@ -5,11 +5,20 @@ import (
 	"github.com/ghodss/yaml"
 	"strings"
 	"text/template"
+	"time"
 )
+
+// FuncMap : used to add functions to the go templates
+var FuncMap = template.FuncMap{
+	"fromPath": MustGetMapData,
+	"now":      time.Now,
+	"duration": time.ParseDuration,
+	"ISO8601":  func(t time.Time) string { return t.Format(time.RFC3339) },
+}
 
 // InterpolateStr : parse the string as go template
 func InterpolateStr(pattern string, data interface{}) string {
-	tmpl := template.Must(template.New("got").Parse(pattern))
+	tmpl := template.Must(template.New("got").Funcs(FuncMap).Parse(pattern))
 	buf := new(bytes.Buffer)
 	if err := tmpl.Execute(buf, data); err != nil {
 		log.Panicf("failed to interpolate: %+v \ncontent:  %+v", err, pattern)

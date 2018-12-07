@@ -72,22 +72,30 @@ func continueWorkflow(sessionID string, msg *dipper.Message) {
 
 	switch session.Type {
 	case "":
-		log.Infof("[engine] session completed %s", sessionID)
+		log.Infof("[engine] named session completed %s", sessionID)
 		terminateWorkflow(sessionID, msg)
 		return
 
 	case "pipe":
 		session.step++
 		if session.step >= len(session.work) {
-			log.Infof("[engine] session completed %s", sessionID)
+			log.Infof("[engine] pipe session completed %s", sessionID)
 			terminateWorkflow(sessionID, msg)
 			return
 		}
 		executeWorkflow(sessionID, session.work[session.step], msg)
 
 	case "if":
-		log.Infof("[engine] session completed %s", sessionID)
+		log.Infof("[engine] if session completed %s", sessionID)
 		terminateWorkflow(sessionID, msg)
+		return
+
+	case "parallel":
+		session.step++
+		if session.step == len(session.work) {
+			log.Infof("[engine] parallel session completed %s", sessionID)
+			terminateWorkflow(sessionID, msg)
+		}
 		return
 	}
 }
@@ -176,17 +184,26 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 			step:   0,
 			data:   msg.Payload,
 		}
-		if w.Conditions == "" {
+		if w.Condition == "" {
 			log.Panicf("[engine] no condition speicified for if workflow")
 		}
-		value := dipper.InterpolateStr(w.Conditions, map[string]interface{}{
-			"data":   msg.Payload.(map[string]interface{})["data"],
+
+		idata := msg.Payload
+		if msg.Subject != "return" {
+			idata = msg.Payload.(map[string]interface{})["data"]
+		}
+		value := dipper.InterpolateStr(w.Condition, map[string]interface{}{
+			"data":   idata,
 			"labels": msg.Labels,
 		})
+		log.Debugf("[engine] check condition workflow for %s : %s", sessionID, value)
 		var choices []Workflow
 		err := mapstructure.Decode(w.Content, &choices)
 		if err != nil {
 			panic(err)
+		}
+		for _, choice := range choices {
+			session.work = append(session.work, &choice)
 		}
 		if value == "false" || value == "0" || value == "nil" || value == "" {
 			if len(choices) > 1 {
@@ -204,6 +221,34 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		} else {
 			childSessionID := dipper.IDMapPut(&sessions, session)
 			executeWorkflow(childSessionID, session.work[0], msg)
+		}
+
+	case "parallel":
+		var session = &WorkflowSession{
+			Type:   w.Type,
+			parent: sessionID,
+			step:   0,
+			data:   msg.Payload,
+			work:   []*Workflow{},
+		}
+		var threads []Workflow
+		err := mapstructure.Decode(w.Content, &threads)
+		if err != nil {
+			panic(err)
+		}
+		log.Debugf("%+v", threads)
+		for _, thread := range threads {
+			var current = thread
+			session.work = append(session.work, &current)
+		}
+		childSessionID := dipper.IDMapPut(&sessions, session)
+		for _, cw := range session.work {
+			mcopy, err := dipper.MessageCopy(msg)
+			if err != nil {
+				panic(err)
+			}
+			log.Debugf("%+v", *cw)
+			go executeWorkflow(childSessionID, cw, mcopy)
 		}
 
 	default:

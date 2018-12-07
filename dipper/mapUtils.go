@@ -36,6 +36,15 @@ func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 	return current.Interface(), true
 }
 
+// MustGetMapData : get the data from the deep map following a KV path, may raise errors
+func MustGetMapData(from interface{}, path string) interface{} {
+	ret, ok := GetMapData(from, path)
+	if !ok {
+		panic(fmt.Errorf("path not valid in data %s", path))
+	}
+	return ret
+}
+
 // GetMapDataStr : get the data as string from the deep map following a KV path
 func GetMapDataStr(from interface{}, path string) (ret string, ok bool) {
 	if data, ok := GetMapData(from, path); ok {
@@ -43,6 +52,12 @@ func GetMapDataStr(from interface{}, path string) (ret string, ok bool) {
 		return str, ok
 	}
 	return "", ok
+}
+
+// MustGetMapDataStr : get the data as string from the deep map following a KV path, may raise errors
+func MustGetMapDataStr(from interface{}, path string) string {
+	ret := MustGetMapData(from, path)
+	return ret.(string)
 }
 
 // Recursive : enumerate all the data element deep into the map call the function provided

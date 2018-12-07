@@ -51,9 +51,9 @@ type System struct {
 
 // Workflow : defines the steps, and relationship of the actions
 type Workflow struct {
-	Type       string `json:"type,omitempty"`
-	Conditions string `json:"conditions,omitempty"`
-	Content    interface{}
+	Type      string `json:"type,omitempty"`
+	Condition string `json:"condition,omitempty"`
+	Content   interface{}
 }
 
 // Rule : is a data structure defining what action to take upon an event

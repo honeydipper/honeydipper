@@ -139,7 +139,7 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 		}
 		contentType := r.Header.Get("Content-type")
 		eventData["body"] = string(bodyBytes)
-		if len(contentType) > 0 && strings.EqualFold(contentType, "application/json") {
+		if len(contentType) > 0 && strings.HasPrefix(contentType, "application/json") {
 			bodyObj := map[string]interface{}{}
 			err := json.Unmarshal(bodyBytes, &bodyObj)
 			if err != nil {

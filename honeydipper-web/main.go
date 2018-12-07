@@ -137,4 +137,19 @@ func sendRequest(m *dipper.Message) {
 	}
 	log.Infof("%+v, %+v", resp, err)
 	// to do return values
+	if sessionID, ok := m.Labels["sessionID"]; ok && sessionID != "" {
+		retMsg := &dipper.Message{
+			Channel: "eventbus",
+			Subject: "return",
+			Labels:  m.Labels,
+		}
+
+		retMsg.Labels["status"] = "success"
+		if err != nil {
+			retMsg.Labels["status"] = "failure"
+			retMsg.Labels["reason"] = "some error"
+		}
+
+		driver.SendMessage(retMsg)
+	}
 }

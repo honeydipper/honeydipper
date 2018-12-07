@@ -1,6 +1,8 @@
 package dipper
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -176,24 +178,32 @@ func SendMessage(out io.Writer, msg *Message) {
 
 // LockComm : Lock the comm channel
 func LockComm(out io.Writer) {
-	MasterCommLock.Lock()
-	defer MasterCommLock.Unlock()
-	lock, ok := CommLocks[out]
-	if !ok {
-		lock = &sync.Mutex{}
-		CommLocks[out] = lock
-	}
+	var lock *sync.Mutex
+	func() {
+		MasterCommLock.Lock()
+		defer MasterCommLock.Unlock()
+		var ok bool
+		lock, ok = CommLocks[out]
+		if !ok {
+			lock = &sync.Mutex{}
+			CommLocks[out] = lock
+		}
+	}()
 	lock.Lock()
 }
 
 // UnlockComm : unlock the comm channel
 func UnlockComm(out io.Writer) {
-	MasterCommLock.Lock()
-	defer MasterCommLock.Unlock()
-	lock, ok := CommLocks[out]
-	if !ok {
-		panic("comm lock not found")
-	}
+	var lock *sync.Mutex
+	func() {
+		MasterCommLock.Lock()
+		defer MasterCommLock.Unlock()
+		var ok bool
+		lock, ok = CommLocks[out]
+		if !ok {
+			panic("comm lock not found")
+		}
+	}()
 	lock.Unlock()
 }
 
@@ -204,4 +214,24 @@ func RemoveComm(out io.Writer) {
 	if _, ok := CommLocks[out]; ok {
 		delete(CommLocks, out)
 	}
+}
+
+// MessageCopy : performs a deep copy of the given map m.
+func MessageCopy(m *Message) (*Message, error) {
+	var buf bytes.Buffer
+	if m == nil {
+		return nil, nil
+	}
+	enc := gob.NewEncoder(&buf)
+	dec := gob.NewDecoder(&buf)
+	err := enc.Encode(*m)
+	if err != nil {
+		return nil, err
+	}
+	var mcopy Message
+	err = dec.Decode(&mcopy)
+	if err != nil {
+		return nil, err
+	}
+	return &mcopy, nil
 }

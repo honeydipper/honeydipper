@@ -123,6 +123,7 @@ func relayToRedis(msg *dipper.Message) {
 	buf := dipper.SerializeContent(payload)
 	client := redis.NewClient(redisOptions)
 	defer client.Close()
+	log.Debugf("write data to redis: %s", string(buf))
 	if err := client.RPush(topic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}

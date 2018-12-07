@@ -18,6 +18,7 @@ func startOperator(cfg *Config) {
 
 func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	log.Infof("[operator] routing message %s.%s", msg.Channel, msg.Subject)
+	defer dipper.SafeExitOnError("[operator] continue on processing messages")
 	if msg.Channel == "eventbus" && msg.Subject == "command" {
 		defer func() {
 			if r := recover(); r != nil {
@@ -53,14 +54,16 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		log.Debugf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
 		driver, rawaction, params, sysData := collapseFunction(nil, &function)
 		log.Debugf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
+		dipper.Recursive(sysData, operator.decryptDriverData)
 
 		worker := operator.getDriverRuntime("driver:" + driver)
 		finalParams := params
 		if params != nil {
 			finalParams = dipper.Interpolate(params, map[string]interface{}{
 				"sysData": sysData,
-				"event":   eventData,
+				"data":    eventData,
 				"labels":  msg.Labels,
+				"params":  params,
 			}).(map[string]interface{})
 		}
 		dipper.Recursive(finalParams, operator.decryptDriverData)

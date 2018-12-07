@@ -28,30 +28,51 @@ func TestRPCCallRaw(t *testing.T) {
 	var lname string
 	var lval []byte
 	var vl int
+	labels := map[string]string{}
 	fmt.Fscanln(&b, &lname, &vl)
-	assert.Equal(t, "caller", lname, "rpc caller present")
-	assert.Equal(t, 1, vl, "caller name should be 1 character")
-	lval = make([]byte, vl)
-	io.ReadFull(&b, lval)
-	assert.Equal(t, "-", string(lval), "rpc caller should be -")
+	if vl > 0 {
+		lval = make([]byte, vl)
+		io.ReadFull(&b, lval)
+		labels[lname] = string(lval)
+	} else {
+		labels[lname] = ""
+	}
 	fmt.Fscanln(&b, &lname, &vl)
-	assert.Equal(t, "rpcID", lname, "rpc rpcID present")
-	assert.Equal(t, 1, vl, "rpcID should be 1 character")
-	lval = make([]byte, vl)
-	io.ReadFull(&b, lval)
-	assert.Equal(t, "0", string(lval), "rpcID should be 0")
+	if vl > 0 {
+		lval = make([]byte, vl)
+		io.ReadFull(&b, lval)
+		labels[lname] = string(lval)
+	} else {
+		labels[lname] = ""
+	}
 	fmt.Fscanln(&b, &lname, &vl)
-	assert.Equal(t, "feature", lname, "rpc feature present")
-	assert.Equal(t, 6, vl, "rpc feature should be 6 characters")
-	lval = make([]byte, vl)
-	io.ReadFull(&b, lval)
-	assert.Equal(t, "target", string(lval), "rpc feature correct")
+	if vl > 0 {
+		lval = make([]byte, vl)
+		io.ReadFull(&b, lval)
+		labels[lname] = string(lval)
+	} else {
+		labels[lname] = ""
+	}
 	fmt.Fscanln(&b, &lname, &vl)
-	assert.Equal(t, "method", lname, "rpc method present")
-	assert.Equal(t, 10, vl, "rpc method should be 10 characters")
-	lval = make([]byte, vl)
-	io.ReadFull(&b, lval)
-	assert.Equal(t, "testmethod", string(lval), "rpc method correct")
+	if vl > 0 {
+		lval = make([]byte, vl)
+		io.ReadFull(&b, lval)
+		labels[lname] = string(lval)
+	} else {
+		labels[lname] = ""
+	}
+	lv, ok := labels["caller"]
+	assert.True(t, ok, "rpc caller present")
+	assert.Equal(t, "-", lv, "rpc caller should be -")
+	lv, ok = labels["rpcID"]
+	assert.True(t, ok, "rpc rpcID present")
+	assert.Equal(t, "0", lv, "rpcID should be 0")
+	lv, ok = labels["feature"]
+	assert.True(t, ok, "rpc feature present")
+	assert.Equal(t, "target", lv, "feature should be target")
+	lv, ok = labels["method"]
+	assert.True(t, ok, "rpc method present")
+	assert.Equal(t, "testmethod", lv, "method should be testmethod")
 	received, err := ioutil.ReadAll(&b)
 	assert.Nil(t, err, "rpc call payload should be readable")
 	assert.Equal(t, "hello world", string(received), "rpc should be unchanged")
