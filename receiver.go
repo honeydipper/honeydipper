@@ -61,7 +61,6 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 	dynamicData := map[string]interface{}{}
 
-	log.Debugf("rules %+v", c.Rules)
 	for _, rule := range c.Rules {
 		rawTrigger, conditions := collapseTrigger(rule.When, c)
 		var driverData map[string]interface{}

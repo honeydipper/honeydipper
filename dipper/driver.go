@@ -3,8 +3,6 @@ package dipper
 import (
 	"io"
 	"os"
-	"regexp"
-	"strings"
 	"time"
 )
 
@@ -93,7 +91,7 @@ func (d *Driver) Ping(msg *Message) {
 // ReceiveOptions : receive options from daemon
 func (d *Driver) ReceiveOptions(msg *Message) {
 	msg = DeserializePayload(msg)
-	Recursive(msg, d.regexParser)
+	Recursive(msg.Payload, RegexParser)
 	d.Options = msg.Payload
 	d.ReadySignal <- true
 }
@@ -152,18 +150,4 @@ func (d *Driver) RPCCallRaw(feature string, method string, params []byte) ([]byt
 // RPCCall : making a PRC call from driver to another driver
 func (d *Driver) RPCCall(feature string, method string, params interface{}) ([]byte, error) {
 	return d.RPC.Caller.Call(d.Out, feature, method, params)
-}
-
-// ProcessDriverDataLocal : process the data received from daemon before using
-func (d *Driver) regexParser(key string, val interface{}) (ret interface{}, replace bool) {
-	if str, ok := val.(string); ok {
-		if strings.HasPrefix(str, ":regex:") {
-			if newval, err := regexp.Compile(str[7:]); err == nil {
-				return newval, true
-			}
-			log.Warningf("[%s] skipping invalid regex pattern %s", d.Service, str[7:])
-		}
-		return nil, false
-	}
-	return nil, false
 }

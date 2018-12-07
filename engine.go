@@ -21,9 +21,16 @@ type WorkflowSession struct {
 
 var sessions = map[string]*WorkflowSession{}
 
-var engine *Service
+// CollapsedRule : mapping the raw trigger event to rules for testing
+type CollapsedRule struct {
+	Conditions   interface{}
+	OriginalRule *Rule
+}
+
 var ruleMapLock sync.Mutex
-var ruleMap map[string][]*Workflow
+var ruleMap map[string]*[]CollapsedRule
+
+var engine *Service
 
 func startEngine(cfg *Config) {
 	dipper.InitIDMap(&sessions)
@@ -38,22 +45,27 @@ func startEngine(cfg *Config) {
 func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	log.Infof("[engine] routing message %s.%s", msg.Channel, msg.Subject)
 
-	if msg.Subject == "state" {
-		return ret
-	}
-
 	if msg.Channel == "eventbus" && msg.Subject == "message" {
 		msg = dipper.DeserializePayload(msg)
 		eventsObj, _ := dipper.GetMapData(msg.Payload, "events")
 		events := eventsObj.([]interface{})
 		log.Infof("[engine] fired events %+v", events)
 
+		data, _ := dipper.GetMapData(msg.Payload, "data")
+
 		for _, eventObj := range events {
-			event, _ := eventObj.(string)
-			// TODO: ruleMap is very premitive, needs to check condition here
-			workflows, _ := ruleMap[event]
-			for _, workflow := range workflows {
-				go executeWorkflow("", workflow, msg)
+			event := eventObj.(string)
+			crs, ok := ruleMap[event]
+			if ok && crs != nil {
+				for _, cr := range *crs {
+					if dipper.CompareAll(data, cr.Conditions) {
+						log.Infof("[engine] raw event triggers an event %s.%s",
+							(*cr.OriginalRule).When.Source.System,
+							(*cr.OriginalRule).When.Source.Trigger,
+						)
+						go executeWorkflow("", &(*cr.OriginalRule).Do, msg)
+					}
+				}
 			}
 		}
 	} else if msg.Channel == "eventbus" && msg.Subject == "return" {
@@ -121,7 +133,10 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 
 	switch w.Type {
 	case "":
-		next := engine.config.config.Workflows[w.Content.(string)]
+		next, ok := engine.config.config.Workflows[w.Content.(string)]
+		if !ok {
+			log.Panicf("[engine] named workflow not found: %s", w.Content.(string))
+		}
 		var session = &WorkflowSession{
 			Type:   w.Type,
 			parent: sessionID,
@@ -306,7 +321,6 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		if err != nil {
 			panic(err)
 		}
-		log.Debugf("%+v", threads)
 		for _, thread := range threads {
 			var current = thread
 			session.work = append(session.work, &current)
@@ -340,30 +354,26 @@ func terminateWorkflow(sessionID string, msg *dipper.Message) {
 // buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable
 func buildRuleMap(cfg *Config) {
 	ruleMapLock.Lock()
-	ruleMap = map[string][]*Workflow{}
+	ruleMap = map[string]*[]CollapsedRule{}
 	defer ruleMapLock.Unlock()
-	for _, rule := range cfg.config.Rules {
-		system := rule.When.Source.System
-		trigger := rule.When.Source.Trigger
-		if len(system) == 0 {
-			system = "_"
-			trigger = rule.When.RawEvent
+
+	for _, ruleInConfig := range cfg.config.Rules {
+		var rule = ruleInConfig
+		rawTrigger, conditions := collapseTrigger(rule.When, cfg.config)
+		dipper.Recursive(conditions, dipper.RegexParser)
+		// collpaseTrigger function is in receiver.go, might need to be moved
+
+		rawTriggerKey := rawTrigger.Driver + "." + rawTrigger.RawEvent
+		rawRules, ok := ruleMap[rawTriggerKey]
+		if !ok {
+			rawRules = &[]CollapsedRule{}
 		}
-
-		todo := rule.Do
-		// if len(rule.Do.Type) == 0 {
-		// 	todoName, ok := rule.Do.Content.(string)
-		// 	if !ok {
-		// 		log.Warningf("workflow without type should have a name in content pointing to real workflow")
-		// 		break
-		// 	}
-		// 	todo, ok = cfg.config.Workflows[todoName]
-		// 	if !ok {
-		// 		log.Warningf("workflow points to a non-exist workflow %s", todoName)
-		// 		break
-		// 	}
-		// }
-
-		ruleMap[system+"."+trigger] = append(ruleMap[system+"."+trigger], &todo)
+		*rawRules = append(*rawRules, CollapsedRule{
+			Conditions:   conditions,
+			OriginalRule: &rule,
+		})
+		if !ok {
+			ruleMap[rawTriggerKey] = rawRules
+		}
 	}
 }

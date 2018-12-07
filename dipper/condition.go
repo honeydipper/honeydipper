@@ -3,6 +3,7 @@ package dipper
 import (
 	"reflect"
 	"regexp"
+	"strings"
 )
 
 // Compare : compare an actual value to a criteria
@@ -95,4 +96,18 @@ func CompareAll(actual interface{}, criteria interface{}) bool {
 
 	// unable to handle a nil value or unknown criteria
 	return false
+}
+
+// RegexParser : used with Recursive to process the data in the conditions so they can be used for matching
+func RegexParser(key string, val interface{}) (ret interface{}, replace bool) {
+	if str, ok := val.(string); ok {
+		if strings.HasPrefix(str, ":regex:") {
+			if newval, err := regexp.Compile(str[7:]); err == nil {
+				return newval, true
+			}
+			log.Warningf("skipping invalid regex pattern %s", str[7:])
+		}
+		return nil, false
+	}
+	return nil, false
 }

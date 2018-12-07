@@ -88,22 +88,25 @@ func startWebhook(m *dipper.Message) {
 func hookHandler(w http.ResponseWriter, r *http.Request) {
 	eventData := extractEventData(w, r)
 
-	matched := []string{}
-	for SystemEvent, hook := range hooks {
+	matched := false
+	for _, hook := range hooks {
 		for _, condition := range hook.([]interface{}) {
 			if dipper.CompareAll(eventData, condition) {
-				matched = append(matched, SystemEvent)
+				matched = true
 				break
 			}
 		}
+		if matched {
+			break
+		}
 	}
 
-	if len(matched) > 0 {
+	if matched {
 		driver.SendMessage(&dipper.Message{
 			Channel: "eventbus",
 			Subject: "message",
 			Payload: map[string]interface{}{
-				"events": matched,
+				"events": []interface{}{"webhook."},
 				"data":   eventData,
 			},
 		})
@@ -131,6 +134,7 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 		"headers": r.Header,
 	}
 
+	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
 	if r.Method == http.MethodPost {
 		bodyBytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {

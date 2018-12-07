@@ -11,6 +11,7 @@ import (
 
 func init() {
 	gob.Register(map[string]interface{}{})
+	gob.Register([]interface{}{})
 }
 
 // GetMapData : get the data from the deep map following a KV path
@@ -78,23 +79,30 @@ func RecursiveWithPrefix(
 	if len(prefixes) > 0 && len(keyStr) > 0 {
 		newPrefixes = prefixes + "." + keyStr
 	}
-	if mp, ok := from.(map[string]interface{}); ok {
-		for k, value := range mp {
-			RecursiveWithPrefix(mp, newPrefixes, k, value, process)
+	vfrom := reflect.ValueOf(from)
+	switch vfrom.Kind() {
+	case reflect.Map:
+		for _, vk := range vfrom.MapKeys() {
+			RecursiveWithPrefix(from, newPrefixes, vk.Interface(), vfrom.MapIndex(vk).Interface(), process)
 		}
-	} else {
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < vfrom.Len(); i++ {
+			RecursiveWithPrefix(from, newPrefixes, i, vfrom.Index(i).Interface(), process)
+		}
+	default:
 		if parent == nil {
 			return
 		}
 		if newval, ok := process(newPrefixes, from); ok {
-			if parentArray, ok := parent.([]interface{}); ok {
-				parentArray[key.(int)] = newval
-			} else if parentMap, ok := parent.(map[string]interface{}); ok {
-				if newval != nil {
-					parentMap[key.(string)] = newval
-				} else {
-					delete(parentMap, key.(string))
-				}
+			vparent := reflect.ValueOf(parent)
+			vval := reflect.ValueOf(newval)
+			switch vparent.Kind() {
+			case reflect.Map:
+				vparent.SetMapIndex(reflect.ValueOf(key), vval)
+			case reflect.Slice, reflect.Array:
+				vparent.Index(key.(int)).Set(vval)
+			default:
+				panic(fmt.Errorf("Unable to change value in parent"))
 			}
 		}
 	}
