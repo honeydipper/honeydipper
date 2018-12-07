@@ -41,7 +41,8 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		var params map[string]interface{}
 		msg = dipper.DeserializePayload(msg)
 		function := Function{}
-		eventData, _ := dipper.GetMapData(msg.Payload, "data")
+		data, _ := dipper.GetMapData(msg.Payload, "data")
+		event, _ := dipper.GetMapData(msg.Payload, "event")
 		funcDef, ok := dipper.GetMapData(msg.Payload, "function")
 		if !ok {
 			log.Panicf("[operator] no function received")
@@ -61,7 +62,8 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		if params != nil {
 			finalParams = dipper.Interpolate(params, map[string]interface{}{
 				"sysData": sysData,
-				"data":    eventData,
+				"data":    data,
+				"event":   event,
 				"labels":  msg.Labels,
 				"params":  params,
 			}).(map[string]interface{})

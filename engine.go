@@ -14,6 +14,7 @@ type WorkflowSession struct {
 	step   int
 	Type   string
 	parent string
+	event  interface{}
 }
 
 var sessions = map[string]*WorkflowSession{}
@@ -140,6 +141,9 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 				payload["data"] = msg.Payload.(map[string]interface{})["data"]
 			}
 		}
+		if sessionID != "" {
+			payload["event"] = sessions[sessionID].event
+		}
 		cmdmsg := &dipper.Message{
 			Channel: "eventbus",
 			Subject: "command",
@@ -164,6 +168,11 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 			step:   0,
 			data:   msg.Payload,
 		}
+		if sessionID != "" {
+			session.event = sessions[sessionID].event
+		} else {
+			session.event = msg.Payload
+		}
 		for _, v := range w.Content.([]interface{}) {
 			w := &Workflow{}
 			err := mapstructure.Decode(v, w)
@@ -183,6 +192,11 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 			parent: sessionID,
 			step:   0,
 			data:   msg.Payload,
+		}
+		if sessionID != "" {
+			session.event = sessions[sessionID].event
+		} else {
+			session.event = msg.Payload
 		}
 		if w.Condition == "" {
 			log.Panicf("[engine] no condition speicified for if workflow")
@@ -230,6 +244,11 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 			step:   0,
 			data:   msg.Payload,
 			work:   []*Workflow{},
+		}
+		if sessionID != "" {
+			session.event = sessions[sessionID].event
+		} else {
+			session.event = msg.Payload
 		}
 		var threads []Workflow
 		err := mapstructure.Decode(w.Content, &threads)
