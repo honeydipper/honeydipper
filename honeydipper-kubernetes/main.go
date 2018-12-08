@@ -87,7 +87,7 @@ func recycleDeployment(m *dipper.Message) {
 	}
 
 	rsclient := k8client.AppsV1().ReplicaSets(nameSpace)
-	rs, err := rsclient.List(metav1.ListOptions{LabelSelector: "app=" + deploymentName})
+	rs, err := rsclient.List(metav1.ListOptions{LabelSelector: deploymentName})
 	if err != nil || len(rs.Items) == 0 {
 		log.Panicf("[%s] unable to find the replicaset for the deployment %+v", driver.Service, err)
 	}

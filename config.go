@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"github.com/honeyscience/honeydipper/dipper"
+	"github.com/imdario/mergo"
 	"time"
 )
 
@@ -59,6 +62,7 @@ func (c *Config) rollBack() {
 
 func (c *Config) assemble() {
 	c.config, c.loaded = c.loaded[c.initRepo].assemble(&(ConfigSet{}), map[RepoInfo]*ConfigRepo{})
+	c.extendAllSystems()
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
@@ -89,4 +93,60 @@ func (c *Config) getDriverDataStr(path string) (ret string, ok bool) {
 		return "", false
 	}
 	return dipper.GetMapDataStr(c.config.Drivers, path)
+}
+
+func (c *Config) extendSystem(processed map[string]bool, system string) {
+	var merged System
+	var current = c.config.Systems[system]
+	for _, parent := range current.Extends {
+		if _, ok := processed[parent]; !ok {
+			c.extendSystem(processed, parent)
+		}
+
+		parentSys := c.config.Systems[parent]
+		parentCopy, err := SystemCopy(&parentSys)
+		if err != nil {
+			panic(err)
+		}
+
+		err = mergo.Merge(&merged, *parentCopy, mergo.WithOverride, mergo.WithAppendSlice)
+		if err != nil {
+			panic(err)
+		}
+	}
+	err := mergo.Merge(&merged, current, mergo.WithOverride, mergo.WithAppendSlice)
+	if err != nil {
+		panic(err)
+	}
+	c.config.Systems[system] = merged
+	processed[system] = true
+}
+
+func (c *Config) extendAllSystems() {
+	processed := map[string]bool{}
+	for name := range c.config.Systems {
+		if _, ok := processed[name]; !ok {
+			c.extendSystem(processed, name)
+		}
+	}
+}
+
+// SystemCopy : performs a deep copy of the given system
+func SystemCopy(s *System) (*System, error) {
+	var buf bytes.Buffer
+	if s == nil {
+		return nil, nil
+	}
+	enc := gob.NewEncoder(&buf)
+	dec := gob.NewDecoder(&buf)
+	err := enc.Encode(*s)
+	if err != nil {
+		return nil, err
+	}
+	var scopy System
+	err = dec.Decode(&scopy)
+	if err != nil {
+		return nil, err
+	}
+	return &scopy, nil
 }

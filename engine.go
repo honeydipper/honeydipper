@@ -131,33 +131,44 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		}()
 	}
 
+	var session = &WorkflowSession{
+		Type:   w.Type,
+		parent: sessionID,
+		step:   0,
+		data:   msg.Payload,
+	}
+	if sessionID != "" {
+		session.event = sessions[sessionID].event
+		wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
+		err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
+		if err != nil {
+			panic(err)
+		}
+		session.wfdata = wfdata
+	} else {
+		session.event = msg.Payload
+		session.wfdata = w.Data
+	}
+
+	data := msg.Payload
+	if msg.Subject != "return" {
+		data = msg.Payload.(map[string]interface{})["data"]
+	}
+	envData := map[string]interface{}{
+		"data":   data,
+		"labels": msg.Labels,
+		"wfdata": session.wfdata,
+	}
+
 	switch w.Type {
 	case "":
 		next, ok := engine.config.config.Workflows[w.Content.(string)]
 		if !ok {
 			log.Panicf("[engine] named workflow not found: %s", w.Content.(string))
 		}
-		var session = &WorkflowSession{
-			Type:   w.Type,
-			parent: sessionID,
-			step:   0,
-			data:   msg.Payload,
-		}
-		if sessionID != "" {
-			session.event = sessions[sessionID].event
-			wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
-			err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				panic(err)
-			}
-			session.wfdata = wfdata
-		} else {
-			session.event = msg.Payload
-			session.wfdata = w.Data
-		}
-
 		sessionID := dipper.IDMapPut(&sessions, session)
 		log.Infof("[engine] starting named session %s %s", w.Content.(string), sessionID)
+
 		executeWorkflow(sessionID, &next, msg)
 
 	case "function":
@@ -167,7 +178,13 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 			log.Panicf("[engine] invalid function definition %+v", err)
 		}
 		log.Debugf("[engine] workflow content %+v", w.Content)
-		log.Infof("[engine] function from workflow %+v", function)
+
+		function.Driver = dipper.InterpolateStr(function.Driver, envData)
+		function.RawAction = dipper.InterpolateStr(function.RawAction, envData)
+		function.Target.System = dipper.InterpolateStr(function.Target.System, envData)
+		function.Target.Function = dipper.InterpolateStr(function.Target.Function, envData)
+
+		log.Infof("[engine] function from workflow after interpolation %+v", function)
 
 		worker := engine.getDriverRuntime("eventbus")
 		payload := map[string]interface{}{}
@@ -201,25 +218,6 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		dipper.SendMessage(worker.output, cmdmsg)
 
 	case "pipe":
-		var session = &WorkflowSession{
-			Type:   w.Type,
-			parent: sessionID,
-			step:   0,
-			data:   msg.Payload,
-		}
-		if sessionID != "" {
-			session.event = sessions[sessionID].event
-			wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
-			err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				panic(err)
-			}
-			session.wfdata = wfdata
-		} else {
-			session.event = msg.Payload
-			session.wfdata = w.Data
-		}
-
 		for _, v := range w.Content.([]interface{}) {
 			w := &Workflow{}
 			err := mapstructure.Decode(v, w)
@@ -235,38 +233,6 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		executeWorkflow(sessionID, session.work[0], msg)
 
 	case "if":
-		var session = &WorkflowSession{
-			Type:   w.Type,
-			parent: sessionID,
-			step:   0,
-			data:   msg.Payload,
-		}
-		if sessionID != "" {
-			session.event = sessions[sessionID].event
-			wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
-			err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				panic(err)
-			}
-			session.wfdata = wfdata
-		} else {
-			session.event = msg.Payload
-			session.wfdata = w.Data
-		}
-
-		if w.Condition == "" {
-			log.Panicf("[engine] no condition speicified for if workflow")
-		}
-
-		idata := msg.Payload
-		if msg.Subject != "return" {
-			idata = msg.Payload.(map[string]interface{})["data"]
-		}
-		value := dipper.InterpolateStr(w.Condition, map[string]interface{}{
-			"data":   idata,
-			"labels": msg.Labels,
-		})
-		log.Debugf("[engine] check condition workflow for %s : %s", sessionID, value)
 		var choices []Workflow
 		err := mapstructure.Decode(w.Content, &choices)
 		if err != nil {
@@ -275,6 +241,13 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		for _, choice := range choices {
 			session.work = append(session.work, &choice)
 		}
+
+		if w.Condition == "" {
+			log.Panicf("[engine] no condition speicified for if workflow")
+		}
+		value := dipper.InterpolateStr(w.Condition, envData)
+		log.Debugf("[engine] check condition workflow for %s : %s", sessionID, value)
+
 		if value == "false" || value == "0" || value == "nil" || value == "" {
 			if len(choices) > 1 {
 				childSessionID := dipper.IDMapPut(&sessions, session)
@@ -296,26 +269,6 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		}
 
 	case "parallel":
-		var session = &WorkflowSession{
-			Type:   w.Type,
-			parent: sessionID,
-			step:   0,
-			data:   msg.Payload,
-			work:   []*Workflow{},
-		}
-		if sessionID != "" {
-			session.event = sessions[sessionID].event
-			wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
-			err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				panic(err)
-			}
-			session.wfdata = wfdata
-		} else {
-			session.event = msg.Payload
-			session.wfdata = w.Data
-		}
-
 		var threads []Workflow
 		err := mapstructure.Decode(w.Content, &threads)
 		if err != nil {

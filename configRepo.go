@@ -135,7 +135,7 @@ func (c *ConfigRepo) loadRepo() {
 	log.Infof("repo [%v] loaded", c.repo.Repo)
 }
 
-func (c *ConfigRepo) refreshRepo() (ret bool) {
+func (c *ConfigRepo) refreshRepo() bool {
 	defer dipper.SafeExitOnError("repo [%v] skipped", c.repo.Repo)
 	var repoObj *git.Repository
 	var err error
@@ -179,6 +179,5 @@ func (c *ConfigRepo) refreshRepo() (ret bool) {
 	}
 	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
 	log.Warningf("repo [%v] reloaded", c.repo.Repo)
-	ret = true
-	return ret
+	return true
 }

@@ -47,6 +47,7 @@ type System struct {
 	Data      map[string](interface{}) `json:"data,omitempty"`
 	Triggers  map[string]Trigger       `json:"triggers,omitempty"`
 	Functions map[string]Function      `json:"functions,omitempty"`
+	Extends   []string                 `json:"extends,omitempty"`
 }
 
 // Workflow : defines the steps, and relationship of the actions
