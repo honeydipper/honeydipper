@@ -2,6 +2,7 @@ package dipper
 
 import (
 	"bytes"
+	"github.com/Masterminds/sprig"
 	"github.com/ghodss/yaml"
 	"strings"
 	"text/template"
@@ -18,7 +19,7 @@ var FuncMap = template.FuncMap{
 
 // InterpolateStr : parse the string as go template
 func InterpolateStr(pattern string, data interface{}) string {
-	tmpl := template.Must(template.New("got").Funcs(FuncMap).Parse(pattern))
+	tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
 	buf := new(bytes.Buffer)
 	if err := tmpl.Execute(buf, data); err != nil {
 		log.Panicf("failed to interpolate: %+v \ncontent:  %+v", err, pattern)
