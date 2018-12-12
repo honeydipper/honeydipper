@@ -33,7 +33,7 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "web")
 	if driver.Service == "operator" {
 		driver.Reload = func(*dipper.Message) {} // allow hot reload
-		driver.MessageHandlers["execute:request"] = sendRequest
+		driver.CommandProvider.Commands["request"] = sendRequest
 		driver.Run()
 	}
 }
@@ -139,30 +139,9 @@ func sendRequest(m *dipper.Message) {
 		defer resp.Body.Close()
 	}
 
-	if sessionID, ok := m.Labels["sessionID"]; ok && sessionID != "" {
-		retMsg := &dipper.Message{
-			Channel: "eventbus",
-			Subject: "return",
-			Labels:  m.Labels,
-		}
-
-		if err != nil {
-			retMsg.Labels["status"] = "failure"
-			retMsg.Labels["reason"] = fmt.Sprintf("%+v", err)
-		} else {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						retMsg.Labels["status"] = "failure"
-						retMsg.Labels["reason"] = fmt.Sprintf("%+v", r)
-						driver.SendMessage(retMsg)
-					}
-				}()
-				retMsg.Payload = extractHTTPResponseData(resp)
-				retMsg.Labels["status"] = "success"
-				driver.SendMessage(retMsg)
-			}()
-		}
+	m.Reply <- dipper.Message{
+		Payload: extractHTTPResponseData(resp),
+		IsRaw:   false,
 	}
 }
 

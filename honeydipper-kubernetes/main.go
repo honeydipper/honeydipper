@@ -27,31 +27,12 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "kubernetes")
-	//if driver.Service == "operator" {
-	driver.MessageHandlers["execute:recycleDeployment"] = recycleDeployment
-	//}
+	driver.CommandProvider.Commands["recycleDeployment"] = recycleDeployment
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
 
 func recycleDeployment(m *dipper.Message) {
-	sessionID, _ := m.Labels["sessionID"]
-	if sessionID != "" {
-		defer func() {
-			if r := recover(); r != nil {
-				retMsg := &dipper.Message{
-					Channel: "eventbus",
-					Subject: "return",
-					Labels:  m.Labels,
-				}
-				retMsg.Labels["status"] = "failure"
-				retMsg.Labels["reason"] = fmt.Sprintf("%+v", r)
-				driver.SendMessage(retMsg)
-				panic(r)
-			}
-		}()
-	}
-
 	m = dipper.DeserializePayload(m)
 	deploymentName, ok := dipper.GetMapDataStr(m.Payload, "deployment")
 	log.Infof("[%s] got deploymentName %s", driver.Service, deploymentName)
@@ -97,17 +78,7 @@ func recycleDeployment(m *dipper.Message) {
 		log.Panicf("[%s] failed to recycle replicaset %+v", driver.Service, err)
 	}
 	log.Infof("[%s] deployment recycled %s.%s", driver.Service, nameSpace, rsName)
-	if sessionID, ok := m.Labels["sessionID"]; ok && sessionID != "" {
-		retMsg := &dipper.Message{
-			Channel: "eventbus",
-			Subject: "return",
-			Labels:  m.Labels,
-		}
-
-		retMsg.Labels["status"] = "success"
-
-		driver.SendMessage(retMsg)
-	}
+	m.Reply <- dipper.Message{}
 }
 
 func getGKEConfig(cfg map[string]interface{}) *rest.Config {

@@ -71,16 +71,14 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			}).(map[string]interface{})
 		}
 		dipper.Recursive(finalParams, operator.decryptDriverData)
+
+		msg.Payload = finalParams
+		msg.Labels["method"] = rawaction
+
 		ret = []RoutedMessage{
 			{
 				driverRuntime: worker,
-				message: &dipper.Message{
-					Channel: "execute",
-					Subject: rawaction,
-					Payload: finalParams,
-					IsRaw:   false,
-					Labels:  msg.Labels,
-				},
+				message:       msg,
 			},
 		}
 	} else if msg.Channel == "eventbus" && msg.Subject == "return" {

@@ -26,6 +26,7 @@ type Driver struct {
 	Stop            MessageHandler
 	Reload          MessageHandler
 	ReadySignal     chan bool
+	CommandProvider CommandProvider
 }
 
 // NewDriver : create a blank driver object
@@ -40,14 +41,16 @@ func NewDriver(service string, name string) *Driver {
 
 	driver.RPC.Provider.Init("rpc", "return", driver.Out)
 	driver.RPC.Caller.Init("rpc", "call")
+	driver.CommandProvider.Init("eventbus", "return", driver.Out)
 
 	driver.MessageHandlers = map[string]MessageHandler{
-		"command:options": driver.ReceiveOptions,
-		"command:ping":    driver.Ping,
-		"command:start":   driver.start,
-		"command:stop":    driver.stop,
-		"rpc:call":        driver.RPC.Provider.Router,
-		"rpc:return":      driver.RPC.Caller.HandleReturn,
+		"command:options":  driver.ReceiveOptions,
+		"command:ping":     driver.Ping,
+		"command:start":    driver.start,
+		"command:stop":     driver.stop,
+		"rpc:call":         driver.RPC.Provider.Router,
+		"rpc:return":       driver.RPC.Caller.HandleReturn,
+		"eventbus:command": driver.CommandProvider.Router,
 	}
 
 	if log == nil {
