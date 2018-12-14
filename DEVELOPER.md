@@ -12,6 +12,8 @@ now, there is a go library named honeydipper/dipper that makes it easier to do t
 - [Messages](#messages)
 - [RPC](#rpc)
 - [Driver Options](#driver-options)
+- [Collapsed Events](#collapsed-events)
+- [Provide Commands](#provide-commands)
 
 <!-- tocstop -->
 
@@ -28,31 +30,35 @@ Below is a simple driver that does nothing but restarting itself every 20 second
 package main
 
 import (
-	"flag"
-	"github.com/honeyscience/honeydipper/dipper"
-	"os"
-	"time"
+  "flag"
+  "github.com/honeyscience/honeydipper/dipper"
+  "os"
+  "time"
 )
 
 var driver *dipper.Driver
 
 func main() {
-	flag.Parse()
+  flag.Parse()
 
-	driver = dipper.NewDriver(os.Args[1], "dummy")
-	if driver.Service == "receiver" {
-		driver.Start = waitAndSendDummyEvent
-	}
-	driver.Run()
+  driver = dipper.NewDriver(os.Args[1], "dummy")
+  if driver.Service == "receiver" {
+    driver.Start = waitAndSendDummyEvent
+  }
+  driver.Run()
 }
 
 func waitAndSendDummyEvent(msg *dipper.Message) {
-	go func() {
-		time.Sleep(20 * time.Second)
-		driver.SendMessage("eventbus", "message", map[string]interface{}{"data": []string{"line 1", "line 2"}})
-		driver.State = "cold"
-		driver.Ping(msg)
-	}()
+  go func() {
+    time.Sleep(20 * time.Second)
+    driver.SendMessage(&dipper.Message{
+      Channel: "eventbus",
+      Subject: "message",
+      Payload: map[string]interface{}{"data": []string{"line 1", "line 2"}},
+    })
+    driver.State = "cold"
+    driver.Ping(msg)
+  }()
 }
 ```
 The first thing that a driver does is to parse the command line arguments so the service name can be
@@ -61,10 +67,11 @@ The helper object provides hooks for driver to define the functions to be execut
 the life cycle of the driver. A call to the *Run()* method will start the event loop to receive communication
 from the daemon.
 
-There are 3 types of hooks offered by the driver helper objects.
+There are 4 types of hooks offered by the driver helper objects.
  * Lifecycle events
  * Message handler
  * RPC handler 
+ * Command handler
 
 Note that the *waitAndSendDummyEvent* method is assigned to *Start hook*. The *Start hook* needs to return
 immediately, so the method luanches another event loop in a go routine and return the control to the 
@@ -102,19 +109,34 @@ driver uses some resources that cannot be released gracefully by exiting.
 
 ## Messages
 
-Every message has an envelope and a payload.  The envelope is a string ends with a newline, with fields separated by
+Every message has an envelope, a list of labels and a payload.  The envelope is a string ends with a newline, with fields separated by
 space(s). An valid envelope has following fields in the exact order:
  * Channel
  * Subject
+ * Number of labels
  * Size
+
+Following the envelop are a list of labels, each label is made up with a label definition line and a list of bytes as label value. The
+label definition includes
+ * Name of the label
+ * Size of the label in bytes
 
 The payload is usually a byte array with certain encoding.  As of now, the only encoding we use is "json".
 An example of sending message to daemon
 ```go
-driver.SendMessage("eventbus", "message", map[string]interface{}{"data": []string{"line 1", "line 2"}})
+driver.SendMessage(&dipper.Message{
+  Channel: "eventbus",
+  Subject: "message",
+  Labels: map[string]string{
+    "label1": "value1",
+  },
+  Payload: map[string]interface{}{"data": []string{"line 1", "line 2"},
+  IsRaw: false, # default
+})
 ```
-The payload data will be encoded automatically.  There is also a *SendRawMessage* method that you can pass the
-byte array directly. In case you need to encode the message yourself, there are two methods, *dipper.SerializePayload*
+The payload data will be encoded automatically.  You can also send raw message if use `IsRaw` as `true`, meaning that
+the driver will not attempt to encode the data for you, instead it will use the payload as bytes array directly.
+In case you need to encode the message yourself, there are two methods, *dipper.SerializePayload*
 accepts a \*dipper.Message and put the encoded content back into the message, or *dipper.SerializeContent* which
 accepts bytes array and return the data structure as map.
 
@@ -123,45 +145,49 @@ struct with raw bytes as payload.  You can call *dipper.DeserializeContent* whic
 the byte array, and you can also use *dipper.DeserializePayload* which accepts a \*dipper.Message and place the
 decoded paylod right back into the message.
 
-Currently, we are distinguish the messages into 4 different channels.
- * eventbus: messages that need to reach *engine* service for workflow processing
- * command: messages local the service and driver for lifecycle and driver state handling
- * rpc: messages that invoke another driver to run some function
- * execute: messages to *operator* driver for executing an action in response to the events
+Currently, we are distinguish the messages into 3 different channels.
+ * eventbus: messages that are used by *engine* service for workflow processing, subject could be `message`, `command` or `return`
+ * rpc: messages that invoke another driver to run some function, subject could be `call` or `return`
+ * state: the local messages between driver and daemon to manage the lifecycle of drivers
 
 ## RPC
 
-There are a few wrapper method for you to make PRC calls with the helper object.
- * caller.RPCCall: accepts the method as "driver:<driver_name>.<method_name>" and parameter as a map
- * caller.RPCCallRaw: same as RPCCall except that expects the parameter to be byte array
+Within the driver helper object, there is two helper objects that are meant for helping RPC related activities.
+ * dipper.Driver.RPC.Caller
+ * dipper.Driver.RPC.Provider
 
-Both method block for return with 10 seconds timeout.  The timeout is not tunable at this time.
+To make a RPC Call, you don't have to use the `Caller` object directly, just use `RPCCall` or `RPCCallRaw` method,
+Both method block for return with 10 seconds timeout.  The timeout is not tunable at this time. For example,
+calling the `kms` driver for decryption
 
-Example:
 ```go
-	retbytes, err := driver.RPCCall("driver:gcloud.getKubeCfg", cfg)
-	if err != nil {
-		log.Panicf("[%s] failed call gcloud to get kubeconfig %+v", driver.Service, err)
-	}
+decrypted, err := driver.RPCCallRaw("driver:kms", "decrypt", encrypted)
 ```
 
-To implement a RPC method, we add a special RPCHandlers hook. the function implements the method needs have a
-signature like below. The *driver.RPCError* is used to return error, and *driver.RPCReturn* and *driver.RPCReturnRaw*
-is used to return data to the caller.
+To offer a RPC method for the system to call, create the function that accept a single parameter `*dipper.Message`. Add the method
+to `Provider.RPCHandlers` map, for example
+
 ```go
-func main() {
-  ...
-	driver.RPCHandlers["decrypt"] = decrypt
+driver.RPC.Provider.RPCHandler["mymethod"] = MyFunc
+
+func MyFunc(m *dipper.Message) {
   ...
 }
+```
 
-func decrypt(from string, rpcID string, payload []byte) {
-  ...
-	if err != nil {
-		driver.RPCError(from, rpcID, "failed to create kms client")
-	}
-  ...
-	driver.RPCReturnRaw(from, rpcID, resp.Plaintext)
+Feel free to panic in your method, the wrapper will send an error response to the caller if that happens. To return data to the caller
+use the channel `Reply` on the incoming message.  For example:
+
+```go
+func MyFunc(m *dipper.Message) {
+  dipper.DeserializePayload(m)
+  if m.Payload != nil {
+    panic(errors.New("not expecting any parameter"))
+  }
+  m.Reply <- dipper.Message{
+    Payload: map[string]interface{}{"mydata": "myvalue"},
+  }
+}
 ```
 
 ## Driver Options
@@ -175,13 +201,12 @@ If you are sure the data is a *string*, you can use *driver.GetOptionStr* to dir
 The helper functions follow the golang idiologic style, that returns the value along with a bool to indicate if it is
 acceptable or not. See below for example.
 ```go
-	NewAddr, ok := driver.GetOptionStr("data.Addr")
-	if !ok {
-		NewAddr = ":8080"
-	}
-```
-```go
-	hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
+  NewAddr, ok := driver.GetOptionStr("data.Addr")
+  if !ok {
+    NewAddr = ":8080"
+  }
+
+  hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
   ...
   somedata, ok := dipper.GetMapDataStr(hooksObj, "key1.subkey")
   ...
@@ -197,36 +222,82 @@ drivers:
 ...
 ```
 
-For event receivers, there is a "dynamicData.collapsedEvents" section that stores a mapping between event names to their
-conditions, driver uses this to determine if an event should be fired or not. For example
+## Collapsed Events
+
+Usually an event receiver driver just fires raw events to the daemon, it doesn't have to know what the daemon is expecting. There
+are some exceptions, for example, the webhook driver needs to know if the daemon is expecting some kind of webhook so it can decide
+what response to send to the web request sender, 200, 404 etc.  A collapsed event is an event definition that has all the conditions,
+including the conditions from events that the current event is inheritting from.  Dipper sends the collapsed events to the driver in
+the options with key name "dynamicData.collapsedEvents". Drivers can use the collapsed events to setup the filtering of the events before sending
+them to daemon. Not only this is allowing the driver to generate meaningful feedback to the external requesters, it also serves as
+the first line of defense for DDoS attack to the daemon.
+
+Below is an example of using the collapsed events data in webhook driver:
+
 ```go
+func loadOptions(m *dipper.Message) {
+  hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
+  if !ok {
+    log.Panicf("[%s] no hooks defined for webhook driver", driver.Service)
+  }
+  hooks, ok = hooksObj.(map[string]interface{})
+  if !ok {
+    log.Panicf("[%s] hook data should be a map of event to conditions", driver.Service)
+  }
+  ...
+}
+
 func hookHandler(w http.ResponseWriter, r *http.Request) {
-	eventData := extractEventData(w, r)
+  eventData := extractEventData(w, r)
 
-	matched := []string{}
-	for SystemEvent, hook := range hooks {
-		for _, condition := range hook.([]interface{}) {
-			if dipper.CompareAll(eventData, condition) {
-				matched = append(matched, SystemEvent)
-				break
-			}
-		}
-	}
+  matched := false
+  for SystemEvent, hook := range hooks {
+    for _, condition := range hook.([]interface{}) {
+      if dipper.CompareAll(eventData, condition) {
+        matched = true
+        break
+      }
+    }
+    if matched {
+      break
+    }
+  }
 
-	if len(matched) > 0 {
-		payload := map[string]interface{}{
-			"events": matched,
-			"data":   eventData,
-		}
-
-		driver.SendMessage("eventbus", "message", payload)
-
-		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "Done\n")
-		return
-	}
-
-	http.NotFound(w, r)
+  if matched {
+    ...
+  } else {
+    ...
+  }
 }
 ```
-The helper function *dipperCompareAll* will try to match your event data to the conditions.
+
+The helper function *dipper.CompareAll* will try to match your event data to the conditions. Daemon uses the same
+function to determine if a rawevent is triggering events defined in systems.
+
+## Provide Commands
+
+A command is a raw function that provides response to an event. The work flow engine service sends "eventbus:command"
+messages to operator service, and operator service will map the message to the corresponding driver and raw function,
+then forward the message to the corresponding driver with all the parameters as a "collapsed function". The driver helper
+provides ways to map raw actions to the function and handle the communications to back to the daemon.
+
+A command handler is very much like the RPC handler mentioned earlier.  All you need to do is add it to the `driver.CommandProvider.Commands`
+map.  The command handler function should always return a value or panic.  If it exists without a return, it can block
+invoking workflow until it times out. If you don't have any data to return, just send a blank message back like below.
+
+```go
+func main() {
+  ...
+  driver.CommandProvider.Commands["wait10min"] = wait10min
+  ...
+}
+
+func wait10min(m *dipper.Message) {
+  go func() {
+    time.Sleep(10 * time.Minute)
+    m.Reply <- dipper.Message{}
+  }()
+}
+```
+
+Note that, the reply is send in a go routine, it is useful if you want to make your code async.
