@@ -58,6 +58,7 @@ func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			crs, ok := ruleMap[event]
 			if ok && crs != nil {
 				for _, cr := range *crs {
+					dipper.Recursive(cr.Conditions, engine.decryptDriverData)
 					if dipper.CompareAll(data, cr.Conditions) {
 						log.Infof("[engine] raw event triggers an event %s.%s",
 							(*cr.OriginalRule).When.Source.System,

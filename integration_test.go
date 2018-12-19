@@ -64,9 +64,9 @@ func intTestServices(t *testing.T) {
 
 func intTestDrivers(t *testing.T) {
 	r := Services["receiver"]
-	assert.Equal(t, 2, len(r.driverRuntimes), "receiver should have 2 drivers")
+	assert.Equal(t, 3, len(r.driverRuntimes), "receiver should have 2 drivers")
 	e := Services["engine"]
-	assert.Equal(t, 1, len(e.driverRuntimes), "engine should have 1 drivers")
+	assert.Equal(t, 2, len(e.driverRuntimes), "engine should have 1 drivers")
 	o := Services["operator"]
 	assert.Equal(t, 4, len(o.driverRuntimes), "operator should have 4 drivers")
 }
@@ -78,7 +78,7 @@ func intTestProcesses(t *testing.T) {
 		pidstr, err := exec.CommandContext(ctx, "pgrep", "honeydipper").Output()
 		assert.Nil(t, err, "should be able to run pgrep to find all honeydipper processes")
 		pids := strings.Split(string(pidstr), "\n")
-		assert.Lenf(t, pids, 9, "expecting 9 processes with honeydipper name")
+		assert.Lenf(t, pids, 11, "expecting 9 processes with honeydipper name")
 	}()
 }
 

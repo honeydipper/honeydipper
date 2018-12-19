@@ -7,6 +7,7 @@ import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/mitchellh/mapstructure"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -186,13 +187,27 @@ func (s *Service) getFeatureList() map[string]bool {
 	featureList := map[string]bool{}
 	if cfgItem, ok := s.config.getDriverData("daemon.features.global"); ok {
 		for _, feature := range cfgItem.([]interface{}) {
-			featureList[feature.(string)] = false
+			featureName := feature.(map[string]interface{})["name"].(string)
+			required, ok := dipper.GetMapDataStr(feature, "required")
+			if ok {
+				flag, _ := strconv.ParseBool(required)
+				featureList[featureName] = flag
+			} else {
+				featureList[featureName] = false
+			}
 		}
 	}
 	if cfgItem, ok := s.config.getDriverData("daemon.features." + s.name); ok {
 		log.Infof("[%s] loaded data: %v", s.name, cfgItem)
 		for _, feature := range cfgItem.([]interface{}) {
-			featureList[feature.(string)] = false
+			featureName := feature.(map[string]interface{})["name"].(string)
+			required, ok := dipper.GetMapDataStr(feature, "required")
+			if ok {
+				flag, _ := strconv.ParseBool(required)
+				featureList[featureName] = flag
+			} else {
+				featureList[featureName] = false
+			}
 		}
 	}
 	for _, feature := range RequiredFeatures[s.name] {

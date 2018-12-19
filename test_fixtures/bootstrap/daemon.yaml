@@ -2,10 +2,12 @@
 drivers:
   daemon:
     features:
+      global:
+        - name: "driver:kms"
+          required: true
       operator:
-        - "driver:gcloud"
-        - "driver:kubernetes"
-        - "driver:kms"
+        - name: "driver:gcloud"
+        - name: "driver:kubernetes"
     drivers:
       webhook:
         name: webhook
