@@ -19,6 +19,9 @@ spec:
         app.kubernetes.io/name: {{ include "honeydipper.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      {{- with .Values.daemon.spec }}
+{{ toYaml . | indent 6 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.daemon.image.repository }}:{{ .Values.daemon.image.tag }}"

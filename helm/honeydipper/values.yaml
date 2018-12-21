@@ -6,6 +6,8 @@ nameOverride: ""
 fullnameOverride: ""
 
 daemon:
+  spec: {}
+
   replicaCount: 1
 
   image:
