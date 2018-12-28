@@ -2,6 +2,7 @@ package dipper
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/Masterminds/sprig"
 	"github.com/ghodss/yaml"
 	"strings"
@@ -42,6 +43,13 @@ func ParseYaml(pattern string) interface{} {
 func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:
+		if strings.HasPrefix(v, ":path:") {
+			ret, ok := GetMapData(data, v[6:])
+			if !ok {
+				panic(fmt.Errorf("invalid path %s", v[6:]))
+			}
+			return ret
+		}
 		ret := InterpolateStr(v, data)
 		if strings.HasPrefix(ret, ":yaml:") {
 			return ParseYaml(ret[6:])

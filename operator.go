@@ -73,6 +73,9 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		dipper.Recursive(finalParams, operator.decryptDriverData)
 
 		msg.Payload = finalParams
+		if msg.Labels == nil {
+			msg.Labels = map[string]string{}
+		}
 		msg.Labels["method"] = rawaction
 
 		ret = []RoutedMessage{
