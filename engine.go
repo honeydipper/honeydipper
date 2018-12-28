@@ -29,7 +29,7 @@ type CollapsedRule struct {
 }
 
 var ruleMapLock sync.Mutex
-var ruleMap map[string]*[]CollapsedRule
+var ruleMap map[string]*[]*CollapsedRule
 
 var engine *Service
 
@@ -312,7 +312,7 @@ func terminateWorkflow(sessionID string, msg *dipper.Message) {
 // buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable
 func buildRuleMap(cfg *Config) {
 	ruleMapLock.Lock()
-	ruleMap = map[string]*[]CollapsedRule{}
+	ruleMap = map[string]*[]*CollapsedRule{}
 	defer ruleMapLock.Unlock()
 
 	for _, ruleInConfig := range cfg.config.Rules {
@@ -324,9 +324,9 @@ func buildRuleMap(cfg *Config) {
 		rawTriggerKey := rawTrigger.Driver + "." + rawTrigger.RawEvent
 		rawRules, ok := ruleMap[rawTriggerKey]
 		if !ok {
-			rawRules = &[]CollapsedRule{}
+			rawRules = &[]*CollapsedRule{}
 		}
-		*rawRules = append(*rawRules, CollapsedRule{
+		*rawRules = append(*rawRules, &CollapsedRule{
 			Conditions:   conditions,
 			OriginalRule: &rule,
 		})
