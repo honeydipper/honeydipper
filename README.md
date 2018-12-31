@@ -17,7 +17,9 @@
 ## Overview
 A IFTTT style event-driven, policy-based orchestration system that, is tailored towards SREs and DevOps workflows, and has a pluggable open architecture.  The purpose is to fill the gap between the various components used in DevOps operations to act as an orchestration hub, and to replace the ad-hoc integrations between the components so that the all the integrations can also be composed as code.
 
-For driver developers, please read this guide.  [Honeydipper driver developer's guide](./DEVELOPER.md)
+For driver developers, please read this guide.  [Honeydipper driver developer's guide](./docs/developer.md)
+
+For everyone, please find the documents at [./docs/README.md].
 
 ## Design
 The core of the Honey Dipper is comprised of an event bus, and a rules engine.  Raw events from various sources are received by corresponding event drivers, and then packaged in a standard format then published to the event bus.  The rules engine picks up the event from the bus, and, based on the rules, triggers the actions or a workflow. 
