@@ -56,7 +56,6 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		log.Debugf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
 		driver, rawaction, params, sysData := collapseFunction(nil, &function)
 		log.Debugf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
-		dipper.Recursive(sysData, operator.decryptDriverData)
 
 		worker := operator.getDriverRuntime("driver:" + driver)
 		finalParams := params
@@ -73,6 +72,9 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		dipper.Recursive(finalParams, operator.decryptDriverData)
 
 		msg.Payload = finalParams
+		if msg.Labels == nil {
+			msg.Labels = map[string]string{}
+		}
 		msg.Labels["method"] = rawaction
 
 		ret = []RoutedMessage{
@@ -116,6 +118,7 @@ func collapseFunction(s *System, f *Function) (string, string, map[string]interf
 	}
 
 	if s != nil && s.Data != nil {
+		dipper.Recursive(s.Data, operator.decryptDriverData)
 		currentSysDataCopy, _ := dipper.DeepCopy(s.Data)
 		if sysData == nil {
 			sysData = map[string]interface{}{}

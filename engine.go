@@ -5,6 +5,7 @@ import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/imdario/mergo"
 	"github.com/mitchellh/mapstructure"
+	"strconv"
 	"sync"
 )
 
@@ -28,7 +29,7 @@ type CollapsedRule struct {
 }
 
 var ruleMapLock sync.Mutex
-var ruleMap map[string]*[]CollapsedRule
+var ruleMap map[string]*[]*CollapsedRule
 
 var engine *Service
 
@@ -116,7 +117,7 @@ func continueWorkflow(sessionID string, msg *dipper.Message) {
 	}
 }
 
-func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
+func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
 	if len(sessionID) > 0 {
 		defer func() {
@@ -132,15 +133,34 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		}()
 	}
 
+	data := msg.Payload
+	if msg.Subject != "return" {
+		data = msg.Payload.(map[string]interface{})["data"]
+	}
+
+	envData := map[string]interface{}{
+		"data":   data,
+		"labels": msg.Labels,
+	}
+	var parentSession *WorkflowSession
+	if sessionID != "" {
+		parentSession = sessions[sessionID]
+		envData["wfdata"] = parentSession.wfdata
+		envData["event"] = parentSession.event
+	} else {
+		envData["event"] = data
+	}
+
+	w := interpolateWorkflow(wf, envData)
+
 	var session = &WorkflowSession{
 		Type:   w.Type,
 		parent: sessionID,
-		step:   0,
 		data:   msg.Payload,
 	}
-	if sessionID != "" {
-		session.event = sessions[sessionID].event
-		wfdata, _ := dipper.DeepCopy(sessions[sessionID].wfdata)
+	if parentSession != nil {
+		session.event = parentSession.event
+		wfdata, _ := dipper.DeepCopy(parentSession.wfdata)
 		err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
 			panic(err)
@@ -151,15 +171,7 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		session.wfdata = w.Data
 	}
 
-	data := msg.Payload
-	if msg.Subject != "return" {
-		data = msg.Payload.(map[string]interface{})["data"]
-	}
-	envData := map[string]interface{}{
-		"data":   data,
-		"labels": msg.Labels,
-		"wfdata": session.wfdata,
-	}
+	envData["wfdata"] = session.wfdata
 
 	switch w.Type {
 	case "":
@@ -167,10 +179,10 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		if !ok {
 			log.Panicf("[engine] named workflow not found: %s", w.Content.(string))
 		}
-		sessionID := dipper.IDMapPut(&sessions, session)
-		log.Infof("[engine] starting named session %s %s", w.Content.(string), sessionID)
+		childID := dipper.IDMapPut(&sessions, session)
+		log.Infof("[engine] starting named session %s %s", w.Content.(string), childID)
 
-		executeWorkflow(sessionID, &next, msg)
+		executeWorkflow(childID, &next, msg)
 
 	case "function":
 		function := Function{}
@@ -178,14 +190,8 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		if err != nil {
 			log.Panicf("[engine] invalid function definition %+v", err)
 		}
-		log.Debugf("[engine] workflow content %+v", w.Content)
 
-		function.Driver = dipper.InterpolateStr(function.Driver, envData)
-		function.RawAction = dipper.InterpolateStr(function.RawAction, envData)
-		function.Target.System = dipper.InterpolateStr(function.Target.System, envData)
-		function.Target.Function = dipper.InterpolateStr(function.Target.Function, envData)
-
-		log.Infof("[engine] function from workflow after interpolation %+v", function)
+		log.Infof("[engine] function from workflow %+v", function)
 
 		worker := engine.getDriverRuntime("eventbus")
 		payload := map[string]interface{}{}
@@ -197,10 +203,8 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 				payload["data"] = msg.Payload.(map[string]interface{})["data"]
 			}
 		}
-		if sessionID != "" {
-			payload["event"] = sessions[sessionID].event
-			payload["wfdata"] = sessions[sessionID].wfdata
-		}
+		payload["event"] = session.event
+		payload["wfdata"] = session.wfdata
 		cmdmsg := &dipper.Message{
 			Channel: "eventbus",
 			Subject: "command",
@@ -220,12 +224,12 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 
 	case "pipe":
 		for _, v := range w.Content.([]interface{}) {
-			w := &Workflow{}
-			err := mapstructure.Decode(v, w)
+			child := &Workflow{}
+			err := mapstructure.Decode(v, child)
 			if err != nil {
 				panic(err)
 			}
-			session.work = append(session.work, w)
+			session.work = append(session.work, child)
 		}
 		sessionID := dipper.IDMapPut(&sessions, session)
 		// TODO: global session timeout should be handled
@@ -249,7 +253,7 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 		value := dipper.InterpolateStr(w.Condition, envData)
 		log.Debugf("[engine] check condition workflow for %s : %s", sessionID, value)
 
-		if value == "false" || value == "0" || value == "nil" || value == "" {
+		if test, err := strconv.ParseBool(value); err != nil || !test { // not true
 			if len(choices) > 1 {
 				childSessionID := dipper.IDMapPut(&sessions, session)
 				log.Infof("[engine] starting if session %s", childSessionID)
@@ -263,7 +267,7 @@ func executeWorkflow(sessionID string, w *Workflow, msg *dipper.Message) {
 					})
 				}
 			}
-		} else {
+		} else { // true
 			childSessionID := dipper.IDMapPut(&sessions, session)
 			log.Infof("[engine] starting if session %s", childSessionID)
 			executeWorkflow(childSessionID, session.work[0], msg)
@@ -308,7 +312,7 @@ func terminateWorkflow(sessionID string, msg *dipper.Message) {
 // buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable
 func buildRuleMap(cfg *Config) {
 	ruleMapLock.Lock()
-	ruleMap = map[string]*[]CollapsedRule{}
+	ruleMap = map[string]*[]*CollapsedRule{}
 	defer ruleMapLock.Unlock()
 
 	for _, ruleInConfig := range cfg.config.Rules {
@@ -320,9 +324,9 @@ func buildRuleMap(cfg *Config) {
 		rawTriggerKey := rawTrigger.Driver + "." + rawTrigger.RawEvent
 		rawRules, ok := ruleMap[rawTriggerKey]
 		if !ok {
-			rawRules = &[]CollapsedRule{}
+			rawRules = &[]*CollapsedRule{}
 		}
-		*rawRules = append(*rawRules, CollapsedRule{
+		*rawRules = append(*rawRules, &CollapsedRule{
 			Conditions:   conditions,
 			OriginalRule: &rule,
 		})
@@ -330,4 +334,47 @@ func buildRuleMap(cfg *Config) {
 			ruleMap[rawTriggerKey] = rawRules
 		}
 	}
+}
+
+func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
+	ret := Workflow{
+		Type: v.Type,
+	}
+	switch v.Type {
+	case "":
+		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
+	case "function":
+		newContent, err := dipper.DeepCopy(v.Content.(map[string]interface{}))
+		if err != nil {
+			panic(fmt.Errorf("unable to copy function in workflow"))
+		}
+		if driverName, ok := newContent["driver"]; ok {
+			newContent["driver"] = dipper.InterpolateStr(driverName.(string), data)
+		}
+		if rawAction, ok := newContent["rawAction"]; ok {
+			newContent["rawAction"] = dipper.InterpolateStr(rawAction.(string), data)
+		}
+		if target, ok := newContent["target"]; ok {
+			newContent["target"] = dipper.Interpolate(target, data)
+		}
+		ret.Content = newContent
+	default:
+		var worklist []interface{}
+		for i, work := range v.Content.([]interface{}) {
+			if _, ok := work.(string); ok {
+				data.(map[string]interface{})["index"] = i
+				worklist = append(worklist, dipper.Interpolate(work, data))
+			} else {
+				worklist = append(worklist, work)
+			}
+		}
+		ret.Content = worklist
+	}
+	if v.Type == "if" {
+		ret.Condition = v.Condition
+	}
+	if v.Data != nil {
+		ret.Data = dipper.Interpolate(v.Data, data).(map[string]interface{})
+	}
+	return &ret
 }
