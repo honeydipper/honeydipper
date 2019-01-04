@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-var log *logging.Logger = dipper.GetLogger("webhook")
+var log *logging.Logger
 
 func init() {
 	flag.Usage = func() {
@@ -36,6 +36,7 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "webhook")
+	log = driver.GetLogger()
 	if driver.Service == "receiver" {
 		driver.Start = startWebhook
 		driver.Stop = stopWebhook

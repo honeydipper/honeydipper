@@ -51,6 +51,7 @@ func (runtime *DriverRuntime) start(service string) {
 		runtime.output = output
 	}
 	run.Stderr = os.Stderr
+	run.ExtraFiles = []*os.File{os.Stdout} // giving child process stdout for logging
 	if err := run.Start(); err != nil {
 		log.Panicf("[%s] Failed to start driver %v", service, err)
 	}

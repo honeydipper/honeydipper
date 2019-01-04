@@ -1,6 +1,7 @@
 package dipper
 
 import (
+	"github.com/op/go-logging"
 	"io"
 	"os"
 	"time"
@@ -53,9 +54,7 @@ func NewDriver(service string, name string) *Driver {
 		"eventbus:command": driver.CommandProvider.Router,
 	}
 
-	if log == nil {
-		GetLogger(name)
-	}
+	driver.GetLogger()
 	return &driver
 }
 
@@ -153,4 +152,17 @@ func (d *Driver) RPCCallRaw(feature string, method string, params []byte) ([]byt
 // RPCCall : making a PRC call from driver to another driver
 func (d *Driver) RPCCall(feature string, method string, params interface{}) ([]byte, error) {
 	return d.RPC.Caller.Call(d.Out, feature, method, params)
+}
+
+// GetLogger : getting a logger for the driver
+func (d *Driver) GetLogger() *logging.Logger {
+	if log == nil {
+		levelstr, ok := d.GetOptionStr("loglevel")
+		if !ok {
+			levelstr = "INFO"
+		}
+		logFile := os.NewFile(uintptr(3), "log")
+		return GetLogger(d.Name, levelstr, logFile)
+	}
+	return log
 }

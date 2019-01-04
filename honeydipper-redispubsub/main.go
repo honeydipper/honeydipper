@@ -18,7 +18,7 @@ type EventBusOptions struct {
 	ReturnTopic  string
 }
 
-var log *logging.Logger = dipper.GetLogger("redispubsub")
+var log *logging.Logger
 var driver *dipper.Driver
 var eventbus *EventBusOptions
 var redisOptions *redis.Options
@@ -34,6 +34,7 @@ func init() {
 func main() {
 	flag.Parse()
 	driver = dipper.NewDriver(os.Args[1], "redispubsub")
+	log = driver.GetLogger()
 	driver.Start = start
 	if driver.Service == "receiver" {
 		driver.MessageHandlers["eventbus:message"] = relayToRedis

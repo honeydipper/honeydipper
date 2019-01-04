@@ -776,6 +776,7 @@
     "github.com/op/go-logging",
     "github.com/stretchr/testify/assert",
     "golang.org/x/crypto/ssh",
+    "golang.org/x/crypto/ssh/terminal",
     "golang.org/x/oauth2",
     "golang.org/x/oauth2/google",
     "google.golang.org/api/container/v1",

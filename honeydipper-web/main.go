@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-var log *logging.Logger = dipper.GetLogger("web")
+var log *logging.Logger
 
 func init() {
 	flag.Usage = func() {
@@ -31,6 +31,7 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "web")
+	log = driver.GetLogger()
 	if driver.Service == "operator" {
 		driver.Reload = func(*dipper.Message) {} // allow hot reload
 		driver.CommandProvider.Commands["request"] = sendRequest

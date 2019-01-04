@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
+	"github.com/op/go-logging"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"os"
 )
 
-var log = dipper.GetLogger("kubernetes")
+var log *logging.Logger
 
 func init() {
 	flag.Usage = func() {
@@ -27,6 +28,7 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "kubernetes")
+	log = driver.GetLogger()
 	driver.CommandProvider.Commands["recycleDeployment"] = recycleDeployment
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()

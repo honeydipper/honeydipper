@@ -39,6 +39,7 @@ func (c *Config) watch() {
 			log.Debug("reassembling configset")
 			c.assemble()
 
+			getLogger()
 			for _, service := range Services {
 				go service.reload()
 			}
