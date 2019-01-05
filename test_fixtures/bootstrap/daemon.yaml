@@ -18,21 +18,21 @@ drivers:
           Type: go
           Package: github.com/honeyscience/honeydipper/drivers/webhook
       gcloud:
-        name: gcloud
+        name: gcloud-gke
         feature: rpc
         services:
           - engine
         data:
           Type: go
-          Package: github.com/honeyscience/honeydipper/drivers/gcloud
+          Package: github.com/honeyscience/honeydipper/drivers/gcloud-gke
       kms:
-        name: kms
+        name: gcloud-kms
         feature: decryption
         services:
           - engine
         data:
           Type: go
-          Package: github.com/honeyscience/honeydipper/drivers/kms
+          Package: github.com/honeyscience/honeydipper/drivers/gcloud-kms
       kubernetes:
         name: kubernetes
         feature: operator
