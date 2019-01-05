@@ -76,9 +76,12 @@ func intTestProcesses(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 		pidstr, err := exec.CommandContext(ctx, "pgrep", "honeydipper").Output()
-		assert.Nil(t, err, "should be able to run pgrep to find all honeydipper processes")
+		assert.Nil(t, err, "should be able to run pgrep to find honeydipper process")
+		ppid := strings.Split(string(pidstr), "\n")[0]
+		pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid).Output()
+		assert.Nil(t, err, "should be able to run pgrep to find all child processes")
 		pids := strings.Split(string(pidstr), "\n")
-		assert.Lenf(t, pids, 11, "expecting 9 processes with honeydipper name")
+		assert.Lenf(t, pids, 10, "expecting 10 child processes for honeydipper process")
 	}()
 }
 

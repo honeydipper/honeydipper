@@ -16,7 +16,7 @@ drivers:
           - receiver
         data:
           Type: go
-          Package: github.com/honeyscience/honeydipper/honeydipper-webhook
+          Package: github.com/honeyscience/honeydipper/drivers/webhook
       gcloud:
         name: gcloud
         feature: rpc
@@ -24,7 +24,7 @@ drivers:
           - engine
         data:
           Type: go
-          Package: github.com/honeyscience/honeydipper/honeydipper-gcloud
+          Package: github.com/honeyscience/honeydipper/drivers/gcloud
       kms:
         name: kms
         feature: decryption
@@ -32,7 +32,7 @@ drivers:
           - engine
         data:
           Type: go
-          Package: github.com/honeyscience/honeydipper/honeydipper-kms
+          Package: github.com/honeyscience/honeydipper/drivers/kms
       kubernetes:
         name: kubernetes
         feature: operator
@@ -40,5 +40,5 @@ drivers:
           - engine
         data:
           Type: go
-          Package: github.com/honeyscience/honeydipper/honeydipper-kubernetes
+          Package: github.com/honeyscience/honeydipper/drivers/kubernetes
 
