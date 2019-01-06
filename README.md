@@ -1,5 +1,10 @@
 # Honey Dipper
 
+ * **master** [![CircleCI](https://circleci.com/gh/honeyscience/honeydipper.svg?style=svg&circle-token=60ce48f25e09dc164d4bdcff204182e2570fcf0d)](https://circleci.com/gh/honeyscience/honeydipper)
+ * **v0.1.2** [![CircleCI](https://circleci.com/gh/honeyscience/honeydipper/tree/v0.1.2.svg?style=svg&circle-token=60ce48f25e09dc164d4bdcff204182e2570fcf0d)](https://circleci.com/gh/honeyscience/honeydipper/tree/v0.1.2)
+
+---
+
 <!-- toc -->
 
 - [Overview](#overview)
