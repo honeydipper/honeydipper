@@ -157,7 +157,7 @@ func (d *Driver) RPCCall(feature string, method string, params interface{}) ([]b
 // GetLogger : getting a logger for the driver
 func (d *Driver) GetLogger() *logging.Logger {
 	if log == nil {
-		levelstr, ok := d.GetOptionStr("loglevel")
+		levelstr, ok := d.GetOptionStr("data.loglevel")
 		if !ok {
 			levelstr = "INFO"
 		}

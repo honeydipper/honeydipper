@@ -14,6 +14,14 @@
   version = "v0.31.0"
 
 [[projects]]
+  digest = "1:bd285ec20a7450d2272631284de698f2d76e923a458fee90e99cc1db4b97708d"
+  name = "github.com/DataDog/datadog-go"
+  packages = ["statsd"]
+  pruneopts = "UT"
+  revision = "e67964b4021ad3a334e748e8811eb3cd6becbc6e"
+  version = "2.1.0"
+
+[[projects]]
   digest = "1:55388fd080150b9a072912f97b1f5891eb0b50df43401f8b75fb4273d3fec9fc"
   name = "github.com/Masterminds/semver"
   packages = ["."]
@@ -768,6 +776,7 @@
   analyzer-version = 1
   input-imports = [
     "cloud.google.com/go/kms/apiv1",
+    "github.com/DataDog/datadog-go/statsd",
     "github.com/Masterminds/sprig",
     "github.com/ghodss/yaml",
     "github.com/go-redis/redis",
