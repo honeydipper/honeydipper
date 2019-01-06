@@ -3,7 +3,7 @@
 <!-- toc -->
 
 - [Prefix interpolation](#prefix-interpolation)
-  * [*:enc:* Encrypted content](#enc-encrypted-content)
+  * [*`ENC[driver,ciphertext/base64==]`* Encrypted content](#encdriverciphertextbase64-encrypted-content)
   * [*:regex:* Regular expression pattern](#regex-regular-expression-pattern)
   * [*:yaml:* Building data structure with yaml](#yaml-building-data-structure-with-yaml)
   * [*:path:* Referencing context data with given path](#path-referencing-context-data-with-given-path)
@@ -24,8 +24,8 @@ Honeydipper functions and workflows are dynamic in nature. Parameters, system da
 ## Prefix interpolation
 When a string value starts with certain prefixes, Honeydipper will transform the value based on the function specified by the prefix.
 
-### *:enc:* Encrypted content
-Encrypted contents are usually kept in system data. The value should start with `:enc:` prefix. Following the `:enc:` prefix is the name of the driver that can be used for decrypting the content. Following the driver name is a ":" and the base64 encoded ciphertext.
+### *`ENC[driver,ciphertext/base64==]`* Encrypted content
+Encrypted contents are usually kept in system data. The value should be specified in `eyaml` style, start with `ENC[` prefix. Following the prefix is the name of the driver that can be used for decrypting the content. Following the driver name is a "," and the base64 encoded ciphertext.
 
 Can be used in system data, event conditions.
 
@@ -34,7 +34,7 @@ For example:
 systems:
   kubenetes:
     data:
-      service_account: :enc:kms:...
+      service_account: ENC[gcloud-kms,...]
 ```
 
 ### *:regex:* Regular expression pattern

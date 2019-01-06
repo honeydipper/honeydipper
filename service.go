@@ -32,13 +32,10 @@ func NewService(cfg *Config, name string) *Service {
 
 func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{}, replace bool) {
 	if str, ok := val.(string); ok {
-		if strings.HasPrefix(str, ":enc:") {
-			parts := strings.Split(str, ":")
-			if len(parts) != 4 {
-				log.Panicf("encrypted data shoud be :enc:<driver>:<base64 encoded data>")
-			}
-			encDriver := parts[2]
-			data := []byte(parts[3])
+		if strings.HasPrefix(str, "ENC[") {
+			parts := strings.SplitN(str[4:len(str)-1], ",", 2)
+			encDriver := parts[0]
+			data := []byte(parts[1])
 			decoded, err := base64.StdEncoding.DecodeString(string(data))
 			if err != nil {
 				log.Panicf("encrypted data shoud be base64 encoded")
