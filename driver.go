@@ -77,6 +77,15 @@ func (runtime *DriverRuntime) sendOptions() {
 }
 
 func (runtime *DriverRuntime) sendMessage(msg *dipper.Message) {
+	if runtime.feature != "emitter" {
+		Services[runtime.service].counterIncr("honeydipper.local.message", []string{
+			"service:" + runtime.service,
+			"driver:" + runtime.meta.Name,
+			"direction:outbound",
+			"channel:" + msg.Channel,
+			"subject:" + msg.Subject,
+		})
+	}
 	dipper.SendMessage(runtime.output, msg)
 }
 

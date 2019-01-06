@@ -320,9 +320,21 @@ func (s *Service) serviceLoop() {
 			s.checkDeleteDriverRuntime(chosenRuntime.feature, chosenRuntime)
 		} else if chosen < len(orderedRuntimes) {
 			func() {
+				runtime := orderedRuntimes[chosen]
+				msg := value.Interface().(dipper.Message)
+				if runtime.feature != "emitter" {
+					s.counterIncr("honeydipper.local.message", []string{
+						"service:" + s.name,
+						"driver:" + runtime.meta.Name,
+						"direction:inbound",
+						"channel:" + msg.Channel,
+						"subject:" + msg.Subject,
+					})
+				}
+
 				s.driverLock.Lock()
 				defer s.driverLock.Unlock()
-				go s.process(value.Interface().(dipper.Message), orderedRuntimes[chosen])
+				go s.process(msg, runtime)
 			}()
 		}
 	}
@@ -463,5 +475,24 @@ func handleRPCReturn(from *DriverRuntime, m *dipper.Message) {
 		s.RPC.Caller.HandleReturn(m)
 	} else {
 		dipper.SendMessage(s.getDriverRuntime(caller).output, m)
+	}
+}
+
+func (s *Service) counterIncr(name string, tags []string) {
+	if emitter, ok := s.driverRuntimes["emitter"]; ok {
+		go s.RPC.Caller.CallNoWait(emitter.output, "emitter", "counter_increment", map[string]interface{}{
+			"name": name,
+			"tags": tags,
+		})
+	}
+}
+
+func (s *Service) gaugeSet(name string, value string, tags []string) {
+	if emitter, ok := s.driverRuntimes["emitter"]; ok {
+		go s.RPC.Caller.CallNoWait(emitter.output, "emitter", "gauge_set", map[string]interface{}{
+			"name":  name,
+			"value": value,
+			"tags":  tags,
+		})
 	}
 }
