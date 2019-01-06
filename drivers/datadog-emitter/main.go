@@ -35,7 +35,7 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "datadog-emitter")
 	log = driver.GetLogger()
 	driver.RPC.Provider.RPCHandlers["counter_increment"] = counterIncr
-	driver.RPC.Provider.RPCHandlers["guage_set"] = guageSet
+	driver.RPC.Provider.RPCHandlers["gauge_set"] = gaugeSet
 	driver.Reload = loadOptions
 	driver.Start = loadOptions
 	driver.Run()
@@ -76,7 +76,7 @@ func counterIncr(msg *dipper.Message) {
 	msg.Reply <- dipper.Message{}
 }
 
-func guageSet(msg *dipper.Message) {
+func gaugeSet(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload.(map[string]interface{})
 	name := params["name"].(string)
