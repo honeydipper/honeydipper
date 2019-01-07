@@ -24,7 +24,29 @@ spec:
       {{- end }}
       containers:
         - name: {{ .Chart.Name }}
+          {{- if .Values.daemon.useSource }}
+          image: "golang:alpine"
+          command:
+            - "/bin/sh"
+            - "-c"
+            - |
+              apk add openssh git &&
+              go get -u github.com/golang/dep/cmd/dep &&
+              mkdir -p ~/.ssh &&
+              chmod 700 ~/.ssh &&
+              echo $'Host github.com\n\tStrictHostKeyChecking\tno\n\tUserKnownHostsFile\t/dev/null\n\tIdentityFile\t'{{ .Values.daemon.gitIdentityFilePath }}/id_rsa > ~/.ssh/config &&
+              mkdir -p /go/src/github.com/honeyscience &&
+              cd /go/src/github.com/honeyscience &&
+              git clone git@github.com:honeyscience/honeydipper.git &&
+              cd honeydipper &&
+              git checkout {{ .Values.daemon.useBranch }} &&
+              dep ensure &&
+              go install ./... &&
+              honeydipper {{ range $k, $v := .Values.daemon.args }}{{ quote $v }}{{ end }} ||
+              sleep 3600
+          {{- else }}
           image: "{{ .Values.daemon.image.repository }}:{{ .Values.daemon.image.tag }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.daemon.image.pullPolicy }}
     {{- with .Values.daemon.args }}
           args:
