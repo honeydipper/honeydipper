@@ -157,7 +157,7 @@ type DriverRuntime struct {
 	driver      *Driver
 	service     string
 	Run         *exec.Cmd
-	state       string
+	state       int
 }
 
 // RoutedMessage : a service process a message and use the routed message to send to drivers
@@ -165,3 +165,11 @@ type RoutedMessage struct {
 	driverRuntime *DriverRuntime
 	message       *dipper.Message
 }
+
+// DriverStates : Driver states
+const (
+	DriverLoading = iota
+	DriverReloading
+	DriverAlive
+	DriverFailed
+)

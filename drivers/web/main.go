@@ -31,7 +31,6 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "web")
-	log = driver.GetLogger()
 	if driver.Service == "operator" {
 		driver.Reload = func(*dipper.Message) {} // allow hot reload
 		driver.CommandProvider.Commands["request"] = sendRequest
@@ -40,6 +39,9 @@ func main() {
 }
 
 func sendRequest(m *dipper.Message) {
+	if log == nil {
+		log = driver.GetLogger()
+	}
 	m = dipper.DeserializePayload(m)
 	rurl, ok := dipper.GetMapDataStr(m.Payload, "URL")
 	if !ok {

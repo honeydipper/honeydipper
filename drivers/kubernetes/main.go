@@ -35,6 +35,9 @@ func main() {
 }
 
 func recycleDeployment(m *dipper.Message) {
+	if log == nil {
+		log = driver.GetLogger()
+	}
 	m = dipper.DeserializePayload(m)
 	deploymentName, ok := dipper.GetMapDataStr(m.Payload, "deployment")
 	log.Infof("[%s] got deploymentName %s", driver.Service, deploymentName)

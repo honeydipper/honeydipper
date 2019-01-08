@@ -79,8 +79,8 @@ func (runtime *DriverRuntime) sendOptions() {
 func (runtime *DriverRuntime) sendMessage(msg *dipper.Message) {
 	if runtime.feature != "emitter" {
 		s := Services[runtime.service]
-		if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == "alive" {
-			s.counterIncr("honeydipper.local.message", []string{
+		if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == DriverAlive {
+			s.counterIncr("honey.honeydipper.local.message", []string{
 				"service:" + runtime.service,
 				"driver:" + runtime.meta.Name,
 				"direction:outbound",

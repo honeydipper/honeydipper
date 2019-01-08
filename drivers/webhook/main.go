@@ -36,7 +36,6 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "webhook")
-	log = driver.GetLogger()
 	if driver.Service == "receiver" {
 		driver.Start = startWebhook
 		driver.Stop = stopWebhook
@@ -50,6 +49,7 @@ func stopWebhook(*dipper.Message) {
 }
 
 func loadOptions(m *dipper.Message) {
+	log = driver.GetLogger()
 	hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
 	if !ok {
 		log.Panicf("[%s] no hooks defined for webhook driver", driver.Service)

@@ -34,7 +34,6 @@ func init() {
 func main() {
 	flag.Parse()
 	driver = dipper.NewDriver(os.Args[1], "redispubsub")
-	log = driver.GetLogger()
 	driver.Start = start
 	if driver.Service == "receiver" {
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
@@ -47,6 +46,7 @@ func main() {
 }
 
 func loadOptions() {
+	log = driver.GetLogger()
 	log.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
 
 	eb := &EventBusOptions{

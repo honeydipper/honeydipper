@@ -95,6 +95,8 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 	msg = DeserializePayload(msg)
 	Recursive(msg.Payload, RegexParser)
 	d.Options = msg.Payload
+	log = nil
+	d.GetLogger()
 	d.ReadySignal <- true
 }
 

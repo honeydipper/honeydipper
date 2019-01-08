@@ -108,10 +108,10 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		meta:        &driverMeta,
 		data:        driverData,
 		dynamicData: dynamicData,
-		state:       "loading",
+		state:       DriverLoading,
 	}
 
-	if oldRuntime != nil && reflect.DeepEqual(*oldRuntime.meta, *driverRuntime.meta) {
+	if oldRuntime != nil && oldRuntime.state != DriverFailed && reflect.DeepEqual(*oldRuntime.meta, *driverRuntime.meta) {
 		if reflect.DeepEqual(oldRuntime.data, driverRuntime.data) && reflect.DeepEqual(oldRuntime.dynamicData, driverRuntime.dynamicData) {
 			log.Infof("[%s] driver not affected: %s", s.name, driverName)
 		} else {
@@ -119,7 +119,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			affected = true
 			oldRuntime.data = driverRuntime.data
 			oldRuntime.dynamicData = driverRuntime.dynamicData
-			oldRuntime.state = "reloading"
+			oldRuntime.state = DriverReloading
 			oldRuntime.sendOptions()
 		}
 	} else {
@@ -246,7 +246,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 					s.addExpect(
 						"state:alive:"+driverName,
 						func(*dipper.Message) {
-							s.driverRuntimes[feature].state = "alive"
+							s.driverRuntimes[feature].state = DriverAlive
 						},
 						10*time.Second,
 						func() {
@@ -254,6 +254,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 								log.Fatalf("failed to start driver %s.%s", s.name, driverName)
 							} else {
 								log.Warningf("failed to reload driver %s.%s", s.name, driverName)
+								s.driverRuntimes[feature].state = DriverFailed
 								s.config.rollBack()
 							}
 						},
@@ -276,12 +277,12 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 					s.addExpect(
 						"state:alive:"+driverName,
 						func(*dipper.Message) {
-							s.driverRuntimes[feature].state = "alive"
+							s.driverRuntimes[feature].state = DriverAlive
 						},
 						10*time.Second,
 						func() {
 							log.Warningf("[%s] failed to start or reload driver %s", s.name, driverName)
-							s.checkDeleteDriverRuntime(feature, s.driverRuntimes[feature])
+							s.driverRuntimes[feature].state = DriverFailed
 						},
 					)
 				}(feature, driverName)
@@ -299,22 +300,22 @@ func (s *Service) serviceLoop() {
 		func() {
 			s.driverLock.Lock()
 			defer s.driverLock.Unlock()
-			cases = make([]reflect.SelectCase, len(s.driverRuntimes)+1)
-			orderedRuntimes = make([]*DriverRuntime, len(s.driverRuntimes))
-			i := 0
+			cases = []reflect.SelectCase{}
+			orderedRuntimes = []*DriverRuntime{}
 			for _, runtime := range s.driverRuntimes {
-				cases[i] = reflect.SelectCase{
-					Dir:  reflect.SelectRecv,
-					Chan: reflect.ValueOf(runtime.stream),
+				if runtime.state != DriverFailed {
+					cases = append(cases, reflect.SelectCase{
+						Dir:  reflect.SelectRecv,
+						Chan: reflect.ValueOf(runtime.stream),
+					})
+					orderedRuntimes = append(orderedRuntimes, runtime)
 				}
-				orderedRuntimes[i] = runtime
-				i++
 			}
 		}()
-		cases[len(cases)-1] = reflect.SelectCase{
+		cases = append(cases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(time.After(time.Second)),
-		}
+		})
 
 		var chosen int
 		var value reflect.Value
@@ -326,15 +327,16 @@ func (s *Service) serviceLoop() {
 		}()
 
 		if !ok {
-			chosenRuntime := orderedRuntimes[chosen]
-			s.checkDeleteDriverRuntime(chosenRuntime.feature, chosenRuntime)
+			if chosen < len(orderedRuntimes) {
+				orderedRuntimes[chosen].state = DriverFailed
+			}
 		} else if chosen < len(orderedRuntimes) {
 			func() {
 				runtime := orderedRuntimes[chosen]
 				msg := value.Interface().(dipper.Message)
 				if runtime.feature != "emitter" {
-					if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == "alive" {
-						s.counterIncr("honeydipper.local.message", []string{
+					if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == DriverAlive {
+						s.counterIncr("honey.honeydipper.local.message", []string{
 							"service:" + s.name,
 							"driver:" + runtime.meta.Name,
 							"direction:inbound",
@@ -452,7 +454,6 @@ func (s *Service) checkDeleteDriverRuntime(feature string, check *DriverRuntime)
 	oldone := dipper.LockCheckDeleteMap(&s.driverLock, s.driverRuntimes, feature, check)
 	if oldone != nil {
 		oldruntime := oldone.(*DriverRuntime)
-		oldruntime.state = "removed"
 		return oldruntime
 	}
 	return nil
@@ -493,7 +494,7 @@ func handleRPCReturn(from *DriverRuntime, m *dipper.Message) {
 }
 
 func (s *Service) counterIncr(name string, tags []string) {
-	if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == "alive" {
+	if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == DriverAlive {
 		go s.RPC.Caller.CallNoWait(emitter.output, "emitter", "counter_increment", map[string]interface{}{
 			"name": name,
 			"tags": tags,
@@ -502,7 +503,7 @@ func (s *Service) counterIncr(name string, tags []string) {
 }
 
 func (s *Service) gaugeSet(name string, value string, tags []string) {
-	if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == "alive" {
+	if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == DriverAlive {
 		go s.RPC.Caller.CallNoWait(emitter.output, "emitter", "gauge_set", map[string]interface{}{
 			"name":  name,
 			"value": value,
