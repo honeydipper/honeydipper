@@ -43,7 +43,7 @@ func main() {
 }
 
 func loadOptions(msg *dipper.Message) {
-	ddOptions, ok := driver.GetOption("data.datadog")
+	ddOptions, ok := driver.GetOption("data")
 	if !ok {
 		log.Panicf("datadog options not found")
 	}
