@@ -108,6 +108,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		meta:        &driverMeta,
 		data:        driverData,
 		dynamicData: dynamicData,
+		state:       "loading",
 	}
 
 	if oldRuntime != nil && reflect.DeepEqual(*oldRuntime.meta, *driverRuntime.meta) {
@@ -118,6 +119,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			affected = true
 			oldRuntime.data = driverRuntime.data
 			oldRuntime.dynamicData = driverRuntime.dynamicData
+			oldRuntime.state = "reloading"
 			oldRuntime.sendOptions()
 		}
 	} else {
@@ -240,19 +242,23 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 				}
 			}
 			if affected {
-				s.addExpect(
-					"state:alive:"+driverName,
-					func(*dipper.Message) {},
-					10*time.Second,
-					func() {
-						if boot {
-							log.Fatalf("failed to start driver %s.%s", s.name, driverName)
-						} else {
-							log.Warningf("failed to reload driver %s.%s", s.name, driverName)
-							s.config.rollBack()
-						}
-					},
-				)
+				func(feature string, driverName string) {
+					s.addExpect(
+						"state:alive:"+driverName,
+						func(*dipper.Message) {
+							s.driverRuntimes[feature].state = "alive"
+						},
+						10*time.Second,
+						func() {
+							if boot {
+								log.Fatalf("failed to start driver %s.%s", s.name, driverName)
+							} else {
+								log.Warningf("failed to reload driver %s.%s", s.name, driverName)
+								s.config.rollBack()
+							}
+						},
+					)
+				}(feature, driverName)
 			}
 		}
 	}
@@ -266,12 +272,19 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 				log.Infof("[%s] skip feature %s error %v", s.name, feature, err)
 			}
 			if affected {
-				s.addExpect(
-					"state:alive:"+driverName,
-					func(*dipper.Message) {},
-					10*time.Second,
-					func() { log.Warningf("[%s] failed to start or reload driver %s", s.name, driverName) },
-				)
+				func(feature string, driverName string) {
+					s.addExpect(
+						"state:alive:"+driverName,
+						func(*dipper.Message) {
+							s.driverRuntimes[feature].state = "alive"
+						},
+						10*time.Second,
+						func() {
+							log.Warningf("[%s] failed to start or reload driver %s", s.name, driverName)
+							s.checkDeleteDriverRuntime(feature, s.driverRuntimes[feature])
+						},
+					)
+				}(feature, driverName)
 			}
 		}
 	}
@@ -320,13 +333,15 @@ func (s *Service) serviceLoop() {
 				runtime := orderedRuntimes[chosen]
 				msg := value.Interface().(dipper.Message)
 				if runtime.feature != "emitter" {
-					s.counterIncr("honeydipper.local.message", []string{
-						"service:" + s.name,
-						"driver:" + runtime.meta.Name,
-						"direction:inbound",
-						"channel:" + msg.Channel,
-						"subject:" + msg.Subject,
-					})
+					if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == "alive" {
+						s.counterIncr("honeydipper.local.message", []string{
+							"service:" + s.name,
+							"driver:" + runtime.meta.Name,
+							"direction:inbound",
+							"channel:" + msg.Channel,
+							"subject:" + msg.Subject,
+						})
+					}
 				}
 
 				s.driverLock.Lock()
@@ -436,7 +451,9 @@ func (s *Service) setDriverRuntime(feature string, runtime *DriverRuntime) *Driv
 func (s *Service) checkDeleteDriverRuntime(feature string, check *DriverRuntime) *DriverRuntime {
 	oldone := dipper.LockCheckDeleteMap(&s.driverLock, s.driverRuntimes, feature, check)
 	if oldone != nil {
-		return oldone.(*DriverRuntime)
+		oldruntime := oldone.(*DriverRuntime)
+		oldruntime.state = "removed"
+		return oldruntime
 	}
 	return nil
 }
@@ -476,7 +493,7 @@ func handleRPCReturn(from *DriverRuntime, m *dipper.Message) {
 }
 
 func (s *Service) counterIncr(name string, tags []string) {
-	if emitter, ok := s.driverRuntimes["emitter"]; ok {
+	if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == "alive" {
 		go s.RPC.Caller.CallNoWait(emitter.output, "emitter", "counter_increment", map[string]interface{}{
 			"name": name,
 			"tags": tags,
@@ -485,7 +502,7 @@ func (s *Service) counterIncr(name string, tags []string) {
 }
 
 func (s *Service) gaugeSet(name string, value string, tags []string) {
-	if emitter, ok := s.driverRuntimes["emitter"]; ok {
+	if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == "alive" {
 		go s.RPC.Caller.CallNoWait(emitter.output, "emitter", "gauge_set", map[string]interface{}{
 			"name":  name,
 			"value": value,

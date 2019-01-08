@@ -157,6 +157,7 @@ type DriverRuntime struct {
 	driver      *Driver
 	service     string
 	Run         *exec.Cmd
+	state       string
 }
 
 // RoutedMessage : a service process a message and use the routed message to send to drivers

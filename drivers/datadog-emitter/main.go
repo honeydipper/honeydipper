@@ -77,19 +77,25 @@ func counterIncr(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload.(map[string]interface{})
 	name := params["name"].(string)
-	tags := params["tags"].([]string)
+	tagsObj := params["tags"].([]interface{})
+	tags := []string{}
+	for _, tag := range tagsObj {
+		tags = append(tags, tag.(string))
+	}
 
 	dogstatsd.Incr(name, tags, 1)
-	msg.Reply <- dipper.Message{}
 }
 
 func gaugeSet(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload.(map[string]interface{})
 	name := params["name"].(string)
-	tags := params["tags"].([]string)
 	value := params["value"].(string)
+	tagsObj := params["tags"].([]interface{})
+	tags := []string{}
+	for _, tag := range tagsObj {
+		tags = append(tags, tag.(string))
+	}
 
 	dogstatsd.Set(name, value, tags, 1)
-	msg.Reply <- dipper.Message{}
 }
