@@ -12,8 +12,9 @@ import (
 
 // DatadogOptions : datadog statsd connection options
 type DatadogOptions struct {
-	StatsdHost string
-	StatsdPort string
+	UseHostPort bool
+	StatsdHost  string
+	StatsdPort  string
 }
 
 func init() {
@@ -50,6 +51,12 @@ func loadOptions(msg *dipper.Message) {
 	err := mapstructure.Decode(ddOptions, &datadogOptions)
 	if err != nil {
 		panic(err)
+	}
+	if datadogOptions.UseHostPort {
+		var ok bool
+		if datadogOptions.StatsdHost, ok = os.LookupEnv("DOGSTATSD_HOST_IP"); !ok {
+			log.Panicf("datadog host IP not set")
+		}
 	}
 
 	if dogstatsd != nil {
