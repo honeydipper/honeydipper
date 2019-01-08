@@ -160,6 +160,7 @@ func (s *Service) start() {
 		s.loadRequiredFeatures(featureList, true)
 		go s.serviceLoop()
 		s.loadAdditionalFeatures(featureList)
+		go s.metricsLoop()
 	}()
 }
 
@@ -509,5 +510,34 @@ func (s *Service) gaugeSet(name string, value string, tags []string) {
 			"value": value,
 			"tags":  tags,
 		})
+	}
+}
+
+func (s *Service) metricsLoop() {
+	for !shuttingDown {
+		if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == DriverAlive {
+			counts := map[int]int{
+				DriverLoading:   0,
+				DriverAlive:     0,
+				DriverFailed:    0,
+				DriverReloading: 0,
+			}
+			for _, runtime := range s.driverRuntimes {
+				counts[runtime.state]++
+			}
+			s.gaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[DriverLoading]), []string{
+				"service:" + s.name,
+				"state:loading",
+			})
+			s.gaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[DriverAlive]), []string{
+				"service:" + s.name,
+				"state:alive",
+			})
+			s.gaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[DriverFailed]), []string{
+				"service:" + s.name,
+				"state:failed",
+			})
+		}
+		time.Sleep(time.Minute)
 	}
 }
