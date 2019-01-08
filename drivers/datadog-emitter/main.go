@@ -8,6 +8,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/op/go-logging"
 	"os"
+	"strconv"
 )
 
 // DatadogOptions : datadog statsd connection options
@@ -90,12 +91,15 @@ func gaugeSet(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload.(map[string]interface{})
 	name := params["name"].(string)
-	value := params["value"].(string)
+	value, err := strconv.ParseFloat(params["value"].(string), 64)
+	if err != nil {
+		panic(err)
+	}
 	tagsObj := params["tags"].([]interface{})
 	tags := []string{}
 	for _, tag := range tagsObj {
 		tags = append(tags, tag.(string))
 	}
 
-	dogstatsd.Set(name, value, tags, 1)
+	dogstatsd.Gauge(name, value, tags, 1)
 }

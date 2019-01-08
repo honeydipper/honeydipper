@@ -159,6 +159,7 @@ func (s *Service) start() {
 		featureList := s.getFeatureList()
 		s.loadRequiredFeatures(featureList, true)
 		go s.serviceLoop()
+		time.Sleep(time.Second)
 		s.loadAdditionalFeatures(featureList)
 		go s.metricsLoop()
 	}()
