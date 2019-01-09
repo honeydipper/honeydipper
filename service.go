@@ -52,6 +52,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		if r := recover(); r != nil {
 			log.Infof("Resuming after error: %v", r)
 			log.Infof("[%s] skip reloading feature: %s", s.name, feature)
+			s.setDriverRuntime(feature, &DriverRuntime{state: DriverFailed})
 			if err, ok := r.(error); ok {
 				rerr = err
 			} else {
