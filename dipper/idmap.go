@@ -58,5 +58,5 @@ func IDMapDel(m IDMap, key string) {
 	defer (*meta).Lock.Unlock()
 
 	mapValue := reflect.ValueOf(m).Elem()
-	mapValue.SetMapIndex(reflect.ValueOf(key), reflect.Zero(mapValue.Type().Elem()))
+	mapValue.SetMapIndex(reflect.ValueOf(key), reflect.Value{})
 }
