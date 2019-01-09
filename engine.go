@@ -386,7 +386,5 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 }
 
 func engineMetrics() {
-	engine.gaugeSet("honey.honeydipper.engine.workflows", strconv.Itoa(len(sessions)), []string{
-		"status:running",
-	})
+	engine.gaugeSet("honey.honeydipper.engine.sessions", strconv.Itoa(len(sessions)), []string{})
 }
