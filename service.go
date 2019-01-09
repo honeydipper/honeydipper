@@ -189,26 +189,13 @@ func (s *Service) getFeatureList() map[string]bool {
 	if cfgItem, ok := s.config.getDriverData("daemon.features.global"); ok {
 		for _, feature := range cfgItem.([]interface{}) {
 			featureName := feature.(map[string]interface{})["name"].(string)
-			required, ok := dipper.GetMapDataStr(feature, "required")
-			if ok {
-				flag, _ := strconv.ParseBool(required)
-				featureList[featureName] = flag
-			} else {
-				featureList[featureName] = false
-			}
+			featureList[featureName], _ = dipper.GetMapDataBool(feature, "required")
 		}
 	}
 	if cfgItem, ok := s.config.getDriverData("daemon.features." + s.name); ok {
-		log.Infof("[%s] loaded data: %v", s.name, cfgItem)
 		for _, feature := range cfgItem.([]interface{}) {
 			featureName := feature.(map[string]interface{})["name"].(string)
-			required, ok := dipper.GetMapDataStr(feature, "required")
-			if ok {
-				flag, _ := strconv.ParseBool(required)
-				featureList[featureName] = flag
-			} else {
-				featureList[featureName] = false
-			}
+			featureList[featureName], _ = dipper.GetMapDataBool(feature, "required")
 		}
 	}
 	for _, feature := range RequiredFeatures[s.name] {
@@ -220,6 +207,7 @@ func (s *Service) getFeatureList() map[string]bool {
 			featureList[name] = false
 		}
 	}
+	log.Debugf("[%s] final feature list %+v", s.name, featureList)
 	return featureList
 }
 
