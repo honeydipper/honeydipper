@@ -127,6 +127,7 @@ type Service struct {
 	RPC                struct {
 		Caller dipper.RPCCaller
 	}
+	EmitMetrics func()
 }
 
 // Driver : the parent class for all driver types

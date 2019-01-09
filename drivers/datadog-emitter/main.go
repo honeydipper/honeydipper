@@ -30,12 +30,13 @@ var driver *dipper.Driver
 var log *logging.Logger
 var datadogOptions DatadogOptions
 var dogstatsd *statsd.Client
+var daemonID string
 
 func main() {
 	flag.Parse()
 
+	daemonID = dipper.GetIP()
 	driver = dipper.NewDriver(os.Args[1], "datadog-emitter")
-	log = driver.GetLogger()
 	driver.RPC.Provider.RPCHandlers["counter_increment"] = counterIncr
 	driver.RPC.Provider.RPCHandlers["gauge_set"] = gaugeSet
 	driver.Reload = loadOptions
@@ -45,6 +46,7 @@ func main() {
 
 func loadOptions(msg *dipper.Message) {
 	ddOptions, ok := driver.GetOption("data")
+	log = driver.GetLogger()
 	if !ok {
 		log.Panicf("datadog options not found")
 	}
@@ -79,7 +81,9 @@ func counterIncr(msg *dipper.Message) {
 	params := msg.Payload.(map[string]interface{})
 	name := params["name"].(string)
 	tagsObj := params["tags"].([]interface{})
-	tags := []string{}
+	tags := []string{
+		"daemon-id:" + daemonID,
+	}
 	for _, tag := range tagsObj {
 		tags = append(tags, tag.(string))
 	}
@@ -96,7 +100,9 @@ func gaugeSet(msg *dipper.Message) {
 		panic(err)
 	}
 	tagsObj := params["tags"].([]interface{})
-	tags := []string{}
+	tags := []string{
+		"daemon-id:" + daemonID,
+	}
 	for _, tag := range tagsObj {
 		tags = append(tags, tag.(string))
 	}

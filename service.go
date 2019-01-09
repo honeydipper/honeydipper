@@ -528,6 +528,9 @@ func (s *Service) metricsLoop() {
 				"state:failed",
 			})
 		}
+		if s.EmitMetrics != nil {
+			s.EmitMetrics()
+		}
 		time.Sleep(time.Minute)
 	}
 }

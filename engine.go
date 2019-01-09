@@ -38,6 +38,7 @@ func startEngine(cfg *Config) {
 	engine = NewService(cfg, "engine")
 	engine.Route = engineRoute
 	engine.ServiceReload = buildRuleMap
+	engine.EmitMetrics = engineMetrics
 	Services["engine"] = engine
 	buildRuleMap(cfg)
 	engine.start()
@@ -306,6 +307,11 @@ func terminateWorkflow(sessionID string, msg *dipper.Message) {
 			go continueWorkflow(session.parent, msg)
 		}
 	}
+	if emitter, ok := engine.driverRuntimes["emitter"]; ok && emitter.state == DriverAlive {
+		engine.counterIncr("honey.honeydipper.engine.workflows", []string{
+			"status:" + msg.Labels["status"],
+		})
+	}
 	log.Warningf("[engine] workflow session terminated %s", sessionID)
 }
 
@@ -377,4 +383,10 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 		ret.Data = dipper.Interpolate(v.Data, data).(map[string]interface{})
 	}
 	return &ret
+}
+
+func engineMetrics() {
+	engine.gaugeSet("honey.honeydipper.engine.workflows", strconv.Itoa(len(sessions)), []string{
+		"status:running",
+	})
 }
