@@ -61,11 +61,7 @@ As mentioned in the concepts, one of Honey Dipper's main selling points is "abst
 ![Dipper Daemon](./DipperDaemon.png)
 
 ## TODO
- * Test framework and CI
- * dockerizing
- * kubernetes manifest files
  * Documentation for users
- * Documentation for developers
  * Enhancing the driver communication protocol to support more encodings, gob, pickle
  * Python driver library
  * API service
@@ -79,43 +75,53 @@ As mentioned in the concepts, one of Honey Dipper's main selling points is "abst
 
 ## Get Started On Developing
 
- * Setup a directory as your go work directory and add it to GOPATH. Assuming go 1.11 or up is installed, gvm is recommended to manage multiple versions of go. You may want to persist the GOPATH in your bash_profile
-```bash
-mkdir gocode
-export GOPATH=$GOPATH:$PWD/gocode
+### Prerequisites
+If you're using Redis's pubsub, you'll need to run Redis and configure the driver in your configuration, e.g.,
+```yaml
+drivers:
+  redispubsub:
+    connection:
+      Addr: 10.0.0.5:6379
 ```
- * Clone the code
-```bash
-cd gocode
-mkdir -p src/github.com/honeyscience/
-cd src/github.com/honeyscience/
-git clone git@github.com:honeyscience/honeydipper.git
-```
- * Load the dependencies
-```bash
-brew install dep
-cd honeydipper
-dep ensure
-```
- * Build
-```bash
-go install ./...
-```
- * Run test
-```bash
-go test -v ./...
-```
- * (Optional) For colored test results
-```bash
-go get -u github.com/rakyll/gotest
-gotest -v ./...
-```
- * (Optional) For pre-commit hooks
-```bash
-brew install pre-commit
-pre-commit install --install-hooks
-```
- * Start your local dipper daemon, see admin guide(coming soon) for detail
-```bash
-REPO=file:///path/to/your/rule/repo honeydipper
-```
+
+### Setup
+
+Setup a directory as your go work directory and add it to `$GOPATH`. Assuming go 1.11 or up is installed, gvm is recommended to manage multiple versions of go. You may want to set `$GOPATH` in your shell init files, as well as add `$GOPATH/bin` to your `$PATH`.
+
+    $ mkdir gocode
+    $ export GOPATH=$GOPATH:$PWD/gocode
+
+Clone the code:
+
+    $ cd gocode
+    $ mkdir -p src/github.com/honeyscience/
+    $ cd src/github.com/honeyscience/
+    $ git clone git@github.com:honeyscience/honeydipper.git
+
+Load the dependencies:
+
+    $ brew install dep ## on OS X
+    $ cd honeydipper
+    $ dep ensure
+
+Build and install:
+
+    $ go install ./...
+
+Run the tests:
+
+    $ go test -v ./...
+
+(Optional) For colored test results:
+
+    $ go get -u github.com/rakyll/gotest
+    $ gotest -v ./...
+
+(Optional) For pre-commit hooks:
+
+    $ pip install pre-commit
+    $ pre-commit install --install-hooks
+
+Start your local dipper daemon, see admin guide(coming soon) for detail:
+
+    $ REPO=file:///path/to/your/rule/repo honeydipper
