@@ -33,7 +33,7 @@ func init() {
 
 func main() {
 	flag.Parse()
-	driver = dipper.NewDriver(os.Args[1], "redispubsub")
+	driver = dipper.NewDriver(os.Args[1], "redisqueue")
 	driver.Start = start
 	if driver.Service == "receiver" {
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
