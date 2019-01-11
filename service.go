@@ -26,6 +26,7 @@ func NewService(cfg *Config, name string) *Service {
 	service.responders["state:cold"] = []MessageResponder{coldReloadDriverRuntime}
 	service.responders["rpc:call"] = []MessageResponder{handleRPCCall}
 	service.responders["rpc:return"] = []MessageResponder{handleRPCReturn}
+	service.responders["broadcast:reload"] = []MessageResponder{handleReload}
 
 	return service
 }
@@ -481,6 +482,21 @@ func handleRPCReturn(from *DriverRuntime, m *dipper.Message) {
 		s.RPC.Caller.HandleReturn(m)
 	} else {
 		dipper.SendMessage(s.getDriverRuntime(caller).output, m)
+	}
+}
+
+func handleReload(from *DriverRuntime, m *dipper.Message) {
+	daemonID, ok := m.Labels["daemonID"]
+	if !ok || daemonID == dipper.GetIP() {
+		var min string
+		for min = range Services {
+			if from.service > min {
+				break
+			}
+		}
+		if from.service == min {
+			Services[min].config.refresh()
+		}
 	}
 }
 

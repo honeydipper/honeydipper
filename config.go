@@ -17,32 +17,39 @@ func (c *Config) bootstrap(wd string) {
 func (c *Config) watch() {
 	for {
 		interval := time.Minute
-		if intervalStr, ok := c.getDriverDataStr("daemon.configPollInterval"); ok {
+		if intervalStr, ok := c.getDriverDataStr("daemon.configCheckInterval"); ok {
 			value, err := time.ParseDuration(intervalStr)
 			if err != nil {
-				log.Warningf("invalid drivers.daemon.configPollInterval %v", err)
+				log.Warningf("invalid drivers.daemon.configCheckInterval %v", err)
+			} else {
+				interval = value
 			}
-			interval = value
 		}
 		time.Sleep(interval)
 
-		changeDetected := false
-		for _, repoRuntime := range c.loaded {
-			changeDetected = (repoRuntime.refreshRepo() || changeDetected)
+		if watch, ok := dipper.GetMapDataBool(c.config.Drivers, "daemon.watchConfig"); !ok || watch {
+			c.refresh()
 		}
-		if changeDetected {
-			c.lastRunningConfig.config = c.config
-			c.lastRunningConfig.loaded = map[RepoInfo]*ConfigRepo{}
-			for k, v := range c.loaded {
-				c.lastRunningConfig.loaded[k] = v
-			}
-			log.Debug("reassembling configset")
-			c.assemble()
+	}
+}
 
-			getLogger()
-			for _, service := range Services {
-				go service.reload()
-			}
+func (c *Config) refresh() {
+	changeDetected := false
+	for _, repoRuntime := range c.loaded {
+		changeDetected = (repoRuntime.refreshRepo() || changeDetected)
+	}
+	if changeDetected {
+		c.lastRunningConfig.config = c.config
+		c.lastRunningConfig.loaded = map[RepoInfo]*ConfigRepo{}
+		for k, v := range c.loaded {
+			c.lastRunningConfig.loaded[k] = v
+		}
+		log.Debug("reassembling configset")
+		c.assemble()
+
+		getLogger()
+		for _, service := range Services {
+			go service.reload()
 		}
 	}
 }
