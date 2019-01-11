@@ -69,14 +69,12 @@ func start(msg *dipper.Message) {
 }
 
 func broadcastToRedis(msg *dipper.Message) {
-	if _, ok = msg.Labels["broadcastSubject"]; !ok {
-		log.Panic("must specify a subject for broadcasting")
-	}
+	msg = dipper.DeserializePayload(msg)
 	payload := map[string]interface{}{
 		"labels": msg.Labels,
 	}
 	if msg.Payload != nil {
-		payload["data"] = string(msg.Payload.([]byte))
+		payload["data"] = msg.Payload
 	}
 	buf := dipper.SerializeContent(payload)
 	client := redis.NewClient(redisOptions)
@@ -84,6 +82,7 @@ func broadcastToRedis(msg *dipper.Message) {
 	if err := client.Publish(broadcastTopic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
+	msg.Reply <- dipper.Message{}
 }
 
 func subscribe() {
@@ -109,13 +108,12 @@ func subscribe() {
 						labels[k] = v.(string)
 					}
 				}
-				data, _ := dipper.GetMapDataStr(payload, "data")
+				data, _ := dipper.GetMapData(payload, "data")
 				driver.SendMessage(&dipper.Message{
 					Channel: "broadcast",
-					Subject: labels["broadcastSubject"],
+					Subject: dipper.MustGetMapDataStr(data, "broadcastSubject"),
 					Payload: data,
 					Labels:  labels,
-					IsRaw:   true,
 				})
 			}
 		}()

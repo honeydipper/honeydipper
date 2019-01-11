@@ -40,6 +40,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		var driver string
 		var params map[string]interface{}
 		msg = dipper.DeserializePayload(msg)
+		log.Debugf("[operator] function call payload %+v", msg.Payload)
 		function := Function{}
 		data, _ := dipper.GetMapData(msg.Payload, "data")
 		event, _ := dipper.GetMapData(msg.Payload, "event")
@@ -69,6 +70,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 				"params":  params,
 			}).(map[string]interface{})
 		}
+		log.Debugf("[operator] interpolated function call %+v", finalParams)
 		dipper.Recursive(finalParams, operator.decryptDriverData)
 
 		msg.Payload = finalParams

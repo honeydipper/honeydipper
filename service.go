@@ -494,7 +494,9 @@ func handleReload(from *DriverRuntime, m *dipper.Message) {
 				break
 			}
 		}
-		if from.service == min {
+		if from.service <= min {
+			time.Sleep(time.Second)
+			log.Infof("[%s] reload config on broadcast reload message", min)
 			Services[min].config.refresh()
 		}
 	}

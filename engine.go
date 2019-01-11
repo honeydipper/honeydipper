@@ -245,7 +245,8 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 			panic(err)
 		}
 		for _, choice := range choices {
-			session.work = append(session.work, &choice)
+			var current = choice
+			session.work = append(session.work, &current)
 		}
 
 		if w.Condition == "" {
@@ -285,7 +286,7 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 			session.work = append(session.work, &current)
 		}
 		childSessionID := dipper.IDMapPut(&sessions, session)
-		log.Infof("[engine] parallel pipe session %s", childSessionID)
+		log.Infof("[engine] starting parallel session %s", childSessionID)
 		for _, cw := range session.work {
 			mcopy, err := dipper.MessageCopy(msg)
 			if err != nil {

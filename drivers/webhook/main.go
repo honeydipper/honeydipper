@@ -113,7 +113,6 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		})
 
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "Done\n")
 		return
 	}
 
