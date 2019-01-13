@@ -15,7 +15,7 @@ var daemonChildren = &sync.WaitGroup{}
 // Services : a catalog of running services in this daemon process
 var Services = map[string]*Service{}
 
-var log = dipper.GetLogger("honeydipper")
+var log = dipper.GetLogger("config", "INFO", os.Stdout)
 
 func init() {
 	flag.Usage = func() {
@@ -42,6 +42,7 @@ func initEnv() {
 }
 
 func start() {
+	getLogger() // switch to daemon log
 	services := config.services
 	if len(services) == 0 {
 		services = []string{"engine", "receiver", "operator"}
@@ -70,4 +71,12 @@ func main() {
 func shutDown() {
 	shuttingDown = true
 	daemonChildren.Wait()
+}
+
+func getLogger() {
+	levelstr, ok := dipper.GetMapDataStr(config.config.Drivers["daemon"], "loglevel")
+	if !ok {
+		levelstr = "INFO"
+	}
+	log = dipper.GetLogger("daemon", levelstr, os.Stdout)
 }

@@ -127,6 +127,7 @@ type Service struct {
 	RPC                struct {
 		Caller dipper.RPCCaller
 	}
+	EmitMetrics func()
 }
 
 // Driver : the parent class for all driver types
@@ -157,6 +158,7 @@ type DriverRuntime struct {
 	driver      *Driver
 	service     string
 	Run         *exec.Cmd
+	state       int
 }
 
 // RoutedMessage : a service process a message and use the routed message to send to drivers
@@ -164,3 +166,11 @@ type RoutedMessage struct {
 	driverRuntime *DriverRuntime
 	message       *dipper.Message
 }
+
+// DriverStates : Driver states
+const (
+	DriverLoading = iota
+	DriverReloading
+	DriverAlive
+	DriverFailed
+)

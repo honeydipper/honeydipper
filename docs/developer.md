@@ -158,10 +158,10 @@ Within the driver helper object, there is two helper objects that are meant for 
 
 To make a RPC Call, you don't have to use the `Caller` object directly, just use `RPCCall` or `RPCCallRaw` method,
 Both method block for return with 10 seconds timeout.  The timeout is not tunable at this time. For example,
-calling the `kms` driver for decryption
+calling the `gcloud-kms` driver for decryption
 
 ```go
-decrypted, err := driver.RPCCallRaw("driver:kms", "decrypt", encrypted)
+decrypted, err := driver.RPCCallRaw("driver:gcloud-kms", "decrypt", encrypted)
 ```
 
 To offer a RPC method for the system to call, create the function that accept a single parameter `*dipper.Message`. Add the method

@@ -38,6 +38,7 @@ func startEngine(cfg *Config) {
 	engine = NewService(cfg, "engine")
 	engine.Route = engineRoute
 	engine.ServiceReload = buildRuleMap
+	engine.EmitMetrics = engineMetrics
 	Services["engine"] = engine
 	buildRuleMap(cfg)
 	engine.start()
@@ -244,7 +245,8 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 			panic(err)
 		}
 		for _, choice := range choices {
-			session.work = append(session.work, &choice)
+			var current = choice
+			session.work = append(session.work, &current)
 		}
 
 		if w.Condition == "" {
@@ -284,7 +286,7 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 			session.work = append(session.work, &current)
 		}
 		childSessionID := dipper.IDMapPut(&sessions, session)
-		log.Infof("[engine] parallel pipe session %s", childSessionID)
+		log.Infof("[engine] starting parallel session %s", childSessionID)
 		for _, cw := range session.work {
 			mcopy, err := dipper.MessageCopy(msg)
 			if err != nil {
@@ -305,6 +307,11 @@ func terminateWorkflow(sessionID string, msg *dipper.Message) {
 		if session.parent != "" {
 			go continueWorkflow(session.parent, msg)
 		}
+	}
+	if emitter, ok := engine.driverRuntimes["emitter"]; ok && emitter.state == DriverAlive {
+		engine.counterIncr("honey.honeydipper.engine.workflows", []string{
+			"status:" + msg.Labels["status"],
+		})
 	}
 	log.Warningf("[engine] workflow session terminated %s", sessionID)
 }
@@ -377,4 +384,8 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 		ret.Data = dipper.Interpolate(v.Data, data).(map[string]interface{})
 	}
 	return &ret
+}
+
+func engineMetrics() {
+	engine.gaugeSet("honey.honeydipper.engine.sessions", strconv.Itoa(len(sessions)), []string{})
 }

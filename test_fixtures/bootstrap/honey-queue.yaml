@@ -6,8 +6,8 @@ systems:
         parameters:
           namespace: default
           source:
-            type: gke
-            service_account: :enc:kms:***redacted***
+            type: gcloud-gke
+            service_account: :enc:gcloud-kms:***redacted***
             project: test-project
             location: us-central1-a
             cluster: test-cluster

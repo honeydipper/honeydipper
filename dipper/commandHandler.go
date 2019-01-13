@@ -69,6 +69,7 @@ func (p *CommandProvider) Router(msg *Message) {
 				p.ReturnError(msg, "timeout")
 			}
 		}
+		log.Debugf("[operaotr] cmd labels %+v", msg.Labels)
 	}()
 
 	defer func() {

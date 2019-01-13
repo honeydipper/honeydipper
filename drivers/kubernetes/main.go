@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"github.com/honeyscience/honeydipper/dipper"
+	"github.com/op/go-logging"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"os"
 )
 
-var log = dipper.GetLogger("kubernetes")
+var log *logging.Logger
 
 func init() {
 	flag.Usage = func() {
@@ -27,12 +28,16 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "kubernetes")
+	log = driver.GetLogger()
 	driver.CommandProvider.Commands["recycleDeployment"] = recycleDeployment
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
 
 func recycleDeployment(m *dipper.Message) {
+	if log == nil {
+		log = driver.GetLogger()
+	}
 	m = dipper.DeserializePayload(m)
 	deploymentName, ok := dipper.GetMapDataStr(m.Payload, "deployment")
 	log.Infof("[%s] got deploymentName %s", driver.Service, deploymentName)
@@ -53,7 +58,7 @@ func recycleDeployment(m *dipper.Message) {
 	}
 	log.Debugf("[%s] fetching k8config from source", driver.Service)
 	var kubeConfig *rest.Config
-	if stype == "gke" {
+	if stype == "gcloud-gke" {
 		kubeConfig = getGKEConfig(source.(map[string]interface{}))
 	} else {
 		log.Panicf("[%s] unsupported kubernetes source type: %s", driver.Service, stype)
@@ -82,7 +87,7 @@ func recycleDeployment(m *dipper.Message) {
 }
 
 func getGKEConfig(cfg map[string]interface{}) *rest.Config {
-	retbytes, err := driver.RPCCall("driver:gcloud", "getKubeCfg", cfg)
+	retbytes, err := driver.RPCCall("driver:gcloud-gke", "getKubeCfg", cfg)
 	if err != nil {
 		log.Panicf("[%s] failed call gcloud to get kubeconfig %+v", driver.Service, err)
 	}

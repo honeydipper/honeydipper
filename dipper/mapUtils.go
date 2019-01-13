@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -59,6 +60,46 @@ func GetMapDataStr(from interface{}, path string) (ret string, ok bool) {
 func MustGetMapDataStr(from interface{}, path string) string {
 	ret := MustGetMapData(from, path)
 	return ret.(string)
+}
+
+// GetMapDataBool : get the data as bool from the deep map following a KV path
+func GetMapDataBool(from interface{}, path string) (ret bool, ok bool) {
+	if data, ok := GetMapData(from, path); ok {
+		switch v := data.(type) {
+		case bool:
+			return v, true
+		case int:
+			return (v != 0), true
+		case float64:
+			return (v != 0), true
+		case string:
+			flag, err := strconv.ParseBool(v)
+			return flag, (err == nil)
+		}
+	}
+	return false, false
+}
+
+// MustGetMapDataBool : get the data as bool from the deep map following a KV path or panic
+func MustGetMapDataBool(from interface{}, path string) bool {
+	data, ok := GetMapData(from, path)
+	if ok {
+		switch v := data.(type) {
+		case bool:
+			return v
+		case int:
+			return (v != 0)
+		case float64:
+			return (v != 0)
+		case string:
+			flag, err := strconv.ParseBool(v)
+			if err != nil {
+				panic(err)
+			}
+			return flag
+		}
+	}
+	panic(fmt.Errorf("not a valid bool %+v", data))
 }
 
 // Recursive : enumerate all the data element deep into the map call the function provided

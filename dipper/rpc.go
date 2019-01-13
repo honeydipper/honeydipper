@@ -32,6 +32,11 @@ func (c *RPCCaller) Call(out io.Writer, feature string, method string, params in
 	return ret, err
 }
 
+// CallNoWait : making a RPC call to another driver with structured data not expecting any return
+func (c *RPCCaller) CallNoWait(out io.Writer, feature string, method string, params interface{}) {
+	c.CallRawNoWait(out, feature, method, SerializeContent(params), "skip")
+}
+
 // CallRaw : making a RPC call to another driver with raw data
 func (c *RPCCaller) CallRaw(out io.Writer, feature string, method string, params []byte) ([]byte, error) {
 
@@ -42,6 +47,25 @@ func (c *RPCCaller) CallRaw(out io.Writer, feature string, method string, params
 	// clean up the call from the map when done
 	defer IDMapDel(&c.Result, rpcID)
 
+	c.CallRawNoWait(out, feature, method, params, rpcID)
+
+	// waiting for the result to come back
+	select {
+	case msg := <-result:
+		if e, ok := msg.(error); ok {
+			return nil, e
+		}
+		return msg.([]byte), nil
+	case <-time.After(time.Second * 10): // TODO: make timeout configurable
+		return nil, errors.New("timeout")
+	}
+}
+
+// CallRawNoWait : making a RPC call to another driver with raw data not expecting return
+func (c *RPCCaller) CallRawNoWait(out io.Writer, feature string, method string, params []byte, rpcID string) {
+	if rpcID == "" {
+		rpcID = "skip"
+	}
 	// making the call by sending a message
 	SendMessage(out, &Message{
 		Channel: c.Channel,
@@ -55,17 +79,6 @@ func (c *RPCCaller) CallRaw(out io.Writer, feature string, method string, params
 		Payload: params,
 		IsRaw:   true,
 	})
-
-	// waiting for the result to come back
-	select {
-	case msg := <-result:
-		if e, ok := msg.(error); ok {
-			return nil, e
-		}
-		return msg.([]byte), nil
-	case <-time.After(time.Second * 10): // TODO: make timeout configurable
-		return nil, errors.New("timeout")
-	}
 }
 
 // HandleReturn : receiving return of a RPC call
@@ -137,31 +150,34 @@ func (p *RPCProvider) Return(call *Message, retval *Message) {
 func (p *RPCProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
 	f := p.RPCHandlers[method]
-	msg.Reply = make(chan Message, 1)
 
-	go func() {
-		defer close(msg.Reply)
-		select {
-		case reply := <-msg.Reply:
-			if reason, ok := reply.Labels["error"]; ok {
-				p.ReturnError(msg, reason)
-			} else {
-				p.Return(msg, &reply)
-			}
-		case <-time.After(time.Second * 10):
-			p.ReturnError(msg, "timeout")
-		}
-	}()
+	if msg.Labels["rpcID"] != "skip" {
+		msg.Reply = make(chan Message, 1)
 
-	defer func() {
-		if r := recover(); r != nil {
-			msg.Reply <- Message{
-				Labels: map[string]string{
-					"error": fmt.Sprintf("%+v", r),
-				},
+		go func() {
+			defer close(msg.Reply)
+			select {
+			case reply := <-msg.Reply:
+				if reason, ok := reply.Labels["error"]; ok {
+					p.ReturnError(msg, reason)
+				} else {
+					p.Return(msg, &reply)
+				}
+			case <-time.After(time.Second * 10):
+				p.ReturnError(msg, "timeout")
 			}
-			panic(r)
-		}
-	}()
+		}()
+
+		defer func() {
+			if r := recover(); r != nil {
+				msg.Reply <- Message{
+					Labels: map[string]string{
+						"error": fmt.Sprintf("%+v", r),
+					},
+				}
+				panic(r)
+			}
+		}()
+	}
 	f(msg)
 }

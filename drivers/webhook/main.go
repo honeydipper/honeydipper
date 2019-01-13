@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-var log *logging.Logger = dipper.GetLogger("webhook")
+var log *logging.Logger
 
 func init() {
 	flag.Usage = func() {
@@ -49,6 +49,7 @@ func stopWebhook(*dipper.Message) {
 }
 
 func loadOptions(m *dipper.Message) {
+	log = driver.GetLogger()
 	hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
 	if !ok {
 		log.Panicf("[%s] no hooks defined for webhook driver", driver.Service)
@@ -112,7 +113,6 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		})
 
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "Done\n")
 		return
 	}
 

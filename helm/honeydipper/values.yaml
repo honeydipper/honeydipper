@@ -6,6 +6,13 @@ nameOverride: ""
 fullnameOverride: ""
 
 daemon:
+  # Clone the source code instead of using a prebuild image.
+  # Used for testing
+  # Require to mount a github deployment key for cloning
+  useSource: false
+  useBranch: "master"
+  gitIdentityFilePath: "/root"
+
   spec: {}
 
   replicaCount: 1

@@ -3,14 +3,18 @@ package main
 import (
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/imdario/mergo"
+	"strconv"
 )
 
 var receiver *Service
+var numCollapsedEvents int
+var numDynamicFeatures int
 
 func startReceiver(cfg *Config) {
 	receiver = NewService(cfg, "receiver")
 	receiver.Route = receiverRoute
 	receiver.DiscoverFeatures = ReceiverFeatures
+	receiver.EmitMetrics = receiverMetrics
 	Services["receiver"] = receiver
 	receiver.start()
 }
@@ -61,6 +65,7 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 	dynamicData := map[string]interface{}{}
 
+	numCollapsedEvents = 0
 	for _, rule := range c.Rules {
 		rawTrigger, conditions := collapseTrigger(rule.When, c)
 		var driverData map[string]interface{}
@@ -87,11 +92,18 @@ func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 			collapsedEvent, _ = list.([]interface{})
 		}
 		collapsedEvent = append(collapsedEvent, conditions)
+		numCollapsedEvents++
 
 		driverData["collapsedEvents"].(map[string]interface{})[eventName] = collapsedEvent
 
 		log.Debugf("[receiver] collapsed %+v total %+v", eventName, collapsedEvent)
 	}
+	numDynamicFeatures = len(dynamicData)
 	log.Debugf("[receiver] dynamicData return: %+v", dynamicData)
 	return dynamicData
+}
+
+func receiverMetrics() {
+	receiver.gaugeSet("honey.honeydipper.receiver.eventTriggers", strconv.Itoa(numCollapsedEvents), []string{})
+	receiver.gaugeSet("honey.honeydipper.receiver.dynamicFeatures", strconv.Itoa(numDynamicFeatures), []string{})
 }

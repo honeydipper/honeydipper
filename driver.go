@@ -51,6 +51,7 @@ func (runtime *DriverRuntime) start(service string) {
 		runtime.output = output
 	}
 	run.Stderr = os.Stderr
+	run.ExtraFiles = []*os.File{os.Stdout} // giving child process stdout for logging
 	if err := run.Start(); err != nil {
 		log.Panicf("[%s] Failed to start driver %v", service, err)
 	}
@@ -76,6 +77,18 @@ func (runtime *DriverRuntime) sendOptions() {
 }
 
 func (runtime *DriverRuntime) sendMessage(msg *dipper.Message) {
+	if runtime.feature != "emitter" {
+		s := Services[runtime.service]
+		if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.state == DriverAlive {
+			s.counterIncr("honey.honeydipper.local.message", []string{
+				"service:" + runtime.service,
+				"driver:" + runtime.meta.Name,
+				"direction:outbound",
+				"channel:" + msg.Channel,
+				"subject:" + msg.Subject,
+			})
+		}
+	}
 	dipper.SendMessage(runtime.output, msg)
 }
 

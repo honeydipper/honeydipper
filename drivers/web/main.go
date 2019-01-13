@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-var log *logging.Logger = dipper.GetLogger("web")
+var log *logging.Logger
 
 func init() {
 	flag.Usage = func() {
@@ -39,6 +39,9 @@ func main() {
 }
 
 func sendRequest(m *dipper.Message) {
+	if log == nil {
+		log = driver.GetLogger()
+	}
 	m = dipper.DeserializePayload(m)
 	rurl, ok := dipper.GetMapDataStr(m.Payload, "URL")
 	if !ok {
