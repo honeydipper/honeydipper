@@ -1,8 +1,8 @@
 # Honeydipper Driver Developer's Guide
 
-This document is intended for the honeydipper driver developers. Some programming experience is expected.
-Theoriadically, we can use any programing langulage, even bash, to develop a driver for honeydipper. For
-now, there is a go library named honeydipper/dipper that makes it easier to do this in golang.
+This document is intended for Honey Dipper driver developers. Some programming experience is expected. Theoretically, we can use any
+programing language, even bash, to develop a driver for honeydipper. For now, there is a go library named honeydipper/dipper that makes it
+easier to do this in golang.
 
 <!-- toc -->
 
@@ -61,11 +61,11 @@ func waitAndSendDummyEvent(msg *dipper.Message) {
   }()
 }
 ```
-The first thing that a driver does is to parse the command line arguments so the service name can be
-retrieved through *os.Args[1]*. Following that, the driver creates a helper object with *dipper.NewDriver*.
-The helper object provides hooks for driver to define the functions to be executed at various stage in
-the life cycle of the driver. A call to the *Run()* method will start the event loop to receive communication
-from the daemon.
+
+The first thing that a driver does is to parse the command line arguments so the service name can be retrieved through *os.Args[1]*.
+Following that, the driver creates a helper object with *dipper.NewDriver*.  The helper object provides hooks for driver to define the
+functions to be executed at various stage in the life cycle of the driver. A call to the *Run()* method will start the event loop to receive
+communication from the daemon.
 
 There are 4 types of hooks offered by the driver helper objects.
  * Lifecycle events
@@ -73,43 +73,42 @@ There are 4 types of hooks offered by the driver helper objects.
  * RPC handler 
  * Command handler
 
-Note that the *waitAndSendDummyEvent* method is assigned to *Start hook*. The *Start hook* needs to return
-immediately, so the method luanches another event loop in a go routine and return the control to the 
-helper object. The second event loop is where the driver actually receives events externally and use
-*driver.SendMessage* to relay to the service.
+Note that the *waitAndSendDummyEvent* method is assigned to *Start hook*. The *Start hook* needs to return immediately, so the method
+luanches another event loop in a go routine and return the control to the helper object. The second event loop is where the driver actually
+receives events externally and use *driver.SendMessage* to relay to the service.
 
 In this example, the dummy driver just manifest a fake event with json data as 
 ```json
 {"data": ["line 1", "line 2"]}
 ```
-The driver also sets its status to "cold", meaning cold restart needed, and uses *Ping* command to send its
-own state to the daemon, so it can be restarted.
+
+The driver also sets its status to "cold", meaning cold restart needed, and uses the *Ping* command to send its own state to the daemon, so
+it can be restarted.
 
 ## Driver lifecycle and states
 
-The driver will be in "loaded" state initially. When the *Run()* method is invoked, it will
-start fetching messages from daemon. The first message is always "command:options" which
-carries the data and configuration required by the driver to perform its job. The helper
-object has a builtin handler for this and will dump the data into a structure which can
-later be queried using *driver.GetOption* or *driver.GetOptionStr* method.
+The driver will be in "loaded" state initially. When the *Run()* method is invoked, it will start fetching messages from the daemon. The
+first message is always "command:options" which carries the data and configuration required by the driver to perform its job. The helper
+object has a builtin handler for this and will dump the data into a structure which can later be queried using *driver.GetOption* or
+*driver.GetOptionStr* method.
 
-Following the "command:options" is the "command:start" message. The helper object also has a builtin handler for
-the "command:start" message. It will first call the *Start hook* function, if defined, then change the driver state
-to "alive" then report the state back to daemon with *Ping* method. One important thing here is that if the daemon doesn't
-receive the "alive" state within 10 seconds, it will consider the driver failed to start and kill the process
-by closing the stdin/stdout channels. You can see why the Start hook has to return immediately.
+Following the "command:options" is the "command:start" message. The helper object also has a builtin handler for the "command:start"
+message. It will first call the *Start hook* function, if defined, then change the driver state to "alive" then report the state back to
+daemon with *Ping* method. One important thing here is that if the daemon doesn't receive the "alive" state within 10 seconds, it will
+consider the driver failed to start and kill the process by closing the stdin/stdout channels. You can see why the Start hook has to return
+immediately.
 
-When daemon loads an updated version of the config, it will use "command:options" and "command:start"
-again to signal the driver to reload.  Instead of calling *Start hook*, it will call *Reload hook* for reloading.
-If *Reload hook* is not defined, it will report to the daemon with "cold" state to demand a cold restart.
+When the daemon loads an updated version of the config, it will use "command:options" and "command:start" again to signal the driver to
+reload. Instead of calling *Start hook*, it will call *Reload hook* for reloading. If *Reload hook* is not defined, it will report to the
+daemon with "cold" state to demand a cold restart.
 
-There is a handler for "command:stop" which calls the *Stop hook* for gracefully shutting down the 
-driver.  Although this is not needed most of time, assuming the driver is stateless, it does have some uses if the
-driver uses some resources that cannot be released gracefully by exiting.
+There is a handler for "command:stop" which calls the *Stop hook* for gracefully shutting down the driver. Although this is not needed most
+of time, assuming the driver is stateless, it does have some uses if the driver uses some resources that cannot be released gracefully by
+exiting.
 
 ## Messages
 
-Every message has an envelope, a list of labels and a payload.  The envelope is a string ends with a newline, with fields separated by
+Every message has an envelope, a list of labels and a payload. The envelope is a string ends with a newline, with fields separated by
 space(s). An valid envelope has following fields in the exact order:
  * Channel
  * Subject
@@ -121,8 +120,8 @@ label definition includes
  * Name of the label
  * Size of the label in bytes
 
-The payload is usually a byte array with certain encoding.  As of now, the only encoding we use is "json".
-An example of sending message to daemon
+The payload is usually a byte array with certain encoding. As of now, the only encoding we use is "json".
+An example of sending a message to the daemon:
 ```go
 driver.SendMessage(&dipper.Message{
   Channel: "eventbus",
@@ -134,30 +133,30 @@ driver.SendMessage(&dipper.Message{
   IsRaw: false, # default
 })
 ```
-The payload data will be encoded automatically.  You can also send raw message if use `IsRaw` as `true`, meaning that
+The payload data will be encoded automatically. You can also send raw message if use `IsRaw` as `true`, meaning that
 the driver will not attempt to encode the data for you, instead it will use the payload as bytes array directly.
 In case you need to encode the message yourself, there are two methods, *dipper.SerializePayload*
 accepts a \*dipper.Message and put the encoded content back into the message, or *dipper.SerializeContent* which
 accepts bytes array and return the data structure as map.
 
 When a messge is received through the *Run()* event loop, it will be passed to various handlers as a \*dipper.Message
-struct with raw bytes as payload.  You can call *dipper.DeserializeContent* which accepts a byte array to decode
+struct with raw bytes as payload. You can call *dipper.DeserializeContent* which accepts a byte array to decode
 the byte array, and you can also use *dipper.DeserializePayload* which accepts a \*dipper.Message and place the
 decoded paylod right back into the message.
 
-Currently, we are distinguish the messages into 3 different channels.
+Currently, we are categorizing the messages into 3 different channels:
  * eventbus: messages that are used by *engine* service for workflow processing, subject could be `message`, `command` or `return`
  * rpc: messages that invoke another driver to run some function, subject could be `call` or `return`
  * state: the local messages between driver and daemon to manage the lifecycle of drivers
 
 ## RPC
 
-Within the driver helper object, there is two helper objects that are meant for helping RPC related activities.
- * dipper.Driver.RPC.Caller
- * dipper.Driver.RPC.Provider
+Within the driver helper object, there are two helper objects that are meant for helping with RPC related activities.
+ * *dipper.Driver.RPC.Caller*
+ * *dipper.Driver.RPC.Provider*
 
 To make a RPC Call, you don't have to use the `Caller` object directly, just use `RPCCall` or `RPCCallRaw` method,
-Both method block for return with 10 seconds timeout.  The timeout is not tunable at this time. For example,
+Both method block for return with 10 seconds timeout. The timeout is not tunable at this time. For example,
 calling the `gcloud-kms` driver for decryption
 
 ```go
@@ -176,7 +175,7 @@ func MyFunc(m *dipper.Message) {
 ```
 
 Feel free to panic in your method, the wrapper will send an error response to the caller if that happens. To return data to the caller
-use the channel `Reply` on the incoming message.  For example:
+use the channel `Reply` on the incoming message. For example:
 
 ```go
 func MyFunc(m *dipper.Message) {
@@ -194,7 +193,7 @@ func MyFunc(m *dipper.Message) {
 
 As mentioned earlier, the driver receives the options/configuratins from daemon automatically through the
 helper object. As the data is stored in hashmap, the helper method *driver.GetOption* will accept a path and return an
-*Interface()* ojbect.  The path is a dot separated key names traverse into the data structure. If the returned data is
+*Interface()* ojbect. The path is a dot separated key names traverse into the data structure. If the returned data is
 also a map, you can use *dipper.GetMapData* or *dipper.GetMapDataStr* to retrive information from them as well.
 If you are sure the data is a *string*, you can use *driver.GetOptionStr* to directly receive it as *string*.
 
@@ -212,7 +211,7 @@ acceptable or not. See below for example.
   ...
 ```
 
-There is always a *data* section in the driver options, which comes from the configuration file like below
+There is always a *data* section in the driver options, which comes from the configuration file, e.g.:
 ```yaml
 ---
 ...
@@ -224,13 +223,13 @@ drivers:
 
 ## Collapsed Events
 
-Usually an event receiver driver just fires raw events to the daemon, it doesn't have to know what the daemon is expecting. There
-are some exceptions, for example, the webhook driver needs to know if the daemon is expecting some kind of webhook so it can decide
-what response to send to the web request sender, 200, 404 etc.  A collapsed event is an event definition that has all the conditions,
-including the conditions from events that the current event is inheritting from.  Dipper sends the collapsed events to the driver in
-the options with key name "dynamicData.collapsedEvents". Drivers can use the collapsed events to setup the filtering of the events before sending
-them to daemon. Not only this is allowing the driver to generate meaningful feedback to the external requesters, it also serves as
-the first line of defense for DDoS attack to the daemon.
+Usually an event receiver driver just fires raw events to the daemon, it doesn't have to know what the daemon is expecting. There are some
+exceptions, for example, the webhook driver needs to know if the daemon is expecting some kind of webhook so it can decide what response to
+send to the web request sender, 200, 404 etc. A collapsed event is an event definition that has all the conditions, including the conditions
+from events that the current event is inheritting from. Dipper sends the collapsed events to the driver in the options with key name
+"dynamicData.collapsedEvents". Drivers can use the collapsed events to setup the filtering of the events before sending them to daemon. Not
+only does this allow the driver to generate meaningful feedback to the external requesters, but it also serves as the first line of defense
+against DDoS attacks on the daemon.
 
 Below is an example of using the collapsed events data in webhook driver:
 
@@ -276,14 +275,14 @@ function to determine if a rawevent is triggering events defined in systems.
 
 ## Provide Commands
 
-A command is a raw function that provides response to an event. The work flow engine service sends "eventbus:command"
-messages to operator service, and operator service will map the message to the corresponding driver and raw function,
-then forward the message to the corresponding driver with all the parameters as a "collapsed function". The driver helper
-provides ways to map raw actions to the function and handle the communications to back to the daemon.
+A command is a raw function that provides response to an event. The work flow engine service sends "eventbus:command" messages to operator
+service, and operator service will map the message to the corresponding driver and raw function, then forward the message to the
+corresponding driver with all the parameters as a "collapsed function". The driver helper provides ways to map raw actions to the function
+and handle the communications to back to the daemon.
 
-A command handler is very much like the RPC handler mentioned earlier.  All you need to do is add it to the `driver.CommandProvider.Commands`
-map.  The command handler function should always return a value or panic.  If it exists without a return, it can block
-invoking workflow until it times out. If you don't have any data to return, just send a blank message back like below.
+A command handler is very much like the RPC handler mentioned earlier. All you need to do is add it to the `driver.CommandProvider.Commands`
+map. The command handler function should always return a value or panic. If it exists without a return, it can block invoking workflow until
+it times out. If you don't have any data to return, just send a blank message back like below.
 
 ```go
 func main() {
@@ -300,4 +299,4 @@ func wait10min(m *dipper.Message) {
 }
 ```
 
-Note that, the reply is send in a go routine, it is useful if you want to make your code async.
+Note that the reply is sent in a go routine; it is useful if you want to make your code asynchronous.
