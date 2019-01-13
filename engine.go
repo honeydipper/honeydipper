@@ -168,7 +168,7 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 		}
 		session.wfdata = wfdata
 	} else {
-		session.event = msg.Payload
+		session.event = envData["event"]
 		session.wfdata = w.Data
 	}
 
