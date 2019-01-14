@@ -163,6 +163,12 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 		session.event = parentSession.event
 		wfdata, _ := dipper.DeepCopy(parentSession.wfdata)
 		err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
+		for k, v := range wfdata {
+			if k[0] == '*' {
+				wfdata[k[1:]] = v
+				delete(wfdata, k)
+			}
+		}
 		if err != nil {
 			panic(err)
 		}
@@ -288,11 +294,12 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 		childSessionID := dipper.IDMapPut(&sessions, session)
 		log.Infof("[engine] starting parallel session %s", childSessionID)
 		for _, cw := range session.work {
+			var current = cw
 			mcopy, err := dipper.MessageCopy(msg)
 			if err != nil {
 				panic(err)
 			}
-			go executeWorkflow(childSessionID, cw, mcopy)
+			go executeWorkflow(childSessionID, current, mcopy)
 		}
 
 	default:
@@ -351,6 +358,7 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 	case "":
 		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
 	case "function":
+		log.Debugf("[engine] interpolate run into function %+v", v)
 		newContent, err := dipper.DeepCopy(v.Content.(map[string]interface{}))
 		if err != nil {
 			panic(fmt.Errorf("unable to copy function in workflow"))
