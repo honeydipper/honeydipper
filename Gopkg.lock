@@ -77,6 +77,14 @@
   version = "v1.0.0"
 
 [[projects]]
+  digest = "1:aacef5f5e45685f2aeda5534d0a750dee6859de7e9088cdd06192787bb01ae6d"
+  name = "github.com/go-errors/errors"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a6af135bd4e28680facf08a3d206b454abc877a4"
+  version = "v1.0.1"
+
+[[projects]]
   digest = "1:34a9a60fade37f8009ed4a19e02924198aba3eabfcc120ee5c6002b7de17212d"
   name = "github.com/go-redis/redis"
   packages = [
@@ -779,6 +787,7 @@
     "github.com/DataDog/datadog-go/statsd",
     "github.com/Masterminds/sprig",
     "github.com/ghodss/yaml",
+    "github.com/go-errors/errors",
     "github.com/go-redis/redis",
     "github.com/imdario/mergo",
     "github.com/mitchellh/mapstructure",

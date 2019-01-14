@@ -108,6 +108,11 @@ func continueWorkflow(sessionID string, msg *dipper.Message) {
 		terminateWorkflow(sessionID, msg)
 		return
 
+	case "switch":
+		log.Infof("[engine] switch session completed %s", sessionID)
+		terminateWorkflow(sessionID, msg)
+		return
+
 	case "parallel":
 		session.step++
 		if session.step == len(session.work) {
@@ -123,6 +128,7 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 	if len(sessionID) > 0 {
 		defer func() {
 			if r := recover(); r != nil {
+				log.Warningf("[engine] workflow session terminated abnormally %s", sessionID)
 				terminateWorkflow(sessionID, &dipper.Message{
 					Labels: map[string]string{
 						"status": "blocked",
@@ -163,12 +169,18 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 		session.event = parentSession.event
 		wfdata, _ := dipper.DeepCopy(parentSession.wfdata)
 		err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
+		for k, v := range wfdata {
+			if k[0] == '*' {
+				wfdata[k[1:]] = v
+				delete(wfdata, k)
+			}
+		}
 		if err != nil {
 			panic(err)
 		}
 		session.wfdata = wfdata
 	} else {
-		session.event = msg.Payload
+		session.event = envData["event"]
 		session.wfdata = w.Data
 	}
 
@@ -238,6 +250,28 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 		log.Infof("[engine] starting pipe session %s", sessionID)
 		executeWorkflow(sessionID, session.work[0], msg)
 
+	case "switch":
+		var choices = map[string]Workflow{}
+		if w.Condition == "" {
+			log.Panicf("[engine] no condition speicified for switch workflow")
+		}
+		err := mapstructure.Decode(w.Content, &choices)
+		if err != nil {
+			panic(err)
+		}
+		value := dipper.InterpolateStr(w.Condition, envData)
+		log.Debugf("[engine] switch workflow %s condition : %s", sessionID, value)
+		selected, ok := choices[value]
+		if !ok {
+			selected, ok = choices["*"]
+		}
+
+		if ok {
+			childSessionID := dipper.IDMapPut(&sessions, session)
+			log.Infof("[engine] starting switch session %s", childSessionID)
+			executeWorkflow(childSessionID, &selected, msg)
+		}
+
 	case "if":
 		var choices []Workflow
 		err := mapstructure.Decode(w.Content, &choices)
@@ -288,11 +322,12 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 		childSessionID := dipper.IDMapPut(&sessions, session)
 		log.Infof("[engine] starting parallel session %s", childSessionID)
 		for _, cw := range session.work {
+			var current = cw
 			mcopy, err := dipper.MessageCopy(msg)
 			if err != nil {
 				panic(err)
 			}
-			go executeWorkflow(childSessionID, cw, mcopy)
+			go executeWorkflow(childSessionID, current, mcopy)
 		}
 
 	default:
@@ -313,7 +348,6 @@ func terminateWorkflow(sessionID string, msg *dipper.Message) {
 			"status:" + msg.Labels["status"],
 		})
 	}
-	log.Warningf("[engine] workflow session terminated %s", sessionID)
 }
 
 // buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable
@@ -351,6 +385,7 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 	case "":
 		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
 	case "function":
+		log.Debugf("[engine] interpolate run into function %+v", v)
 		newContent, err := dipper.DeepCopy(v.Content.(map[string]interface{}))
 		if err != nil {
 			panic(fmt.Errorf("unable to copy function in workflow"))
@@ -365,6 +400,16 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 			newContent["target"] = dipper.Interpolate(target, data)
 		}
 		ret.Content = newContent
+	case "switch":
+		var branches = map[string]interface{}{}
+		for key, branch := range v.Content.(map[string]interface{}) {
+			if _, ok := branch.(string); ok {
+				branches[key] = dipper.Interpolate(branch, data)
+			} else {
+				branches[key] = branch
+			}
+		}
+		ret.Content = branches
 	default:
 		var worklist []interface{}
 		for i, work := range v.Content.([]interface{}) {
@@ -377,7 +422,7 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 		}
 		ret.Content = worklist
 	}
-	if v.Type == "if" {
+	if v.Type == "if" || v.Type == "switch" {
 		ret.Condition = v.Condition
 	}
 	if v.Data != nil {

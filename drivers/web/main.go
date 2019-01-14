@@ -32,7 +32,9 @@ func main() {
 
 	driver = dipper.NewDriver(os.Args[1], "web")
 	if driver.Service == "operator" {
-		driver.Reload = func(*dipper.Message) {} // allow hot reload
+		driver.Reload = func(*dipper.Message) {
+			log = nil
+		} // allow hot reload
 		driver.CommandProvider.Commands["request"] = sendRequest
 		driver.Run()
 	}
