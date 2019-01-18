@@ -57,6 +57,9 @@ func (p *CommandProvider) Router(msg *Message) {
 		defer close(msg.Reply)
 		select {
 		case reply := <-msg.Reply:
+			if _, ok := reply.Labels["no-timeout"]; ok {
+				reply = <-msg.Reply
+			}
 			if _, ok := msg.Labels["sessionID"]; ok {
 				if reason, ok := reply.Labels["error"]; ok {
 					p.ReturnError(msg, reason)
