@@ -134,6 +134,7 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 						"status": "blocked",
 						"reason": fmt.Sprintf("%+v", r),
 					},
+					Payload: map[string]interface{}{},
 				})
 				panic(r)
 			}
@@ -298,8 +299,10 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 				if sessionID != "" {
 					continueWorkflow(sessionID, &dipper.Message{
 						Labels: map[string]string{
-							"status": "skip",
+							"status":          "skip",
+							"previous_status": msg.Labels["status"],
 						},
+						Payload: msg.Payload,
 					})
 				}
 			}
