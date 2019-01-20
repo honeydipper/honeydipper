@@ -7,6 +7,7 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/honeyscience/honeydipper/dipper"
 	"github.com/op/go-logging"
+	"io"
 	"io/ioutil"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -63,20 +64,33 @@ func getJobLog(m *dipper.Message) {
 		log.Panicf("[%s] unable to find the pod for the job %+v", driver.Service, err)
 	}
 
-	stream, err := client.GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{}).Stream()
-	if err != nil {
-		log.Panicf("[%s] unable to fetch the logs for the pod %+v", driver.Service, err)
+	alllogs := map[string]map[string]string{}
+	for _, pod := range pods.Items {
+		podlogs := map[string]string{}
+		for _, container := range append(pod.Spec.Containers, pod.Spec.InitContainers...) {
+			stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream()
+			if err != nil {
+				podlogs[container.Name] = "Error: unable to fetch the logs from the container"
+				log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+			} else {
+				func(stream io.ReadCloser) {
+					defer stream.Close()
+					containerlog, err := ioutil.ReadAll(stream)
+					if err != nil {
+						podlogs[container.Name] = "Error: unable to read the logs from the stream"
+						log.Warningf("[%s] unable to read logs from stream for pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+					} else {
+						podlogs[container.Name] = string(containerlog)
+					}
+				}(stream)
+			}
+		}
+		alllogs[pod.Name] = podlogs
 	}
 
-	defer stream.Close()
-
-	podlog, err := ioutil.ReadAll(stream)
-	if err != nil {
-		log.Panicf("[%s] unable to fetch the logs from reader %+v", driver.Service, err)
-	}
 	m.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
-			"log": string(podlog),
+			"log": alllogs,
 		},
 	}
 
