@@ -61,12 +61,22 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		worker := operator.getDriverRuntime("driver:" + driver)
 		finalParams := params
 		if params != nil {
-			finalParams = dipper.Interpolate(params, map[string]interface{}{
+			// interpolate twice for giving an chance for using sysData in wfdata
+			finalWfData := dipper.Interpolate(wfdata, map[string]interface{}{
 				"sysData": sysData,
 				"data":    data,
 				"event":   event,
 				"labels":  msg.Labels,
 				"wfdata":  wfdata,
+				"params":  params,
+			}).(map[string]interface{})
+			// use interpolated wfdata to assemble final params
+			finalParams = dipper.Interpolate(params, map[string]interface{}{
+				"sysData": sysData,
+				"data":    data,
+				"event":   event,
+				"labels":  msg.Labels,
+				"wfdata":  finalWfData,
 				"params":  params,
 			}).(map[string]interface{})
 		}
