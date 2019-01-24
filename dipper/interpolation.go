@@ -31,7 +31,7 @@ func InterpolateStr(pattern string, data interface{}) string {
 
 // ParseYaml : load the data in the string as yaml
 func ParseYaml(pattern string) interface{} {
-	data := map[string]interface{}{}
+	var data interface{}
 	err := yaml.Unmarshal([]byte(pattern), &data)
 
 	if err != nil {
