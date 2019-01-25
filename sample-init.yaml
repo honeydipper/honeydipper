@@ -3,7 +3,7 @@
 # You can use this file as a template to build you own configuration
 # files to boot strap honeydipper system.
 #
-# Honey dipper looks for a init.yaml in the root of every loaded repo.
+# Honeydipper looks for a init.yaml in the root of every loaded repo.
 # init.yaml can include other yaml files in the same repo, and it can
 # also load other repos. While it is possible to fit everything into a
 # single file, it is recommended to organzie your configurations into 

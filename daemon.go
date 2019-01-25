@@ -31,7 +31,7 @@ func initEnv() {
 
 	ok := true
 	if config.initRepo.Repo, ok = os.LookupEnv("REPO"); !ok {
-		log.Fatal("REPO environment variable is required to bootstrap honey dipper")
+		log.Fatal("REPO environment variable is required to bootstrap honeydipper")
 	}
 	if config.initRepo.Branch, ok = os.LookupEnv("BRANCH"); !ok {
 		config.initRepo.Branch = "master"

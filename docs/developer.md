@@ -1,6 +1,6 @@
 # Honeydipper Driver Developer's Guide
 
-This document is intended for Honey Dipper driver developers. Some programming experience is expected. Theoretically, we can use any
+This document is intended for Honeydipper driver developers. Some programming experience is expected. Theoretically, we can use any
 programing language, even bash, to develop a driver for honeydipper. For now, there is a go library named honeydipper/dipper that makes it
 easier to do this in golang.
 
