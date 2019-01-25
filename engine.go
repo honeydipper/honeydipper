@@ -130,10 +130,13 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 			if r := recover(); r != nil {
 				log.Warningf("[engine] workflow session terminated abnormally %s", sessionID)
 				terminateWorkflow(sessionID, &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
 					Labels: map[string]string{
 						"status": "blocked",
 						"reason": fmt.Sprintf("%+v", r),
 					},
+					Payload: map[string]interface{}{},
 				})
 				panic(r)
 			}
@@ -142,7 +145,7 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 
 	data := msg.Payload
 	if msg.Subject != "return" {
-		data = msg.Payload.(map[string]interface{})["data"]
+		data, _ = dipper.GetMapData(msg.Payload, "data")
 	}
 
 	envData := map[string]interface{}{
@@ -298,8 +301,11 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 				if sessionID != "" {
 					continueWorkflow(sessionID, &dipper.Message{
 						Labels: map[string]string{
-							"status": "skip",
+							"status":          "skip",
+							"previous_status": msg.Labels["status"],
+							"reason":          msg.Labels["reason"],
 						},
+						Payload: msg.Payload,
 					})
 				}
 			}

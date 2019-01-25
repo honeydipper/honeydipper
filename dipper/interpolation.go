@@ -23,14 +23,15 @@ func InterpolateStr(pattern string, data interface{}) string {
 	tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
 	buf := new(bytes.Buffer)
 	if err := tmpl.Execute(buf, data); err != nil {
-		log.Panicf("failed to interpolate: %+v \ncontent:  %+v", err, pattern)
+		log.Warningf("interpolation pattern failed: %+v", pattern)
+		log.Panicf("failed to interpolate: %+v", err)
 	}
 	return buf.String()
 }
 
 // ParseYaml : load the data in the string as yaml
 func ParseYaml(pattern string) interface{} {
-	data := map[string]interface{}{}
+	var data interface{}
 	err := yaml.Unmarshal([]byte(pattern), &data)
 
 	if err != nil {
@@ -52,6 +53,12 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 		}
 		ret := InterpolateStr(v, data)
 		if strings.HasPrefix(ret, ":yaml:") {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warningf("loading yaml string: %s", ret[6:])
+					panic(r)
+				}
+			}()
 			return ParseYaml(ret[6:])
 		}
 		return ret

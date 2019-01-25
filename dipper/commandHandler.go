@@ -50,13 +50,19 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 // Router : route the message to rpc handlers
 func (p *CommandProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
-	f := p.Commands[method]
+	f, ok := p.Commands[method]
+	if !ok {
+		log.Panicf("[operator] cmd not defined %s", method)
+	}
 	msg.Reply = make(chan Message, 1)
 
 	go func() {
 		defer close(msg.Reply)
 		select {
 		case reply := <-msg.Reply:
+			if _, ok := reply.Labels["no-timeout"]; ok {
+				reply = <-msg.Reply
+			}
 			if _, ok := msg.Labels["sessionID"]; ok {
 				if reason, ok := reply.Labels["error"]; ok {
 					p.ReturnError(msg, reason)
