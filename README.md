@@ -32,7 +32,7 @@ For everyone, please find the main document index at [docs/README.md](./docs/REA
 ## Design
 
 ### Vision
-Engineers often use various systems, components to build and deliver services based on software products.  The systems and components need to interact with each other to achieve automation. There are usually integration solutions that when implemented the components/systems can operate seamlessly.  However, the integrations are usually created or configured in ad-hoc fashion.  When the number of systems/components increases, the number of integrations and complexity of the integrations sometimes become unmanageable. All the systems/components are entangled in mesh (See below graph). A lot of redundant configuration or development work become necessary. It is so hard, sometimes even impossible, to switch from one tool to another.
+Engineers often use various systems, components to build and deliver services based on software products.  The systems and components need to interact with each other to achive automation. There are usually integration solutions that when implemented the components/systems can operate seamlessly.  However, the integrations are usually created or configured in ad-hoc fashion.  When the number of systems/components increases, the number of integrations and complexity of the integrations sometimes become unmanageable. All the systems/components are entangled in mesh (See below graph). A lot of redundant configuration or development work become necessary. It is so hard, sometimes even impossible, to switch from one tool to another.
 
 ![Systems Ad-hoc Integration Mesh](./DevOpsSystemsAd-hocIntegrationMesh.png)
 
@@ -62,7 +62,7 @@ In order for users to compose the rules, a few abstract concepts are introduced:
 
 As you can see, the items described above follow the order or life cycle stage of the processing of the events into actions. Ideally, anything between the drivers should be composable, while some may tend to focusing on making various systems, Dipper event/actions available, others may want to focus on rules, workflows.
 
-### Outstanding Features
+### Features
 
 #### Embracing GitOps
 Honeydipper should have little to no local configuration needed to be bootstraped.  Once bootstrapped, the system should be able to pull configurations from one or more git repo. The benefit is the ease of maintenance of the system and access control automatically provided by git repo(s). The system needs to watch the git repos, one way or another, for changes and reload as needed. For continuous operation, the system should be able to survive when there is a configuration error, and should be able to continue running with an older version of the configuration.
