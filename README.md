@@ -9,13 +9,16 @@
 
 - [Overview](#overview)
 - [Design](#design)
-  * [Core Concepts](#core-concepts)
+  * [Vision](#vision)
   * [Features](#features)
     + [Embracing GitOps](#embracing-gitops)
     + [Pluggable Architecture](#pluggable-architecture)
     + [Abstraction](#abstraction)
+  * [Core Concepts](#core-concepts)
 - [TODO](#todo)
 - [Get Started On Developing](#get-started-on-developing)
+  * [Prerequisites](#prerequisites)
+  * [Setup](#setup)
 
 <!-- tocstop -->
 
