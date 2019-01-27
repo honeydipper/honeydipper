@@ -10,11 +10,11 @@
 - [Overview](#overview)
 - [Design](#design)
   * [Vision](#vision)
-  * [Features](#features)
+  * [Core Concepts](#core-concepts)
+  * [Outstanding Features](#outstanding-features)
     + [Embracing GitOps](#embracing-gitops)
     + [Pluggable Architecture](#pluggable-architecture)
     + [Abstraction](#abstraction)
-  * [Core Concepts](#core-concepts)
 - [TODO](#todo)
 - [Get Started On Developing](#get-started-on-developing)
   * [Prerequisites](#prerequisites)
@@ -44,7 +44,25 @@ The core of Honeydipper is comprised of an event bus, and a rules/workflow engin
 
 ![Dipper Daemon](./DipperDaemon.png)
 
-### Features
+### Core Concepts
+In order for users to compose the rules, a few abstract concepts are introduced:
+
+ * Driver (Event)
+ * Raw Event
+ * System (Trigger): an abstract entity that groups dipper events and some configurations, metadata together
+ * Dipper Event (DipperMessage): a data structure that contains information that can be used for matching rules and being processed following the rules
+ * Rules: if some Dipper Event on some system happens, then start the workflow of actions on certain systems accordingly
+ * Features: A feature is a set of functions that can be mapped to a running driver, for example, the `eventbus` feature is fulfilled by `redisqueue` driver
+ * Services: A service is a group of capabilities the daemon provides to be able to orchestrate the plugged systems through drivers 
+ * Workflow: Grouping of the actions so they can be processed, sequentially, parallel, etc
+ * Dipper Action (DipperMessage): a data structure that contains information that can be used for performing an action
+ * System (Responder): an abstract entity that groups dipper actions, configurations, metadata together
+ * Raw Action
+ * Driver (Action)
+
+As you can see, the items described above follow the order or life cycle stage of the processing of the events into actions. Ideally, anything between the drivers should be composable, while some may tend to focusing on making various systems, Dipper event/actions available, others may want to focus on rules, workflows.
+
+### Outstanding Features
 
 #### Embracing GitOps
 Honeydipper should have little to no local configuration needed to be bootstraped.  Once bootstrapped, the system should be able to pull configurations from one or more git repo. The benefit is the ease of maintenance of the system and access control automatically provided by git repo(s). The system needs to watch the git repos, one way or another, for changes and reload as needed. For continuous operation, the system should be able to survive when there is a configuration error, and should be able to continue running with an older version of the configuration.
@@ -54,23 +72,6 @@ Drivers make up an important part of the Honeydipper ecosystem. Most of the data
 
 #### Abstraction
 As mentioned in the concepts, one of Honeydipper's main selling points is abstraction. Events, actions can be defined traditionally using whatever characteristics provided by a driver, but also can be defined as an extension of another event/action with additional or override parameters. Events and actions can be grouped together into systems where data can be shared across. With this abstraction, we can separate the composing of complex workflows from defining low level event/action hook ups. Whenever a low level component changes, the high level workflow doesn't have to change, one only needs to link the abstract events with the new component native events.
-
-### Core Concepts
-In order for users to compose the rules, a few abstract concepts are introduced:
-
- * Driver (Event)
- * Raw Event
- * System (Trigger): an abstract entity that groups dipper events and some configurations, metadata together
- * Dipper Event (DipperMessage): a data structure that contains information that can be used for matching rules and being processed following the rules
- * Rules: if some Dipper Event on some system happens, then start the workflow of actions on certain systems accordingly
- * Filters: Functions to be called to mutate the data structure in the event/action so various event/action can be linked together based on a contract
- * Workflow: Grouping of the actions so they can be processed, sequentially, parallel, etc
- * Dipper Action (DipperMessage): a data structure that contains information that can be used for performing an action
- * System (Responder): an abstract entity that groups dipper actions, configurations, metadata together
- * Raw Action
- * Driver (Action)
-
-As you can see, the items described above follow the order or life cycle stage of the processing of the events into actions. Ideally, anything between the drivers should be composable, while some may tend to focusing on making various systems, Dipper event/actions available, others may want to focus on rules, workflows.
 
 ## TODO
  * Documentation for users
