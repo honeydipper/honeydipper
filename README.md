@@ -32,11 +32,11 @@ For everyone, please find the main document index at [docs/README.md](./docs/REA
 ## Design
 
 ### Vision
-Engineers often use various systems, components to build and deliver services based on software products.  The systems and components need to interact with each other to achive automation. There are usually integration solutions that when implemented the components/systems can operate seamlessly.  However, the integrations are usually created or configured in ad-hoc fashion.  When the number of systems/components increases, the number of integrations and complexity of the integrations sometimes become unmanageable. All the systems/components are entangled in mesh (See below graph). A lot of redundant configuration or development work become necessary. It is so hard, sometimes even impossible, to switch from one tool to another.
+Engineers often use various systems and components to build and deliver services based on software products.  The systems and components need to interact with each other to achive automation. There are usually integration solutions that when implemented the components and systems can operate seamlessly.  However, the integrations are usually created or configured in ad-hoc fashion.  When the number of systems/components increases, the number of integrations and complexity of the integrations sometimes become unmanageable. All the systems/components are entangled in a mesh like network (See below graph). A lot of redundant configuration or development work become necessary. It is so hard, sometimes even impossible, to switch from one tool to another.
 
 ![Systems Ad-hoc Integration Mesh](./DevOpsSystemsAd-hocIntegrationMesh.png)
 
-The vision for Honeydipper is to provide an infrastructure so that the various systems and components can be plugged in together and the integrations can be composed using rules, workflows and abstracted entities like systems, projects and organizations. With a centralized orchestration, redundant configurations and deveopment work can be reduced or eliminated. With the abstraction layer, The underline tools and solutions become swappable.
+The vision for Honeydipper is to act as a central hub forming an ecosystem so that the various systems and components can be plugged in together and the integrations can be composed using rules, workflows and abstracted entities like systems, projects and organizations. With a centralized orchestration, redundant configurations and development work can be reduced or eliminated. With the abstraction layer, The underlying tools and solutions become swappable.
 
 ![Systems orchestrated with Honeydipper](./DevOpsSystemsHoneydipper.png)
 
