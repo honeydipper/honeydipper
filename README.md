@@ -9,13 +9,16 @@
 
 - [Overview](#overview)
 - [Design](#design)
+  * [Vision](#vision)
   * [Core Concepts](#core-concepts)
-  * [Features](#features)
+  * [Outstanding Features](#outstanding-features)
     + [Embracing GitOps](#embracing-gitops)
     + [Pluggable Architecture](#pluggable-architecture)
     + [Abstraction](#abstraction)
 - [TODO](#todo)
 - [Get Started On Developing](#get-started-on-developing)
+  * [Prerequisites](#prerequisites)
+  * [Setup](#setup)
 
 <!-- tocstop -->
 
@@ -27,8 +30,19 @@ For driver developers, please read this guide. [Honeydipper driver developer's g
 For everyone, please find the main document index at [docs/README.md](./docs/README.md).
 
 ## Design
-The core of Honeydipper is comprised of an event bus, and a rules engine. Raw events from various sources are received by corresponding event drivers, and then packaged in a standard format then published to the event bus. The rules engine picks up the event from the bus, and, based on the rules, triggers the actions or a workflow.
-![Dipper Architecture](./DipperDiagram1.png)
+
+### Vision
+Engineers often use various systems and components to build and deliver services based on software products. The systems and components need to interact with each other to achive automation. There are usually integration solutions that when implemented the components and systems can operate seamlessly. However, the integrations are usually created or configured in ad-hoc fashion. When the number of systems/components increases, the number of integrations and complexity of the integrations sometimes become unmanageable. All the systems/components are entangled in a mesh like network (See below graph). A lot of redundant configuration or development work become necessary. It is so hard, sometimes even impossible, to switch from one tool to another.
+
+![Systems Ad-hoc Integration Mesh](./DevOpsSystemsAd-hocIntegrationMesh.png)
+
+Our vision is for Honeydipper to act as a central hub forming an ecosystem so that the various systems and components can be plugged in together and the integrations can be composed using rules, workflows and abstracted entities like systems, projects and organizations. With a centralized orchestration, redundant configurations and development work can be reduced or eliminated. With the abstraction layer, The underlying tools and solutions become interchangeable.
+
+![Systems orchestrated with Honeydipper](./DevOpsSystemsHoneydipper.png)
+
+The core of Honeydipper is comprised of an event bus, and a rules/workflow engine. Raw events from various sources are received by corresponding event drivers, and then packaged in a standard format then published to the event bus. The rules/workflow engine picks up the event from the bus, and, based on the rules, triggers the actions or a workflow with multiple actions.
+
+![Dipper Daemon](./DipperDaemon.png)
 
 ### Core Concepts
 In order for users to compose the rules, a few abstract concepts are introduced:
@@ -38,7 +52,8 @@ In order for users to compose the rules, a few abstract concepts are introduced:
  * System (Trigger): an abstract entity that groups dipper events and some configurations, metadata together
  * Dipper Event (DipperMessage): a data structure that contains information that can be used for matching rules and being processed following the rules
  * Rules: if some Dipper Event on some system happens, then start the workflow of actions on certain systems accordingly
- * Filters: Functions to be called to mutate the data structure in the event/action so various event/action can be linked together based on a contract
+ * Features: A feature is a set of functions that can be mapped to a running driver, for example, the `eventbus` feature is fulfilled by `redisqueue` driver
+ * Services: A service is a group of capabilities the daemon provides to be able to orchestrate the plugged systems through drivers 
  * Workflow: Grouping of the actions so they can be processed, sequentially, parallel, etc
  * Dipper Action (DipperMessage): a data structure that contains information that can be used for performing an action
  * System (Responder): an abstract entity that groups dipper actions, configurations, metadata together
@@ -57,8 +72,6 @@ Drivers make up an important part of the Honeydipper ecosystem. Most of the data
 
 #### Abstraction
 As mentioned in the concepts, one of Honeydipper's main selling points is abstraction. Events, actions can be defined traditionally using whatever characteristics provided by a driver, but also can be defined as an extension of another event/action with additional or override parameters. Events and actions can be grouped together into systems where data can be shared across. With this abstraction, we can separate the composing of complex workflows from defining low level event/action hook ups. Whenever a low level component changes, the high level workflow doesn't have to change, one only needs to link the abstract events with the new component native events.
-
-![Dipper Daemon](./DipperDaemon.png)
 
 ## TODO
  * Documentation for users
@@ -79,7 +92,7 @@ As mentioned in the concepts, one of Honeydipper's main selling points is abstra
 If you're using Redis's pubsub, you'll need to run Redis and configure the driver in your configuration, e.g.,
 ```yaml
 drivers:
-  redispubsub:
+  redisqueue:
     connection:
       Addr: 10.0.0.5:6379
 ```
