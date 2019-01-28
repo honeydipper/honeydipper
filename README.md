@@ -32,7 +32,7 @@ For everyone, please find the main document index at [docs/README.md](./docs/REA
 ## Design
 
 ### Vision
-Engineers often use various systems and components to build and deliver services based on software products.  The systems and components need to interact with each other to achive automation. There are usually integration solutions that when implemented the components and systems can operate seamlessly.  However, the integrations are usually created or configured in ad-hoc fashion.  When the number of systems/components increases, the number of integrations and complexity of the integrations sometimes become unmanageable. All the systems/components are entangled in a mesh like network (See below graph). A lot of redundant configuration or development work become necessary. It is so hard, sometimes even impossible, to switch from one tool to another.
+Engineers often use various systems and components to build and deliver services based on software products. The systems and components need to interact with each other to achive automation. There are usually integration solutions that when implemented the components and systems can operate seamlessly. However, the integrations are usually created or configured in ad-hoc fashion. When the number of systems/components increases, the number of integrations and complexity of the integrations sometimes become unmanageable. All the systems/components are entangled in a mesh like network (See below graph). A lot of redundant configuration or development work become necessary. It is so hard, sometimes even impossible, to switch from one tool to another.
 
 ![Systems Ad-hoc Integration Mesh](./DevOpsSystemsAd-hocIntegrationMesh.png)
 
@@ -40,7 +40,7 @@ The vision for Honeydipper is to act as a central hub forming an ecosystem so th
 
 ![Systems orchestrated with Honeydipper](./DevOpsSystemsHoneydipper.png)
 
-The core of Honeydipper is comprised of an event bus, and a rules/workflow engine. Raw events from various sources are received by corresponding event drivers, and then packaged in a standard format then published to the event bus. The rules/workflow  engine picks up the event from the bus, and, based on the rules, triggers the actions or a workflow with multiple actions.
+The core of Honeydipper is comprised of an event bus, and a rules/workflow engine. Raw events from various sources are received by corresponding event drivers, and then packaged in a standard format then published to the event bus. The rules/workflow engine picks up the event from the bus, and, based on the rules, triggers the actions or a workflow with multiple actions.
 
 ![Dipper Daemon](./DipperDaemon.png)
 
