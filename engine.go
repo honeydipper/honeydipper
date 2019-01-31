@@ -364,22 +364,29 @@ func buildRuleMap(cfg *Config) {
 
 	for _, ruleInConfig := range cfg.config.Rules {
 		var rule = ruleInConfig
-		rawTrigger, conditions := collapseTrigger(rule.When, cfg.config)
-		dipper.Recursive(conditions, dipper.RegexParser)
-		// collpaseTrigger function is in receiver.go, might need to be moved
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warningf("[engine] skipping invalid rule.When %+v with error %+v", rule.When, r)
+				}
+			}()
+			rawTrigger, conditions := collapseTrigger(rule.When, cfg.config)
+			dipper.Recursive(conditions, dipper.RegexParser)
+			// collpaseTrigger function is in receiver.go, might need to be moved
 
-		rawTriggerKey := rawTrigger.Driver + "." + rawTrigger.RawEvent
-		rawRules, ok := ruleMap[rawTriggerKey]
-		if !ok {
-			rawRules = &[]*CollapsedRule{}
-		}
-		*rawRules = append(*rawRules, &CollapsedRule{
-			Conditions:   conditions,
-			OriginalRule: &rule,
-		})
-		if !ok {
-			ruleMap[rawTriggerKey] = rawRules
-		}
+			rawTriggerKey := rawTrigger.Driver + "." + rawTrigger.RawEvent
+			rawRules, ok := ruleMap[rawTriggerKey]
+			if !ok {
+				rawRules = &[]*CollapsedRule{}
+			}
+			*rawRules = append(*rawRules, &CollapsedRule{
+				Conditions:   conditions,
+				OriginalRule: &rule,
+			})
+			if !ok {
+				ruleMap[rawTriggerKey] = rawRules
+			}
+		}()
 	}
 }
 

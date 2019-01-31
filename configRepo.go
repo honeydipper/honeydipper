@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/ghodss/yaml"
 	"github.com/honeyscience/honeydipper/dipper"
-	"github.com/imdario/mergo"
 	"gopkg.in/src-d/go-git.v4"
 	gitCfg "gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -23,7 +22,7 @@ func (c *ConfigRepo) assemble(assembled *ConfigSet, assembledList map[RepoInfo]*
 		}
 	}
 
-	mergo.Merge(assembled, c.config, mergo.WithOverride, mergo.WithAppendSlice)
+	mergeConfigSet(assembled, c.config)
 	return assembled, assembledList
 }
 
@@ -63,7 +62,7 @@ func (c *ConfigRepo) loadFile(filename string) {
 			}
 		}
 
-		mergo.Merge(&(c.config), content, mergo.WithOverride, mergo.WithAppendSlice)
+		mergeConfigSet(&(c.config), content)
 		c.files[filename] = true
 		log.Infof("config file [%v] loaded", filename)
 	}

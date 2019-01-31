@@ -92,6 +92,18 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	matched := false
 	for _, hook := range hooks {
 		for _, condition := range hook.([]interface{}) {
+			auth, ok := dipper.GetMapData(condition, ":auth:")
+			if ok {
+				authDriver := dipper.MustGetMapDataStr(auth, "driver")
+				authResult, err := driver.RPCCall("driver:"+authDriver, "webhookAuth", map[string]interface{}{
+					"event":     eventData,
+					"condition": auth,
+				})
+				if err != nil || string(authResult) != "authenticated" {
+					log.Warningf("[%s] failed to authenticate webhook request with %s error %+v", driver.Service, authDriver, err)
+					continue
+				}
+			}
 			if dipper.CompareAll(eventData, condition) {
 				matched = true
 				break

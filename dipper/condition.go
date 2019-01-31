@@ -70,7 +70,10 @@ func CompareAll(actual interface{}, criteria interface{}) bool {
 	case reflect.Map:
 		if mapCriteria, ok := criteria.(map[string]interface{}); ok {
 			for key, subCriteria := range mapCriteria {
-				if key == ":absent:" {
+				if key == ":auth:" {
+					// offload to another driver using RPC
+					// pass
+				} else if key == ":absent:" {
 					keys := []interface{}{}
 					for _, k := range value.MapKeys() {
 						keys = append(keys, k.Interface())
