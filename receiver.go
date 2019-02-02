@@ -33,6 +33,7 @@ func receiverRoute(msg *dipper.Message) (ret []RoutedMessage) {
 
 func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 	current := t
+	sysData := map[string]interface{}{}
 	var stack []interface{}
 	if current.Conditions != nil {
 		stack = append(stack, current.Conditions)
@@ -41,7 +42,13 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 		if len(current.Driver) > 0 {
 			log.Panicf("[receiver] a trigger cannot have both driver and source %+v", current)
 		}
-		current = c.Systems[current.Source.System].Triggers[current.Source.Trigger]
+		currentSys := c.Systems[current.Source.System]
+		currentSysData, _ := dipper.DeepCopy(currentSys.Data)
+		err := mergo.Merge(&sysData, currentSysData, mergo.WithOverride, mergo.WithAppendSlice)
+		if err != nil {
+			panic(err)
+		}
+		current = currentSys.Triggers[current.Source.Trigger]
 		if current.Conditions != nil {
 			stack = append(stack, current.Conditions)
 		}
@@ -57,6 +64,11 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 		if err != nil {
 			panic(err)
 		}
+	}
+	if len(sysData) > 0 {
+		conditions = dipper.Interpolate(conditions, map[string]interface{}{
+			"sysData": sysData,
+		}).(map[string]interface{})
 	}
 	return current, conditions
 }
