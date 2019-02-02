@@ -41,6 +41,7 @@ func startEngine(cfg *Config) {
 	engine.EmitMetrics = engineMetrics
 	Services["engine"] = engine
 	buildRuleMap(cfg)
+	engine.responders["broadcast:resume_session"] = append(engine.responders["broadcast:resume_session"], resumeSession)
 	engine.start()
 }
 
@@ -336,6 +337,12 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 			go executeWorkflow(childSessionID, current, mcopy)
 		}
 
+	case "suspend":
+		if len(sessionID) > 0 {
+			log.Infof("[engine] suspending session %+v", sessionID)
+		} else {
+			log.Panicf("[engine] can not suspend without a session")
+		}
 	default:
 		log.Panicf("[engine] unknown workflow type %s", w.Type)
 	}
@@ -446,4 +453,21 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 
 func engineMetrics() {
 	engine.gaugeSet("honey.honeydipper.engine.sessions", strconv.Itoa(len(sessions)), []string{})
+}
+
+func resumeSession(d *DriverRuntime, m *dipper.Message) {
+	m = dipper.DeserializePayload(m)
+	sessionID := dipper.MustGetMapDataStr(m.Payload, "sessionID")
+	sessionPayload, _ := dipper.GetMapData(m.Payload, "Payload")
+	sessionLabels := map[string]string{}
+	if labels, ok := dipper.GetMapData(m.Payload, "Labels"); ok {
+		err := mapstructure.Decode(labels, &sessionLabels)
+		if err != nil {
+			panic(err)
+		}
+	}
+	go continueWorkflow(sessionID, &dipper.Message{
+		Labels:  sessionLabels,
+		Payload: sessionPayload,
+	})
 }
