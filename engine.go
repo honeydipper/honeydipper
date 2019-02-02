@@ -482,6 +482,7 @@ func resumeSession(d *DriverRuntime, m *dipper.Message) {
 			}
 		}
 		go continueWorkflow(sessionID, &dipper.Message{
+			Subject: "return",
 			Labels:  sessionLabels,
 			Payload: sessionPayload,
 		})
