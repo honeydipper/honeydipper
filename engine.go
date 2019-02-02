@@ -414,6 +414,8 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 	switch v.Type {
 	case "":
 		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
+	case "suspend":
+		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
 	case "function":
 		log.Debugf("[engine] interpolate run into function %+v", v)
 		newContent, err := dipper.DeepCopy(v.Content.(map[string]interface{}))
@@ -471,9 +473,9 @@ func resumeSession(d *DriverRuntime, m *dipper.Message) {
 	sessionID, ok := suspendedSessions[key]
 	if ok {
 		delete(suspendedSessions, key)
-		sessionPayload, _ := dipper.GetMapData(m.Payload, "Payload")
+		sessionPayload, _ := dipper.GetMapData(m.Payload, "payload")
 		sessionLabels := map[string]string{}
-		if labels, ok := dipper.GetMapData(m.Payload, "Labels"); ok {
+		if labels, ok := dipper.GetMapData(m.Payload, "labels"); ok {
 			err := mapstructure.Decode(labels, &sessionLabels)
 			if err != nil {
 				panic(err)
