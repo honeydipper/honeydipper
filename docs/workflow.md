@@ -71,6 +71,8 @@ To be able to do fun stuff such as reusing, combining multiple tasks, conditiona
  * **conditional workflow**
  * **pipe workflow**
  * **parallel workflow**
+ * **switch workflow**
+ * **suspend workflow**
 
 ### Named workflow
 When the `type` is not defined or empty, the `content` will be interpreted as a name pointing to a `workflow` defined in the `workflows` section of the config. This enables re-using of the workflow among rules. See below for example:
@@ -161,6 +163,49 @@ workflows:
       - content: notify_sre
       - content: notify_dev
       - content: notify_security
+```
+
+### Switch workflow
+`switch` workflow is similar to `switch` statement in some programing languages. It choose one workflow from the branches of child workflows based on `condition` field. The value of `content` should be a  map from strings to child workflows.
+
+For example:
+
+```yaml
+workflows:
+  slashcommands:
+    type: switch
+    condition: '{{ .wfdata.command }}'
+    content:
+      help:
+        content: show_help
+      reload:
+        content: reload_config
+      "*":
+        content: show_unknown_command_err
+```
+
+### Suspend workflow
+A workflow can be suspended to wait for manual approval or manual intervention. It is useful in conjunction with slack (or other chat system) interactive components, web dashboards, etc. to inject manual interaction into the automation. The `content` should be a globally unique string serving as an identifer for the workflow.  The workflow will continue when a message with "resume_session" subject carries the identifier in `key` field of the payload.
+
+For example
+
+```yaml
+workflows:
+  confirm_then_apply:
+    type: pipe
+    data:
+      interactive_id: '{{ randAlphaNum 16 }}'
+    content:
+      - content: tf_plan
+      - content: slack_result_with_interactive
+        data:
+          callback_id: '{{ .wfdata.interactive_id }}'
+      - type: suspend
+        content: '{{ .wfdata.interactive_id }}'
+      - type: if
+        condition: '{{ eq .data.reply "yes" }}'
+        content:
+          - content: tf_apply
 ```
 
 ## Workflow helper
