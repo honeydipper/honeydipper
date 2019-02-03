@@ -132,6 +132,7 @@ func waitForJob(m *dipper.Message) {
 							"status": job.Status,
 						},
 					}
+					break
 				}
 			}
 		}
@@ -149,7 +150,11 @@ func waitForJob(m *dipper.Message) {
 		jobstatus.Stop()
 	case <-time.After(time.Duration(timeout) * time.Second):
 		jobstatus.Stop()
-		log.Panic("Time out")
+		m.Reply <- dipper.Message{
+			Labels: map[string]string{
+				"error": "time out",
+			},
+		}
 	}
 }
 
