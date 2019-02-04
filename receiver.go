@@ -33,6 +33,7 @@ func receiverRoute(msg *dipper.Message) (ret []RoutedMessage) {
 
 func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 	current := t
+	sysData := map[string]interface{}{}
 	var stack []interface{}
 	if current.Conditions != nil {
 		stack = append(stack, current.Conditions)
@@ -41,7 +42,13 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 		if len(current.Driver) > 0 {
 			log.Panicf("[receiver] a trigger cannot have both driver and source %+v", current)
 		}
-		current = c.Systems[current.Source.System].Triggers[current.Source.Trigger]
+		currentSys := c.Systems[current.Source.System]
+		currentSysData, _ := dipper.DeepCopy(currentSys.Data)
+		err := mergo.Merge(&sysData, currentSysData, mergo.WithOverride, mergo.WithAppendSlice)
+		if err != nil {
+			panic(err)
+		}
+		current = currentSys.Triggers[current.Source.Trigger]
 		if current.Conditions != nil {
 			stack = append(stack, current.Conditions)
 		}
@@ -58,6 +65,11 @@ func collapseTrigger(t Trigger, c *ConfigSet) (Trigger, interface{}) {
 			panic(err)
 		}
 	}
+	if len(sysData) > 0 {
+		conditions = dipper.Interpolate(conditions, map[string]interface{}{
+			"sysData": sysData,
+		}).(map[string]interface{})
+	}
 	return current, conditions
 }
 
@@ -67,36 +79,43 @@ func ReceiverFeatures(c *ConfigSet) map[string]interface{} {
 
 	numCollapsedEvents = 0
 	for _, rule := range c.Rules {
-		rawTrigger, conditions := collapseTrigger(rule.When, c)
-		var driverData map[string]interface{}
-		data, ok := dynamicData["driver:"+rawTrigger.Driver]
-		if !ok {
-			driverData = map[string]interface{}{"collapsedEvents": map[string]interface{}{}}
-			dynamicData["driver:"+rawTrigger.Driver] = driverData
-		} else {
-			driverData, _ = data.(map[string]interface{})
-		}
+		func(rule Rule) {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warningf("[receiver] failed to process rule.When %+v with error %+v", rule.When, r)
+				}
+			}()
+			rawTrigger, conditions := collapseTrigger(rule.When, c)
+			var driverData map[string]interface{}
+			data, ok := dynamicData["driver:"+rawTrigger.Driver]
+			if !ok {
+				driverData = map[string]interface{}{"collapsedEvents": map[string]interface{}{}}
+				dynamicData["driver:"+rawTrigger.Driver] = driverData
+			} else {
+				driverData, _ = data.(map[string]interface{})
+			}
 
-		var eventName string
-		if len(rule.When.Driver) == 0 {
-			eventName = rule.When.Source.System + "." + rule.When.Source.Trigger
-		} else {
-			eventName = "_." + rule.When.Driver + ":" + rule.When.RawEvent
-		}
+			var eventName string
+			if len(rule.When.Driver) == 0 {
+				eventName = rule.When.Source.System + "." + rule.When.Source.Trigger
+			} else {
+				eventName = "_." + rule.When.Driver + ":" + rule.When.RawEvent
+			}
 
-		list, found := driverData["collapsedEvents"].(map[string]interface{})[eventName]
-		var collapsedEvent []interface{}
-		if !found {
-			collapsedEvent = []interface{}{}
-		} else {
-			collapsedEvent, _ = list.([]interface{})
-		}
-		collapsedEvent = append(collapsedEvent, conditions)
-		numCollapsedEvents++
+			list, found := driverData["collapsedEvents"].(map[string]interface{})[eventName]
+			var collapsedEvent []interface{}
+			if !found {
+				collapsedEvent = []interface{}{}
+			} else {
+				collapsedEvent, _ = list.([]interface{})
+			}
+			collapsedEvent = append(collapsedEvent, conditions)
+			numCollapsedEvents++
 
-		driverData["collapsedEvents"].(map[string]interface{})[eventName] = collapsedEvent
+			driverData["collapsedEvents"].(map[string]interface{})[eventName] = collapsedEvent
 
-		log.Debugf("[receiver] collapsed %+v total %+v", eventName, collapsedEvent)
+			log.Debugf("[receiver] collapsed %+v total %+v", eventName, collapsedEvent)
+		}(rule)
 	}
 	numDynamicFeatures = len(dynamicData)
 	log.Debugf("[receiver] dynamicData return: %+v", dynamicData)

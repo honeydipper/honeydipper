@@ -21,6 +21,7 @@ type WorkflowSession struct {
 }
 
 var sessions = map[string]*WorkflowSession{}
+var suspendedSessions = map[string]string{}
 
 // CollapsedRule : mapping the raw trigger event to rules for testing
 type CollapsedRule struct {
@@ -41,6 +42,7 @@ func startEngine(cfg *Config) {
 	engine.EmitMetrics = engineMetrics
 	Services["engine"] = engine
 	buildRuleMap(cfg)
+	engine.responders["broadcast:resume_session"] = append(engine.responders["broadcast:resume_session"], resumeSession)
 	engine.start()
 }
 
@@ -336,6 +338,21 @@ func executeWorkflow(sessionID string, wf *Workflow, msg *dipper.Message) {
 			go executeWorkflow(childSessionID, current, mcopy)
 		}
 
+	case "suspend":
+		if len(sessionID) > 0 {
+			key, ok := w.Content.(string)
+			if !ok || len(key) == 0 {
+				log.Panicf("[engine] suspending session requires a key for %+v", sessionID)
+			}
+			_, ok = suspendedSessions[key]
+			if ok {
+				log.Panicf("[engine] suspending session encounter a duplicate key for %+v", sessionID)
+			}
+			suspendedSessions[key] = sessionID
+			log.Infof("[engine] suspending session %+v", sessionID)
+		} else {
+			log.Panicf("[engine] can not suspend without a session")
+		}
 	default:
 		log.Panicf("[engine] unknown workflow type %s", w.Type)
 	}
@@ -364,22 +381,29 @@ func buildRuleMap(cfg *Config) {
 
 	for _, ruleInConfig := range cfg.config.Rules {
 		var rule = ruleInConfig
-		rawTrigger, conditions := collapseTrigger(rule.When, cfg.config)
-		dipper.Recursive(conditions, dipper.RegexParser)
-		// collpaseTrigger function is in receiver.go, might need to be moved
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warningf("[engine] skipping invalid rule.When %+v with error %+v", rule.When, r)
+				}
+			}()
+			rawTrigger, conditions := collapseTrigger(rule.When, cfg.config)
+			dipper.Recursive(conditions, dipper.RegexParser)
+			// collpaseTrigger function is in receiver.go, might need to be moved
 
-		rawTriggerKey := rawTrigger.Driver + "." + rawTrigger.RawEvent
-		rawRules, ok := ruleMap[rawTriggerKey]
-		if !ok {
-			rawRules = &[]*CollapsedRule{}
-		}
-		*rawRules = append(*rawRules, &CollapsedRule{
-			Conditions:   conditions,
-			OriginalRule: &rule,
-		})
-		if !ok {
-			ruleMap[rawTriggerKey] = rawRules
-		}
+			rawTriggerKey := rawTrigger.Driver + "." + rawTrigger.RawEvent
+			rawRules, ok := ruleMap[rawTriggerKey]
+			if !ok {
+				rawRules = &[]*CollapsedRule{}
+			}
+			*rawRules = append(*rawRules, &CollapsedRule{
+				Conditions:   conditions,
+				OriginalRule: &rule,
+			})
+			if !ok {
+				ruleMap[rawTriggerKey] = rawRules
+			}
+		}()
 	}
 }
 
@@ -389,6 +413,8 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 	}
 	switch v.Type {
 	case "":
+		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
+	case "suspend":
 		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
 	case "function":
 		log.Debugf("[engine] interpolate run into function %+v", v)
@@ -439,4 +465,26 @@ func interpolateWorkflow(v *Workflow, data interface{}) *Workflow {
 
 func engineMetrics() {
 	engine.gaugeSet("honey.honeydipper.engine.sessions", strconv.Itoa(len(sessions)), []string{})
+}
+
+func resumeSession(d *DriverRuntime, m *dipper.Message) {
+	m = dipper.DeserializePayload(m)
+	key := dipper.MustGetMapDataStr(m.Payload, "key")
+	sessionID, ok := suspendedSessions[key]
+	if ok {
+		delete(suspendedSessions, key)
+		sessionPayload, _ := dipper.GetMapData(m.Payload, "payload")
+		sessionLabels := map[string]string{}
+		if labels, ok := dipper.GetMapData(m.Payload, "labels"); ok {
+			err := mapstructure.Decode(labels, &sessionLabels)
+			if err != nil {
+				panic(err)
+			}
+		}
+		go continueWorkflow(sessionID, &dipper.Message{
+			Subject: "return",
+			Labels:  sessionLabels,
+			Payload: sessionPayload,
+		})
+	}
 }

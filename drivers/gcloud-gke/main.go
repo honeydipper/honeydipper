@@ -26,7 +26,7 @@ var driver *dipper.Driver
 func main() {
 	flag.Parse()
 
-	driver = dipper.NewDriver(os.Args[1], "gcloud")
+	driver = dipper.NewDriver(os.Args[1], "gcloud-gke")
 	driver.RPC.Provider.RPCHandlers["getKubeCfg"] = getKubeCfg
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()

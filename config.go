@@ -117,12 +117,12 @@ func (c *Config) extendSystem(processed map[string]bool, system string) {
 			panic(err)
 		}
 
-		err = mergo.Merge(&merged, *parentCopy, mergo.WithOverride, mergo.WithAppendSlice)
+		err = mergeSystem(&merged, *parentCopy)
 		if err != nil {
 			panic(err)
 		}
 	}
-	err := mergo.Merge(&merged, current, mergo.WithOverride, mergo.WithAppendSlice)
+	err := mergeSystem(&merged, current)
 	if err != nil {
 		panic(err)
 	}
@@ -157,4 +157,68 @@ func SystemCopy(s *System) (*System, error) {
 		return nil, err
 	}
 	return &scopy, nil
+}
+
+func mergeConfigSet(d *ConfigSet, s ConfigSet) error {
+	for name, system := range s.Systems {
+		exist, ok := d.Systems[name]
+		if ok {
+			err := mergeSystem(&exist, system)
+			if err != nil {
+				return err
+			}
+		} else {
+			exist = system
+		}
+		if d.Systems == nil {
+			d.Systems = map[string]System{}
+		}
+		d.Systems[name] = exist
+	}
+
+	s.Systems = map[string]System{}
+	err := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
+	return err
+}
+
+func mergeSystem(d *System, s System) error {
+	for name, trigger := range s.Triggers {
+		exist, ok := d.Triggers[name]
+		if ok {
+			err := mergo.Merge(&exist, trigger, mergo.WithOverride, mergo.WithAppendSlice)
+			if err != nil {
+				return err
+			}
+		} else {
+			exist = trigger
+		}
+		if d.Triggers == nil {
+			d.Triggers = map[string]Trigger{}
+		}
+		d.Triggers[name] = exist
+	}
+
+	for name, function := range s.Functions {
+		exist, ok := d.Functions[name]
+		if ok {
+			err := mergo.Merge(&exist, function, mergo.WithOverride, mergo.WithAppendSlice)
+			if err != nil {
+				return err
+			}
+		} else {
+			exist = function
+		}
+		if d.Functions == nil {
+			d.Functions = map[string]Function{}
+		}
+		d.Functions[name] = exist
+	}
+
+	err := mergo.Merge(&d.Data, s.Data, mergo.WithOverride, mergo.WithAppendSlice)
+	if err != nil {
+		return err
+	}
+
+	d.Extends = append(d.Extends, s.Extends...)
+	return nil
 }
