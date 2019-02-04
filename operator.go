@@ -62,21 +62,23 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		finalParams := params
 		if params != nil {
 			// interpolate twice for giving an chance for using sysData in wfdata
-			finalWfData := dipper.Interpolate(wfdata, map[string]interface{}{
-				"sysData": sysData,
-				"data":    data,
-				"event":   event,
-				"labels":  msg.Labels,
-				"wfdata":  wfdata,
-				"params":  params,
-			}).(map[string]interface{})
+			if wfdata != nil {
+				wfdata = dipper.Interpolate(wfdata, map[string]interface{}{
+					"sysData": sysData,
+					"data":    data,
+					"event":   event,
+					"labels":  msg.Labels,
+					"wfdata":  wfdata,
+					"params":  params,
+				}).(map[string]interface{})
+			}
 			// use interpolated wfdata to assemble final params
 			finalParams = dipper.Interpolate(params, map[string]interface{}{
 				"sysData": sysData,
 				"data":    data,
 				"event":   event,
 				"labels":  msg.Labels,
-				"wfdata":  finalWfData,
+				"wfdata":  wfdata,
 				"params":  params,
 			}).(map[string]interface{})
 		}
