@@ -59,8 +59,17 @@ Follow below steps to get your daemon bootstrapped
 git init mytest
 cd mytest
 cat <<EOF > init.yaml
-includes:
-  - git@github.com:honeyscience/honeydipper-test-config.git
+repos:
+  - repo: git@github.com:honeyscience/honeydipper-config.git
+    branch: test
+
+drivers:
+  redisqueue:
+    connection:
+      Addr: 127.0.0.1:6379
+  redispubsub:
+    connection:
+      Addr: 127.0.0.1:6379 
 EOF
 git add init.yaml
 git commit -m 'init' -a
@@ -70,7 +79,7 @@ git commit -m 'init' -a
 REPO=file:///path/to/mytest honeydipper
 ```
 
-Notes: the remote repo is intended to be shared so, it might be suitable for your own test environment. You can override pretty much everything in your own yaml files. Or, you can skip loading the remote config and create your own config from scratch. To skip, just remove the `includes` section.
+Notes: the remote repo is intended to be shared, it might not be perfectly fit for your own test environment. You can override pretty much everything in your own yaml files. Or, you can skip loading the remote config and create your own config from scratch. To skip, just remove the `repos` section.
 
 ---
 Let me know if you run into any issue
