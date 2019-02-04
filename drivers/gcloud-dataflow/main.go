@@ -58,7 +58,7 @@ func createJob(msg *dipper.Message) {
 	if !ok {
 		panic(errors.New("job spec required"))
 	}
-	var jobSpec dataflow.Job
+	var jobSpec dataflow.CreateJobFromTemplateRequest
 	err := mapstructure.Decode(job, &jobSpec)
 	if err != nil {
 		panic(err)
@@ -77,9 +77,9 @@ func createJob(msg *dipper.Message) {
 	func() {
 		defer cancel()
 		if regional {
-			result, err = dataflowService.Projects.Jobs.Create(project, &jobSpec).Context(execContext).Do()
+			result, err = dataflowService.Projects.Templates.Create(project, &jobSpec).Context(execContext).Do()
 		} else {
-			result, err = dataflowService.Projects.Locations.Jobs.Create(project, location, &jobSpec).Context(execContext).Do()
+			result, err = dataflowService.Projects.Locations.Templates.Create(project, location, &jobSpec).Context(execContext).Do()
 		}
 	}()
 	if err != nil {
