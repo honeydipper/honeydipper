@@ -156,6 +156,10 @@ func (d *Driver) RPCCall(feature string, method string, params interface{}) ([]b
 	return d.RPC.Caller.Call(d.Out, feature, method, params)
 }
 
+// we have to keep hold of the os.File object to
+// avoid being closed by garbage collector (runtime.setFinalizer)
+var logFile *os.File
+
 // GetLogger : getting a logger for the driver
 func (d *Driver) GetLogger() *logging.Logger {
 	if log == nil {
@@ -163,7 +167,9 @@ func (d *Driver) GetLogger() *logging.Logger {
 		if !ok {
 			levelstr = "INFO"
 		}
-		logFile := os.NewFile(uintptr(3), "log")
+		if logFile == nil {
+			logFile = os.NewFile(uintptr(3), "log")
+		}
 		return GetLogger(d.Name, levelstr, logFile)
 	}
 	return log
