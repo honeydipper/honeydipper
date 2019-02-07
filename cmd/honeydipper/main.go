@@ -1,3 +1,5 @@
+// Package honeydipper is an event-driven, rule based orchestration platform tailor towards
+// DevOps and system engineering workflows.
 package main
 
 import (

@@ -1,3 +1,4 @@
+// Package dipper is a library used for developing drivers for Honeydipper.
 package dipper
 
 import (
