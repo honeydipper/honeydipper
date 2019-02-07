@@ -1,3 +1,4 @@
+// Package redispubsub enables Honeydipper to use redis to broadcast internal messages.
 package main
 
 import (

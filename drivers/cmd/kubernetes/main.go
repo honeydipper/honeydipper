@@ -1,3 +1,4 @@
+// Package kubernetes enables Honeydipper to interact with Kubernete clusters.
 package main
 
 import (

@@ -1,3 +1,4 @@
+// Package redisqueue enables Honeydipper to use redis queue as an eventbus.
 package main
 
 import (

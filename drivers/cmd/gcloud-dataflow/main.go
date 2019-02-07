@@ -1,3 +1,4 @@
+// Package gcloud-dataflow enables Honeydipper to create and wait for dataflow jobs.
 package main
 
 import (

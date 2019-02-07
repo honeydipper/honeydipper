@@ -1,3 +1,4 @@
+// Package web enables Honeydipper to make outbound web requests.
 package main
 
 import (

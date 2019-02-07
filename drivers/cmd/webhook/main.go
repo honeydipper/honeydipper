@@ -1,3 +1,4 @@
+// Package webhook enables Honeydipper to receive incoming webhook requests.
 package main
 
 import (

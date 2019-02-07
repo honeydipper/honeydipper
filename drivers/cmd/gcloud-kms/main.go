@@ -1,3 +1,4 @@
+// Package gcloud-kms enables Honeydipper to use secrets encrypted using gcloud KMS.
 package main
 
 import (

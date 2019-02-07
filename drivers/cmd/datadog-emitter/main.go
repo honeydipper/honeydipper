@@ -1,3 +1,4 @@
+// Package datadog-emitter enables Honeydipper to send metrics to datadog
 package main
 
 import (
