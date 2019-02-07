@@ -80,7 +80,8 @@ jobs:
           command: |
             export VERSION=$(git describe --match '[0-9]*' --tags $(git log -n1 --pretty='%h'))
             export TAG=us.gcr.io/$GOOGLE_PROJECT_ID/honeydipper:$VERSION
-            docker build -t $TAG build/docker
+            cp build/docker/Dockerfile .
+            docker build -t $TAG .
             SA_VAR_NAME=$(echo ${GOOGLE_PROJECT_ID#*-} |awk '{print toupper($0)}'| sed 's/-/_/g')_ACCT_AUTH
             eval 'echo $'$SA_VAR_NAME | base64 --decode | gcloud auth activate-service-account --key-file=-
             gcloud config set project $GOOGLE_PROJECT_ID
