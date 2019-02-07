@@ -1,18 +1,17 @@
-package main
+package dipper
 
 import (
-	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"os"
 	"testing"
 )
 
 func TestMain(m *testing.M) {
-	if dipper.Logger == nil {
+	if Logger == nil {
 		logFile, err := os.Create("test.log")
 		if err != nil {
 			panic(err)
 		}
-		dipper.GetLogger("test", "INFO", logFile, logFile)
+		GetLogger("test", "INFO", logFile, logFile)
 	}
 	os.Exit(m.Run())
 }

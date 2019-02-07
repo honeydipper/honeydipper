@@ -1,4 +1,4 @@
-package main
+package driver
 
 import (
 	"github.com/honeyscience/honeydipper/pkg/dipper"

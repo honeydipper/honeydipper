@@ -13,5 +13,6 @@
   sha: v1.4.0
   hooks:
     - id: check-yaml
+      exclude: ^deployments/helm/honeydipper/
     - id: check-json
     - id: detect-private-key
