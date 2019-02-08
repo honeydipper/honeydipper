@@ -4,16 +4,22 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/honeyscience/honeydipper/internal/config"
-	"github.com/honeyscience/honeydipper/internal/daemon"
-	"github.com/honeyscience/honeydipper/internal/driver"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
-	"github.com/mitchellh/mapstructure"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/honeyscience/honeydipper/internal/config"
+	"github.com/honeyscience/honeydipper/internal/daemon"
+	"github.com/honeyscience/honeydipper/internal/driver"
+	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/mitchellh/mapstructure"
+)
+
+// features known to the service for providing some functionalities
+const (
+	FeatureEmitter = "emitter"
 )
 
 // MessageResponder is a function type that respond to messages.
@@ -131,7 +137,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 	driverData, _ := s.config.GetDriverData(driverName)
 	var dynamicData interface{}
 	if strings.HasPrefix(feature, "driver:") {
-		dynamicData, _ = s.dynamicFeatureData[feature]
+		dynamicData = s.dynamicFeatureData[feature]
 	}
 	driverMeta, ok := config.BuiltinDrivers[driverName]
 	if !ok {
@@ -182,7 +188,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 
 		s.setDriverRuntime(feature, &driverRuntime)
 		go func(s *Service, feature string, runtime *driver.Runtime) {
-			runtime.Run.Wait()
+			dipper.PanicError(runtime.Run.Wait())
 			func() {
 				s.selectLock.Lock()
 				defer s.selectLock.Unlock()
@@ -194,7 +200,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		if oldRuntime != nil {
 			// closing the output writer will cause child process to panic
 			oldRuntime.Output.Close()
-			if feature == "emitter" {
+			if feature == FeatureEmitter {
 				delete(daemon.Emitters, s.name)
 			}
 		}
@@ -287,7 +293,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 						"state:alive:"+driverName,
 						func(*dipper.Message) {
 							s.driverRuntimes[feature].State = driver.DriverAlive
-							if feature == "emitter" {
+							if feature == FeatureEmitter {
 								daemon.Emitters[s.name] = s
 							}
 						},
@@ -321,7 +327,7 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 						"state:alive:"+driverName,
 						func(*dipper.Message) {
 							s.driverRuntimes[feature].State = driver.DriverAlive
-							if feature == "emitter" {
+							if feature == FeatureEmitter {
 								daemon.Emitters[s.name] = s
 							}
 						},
@@ -375,7 +381,7 @@ func (s *Service) serviceLoop() {
 		if !ok {
 			if chosen < len(orderedRuntimes) {
 				orderedRuntimes[chosen].State = driver.DriverFailed
-				if orderedRuntimes[chosen].Feature == "emitter" {
+				if orderedRuntimes[chosen].Feature == FeatureEmitter {
 					delete(daemon.Emitters, s.name)
 				}
 			}
@@ -383,7 +389,7 @@ func (s *Service) serviceLoop() {
 			func() {
 				runtime := orderedRuntimes[chosen]
 				msg := value.Interface().(dipper.Message)
-				if runtime.Feature != "emitter" {
+				if runtime.Feature != FeatureEmitter {
 					if emitter, ok := daemon.Emitters[s.name]; ok {
 						emitter.CounterIncr("honey.honeydipper.local.message", []string{
 							"service:" + s.name,
@@ -452,6 +458,7 @@ func (s *Service) addExpect(expectKey string, processor ExpectHandler, timeout t
 				s.expectLock.Lock()
 				if len(expects) > 1 {
 					for i, p := range expects {
+						//nolint:scopelint
 						if &p == &processor {
 							expects = append(expects[:i], expects[i+1:]...)
 							break
@@ -522,7 +529,7 @@ func coldReloadDriverRuntime(d *driver.Runtime, m *dipper.Message) {
 	s := Services[d.Service]
 	s.checkDeleteDriverRuntime(d.Feature, d)
 	d.Output.Close()
-	s.loadFeature(d.Feature)
+	dipper.PanicError(s.loadFeature(d.Feature))
 }
 
 func handleRPCCall(from *driver.Runtime, m *dipper.Message) {
@@ -561,8 +568,8 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 
 // CounterIncr increases a counter metric.
 func (s *Service) CounterIncr(name string, tags []string) {
-	if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.State == driver.DriverAlive {
-		go s.RPC.Caller.CallNoWait(emitter.Output, "emitter", "counter_increment", map[string]interface{}{
+	if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
+		go s.RPC.Caller.CallNoWait(emitter.Output, FeatureEmitter, "counter_increment", map[string]interface{}{
 			"name": name,
 			"tags": tags,
 		})
@@ -571,8 +578,8 @@ func (s *Service) CounterIncr(name string, tags []string) {
 
 // GaugeSet sets the value for a gauge metric.
 func (s *Service) GaugeSet(name string, value string, tags []string) {
-	if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.State == driver.DriverAlive {
-		go s.RPC.Caller.CallNoWait(emitter.Output, "emitter", "gauge_set", map[string]interface{}{
+	if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
+		go s.RPC.Caller.CallNoWait(emitter.Output, FeatureEmitter, "gauge_set", map[string]interface{}{
 			"name":  name,
 			"value": value,
 			"tags":  tags,
@@ -582,7 +589,7 @@ func (s *Service) GaugeSet(name string, value string, tags []string) {
 
 func (s *Service) metricsLoop() {
 	for !daemon.ShuttingDown {
-		if emitter, ok := s.driverRuntimes["emitter"]; ok && emitter.State == driver.DriverAlive {
+		if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
 			counts := map[int]int{
 				driver.DriverLoading:   0,
 				driver.DriverAlive:     0,

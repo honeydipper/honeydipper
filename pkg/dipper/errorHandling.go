@@ -28,3 +28,16 @@ func CatchError(err interface{}, handler func()) {
 		}
 	}
 }
+
+// PanicError accepts multiple variables and will panic if the last variable is not nil.
+// It is used to wrap around functions that return error as the last return value.
+//   dipper.PanicError(io.ReadFull(&b, lval))
+// The io.ReadFull return length read and an error. If error is returned, the function will
+// panic.
+func PanicError(args ...interface{}) {
+	if l := len(args); l > 0 {
+		if err := args[l-1]; err != nil {
+			panic(err)
+		}
+	}
+}

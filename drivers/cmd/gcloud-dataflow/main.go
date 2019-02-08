@@ -6,17 +6,17 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
-	"github.com/mitchellh/mapstructure"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/dataflow/v1b3"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/mitchellh/mapstructure"
+	"golang.org/x/oauth2/google"
+	dataflow "google.golang.org/api/dataflow/v1b3"
 )
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports all services including engine, receiver, workflow, operator etc")
@@ -27,6 +27,7 @@ func init() {
 var driver *dipper.Driver
 
 func main() {
+	initFlags()
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "gcloud-dataflow")
@@ -69,7 +70,7 @@ func createJob(msg *dipper.Message) {
 	if err != nil {
 		panic(errors.New("invalid service account"))
 	}
-	dataflowService, err := dataflow.New(conf.Client(oauth2.NoContext))
+	dataflowService, err := dataflow.New(conf.Client(context.Background()))
 	if err != nil {
 		panic(errors.New("unable to create gcloud client"))
 	}
@@ -131,7 +132,7 @@ func waitForJob(msg *dipper.Message) {
 	if err != nil {
 		panic(errors.New("invalid service account"))
 	}
-	dataflowService, err := dataflow.New(conf.Client(oauth2.NoContext))
+	dataflowService, err := dataflow.New(conf.Client(context.Background()))
 	if err != nil {
 		panic(errors.New("unable to create gcloud client"))
 	}
@@ -191,6 +192,6 @@ func waitForJob(msg *dipper.Message) {
 		msg.Reply <- m
 	case <-time.After(time.Duration(timeout) * time.Second):
 		expired = true
-		panic(errors.New("Time out"))
+		panic(errors.New("time out"))
 	}
 }

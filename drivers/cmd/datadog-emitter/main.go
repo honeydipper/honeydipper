@@ -4,12 +4,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"strconv"
+
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/op/go-logging"
-	"os"
-	"strconv"
 )
 
 // DatadogOptions : datadog statsd connection options
@@ -19,7 +20,7 @@ type DatadogOptions struct {
 	StatsdPort  string
 }
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports all services including engine, receiver, workflow, operator etc")
@@ -34,6 +35,7 @@ var dogstatsd *statsd.Client
 var daemonID string
 
 func main() {
+	initFlags()
 	flag.Parse()
 
 	daemonID = dipper.GetIP()
@@ -71,10 +73,10 @@ func loadOptions(msg *dipper.Message) {
 		panic(err)
 	}
 
-	dogstatsd.Event(&statsd.Event{
+	dipper.PanicError(dogstatsd.Event(&statsd.Event{
 		Title: "Honeydipper statistics started",
 		Text:  "Honeydipper statistics started",
-	})
+	}))
 }
 
 func counterIncr(msg *dipper.Message) {
@@ -89,7 +91,7 @@ func counterIncr(msg *dipper.Message) {
 		tags = append(tags, tag.(string))
 	}
 
-	dogstatsd.Incr(name, tags, 1)
+	dipper.PanicError(dogstatsd.Incr(name, tags, 1))
 }
 
 func gaugeSet(msg *dipper.Message) {
@@ -108,5 +110,5 @@ func gaugeSet(msg *dipper.Message) {
 		tags = append(tags, tag.(string))
 	}
 
-	dogstatsd.Gauge(name, value, tags, 1)
+	dipper.PanicError(dogstatsd.Gauge(name, value, tags, 1))
 }

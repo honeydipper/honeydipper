@@ -5,13 +5,15 @@ package config
 import (
 	"bytes"
 	"encoding/gob"
+	"time"
+
+	"github.com/go-errors/errors"
 	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"github.com/imdario/mergo"
-	"time"
 )
 
 // Config is a wrapper around the final complete configration of the daemon
-// including history and the runtime infomation
+// including history and the runtime information
 type Config struct {
 	InitRepo          RepoInfo
 	Services          []string
@@ -68,6 +70,14 @@ func (c *Config) Refresh() {
 			c.LastRunningConfig.Loaded[k] = v
 		}
 		dipper.Logger.Debug("reassembling configset")
+		defer func() {
+			if r := recover(); r != nil {
+				dipper.Logger.Warningf("Error loading new config: %v", r)
+				dipper.Logger.Warning(errors.Wrap(r, 1).ErrorStack())
+				dipper.Logger.Warningf("Rolling back to previous config ...")
+				c.RollBack()
+			}
+		}()
 		c.assemble()
 
 		if c.OnChange != nil {

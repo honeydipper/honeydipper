@@ -5,16 +5,17 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+
 	"github.com/honeyscience/honeydipper/internal/config"
 	"github.com/honeyscience/honeydipper/internal/daemon"
 	"github.com/honeyscience/honeydipper/internal/service"
 	"github.com/honeyscience/honeydipper/pkg/dipper"
-	"os"
 )
 
 var cfg config.Config
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%v [ -h ] service1 service2 ...\n", os.Args[0])
 		fmt.Printf("    Supported services include engie, receiver.\n")
@@ -23,11 +24,12 @@ func init() {
 }
 
 func initEnv() {
+	initFlags()
 	flag.Parse()
 	cfg = config.Config{InitRepo: config.RepoInfo{}, Services: flag.Args()}
 
 	getLogger()
-	ok := true
+	var ok bool
 	if cfg.InitRepo.Repo, ok = os.LookupEnv("REPO"); !ok {
 		dipper.Logger.Fatal("REPO environment variable is required to bootstrap honeydipper")
 	}

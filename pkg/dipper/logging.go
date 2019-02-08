@@ -1,9 +1,10 @@
 package dipper
 
 import (
+	"os"
+
 	"github.com/op/go-logging"
 	"golang.org/x/crypto/ssh/terminal"
-	"os"
 )
 
 // Logger provides methods to log to the configured logger backend.

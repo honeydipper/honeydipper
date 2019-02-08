@@ -6,19 +6,20 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
-	"github.com/op/go-logging"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/op/go-logging"
 )
 
 var log *logging.Logger
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports operator service")
@@ -29,6 +30,7 @@ func init() {
 var driver *dipper.Driver
 
 func main() {
+	initFlags()
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "web")

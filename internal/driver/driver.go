@@ -1,12 +1,13 @@
 package driver
 
 import (
-	"github.com/honeyscience/honeydipper/internal/config"
-	"github.com/honeyscience/honeydipper/internal/daemon"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"io"
 	"os"
 	"os/exec"
+
+	"github.com/honeyscience/honeydipper/internal/config"
+	"github.com/honeyscience/honeydipper/internal/daemon"
+	"github.com/honeyscience/honeydipper/pkg/dipper"
 )
 
 // replace the func variable with mock during testing

@@ -30,22 +30,22 @@ func InitIDMap(m IDMap) {
 func IDMapPut(m IDMap, val interface{}) string {
 	meta := IDMapMetadata[m]
 
-	(*meta).Lock.Lock()
-	defer (*meta).Lock.Unlock()
+	meta.Lock.Lock()
+	defer meta.Lock.Unlock()
 
 	mapValue := reflect.ValueOf(m).Elem()
-	for mapValue.MapIndex(reflect.ValueOf(strconv.Itoa((*meta).Counter))).IsValid() {
-		(*meta).Counter++
-		if (*meta).Counter == MaxID {
-			(*meta).Counter = 0
+	for mapValue.MapIndex(reflect.ValueOf(strconv.Itoa(meta.Counter))).IsValid() {
+		meta.Counter++
+		if meta.Counter == MaxID {
+			meta.Counter = 0
 		}
 	}
-	ID := strconv.Itoa((*meta).Counter)
+	ID := strconv.Itoa(meta.Counter)
 	mapValue.SetMapIndex(reflect.ValueOf(ID), reflect.ValueOf(val))
 
-	(*meta).Counter++
-	if (*meta).Counter == MaxID {
-		(*meta).Counter = 0
+	meta.Counter++
+	if meta.Counter == MaxID {
+		meta.Counter = 0
 	}
 
 	return ID
@@ -54,8 +54,8 @@ func IDMapPut(m IDMap, val interface{}) string {
 // IDMapDel : deleting a value from ID map
 func IDMapDel(m IDMap, key string) {
 	meta := IDMapMetadata[m]
-	(*meta).Lock.Lock()
-	defer (*meta).Lock.Unlock()
+	meta.Lock.Lock()
+	defer meta.Lock.Unlock()
 
 	mapValue := reflect.ValueOf(m).Elem()
 	mapValue.SetMapIndex(reflect.ValueOf(key), reflect.Value{})

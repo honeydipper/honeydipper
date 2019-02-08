@@ -2,8 +2,9 @@
 package daemon
 
 import (
-	"github.com/honeyscience/honeydipper/internal/config"
 	"sync"
+
+	"github.com/honeyscience/honeydipper/internal/config"
 )
 
 // Emitter is an interface provide data metric emitting feature.

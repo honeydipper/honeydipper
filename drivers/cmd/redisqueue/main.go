@@ -4,12 +4,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/go-redis/redis"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
-	"github.com/op/go-logging"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/go-redis/redis"
+	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/op/go-logging"
 )
 
 // EventBusOptions : stores all the redis key names used by honeydipper
@@ -24,7 +25,7 @@ var driver *dipper.Driver
 var eventbus *EventBusOptions
 var redisOptions *redis.Options
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports all services including engine, receiver, workflow, operator etc\n")
@@ -33,14 +34,16 @@ func init() {
 }
 
 func main() {
+	initFlags()
 	flag.Parse()
 	driver = dipper.NewDriver(os.Args[1], "redisqueue")
 	driver.Start = start
-	if driver.Service == "receiver" {
+	switch driver.Service {
+	case "receiver":
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
-	} else if driver.Service == "engine" {
+	case "engine":
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
-	} else if driver.Service == "operator" {
+	case "operator":
 		driver.MessageHandlers["eventbus:return"] = relayToRedis
 	}
 	driver.Run()
@@ -85,13 +88,13 @@ func loadOptions() {
 
 func start(msg *dipper.Message) {
 	loadOptions()
-	if driver.Service == "engine" {
+	switch driver.Service {
+	case "engine":
 		go subscribe(eventbus.EventTopic, "message")
 		go subscribe(eventbus.ReturnTopic, "return")
-	} else if driver.Service == "operator" {
+	case "operator":
 		go subscribe(eventbus.CommandTopic, "command")
-	} else { // "receiver"
-		// test connection
+	case "receiver":
 		client := redis.NewClient(redisOptions)
 		defer client.Close()
 		if err := client.Ping().Err(); err != nil {

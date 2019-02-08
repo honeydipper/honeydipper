@@ -6,18 +6,19 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
-	"github.com/op/go-logging"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/op/go-logging"
 )
 
 var log *logging.Logger
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports receiver service")
@@ -26,7 +27,6 @@ func init() {
 }
 
 var driver *dipper.Driver
-var ok bool
 var server *http.Server
 var hooks map[string]interface{}
 
@@ -34,6 +34,7 @@ var hooks map[string]interface{}
 var Addr string
 
 func main() {
+	initFlags()
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "webhook")
@@ -46,7 +47,7 @@ func main() {
 }
 
 func stopWebhook(*dipper.Message) {
-	server.Shutdown(context.Background())
+	dipper.PanicError(server.Shutdown(context.Background()))
 }
 
 func loadOptions(m *dipper.Message) {
@@ -132,13 +133,13 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
-func badRequest(w http.ResponseWriter, r *http.Request) {
+func badRequest(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusBadRequest)
-	io.WriteString(w, "Bad Request\n")
+	dipper.PanicError(io.WriteString(w, "Bad Request\n"))
 }
 
 func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interface{} {
-	r.ParseForm()
+	dipper.PanicError(r.ParseForm())
 
 	eventData := map[string]interface{}{
 		"url":     r.URL.Path,
@@ -151,7 +152,7 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 	if r.Method == http.MethodPost {
 		bodyBytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			badRequest(w, r)
+			badRequest(w)
 			log.Panicf("[%s] unable to read post body", driver.Service)
 		}
 		contentType := r.Header.Get("Content-type")
@@ -160,7 +161,7 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 			bodyObj := map[string]interface{}{}
 			err := json.Unmarshal(bodyBytes, &bodyObj)
 			if err != nil {
-				badRequest(w, r)
+				badRequest(w)
 				log.Panicf("[%s] invalid json in post body", driver.Service)
 			}
 			eventData["json"] = bodyObj

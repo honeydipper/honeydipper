@@ -3,9 +3,10 @@
 package service
 
 import (
+	"testing"
+
 	"github.com/honeyscience/honeydipper/internal/config"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestReceiverCollapseTrigger(t *testing.T) {
@@ -24,7 +25,7 @@ func TestReceiverCollapseTrigger(t *testing.T) {
 
 	cfg := &config.DataSet{
 		Systems: map[string]config.System{
-			"testsystem": config.System{
+			"testsystem": {
 				Triggers: map[string]config.Trigger{
 					"testtrigger": trigger,
 				},
@@ -47,7 +48,7 @@ func TestReceiverCollapseTrigger(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"key1": "val1", "key3": "val3"}, conditions, "should combine the trigger chain conditions")
 
 	trigger.Conditions.(map[string]interface{})["key1"] = "newval1"
-	finalTrigger, conditions = collapseTrigger(trigger, cfg)
+	_, conditions = collapseTrigger(trigger, cfg)
 	assert.Equal(t, map[string]interface{}{"key1": "newval1", "key3": "val3"}, conditions, "should override the conditions with inheriting trigger")
 }
 

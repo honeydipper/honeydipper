@@ -5,25 +5,29 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/ghodss/yaml"
 	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
-	"io"
-	"io/ioutil"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"os"
-	"strconv"
-	"time"
 )
+
+// DefaultNamespace is the name of the default space in kubernetes cluster
+const DefaultNamespace string = "default"
 
 var log *logging.Logger
 var err error
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Println("    This driver supports services including receiver, workflow, operator etc")
@@ -34,6 +38,7 @@ func init() {
 var driver *dipper.Driver
 
 func main() {
+	initFlags()
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "kubernetes")
@@ -51,7 +56,7 @@ func getJobLog(m *dipper.Message) {
 
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
 	if !ok {
-		nameSpace = "default"
+		nameSpace = DefaultNamespace
 	}
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
 	search := metav1.ListOptions{
@@ -102,7 +107,7 @@ func waitForJob(m *dipper.Message) {
 
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
 	if !ok {
-		nameSpace = "default"
+		nameSpace = DefaultNamespace
 	}
 
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
@@ -164,7 +169,7 @@ func createJob(m *dipper.Message) {
 
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
 	if !ok {
-		nameSpace = "default"
+		nameSpace = DefaultNamespace
 	}
 
 	buf, err := yaml.Marshal(dipper.MustGetMapData(m.Payload, "job"))
@@ -203,7 +208,7 @@ func recycleDeployment(m *dipper.Message) {
 	}
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
 	if !ok {
-		nameSpace = "default"
+		nameSpace = DefaultNamespace
 	}
 
 	rsclient := k8client.AppsV1().ReplicaSets(nameSpace)
@@ -236,14 +241,15 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 	}
 	log.Debugf("[%s] fetching k8config from source", driver.Service)
 	var kubeConfig *rest.Config
-	if stype == "gcloud-gke" {
+	switch stype {
+	case "gcloud-gke":
 		kubeConfig = getGKEConfig(source.(map[string]interface{}))
-	} else if stype == "local" {
+	case "local":
 		kubeConfig, err = rest.InClusterConfig()
 		if err != nil {
 			log.Panicf("[%s] unable to load default account for kubernetes %+v", driver.Service, err)
 		}
-	} else {
+	default:
 		log.Panicf("[%s] unsupported kubernetes source type: %s", driver.Service, stype)
 	}
 	if kubeConfig == nil {

@@ -3,11 +3,12 @@ package dipper
 import (
 	"bytes"
 	"fmt"
-	"github.com/Masterminds/sprig"
-	"github.com/ghodss/yaml"
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/Masterminds/sprig"
+	"github.com/ghodss/yaml"
 )
 
 // FuncMap : used to add functions to the go templates

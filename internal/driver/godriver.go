@@ -1,10 +1,11 @@
 package driver
 
 import (
-	"github.com/honeyscience/honeydipper/internal/config"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"os/exec"
 	"strings"
+
+	"github.com/honeyscience/honeydipper/internal/config"
+	"github.com/honeyscience/honeydipper/pkg/dipper"
 )
 
 // GoDriver is a driver type that runs a golang executable program.
@@ -41,15 +42,13 @@ func (g GoDriver) PreStart(service string, runtime *Runtime) {
 	dipper.Logger.Infof("[%s] pre-start dirver %s", service, runtime.Meta.Name)
 	check := execCommand("go", "list", g.Package)
 	outp, err := check.CombinedOutput()
-	if err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
-			install := execCommand("go", "get", g.Package)
-			if outp, err := install.CombinedOutput(); err != nil {
-				dipper.Logger.Panicf("[%s] Unable to install the go package for driver [%s] %+v", service, runtime.Meta.Name, string(outp))
-			}
-		} else {
-			dipper.Logger.Panicf("[%s] driver [%s] prestart failed %+v %+v", service, runtime.Meta.Name, err, string(outp))
+	if _, ok := err.(*exec.ExitError); ok {
+		install := execCommand("go", "get", g.Package)
+		if outp, err := install.CombinedOutput(); err != nil {
+			dipper.Logger.Panicf("[%s] Unable to install the go package for driver [%s] %+v", service, runtime.Meta.Name, string(outp))
 		}
+	} else {
+		dipper.Logger.Panicf("[%s] driver [%s] prestart failed %+v %+v", service, runtime.Meta.Name, err, string(outp))
 	}
 }
 

@@ -3,12 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"os"
 	"time"
+
+	"github.com/honeyscience/honeydipper/pkg/dipper"
 )
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports all services including engine, receiver, workflow, operator etc")
@@ -19,6 +20,7 @@ func init() {
 var driver *dipper.Driver
 
 func main() {
+	initFlags()
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "dummy")

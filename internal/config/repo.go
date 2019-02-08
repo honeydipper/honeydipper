@@ -2,14 +2,15 @@ package config
 
 import (
 	"fmt"
+	"io/ioutil"
+	"path"
+	"strings"
+
 	"github.com/ghodss/yaml"
 	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"gopkg.in/src-d/go-git.v4"
 	gitCfg "gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
-	"io/ioutil"
-	"path"
-	"strings"
 )
 
 // Repo contains runtime repo info used to track what has been loaded in a repo.
@@ -31,12 +32,12 @@ func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*
 		}
 	}
 
-	mergeDataSet(assembled, c.DataSet)
+	dipper.PanicError(mergeDataSet(assembled, c.DataSet))
 	return assembled, assembledList
 }
 
 func (c *Repo) isFileLoaded(filename string) bool {
-	return c.files[filename] == true
+	return c.files[filename]
 }
 
 func (c *Repo) loadFile(filename string) {
@@ -71,7 +72,7 @@ func (c *Repo) loadFile(filename string) {
 			}
 		}
 
-		mergeDataSet(&(c.DataSet), content)
+		dipper.PanicError(mergeDataSet(&(c.DataSet), content))
 		c.files[filename] = true
 		dipper.Logger.Infof("config file [%v] loaded", filename)
 	}

@@ -4,12 +4,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/go-redis/redis"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
-	"github.com/op/go-logging"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/go-redis/redis"
+	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/op/go-logging"
 )
 
 var log *logging.Logger
@@ -19,7 +20,7 @@ var broadcastTopic string
 var ok bool
 var err error
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports all services including engine, receiver, workflow, operator etc\n")
@@ -28,6 +29,7 @@ func init() {
 }
 
 func main() {
+	initFlags()
 	flag.Parse()
 	driver = dipper.NewDriver(os.Args[1], "redispubsub")
 	driver.Start = start

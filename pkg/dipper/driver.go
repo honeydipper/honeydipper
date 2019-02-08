@@ -1,10 +1,11 @@
 package dipper
 
 import (
-	"github.com/op/go-logging"
 	"io"
 	"os"
 	"time"
+
+	"github.com/op/go-logging"
 )
 
 // RPCHandler : a type of functions that handle RPC calls between drivers

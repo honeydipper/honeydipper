@@ -2,13 +2,25 @@ package service
 
 import (
 	"fmt"
+	"strconv"
+	"sync"
+
 	"github.com/honeyscience/honeydipper/internal/config"
 	"github.com/honeyscience/honeydipper/internal/driver"
 	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"github.com/imdario/mergo"
 	"github.com/mitchellh/mapstructure"
-	"strconv"
-	"sync"
+)
+
+// workflow type names
+const (
+	WorkflowTypeNamed    = ""
+	WorkflowTypeSwitch   = "switch"
+	WorkflowTypePipe     = "pipe"
+	WorkflowTypeParallel = "parallel"
+	WorkflowTypeIf       = "if"
+	WorkflowTypeSuspend  = "suspend"
+	WorkflowTypeFunction = "function"
 )
 
 // WorkflowSession is the data structure about a running workflow and its definition.
@@ -53,7 +65,7 @@ func StartEngine(cfg *config.Config) {
 func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	dipper.Logger.Infof("[engine] routing message %s.%s", msg.Channel, msg.Subject)
 
-	if msg.Channel == "eventbus" && msg.Subject == "message" {
+	if msg.Channel == dipper.ChannelEventbus && msg.Subject == "message" {
 		msg = dipper.DeserializePayload(msg)
 		eventsObj, _ := dipper.GetMapData(msg.Payload, "events")
 		events := eventsObj.([]interface{})
@@ -69,15 +81,15 @@ func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 					dipper.Recursive(cr.Conditions, engine.decryptDriverData)
 					if dipper.CompareAll(data, cr.Conditions) {
 						dipper.Logger.Infof("[engine] raw event triggers an event %s.%s",
-							(*cr.OriginalRule).When.Source.System,
-							(*cr.OriginalRule).When.Source.Trigger,
+							cr.OriginalRule.When.Source.System,
+							cr.OriginalRule.When.Source.Trigger,
 						)
-						go executeWorkflow("", &(*cr.OriginalRule).Do, msg)
+						go executeWorkflow("", &cr.OriginalRule.Do, msg)
 					}
 				}
 			}
 		}
-	} else if msg.Channel == "eventbus" && msg.Subject == "return" {
+	} else if msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturn {
 		msg = dipper.DeserializePayload(msg)
 		sessionID, ok := msg.Labels["sessionID"]
 		if !ok {
@@ -95,12 +107,12 @@ func continueWorkflow(sessionID string, msg *dipper.Message) {
 	session := sessions[sessionID]
 
 	switch session.Type {
-	case "":
+	case WorkflowTypeNamed:
 		dipper.Logger.Infof("[engine] named session completed %s", sessionID)
 		terminateWorkflow(sessionID, msg)
 		return
 
-	case "pipe":
+	case WorkflowTypePipe:
 		session.step++
 		if session.step >= len(session.work) {
 			dipper.Logger.Infof("[engine] pipe session completed %s", sessionID)
@@ -109,17 +121,17 @@ func continueWorkflow(sessionID string, msg *dipper.Message) {
 		}
 		executeWorkflow(sessionID, session.work[session.step], msg)
 
-	case "if":
+	case WorkflowTypeIf:
 		dipper.Logger.Infof("[engine] if session completed %s", sessionID)
 		terminateWorkflow(sessionID, msg)
 		return
 
-	case "switch":
+	case WorkflowTypeSwitch:
 		dipper.Logger.Infof("[engine] switch session completed %s", sessionID)
 		terminateWorkflow(sessionID, msg)
 		return
 
-	case "parallel":
+	case WorkflowTypeParallel:
 		session.step++
 		if session.step == len(session.work) {
 			dipper.Logger.Infof("[engine] parallel session completed %s", sessionID)
@@ -129,6 +141,8 @@ func continueWorkflow(sessionID string, msg *dipper.Message) {
 	}
 }
 
+// to be refactored to simpler function or functions
+//nolint:gocyclo
 func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
 	if len(sessionID) > 0 {
@@ -136,8 +150,8 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			if r := recover(); r != nil {
 				dipper.Logger.Warningf("[engine] workflow session terminated abnormally %s", sessionID)
 				terminateWorkflow(sessionID, &dipper.Message{
-					Channel: "eventbus",
-					Subject: "return",
+					Channel: dipper.ChannelEventbus,
+					Subject: dipper.EventbusReturn,
 					Labels: map[string]string{
 						"status": "blocked",
 						"reason": fmt.Sprintf("%+v", r),
@@ -150,7 +164,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 	}
 
 	data := msg.Payload
-	if msg.Subject != "return" {
+	if msg.Subject != dipper.EventbusReturn {
 		data, _ = dipper.GetMapData(msg.Payload, "data")
 	}
 
@@ -196,7 +210,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 	envData["wfdata"] = session.wfdata
 
 	switch w.Type {
-	case "":
+	case WorkflowTypeNamed:
 		next, ok := engine.config.DataSet.Workflows[w.Content.(string)]
 		if !ok {
 			dipper.Logger.Panicf("[engine] named workflow not found: %s", w.Content.(string))
@@ -206,7 +220,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 
 		executeWorkflow(childID, &next, msg)
 
-	case "function":
+	case WorkflowTypeFunction:
 		function := config.Function{}
 		err := mapstructure.Decode(w.Content, &function)
 		if err != nil {
@@ -215,11 +229,11 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 
 		dipper.Logger.Infof("[engine] function from workflow %+v", function)
 
-		worker := engine.getDriverRuntime("eventbus")
+		worker := engine.getDriverRuntime(dipper.ChannelEventbus)
 		payload := map[string]interface{}{}
 		payload["function"] = function
 		if msg.Payload != nil {
-			if msg.Subject == "return" {
+			if msg.Subject == dipper.EventbusReturn {
 				payload["data"] = msg.Payload
 			} else {
 				payload["data"] = msg.Payload.(map[string]interface{})["data"]
@@ -228,7 +242,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 		payload["event"] = session.event
 		payload["wfdata"] = session.wfdata
 		cmdmsg := &dipper.Message{
-			Channel: "eventbus",
+			Channel: dipper.ChannelEventbus,
 			Subject: "command",
 			Payload: payload,
 			Labels:  msg.Labels,
@@ -244,7 +258,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 		}
 		dipper.SendMessage(worker.Output, cmdmsg)
 
-	case "pipe":
+	case WorkflowTypePipe:
 		for _, v := range w.Content.([]interface{}) {
 			child := &config.Workflow{}
 			err := mapstructure.Decode(v, child)
@@ -259,7 +273,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 		dipper.Logger.Infof("[engine] starting pipe session %s", sessionID)
 		executeWorkflow(sessionID, session.work[0], msg)
 
-	case "switch":
+	case WorkflowTypeSwitch:
 		var choices = map[string]config.Workflow{}
 		if w.Condition == "" {
 			dipper.Logger.Panicf("[engine] no condition speicified for switch workflow")
@@ -281,7 +295,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			executeWorkflow(childSessionID, &selected, msg)
 		}
 
-	case "if":
+	case WorkflowTypeIf:
 		var choices []config.Workflow
 		err := mapstructure.Decode(w.Content, &choices)
 		if err != nil {
@@ -303,17 +317,15 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 				childSessionID := dipper.IDMapPut(&sessions, session)
 				dipper.Logger.Infof("[engine] starting if session %s", childSessionID)
 				executeWorkflow(childSessionID, session.work[1], msg)
-			} else {
-				if sessionID != "" {
-					continueWorkflow(sessionID, &dipper.Message{
-						Labels: map[string]string{
-							"status":          "skip",
-							"previous_status": msg.Labels["status"],
-							"reason":          msg.Labels["reason"],
-						},
-						Payload: msg.Payload,
-					})
-				}
+			} else if sessionID != "" {
+				continueWorkflow(sessionID, &dipper.Message{
+					Labels: map[string]string{
+						"status":          "skip",
+						"previous_status": msg.Labels["status"],
+						"reason":          msg.Labels["reason"],
+					},
+					Payload: msg.Payload,
+				})
 			}
 		} else { // true
 			childSessionID := dipper.IDMapPut(&sessions, session)
@@ -321,7 +333,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			executeWorkflow(childSessionID, session.work[0], msg)
 		}
 
-	case "parallel":
+	case WorkflowTypeParallel:
 		var threads []config.Workflow
 		err := mapstructure.Decode(w.Content, &threads)
 		if err != nil {
@@ -342,7 +354,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			go executeWorkflow(childSessionID, current, mcopy)
 		}
 
-	case "suspend":
+	case WorkflowTypeSuspend:
 		if len(sessionID) > 0 {
 			key, ok := w.Content.(string)
 			if !ok || len(key) == 0 {
@@ -363,7 +375,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 }
 
 func terminateWorkflow(sessionID string, msg *dipper.Message) {
-	session, _ := sessions[sessionID]
+	session := sessions[sessionID]
 	if session != nil {
 		dipper.IDMapDel(&sessions, sessionID)
 		if session.parent != "" {
@@ -416,11 +428,11 @@ func interpolateWorkflow(v *config.Workflow, data interface{}) *config.Workflow 
 		Type: v.Type,
 	}
 	switch v.Type {
-	case "":
+	case WorkflowTypeNamed:
 		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
-	case "suspend":
+	case WorkflowTypeSuspend:
 		ret.Content = dipper.InterpolateStr(v.Content.(string), data)
-	case "function":
+	case WorkflowTypeFunction:
 		dipper.Logger.Debugf("[engine] interpolate run into function %+v", v)
 		newContent, err := dipper.DeepCopy(v.Content.(map[string]interface{}))
 		if err != nil {
@@ -436,7 +448,7 @@ func interpolateWorkflow(v *config.Workflow, data interface{}) *config.Workflow 
 			newContent["target"] = dipper.Interpolate(target, data)
 		}
 		ret.Content = newContent
-	case "switch":
+	case WorkflowTypeSwitch:
 		var branches = map[string]interface{}{}
 		for key, branch := range v.Content.(map[string]interface{}) {
 			if _, ok := branch.(string); ok {
@@ -458,7 +470,7 @@ func interpolateWorkflow(v *config.Workflow, data interface{}) *config.Workflow 
 		}
 		ret.Content = worklist
 	}
-	if v.Type == "if" || v.Type == "switch" {
+	if v.Type == WorkflowTypeIf || v.Type == WorkflowTypeSwitch {
 		ret.Condition = v.Condition
 	}
 	if v.Data != nil {
@@ -486,7 +498,7 @@ func resumeSession(d *driver.Runtime, m *dipper.Message) {
 			}
 		}
 		go continueWorkflow(sessionID, &dipper.Message{
-			Subject: "return",
+			Subject: dipper.EventbusReturn,
 			Labels:  sessionLabels,
 			Payload: sessionPayload,
 		})

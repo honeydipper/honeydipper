@@ -3,9 +3,10 @@
 package dipper
 
 import (
-	"github.com/stretchr/testify/assert"
 	"regexp"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCompare(t *testing.T) {

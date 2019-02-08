@@ -3,12 +3,13 @@
 package driver
 
 import (
-	"github.com/honeyscience/honeydipper/internal/config"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/honeyscience/honeydipper/internal/config"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewGoDriver(t *testing.T) {

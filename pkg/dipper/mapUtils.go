@@ -10,6 +10,7 @@ import (
 	"sync"
 )
 
+//nolint:gochecknoinits
 func init() {
 	gob.Register(map[string]interface{}{})
 	gob.Register([]interface{}{})
@@ -143,7 +144,7 @@ func RecursiveWithPrefix(
 			case reflect.Slice, reflect.Array:
 				vparent.Index(key.(int)).Set(vval)
 			default:
-				panic(fmt.Errorf("Unable to change value in parent"))
+				panic(fmt.Errorf("unable to change value in parent"))
 			}
 		}
 	}
@@ -195,8 +196,9 @@ func LockCheckDeleteMap(lock *sync.Mutex, resource interface{}, key interface{},
 		if checkValue != nil && retVal.IsValid() {
 			if retVal.Interface() == checkValue {
 				resVal.SetMapIndex(keyVal, reflect.Value{})
-			} else {
-				resVal.SetMapIndex(keyVal, reflect.Value{})
+				// should not delete if not the same
+				// } else {
+				//	resVal.SetMapIndex(keyVal, reflect.Value{})
 			}
 		} else if checkValue == nil {
 			resVal.SetMapIndex(keyVal, reflect.Value{})

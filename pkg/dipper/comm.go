@@ -10,6 +10,16 @@ import (
 	"sync"
 )
 
+// channel names and subject names
+const (
+	ChannelEventbus = "eventbus"
+	ChannelState    = "state"
+	ChannelRPC      = "rpc"
+	EventbusMessage = "message"
+	EventbusCommand = "command"
+	EventbusReturn  = "return"
+)
+
 // CommLocks : comm channels are protected with locks
 var CommLocks = map[io.Writer]*sync.Mutex{}
 
@@ -212,9 +222,7 @@ func UnlockComm(out io.Writer) {
 func RemoveComm(out io.Writer) {
 	MasterCommLock.Lock()
 	defer MasterCommLock.Unlock()
-	if _, ok := CommLocks[out]; ok {
-		delete(CommLocks, out)
-	}
+	delete(CommLocks, out)
 }
 
 // MessageCopy : performs a deep copy of the given map m.

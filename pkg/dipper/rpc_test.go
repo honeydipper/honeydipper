@@ -5,18 +5,19 @@ package dipper
 import (
 	"bytes"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRPCCallRaw(t *testing.T) {
 	var b bytes.Buffer
 	c := RPCCaller{}
 	c.Init("rpc", "call")
-	go c.CallRaw(&b, "target", "testmethod", []byte("hello world"))
+	go PanicError(c.CallRaw(&b, "target", "testmethod", []byte("hello world")))
 	time.Sleep(time.Second / 10)
 	var channel, subject string
 	var size, numlabels int
@@ -32,7 +33,7 @@ func TestRPCCallRaw(t *testing.T) {
 	fmt.Fscanln(&b, &lname, &vl)
 	if vl > 0 {
 		lval = make([]byte, vl)
-		io.ReadFull(&b, lval)
+		PanicError(io.ReadFull(&b, lval))
 		labels[lname] = string(lval)
 	} else {
 		labels[lname] = ""
@@ -40,7 +41,7 @@ func TestRPCCallRaw(t *testing.T) {
 	fmt.Fscanln(&b, &lname, &vl)
 	if vl > 0 {
 		lval = make([]byte, vl)
-		io.ReadFull(&b, lval)
+		PanicError(io.ReadFull(&b, lval))
 		labels[lname] = string(lval)
 	} else {
 		labels[lname] = ""
@@ -48,7 +49,7 @@ func TestRPCCallRaw(t *testing.T) {
 	fmt.Fscanln(&b, &lname, &vl)
 	if vl > 0 {
 		lval = make([]byte, vl)
-		io.ReadFull(&b, lval)
+		PanicError(io.ReadFull(&b, lval))
 		labels[lname] = string(lval)
 	} else {
 		labels[lname] = ""
@@ -56,7 +57,7 @@ func TestRPCCallRaw(t *testing.T) {
 	fmt.Fscanln(&b, &lname, &vl)
 	if vl > 0 {
 		lval = make([]byte, vl)
-		io.ReadFull(&b, lval)
+		PanicError(io.ReadFull(&b, lval))
 		labels[lname] = string(lval)
 	} else {
 		labels[lname] = ""

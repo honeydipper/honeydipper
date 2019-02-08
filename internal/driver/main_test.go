@@ -1,9 +1,10 @@
 package driver
 
 import (
-	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"os"
 	"testing"
+
+	"github.com/honeyscience/honeydipper/pkg/dipper"
 )
 
 func TestMain(m *testing.M) {

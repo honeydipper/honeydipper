@@ -21,7 +21,7 @@ var RequiredFeatures = map[string]([]string){
 
 // BuiltinDrivers defines a list of builtin feature drivers.
 var BuiltinDrivers = map[string]DriverMeta{
-	"redisqueue": DriverMeta{
+	"redisqueue": {
 		Name:     "redisqueue",
 		Feature:  "eventbus",
 		Services: []string{"engine", "receiver"},

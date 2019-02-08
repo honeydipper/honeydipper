@@ -5,15 +5,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/container/v1"
 	"os"
 	"time"
+
+	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/container/v1"
 )
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports all services including engine, receiver, workflow, operator etc")
@@ -24,6 +24,7 @@ func init() {
 var driver *dipper.Driver
 
 func main() {
+	initFlags()
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "gcloud-gke")
@@ -59,7 +60,7 @@ func getKubeCfg(msg *dipper.Message) {
 	if err != nil {
 		panic(errors.New("invalid service account"))
 	}
-	containerService, err := container.New(conf.Client(oauth2.NoContext))
+	containerService, err := container.New(conf.Client(context.Background()))
 	if err != nil {
 		panic(errors.New("unable to create gcloud client"))
 	}
@@ -78,7 +79,7 @@ func getKubeCfg(msg *dipper.Message) {
 	if err != nil {
 		panic(errors.New("failed to fetch cluster info from gcloud"))
 	}
-	tokenSource := conf.TokenSource(oauth2.NoContext)
+	tokenSource := conf.TokenSource(context.Background())
 	token, err := tokenSource.Token()
 	if err != nil {
 		panic(errors.New("failed to fetch a access_token"))

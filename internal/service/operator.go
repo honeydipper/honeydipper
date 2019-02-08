@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+
 	"github.com/honeyscience/honeydipper/internal/config"
 	"github.com/honeyscience/honeydipper/pkg/dipper"
 	"github.com/imdario/mergo"
@@ -21,17 +22,17 @@ func StartOperator(cfg *config.Config) {
 func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	dipper.Logger.Infof("[operator] routing message %s.%s", msg.Channel, msg.Subject)
 	defer dipper.SafeExitOnError("[operator] continue on processing messages")
-	if msg.Channel == "eventbus" && msg.Subject == "command" {
+	if msg.Channel == dipper.ChannelEventbus && msg.Subject == "command" {
 		defer func() {
 			if r := recover(); r != nil {
 				if sessionID, ok := msg.Labels["sessionID"]; ok && sessionID != "" {
 					newLabels := msg.Labels
 					newLabels["status"] = "blocked"
 					newLabels["reason"] = fmt.Sprintf("%+v", r)
-					eventbus := operator.getDriverRuntime("eventbus")
+					eventbus := operator.getDriverRuntime(dipper.ChannelEventbus)
 					dipper.SendMessage(eventbus.Output, &dipper.Message{
-						Channel: "eventbus",
-						Subject: "return",
+						Channel: dipper.ChannelEventbus,
+						Subject: dipper.EventbusReturn,
 						Labels:  newLabels,
 					})
 				}
@@ -99,10 +100,10 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 				message:       msg,
 			},
 		}
-	} else if msg.Channel == "eventbus" && msg.Subject == "return" {
+	} else if msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturn {
 		ret = []RoutedMessage{
 			{
-				driverRuntime: operator.getDriverRuntime("eventbus"),
+				driverRuntime: operator.getDriverRuntime(dipper.ChannelEventbus),
 				message:       msg,
 			},
 		}

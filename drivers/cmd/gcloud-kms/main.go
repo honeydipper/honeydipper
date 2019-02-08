@@ -2,18 +2,19 @@
 package main
 
 import (
-	"cloud.google.com/go/kms/apiv1"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
-	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 	"os"
 	"time"
+
+	kms "cloud.google.com/go/kms/apiv1"
+	"github.com/honeyscience/honeydipper/pkg/dipper"
+	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
-func init() {
+func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
 		fmt.Printf("    This driver supports all services including engine, receiver, workflow, operator etc")
@@ -24,6 +25,7 @@ func init() {
 var driver *dipper.Driver
 
 func main() {
+	initFlags()
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "kms")
