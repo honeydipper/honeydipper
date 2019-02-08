@@ -17,7 +17,9 @@ func TestRPCCallRaw(t *testing.T) {
 	var b bytes.Buffer
 	c := RPCCaller{}
 	c.Init("rpc", "call")
-	go PanicError(c.CallRaw(&b, "target", "testmethod", []byte("hello world")))
+	go func() {
+		PanicError(c.CallRaw(&b, "target", "testmethod", []byte("hello world")))
+	}()
 	time.Sleep(time.Second / 10)
 	var channel, subject string
 	var size, numlabels int

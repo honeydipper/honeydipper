@@ -188,7 +188,8 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 
 		s.setDriverRuntime(feature, &driverRuntime)
 		go func(s *Service, feature string, runtime *driver.Runtime) {
-			dipper.PanicError(runtime.Run.Wait())
+			//nolint:errcheck
+			runtime.Run.Wait()
 			func() {
 				s.selectLock.Lock()
 				defer s.selectLock.Unlock()
