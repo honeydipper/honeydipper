@@ -14,6 +14,7 @@ easier to do this in golang.
 - [Driver Options](#driver-options)
 - [Collapsed Events](#collapsed-events)
 - [Provide Commands](#provide-commands)
+- [Publishing and packaging](#publishing-and-packaging)
 
 <!-- tocstop -->
 
@@ -366,7 +367,7 @@ workflows:
 ```
 
 Assuming the configuration is in github.com/example/myzwave-config/init.yaml, the users only need to load the below snippet into
-their bootstrap repo to load your driver and configurations.
+their bootstrap repo to load your driver and configurations, and start to customizing.
 
 ```yaml
 repos:
