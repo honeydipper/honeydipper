@@ -174,6 +174,7 @@ rules:
 Depending on where the interpolation is executed, 1) workflow engine, 2) operator (function parameters), the available contextual data is slightly different.
 
 ### Workflow Interpolation
+This happens when workflow `engine` is parsing and executing the workflows, but haven't sent the action definition to the `operator` yet.
 
   * **data**: the payload of previous driver function return
   * **labels**: the workflow data attached to the dipper.Message
@@ -184,6 +185,7 @@ Depending on where the interpolation is executed, 1) workflow engine, 2) operato
   * **event**: the event payload that triggered the original workflow
 
 ### Function Parameters Interpolation
+This happens at `operator` side, before the final `parameters` are passed to the `action driver`.
 
   * **data**: the payload of previous driver function return
   * **labels**: the workflow data attached to the dipper.Message
@@ -194,3 +196,8 @@ Depending on where the interpolation is executed, 1) workflow engine, 2) operato
   * **event**: the event payload that triggered the original workflow
   * **sysData**: the data defined in the system the function belongs to
   * **params**: the parameter that is passed to the function
+
+### Trigger Condition Interpolation
+This happens at the startup of the `receiver` service.  All the used events are processed into `collapsed` events. The  `conditions` in the collapsed events are interpolated before being passed to `event driver`.
+
+  * **sysData**: the data defined in the system the event belongs to

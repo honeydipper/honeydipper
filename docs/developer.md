@@ -14,6 +14,7 @@ easier to do this in golang.
 - [Driver Options](#driver-options)
 - [Collapsed Events](#collapsed-events)
 - [Provide Commands](#provide-commands)
+- [Publishing and packaging](#publishing-and-packaging)
 
 <!-- tocstop -->
 
@@ -31,7 +32,7 @@ package main
 
 import (
   "flag"
-  "github.com/honeyscience/honeydipper/dipper"
+  "github.com/honeyscience/honeydipper/pkg/dipper"
   "os"
   "time"
 )
@@ -300,3 +301,77 @@ func wait10min(m *dipper.Message) {
 ```
 
 Note that the reply is sent in a go routine; it is useful if you want to make your code asynchronous.
+
+## Publishing and packaging
+
+To make it easier for users to adopt your driver, and use it efficiently. You can create a public git repo and let your user
+to load some predefined configurations to jump start the integration.  The configuration in the repo should usually include
+
+ * `driver` definition and `fearture` loading under the `daemon` section;
+ * some wrapper `system` to define some `trigger`, `function` that can be used in rules;
+ * some `workflow` to help users use the `function`s, see [Workflow composing guide](./workflow.md) for detail
+
+It is recommended to comment the confiurations thoroughly with examples and use [Natural Docs](https://www.naturaldocs.org/) to
+generate reference documents so the users can learn how to use your integration.
+
+For example, hypothetically, I created an integration for a z-wave switch, the configuration might look like below.
+```yaml
+---
+daemon:
+  drivers:
+    myzwave:
+      name: myzwave
+      data:
+        Type: go
+        Package: github.com/example/cmd/myzwave
+  features:
+    receiver:
+      - "driver:myzwave"
+    operator:
+      - "driver:myzwave"
+
+system:
+  lightwitch:
+    data:
+      token: "placeholder"
+    triggers:
+      driver: myzwave
+      rawEvent: turned_on
+      conditions:
+        device_id: "placeholder"
+        token: "{{ .sysData.token }}"
+    functions:
+      driver: myzwave
+      rawAction: turn_on
+      parameters:
+        device_id: "placeholder"
+        token: "{{ .sysData.token }}"
+
+workflows:
+  all_lights_on:
+    - content: foreach_parallel
+      data:
+        items:
+          - list
+          - of
+          - device_ids
+          - to_be_override
+        work:
+          - type: function
+            content:
+              target:
+                system: lightswitch
+                function: turn_on
+              parameters:
+                device_id: '{{ `{{ .wfdata.current }}` }}'
+```
+
+Assuming the configuration is in github.com/example/myzwave-config/init.yaml, the users only need to load the below snippet into
+their bootstrap repo to load your driver and configurations, and start to customizing.
+
+```yaml
+repos:
+  ...
+  - repo: https://github.com/example/myzwave-config
+  ...
+```

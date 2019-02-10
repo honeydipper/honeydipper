@@ -196,12 +196,12 @@
   version = "v1.2.0"
 
 [[projects]]
-  digest = "1:8eb1de8112c9924d59bf1d3e5c26f5eaa2bfc2a5fcbb92dc1c2e4546d695f277"
+  digest = "1:a0cefd27d12712af4b5018dc7046f245e1e3b5760e2e848c30b171b570708f9b"
   name = "github.com/imdario/mergo"
   packages = ["."]
   pruneopts = "UT"
-  revision = "9f23e2d6bd2a77f959b2bf6acdbefd708a83a4a4"
-  version = "v0.3.6"
+  revision = "7c29201646fa3de8506f701213473dd407f19646"
+  version = "v0.3.7"
 
 [[projects]]
   branch = "master"
@@ -461,10 +461,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:1c81e383f53ff43eb3f3d35afc518986977685751ff66405f14f757b9bed7685"
+  digest = "1:b6c5bb4162561e4389399e999037e738f7557d78b87b068117c392c57bfeb2d6"
   name = "google.golang.org/api"
   packages = [
     "container/v1",
+    "dataflow/v1b3",
     "gensupport",
     "googleapi",
     "googleapi/internal/uritemplates",
@@ -795,15 +796,17 @@
     "github.com/stretchr/testify/assert",
     "golang.org/x/crypto/ssh",
     "golang.org/x/crypto/ssh/terminal",
-    "golang.org/x/oauth2",
     "golang.org/x/oauth2/google",
     "google.golang.org/api/container/v1",
+    "google.golang.org/api/dataflow/v1b3",
     "google.golang.org/genproto/googleapis/cloud/kms/v1",
     "gopkg.in/src-d/go-git.v4",
     "gopkg.in/src-d/go-git.v4/config",
     "gopkg.in/src-d/go-git.v4/plumbing",
     "gopkg.in/src-d/go-git.v4/plumbing/transport",
     "gopkg.in/src-d/go-git.v4/plumbing/transport/ssh",
+    "k8s.io/api/batch/v1",
+    "k8s.io/api/core/v1",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/rest",

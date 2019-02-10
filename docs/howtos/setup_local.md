@@ -36,8 +36,9 @@ go test -v ./...
 go get -u github.com/rakyll/gotest
 gotest -v ./...
 ```
- * (Optional) For pre-commit hooks
+ * For pre-commit hooks
 ```bash
+curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.13.2
 brew install pre-commit
 pre-commit install --install-hooks
 ```

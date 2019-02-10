@@ -19,3 +19,6 @@ vendor/**
 
 # test log
 test.log
+
+# bak files
+**/*.bak
