@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -109,6 +110,10 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 	if err == io.EOF {
 		panic(err)
 	} else if err != nil {
+		errMsg := fmt.Sprintf("%+v", err)
+		if strings.Contains(errMsg, "file already closed") {
+			panic(io.EOF)
+		}
 		panic(fmt.Errorf("invalid message envelope: %+v", err))
 	}
 
