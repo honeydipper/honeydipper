@@ -14,6 +14,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"golang.org/x/oauth2/google"
 	dataflow "google.golang.org/api/dataflow/v1b3"
+	"google.golang.org/api/googleapi"
 )
 
 func initFlags() {
@@ -33,6 +34,8 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "gcloud-dataflow")
 	driver.CommandProvider.Commands["createJob"] = createJob
 	driver.CommandProvider.Commands["waitForJob"] = waitForJob
+	driver.CommandProvider.Commands["getJob"] = getJob
+	driver.CommandProvider.Commands["listJob"] = listJob
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
@@ -90,6 +93,128 @@ func createJob(msg *dipper.Message) {
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
 			"job": *result,
+		},
+	}
+}
+
+func getJob(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+	serviceAccountBytes, ok := dipper.GetMapDataStr(params, "service_account")
+	if !ok {
+		panic(errors.New("service_account required"))
+	}
+	project, ok := dipper.GetMapDataStr(params, "project")
+	if !ok {
+		panic(errors.New("project required"))
+	}
+	regional := false
+	if regionalData, ok := dipper.GetMapData(params, "regional"); ok {
+		regional = regionalData.(bool)
+	}
+	location, ok := dipper.GetMapDataStr(params, "location")
+	if !regional && !ok {
+		panic(errors.New("location required for location based dataflow job"))
+	}
+	jobID, ok := dipper.GetMapDataStr(params, "jobID")
+	if !ok {
+		panic(errors.New("jobID required"))
+	}
+
+	var fieldList []googleapi.Field
+	if fields, ok := dipper.GetMapData(params, "fields"); ok {
+		for _, v := range fields.([]interface{}) {
+			fieldList = append(fieldList, v.(googleapi.Field))
+		}
+	}
+
+	conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil {
+		panic(errors.New("invalid service account"))
+	}
+	dataflowService, err := dataflow.New(conf.Client(context.Background()))
+	if err != nil {
+		panic(errors.New("unable to create gcloud client"))
+	}
+
+	var result *dataflow.Job
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	func() {
+		defer cancel()
+		if regional {
+			getCall := dataflowService.Projects.Jobs.Get(project, jobID)
+			if len(fieldList) > 0 {
+				getCall = getCall.Fields(fieldList...)
+			}
+			result, err = getCall.Context(execContext).Do()
+		} else {
+			getCall := dataflowService.Projects.Locations.Jobs.Get(project, location, jobID)
+			if len(fieldList) > 0 {
+				getCall = getCall.Fields(fieldList...)
+			}
+			result, err = getCall.Context(execContext).Do()
+		}
+	}()
+	if err != nil {
+		panic(err)
+	}
+
+	msg.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"job": *result,
+		},
+	}
+}
+
+func listJob(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+	serviceAccountBytes, ok := dipper.GetMapDataStr(params, "service_account")
+	if !ok {
+		panic(errors.New("service_account required"))
+	}
+	project, ok := dipper.GetMapDataStr(params, "project")
+	if !ok {
+		panic(errors.New("project required"))
+	}
+
+	conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil {
+		panic(errors.New("invalid service account"))
+	}
+	dataflowService, err := dataflow.New(conf.Client(context.Background()))
+	if err != nil {
+		panic(errors.New("unable to create gcloud client"))
+	}
+
+	listJobCall := dataflowService.Projects.Jobs.List(project)
+	if fields, ok := dipper.GetMapData(params, "fields"); ok {
+		fieldList := []googleapi.Field{}
+		for _, v := range fields.([]interface{}) {
+			fieldList = append(fieldList, v.(googleapi.Field))
+		}
+		listJobCall = listJobCall.Fields(fieldList...)
+	}
+	if filter, ok := dipper.GetMapDataStr(params, "filter"); ok {
+		listJobCall = listJobCall.Filter(filter)
+	}
+	if location, ok := dipper.GetMapDataStr(params, "location"); ok {
+		listJobCall = listJobCall.Location(location)
+	}
+
+	var result *dataflow.ListJobsResponse
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	func() {
+		defer cancel()
+		result, err = listJobCall.Context(execContext).Do()
+	}()
+	if err != nil {
+		panic(err)
+	}
+
+	msg.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"result": *result,
 		},
 	}
 }
