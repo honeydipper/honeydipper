@@ -21,6 +21,7 @@ const (
 	WorkflowTypeIf       = "if"
 	WorkflowTypeSuspend  = "suspend"
 	WorkflowTypeFunction = "function"
+	WorkflowTypeData     = "data"
 )
 
 // WorkflowSession is the data structure about a running workflow and its definition.
@@ -369,6 +370,18 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 		} else {
 			dipper.Logger.Panicf("[engine] can not suspend without a session")
 		}
+
+	case WorkflowTypeData:
+		retData := dipper.Interpolate(w.Content, envData)
+		continueWorkflow(sessionID, &dipper.Message{
+			Labels: map[string]string{
+				"status":          "success",
+				"previous_status": msg.Labels["status"],
+				"reason":          msg.Labels["reason"],
+			},
+			Payload: retData,
+		})
+
 	default:
 		dipper.Logger.Panicf("[engine] unknown workflow type %s", w.Type)
 	}
@@ -458,6 +471,9 @@ func interpolateWorkflow(v *config.Workflow, data interface{}) *config.Workflow 
 			}
 		}
 		ret.Content = branches
+	case WorkflowTypeData:
+		// defer the interpolation for pure data workflow
+		ret.Content = v.Content
 	default:
 		var worklist []interface{}
 		for i, work := range v.Content.([]interface{}) {
