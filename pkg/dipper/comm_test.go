@@ -23,4 +23,8 @@ func TestMessageCopy(t *testing.T) {
 	assert.Equal(t, src.Subject, dst.Subject, "subject copied")
 	assert.Equal(t, len(src.Labels), len(dst.Labels), "same number of labels")
 	assert.Equal(t, src.Labels["label1"], dst.Labels["label1"], "the same label value")
+
+	dst2, err := MessageCopy(nil)
+	assert.Nil(t, err, "copy message should not raise err")
+	assert.Nil(t, dst2, "Error: Copy of nil should be nil")
 }
