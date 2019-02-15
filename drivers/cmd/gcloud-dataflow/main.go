@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -40,13 +41,35 @@ func main() {
 	driver.Run()
 }
 
+func getDataflowService(serviceAccountBytes string) *dataflow.Service {
+	var (
+		client *http.Client
+		err    error
+	)
+	if len(serviceAccountBytes) > 0 {
+		conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
+		if err != nil {
+			panic(errors.New("invalid service account"))
+		}
+		client = conf.Client(context.Background())
+	} else {
+		client, err = google.DefaultClient(context.Background(), "https://www.googleapis.com/auth/compute")
+	}
+	if err != nil {
+		panic(errors.New("unable to create gcloud client credential"))
+	}
+
+	dataflowService, err := dataflow.New(client)
+	if err != nil {
+		panic(errors.New("unable to create dataflow service client"))
+	}
+	return dataflowService
+}
+
 func createJob(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, ok := dipper.GetMapDataStr(params, "service_account")
-	if !ok {
-		panic(errors.New("service_account required"))
-	}
+	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
 		panic(errors.New("project required"))
@@ -69,14 +92,8 @@ func createJob(msg *dipper.Message) {
 		panic(err)
 	}
 
-	conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
-	if err != nil {
-		panic(errors.New("invalid service account"))
-	}
-	dataflowService, err := dataflow.New(conf.Client(context.Background()))
-	if err != nil {
-		panic(errors.New("unable to create gcloud client"))
-	}
+	var dataflowService = getDataflowService(serviceAccountBytes)
+
 	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	var result *dataflow.Job
 	func() {
@@ -100,10 +117,7 @@ func createJob(msg *dipper.Message) {
 func getJob(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, ok := dipper.GetMapDataStr(params, "service_account")
-	if !ok {
-		panic(errors.New("service_account required"))
-	}
+	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
 		panic(errors.New("project required"))
@@ -128,16 +142,12 @@ func getJob(msg *dipper.Message) {
 		}
 	}
 
-	conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
-	if err != nil {
-		panic(errors.New("invalid service account"))
-	}
-	dataflowService, err := dataflow.New(conf.Client(context.Background()))
-	if err != nil {
-		panic(errors.New("unable to create gcloud client"))
-	}
+	var dataflowService = getDataflowService(serviceAccountBytes)
 
-	var result *dataflow.Job
+	var (
+		result *dataflow.Job
+		err    error
+	)
 	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	func() {
 		defer cancel()
@@ -169,23 +179,13 @@ func getJob(msg *dipper.Message) {
 func listJob(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, ok := dipper.GetMapDataStr(params, "service_account")
-	if !ok {
-		panic(errors.New("service_account required"))
-	}
+	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
 		panic(errors.New("project required"))
 	}
 
-	conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
-	if err != nil {
-		panic(errors.New("invalid service account"))
-	}
-	dataflowService, err := dataflow.New(conf.Client(context.Background()))
-	if err != nil {
-		panic(errors.New("unable to create gcloud client"))
-	}
+	var dataflowService = getDataflowService(serviceAccountBytes)
 
 	listJobCall := dataflowService.Projects.Jobs.List(project)
 	if fields, ok := dipper.GetMapData(params, "fields"); ok {
@@ -202,7 +202,10 @@ func listJob(msg *dipper.Message) {
 		listJobCall = listJobCall.Location(location)
 	}
 
-	var result *dataflow.ListJobsResponse
+	var (
+		result *dataflow.ListJobsResponse
+		err    error
+	)
 	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	func() {
 		defer cancel()
@@ -222,10 +225,7 @@ func listJob(msg *dipper.Message) {
 func waitForJob(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, ok := dipper.GetMapDataStr(params, "service_account")
-	if !ok {
-		panic(errors.New("service_account required"))
-	}
+	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
 		panic(errors.New("project required"))
@@ -253,14 +253,7 @@ func waitForJob(msg *dipper.Message) {
 		interval, _ = strconv.Atoi(intervalStr)
 	}
 
-	conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
-	if err != nil {
-		panic(errors.New("invalid service account"))
-	}
-	dataflowService, err := dataflow.New(conf.Client(context.Background()))
-	if err != nil {
-		panic(errors.New("unable to create gcloud client"))
-	}
+	var dataflowService = getDataflowService(serviceAccountBytes)
 
 	finalStatus := make(chan dipper.Message, 1)
 	expired := false
@@ -274,7 +267,10 @@ func waitForJob(msg *dipper.Message) {
 		}
 
 		for !expired {
-			var result *dataflow.Job
+			var (
+				result *dataflow.Job
+				err    error
+			)
 			execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 			func() {
 				defer cancel()
