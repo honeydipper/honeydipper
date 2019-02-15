@@ -53,7 +53,7 @@ func getDataflowService(serviceAccountBytes string) *dataflow.Service {
 		}
 		client = conf.Client(context.Background())
 	} else {
-		client, err = google.DefaultClient(context.Background(), "https://www.googleapis.com/auth/compute")
+		client, err = google.DefaultClient(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
 	}
 	if err != nil {
 		panic(errors.New("unable to create gcloud client credential"))
