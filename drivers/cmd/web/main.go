@@ -86,7 +86,7 @@ func sendRequest(m *dipper.Message) {
 					panic(err)
 				}
 			case map[string]interface{}:
-				if header.Get("content-type") == "application/json" {
+				if strings.HasPrefix(header.Get("content-type"), "application/json") {
 					contentBytes, err := json.Marshal(v)
 					if err != nil {
 						panic(err)
@@ -110,7 +110,7 @@ func sendRequest(m *dipper.Message) {
 				log.Panic("Unable to handle the content")
 			}
 		} else {
-			if header.Get("content-type") == "application/json" {
+			if strings.HasPrefix(header.Get("content-type"), "application/json") {
 				contentBytes, err := json.Marshal(formData)
 				if err != nil {
 					panic(err)

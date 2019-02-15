@@ -5,10 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/container/v1"
 )
@@ -33,13 +35,48 @@ func main() {
 	driver.Run()
 }
 
+func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Token) {
+	var (
+		client *http.Client
+		token  *oauth2.Token
+		err    error
+	)
+	if len(serviceAccountBytes) > 0 {
+		conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
+		if err != nil {
+			panic(errors.New("invalid service account"))
+		}
+		client = conf.Client(context.Background())
+		token, err = conf.TokenSource(context.Background()).Token()
+		if err != nil {
+			panic(errors.New("failed to fetch a access_token"))
+		}
+	} else {
+		client, err = google.DefaultClient(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
+		if err != nil {
+			panic(errors.New("unable to create gcloud client credential"))
+		}
+		tokenSource, err := google.DefaultTokenSource(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
+		if err != nil {
+			panic(errors.New("failed to get a token source"))
+		}
+		token, err = tokenSource.Token()
+		if err != nil {
+			panic(errors.New("failed to fetch a access_token"))
+		}
+	}
+
+	containerService, err := container.New(client)
+	if err != nil {
+		panic(errors.New("unable to create container service client"))
+	}
+	return containerService, token
+}
+
 func getKubeCfg(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, ok := dipper.GetMapDataStr(params, "service_account")
-	if !ok {
-		panic(errors.New("service_account required"))
-	}
+	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
 		panic(errors.New("project required"))
@@ -56,33 +93,26 @@ func getKubeCfg(msg *dipper.Message) {
 	if !ok {
 		panic(errors.New("cluster required"))
 	}
-	conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
-	if err != nil {
-		panic(errors.New("invalid service account"))
-	}
-	containerService, err := container.New(conf.Client(context.Background()))
-	if err != nil {
-		panic(errors.New("unable to create gcloud client"))
-	}
 	var name string
 	if regional {
 		name = fmt.Sprintf("projects/%s/locations/%s/clusters/%s", project, location, cluster)
 	} else {
 		name = fmt.Sprintf("projects/%s/zones/%s/clusters/%s", project, location, cluster)
 	}
+
+	containerService, token := getGKEService(serviceAccountBytes)
+
 	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	var clusterObj *container.Cluster
+	var (
+		clusterObj *container.Cluster
+		err        error
+	)
 	func() {
 		defer cancel()
 		clusterObj, err = containerService.Projects.Locations.Clusters.Get(name).Context(execContext).Do()
 	}()
 	if err != nil {
 		panic(errors.New("failed to fetch cluster info from gcloud"))
-	}
-	tokenSource := conf.TokenSource(context.Background())
-	token, err := tokenSource.Token()
-	if err != nil {
-		panic(errors.New("failed to fetch a access_token"))
 	}
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
