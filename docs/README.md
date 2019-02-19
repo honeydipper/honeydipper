@@ -4,6 +4,7 @@
  * Developers
    * [Driver Developer Guide](./developer.md)
  * Administrators
+   * [Installation Guide](./INSTALL.md)
    * [Configuration Guide](./configuration.md)
    * [Workflow Composing Guide](./workflow.md)
    * [Interpolation Guide](./interpolation.md)
