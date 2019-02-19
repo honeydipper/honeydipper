@@ -135,5 +135,5 @@ Alternatively, you can follow the [developer setup guide](./howtos/setup_local.m
 
 ## Step 3: Hacking away
 
-This is it, your Honeydipper is bootstrapped. You can start to configure it to suite your need. The daemon is pulling your config repos every minute, and will reload when changes are detected. See the [configuration guide](./configuration.md) for detail, including a way to setup github push event-driven reload.
+This is it, your Honeydipper is bootstrapped. You can start to configure it to suite your need. The daemon is pulling your config repos every minute, and will reload when changes are detected. See the [Honeydipper  Guides](./README.md) for more documents, including a way to setup github push event-driven reload.
 
