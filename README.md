@@ -1,7 +1,6 @@
 # Honeydipper
 
  * **master** [![CircleCI](https://circleci.com/gh/honeyscience/honeydipper.svg?style=svg&circle-token=60ce48f25e09dc164d4bdcff204182e2570fcf0d)](https://circleci.com/gh/honeyscience/honeydipper)
- * **v0.1.2** [![CircleCI](https://circleci.com/gh/honeyscience/honeydipper/tree/v0.1.2.svg?style=svg&circle-token=60ce48f25e09dc164d4bdcff204182e2570fcf0d)](https://circleci.com/gh/honeyscience/honeydipper/tree/v0.1.2)
 
 ---
 
@@ -11,23 +10,17 @@
 - [Design](#design)
   * [Vision](#vision)
   * [Core Concepts](#core-concepts)
-  * [Outstanding Features](#outstanding-features)
+  * [Features](#features)
     + [Embracing GitOps](#embracing-gitops)
     + [Pluggable Architecture](#pluggable-architecture)
     + [Abstraction](#abstraction)
+- [More information](#more-information)
 - [TODO](#todo)
-- [Get Started On Developing](#get-started-on-developing)
-  * [Prerequisites](#prerequisites)
-  * [Setup](#setup)
 
 <!-- tocstop -->
 
 ## Overview
 A IFTTT style event-driven, policy-based orchestration system that, is tailored towards SREs and DevOps workflows, and has a pluggable open architecture. The purpose is to fill the gap between the various components used in DevOps operations, to act as an orchestration hub, and to replace the ad-hoc integrations between the components so that the all the integrations can also be composed as code.
-
-For driver developers, please read this guide. [Honeydipper driver developer's guide](./docs/developer.md)
-
-For everyone, please find the main document index at [docs/README.md](./docs/README.md).
 
 ## Design
 
@@ -73,19 +66,22 @@ Drivers make up an important part of the Honeydipper ecosystem. Most of the data
 #### Abstraction
 As mentioned in the concepts, one of Honeydipper's main selling points is abstraction. Events, actions can be defined traditionally using whatever characteristics provided by a driver, but also can be defined as an extension of another event/action with additional or override parameters. Events and actions can be grouped together into systems where data can be shared across. With this abstraction, we can separate the composing of complex workflows from defining low level event/action hook ups. Whenever a low level component changes, the high level workflow doesn't have to change, one only needs to link the abstract events with the new component native events.
 
+## More information
+
+Please find the main document index at [docs/README.md](./docs/README.md).
+
+To install, See [instaill guilde](./docs/INSTALL.md).
+
+For driver developers, please read this guide. [Honeydipper driver developer's guide](./docs/developer.md)
+
+To get started on developing. See [How to setup local test environment](./docs/howtos/setup_local.md).
+
 ## TODO
- * Documentation for users
- * Enhancing the driver communication protocol to support more encodings, gob, pickle
  * Python driver library
  * API service
  * Dashboard webapp
  * Auditing/logging driver
  * State persistent driver
- * Config file templating
- * Data/parameter templating
  * Repo jailing
  * RBAC
 
-## Get Started On Developing
-
-See [How to setup local test environment](./docs/howtos/setup_local.md)
