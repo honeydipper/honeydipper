@@ -2,7 +2,7 @@
 
 <!-- toc -->
 
-- [Prerequistes](#prerequistes)
+- [Prerequisites](#prerequisites)
 - [Step 1: Prepare your bootstrap repo](#step-1-prepare-your-bootstrap-repo)
 - [Step 2: Bootstrap your daemon](#step-2-bootstrap-your-daemon)
   * [Running in Honeydipper in Kubernetes](#running-in-honeydipper-in-kubernetes)
@@ -14,14 +14,14 @@
 
 <!-- tocstop -->
 
-## Prerequistes
+## Prerequisites
 
  * A running redis server
 
 ## Step 1: Prepare your bootstrap repo
 As described in the [architecture/design document](../README.md), Honeydipper loads configurations directly from one or many git repos. You can put the repo locally on the machine or pod where Honeydipper is running, or you can put the repos in github, bitbucket or gitlab etc, or even mix them together. Make sure you configuration repo is private, and protected from unauthorized changes. Although, you can store all the sensitive information in encrypted form in the repo, you don't want this to become a target.
 
-Inside your repo, you will need a `init.yaml` file. It is the main entry point that Honeydipper daemon seeks in each repo. See [configuration guide](./configuration.md) for detailed explanation. Below is an example of minimum required data to get the daemon bootstrapped.
+Inside your repo, you will need a `init.yaml` file. It is the main entry point that Honeydipper daemon seeks in each repo. See the [Configuration Guide](./configuration.md) for detailed explanation. Below is an example of minimum required data to get the daemon bootstrapped.
 
 ```yaml
 # init.yaml
@@ -46,7 +46,7 @@ drivers:
 
 ### Running in Honeydipper in Kubernetes
 
-This is the recommended way of using Honeydipper. Not only this is the easiest way to get Honeydipper started, it also enables Honeydipper to take advantage of the power of kubernetes.
+This is the recommended way of using Honeydipper. Not only this is the easiest way to get Honeydipper started, it also enables Honeydipper to take advantage of the power of Kubernetes.
 
 #### Using helm charts
 
@@ -86,7 +86,7 @@ If you want to use an older version of the chart, (as of now, the latest one is 
 
 #### Create your own manifest file
 
-You can use the below manifest file as a template to create your own. Note that, the basic information needed, besides the docker image for Honeydipper deamon, is the same, `REPO` and `HONEY_SSE_KEY`.
+You can use the below manifest file as a template to create your own. Note that, the basic information needed, besides the docker image for Honeydipper deamon, is the same, `REPO` and `HONEY_SSH_KEY`.
 
 ```yaml
 ---
@@ -135,5 +135,5 @@ Alternatively, you can follow the [developer setup guide](./howtos/setup_local.m
 
 ## Step 3: Hacking away
 
-This is it, your Honeydipper is bootstrapped. You can start to configure it to suite your need. The daemon is pulling your config repos every minute, and will reload when changes are detected. See the [Honeydipper  Guides](./README.md) for more documents, including a way to setup github push event-driven reload.
+That's it, your Honeydipper daemon is bootstrapped. You can start to configure it to suite your need. The daemon is pulling your config repos every minute, and will reload when changes are detected. See the [Honeydipper Guides](./README.md) for more documents, including a way to setup github push event-driven reload.
 

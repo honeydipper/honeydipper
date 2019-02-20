@@ -63,7 +63,7 @@ After the rule is loaded into the Honeydipper daemon, you should be able to see 
 
 ## Reduce the polling interval
 
-In the configuration for your daemon, set the `configCheckInterval` to a higher level, 'm' stands for minute, 'h' stands for 'hour'. See below for example:
+In the configuration for your daemon, set the `configCheckInterval` to a longer duration. The duration is parsed using [ParseDuration](https://golang.org/pkg/time/#ParseDuration) API,  use 'm' suffix for minutes, 'h' for hours. See below for example:
 
 ```yaml
 # daemon.yaml

@@ -16,6 +16,8 @@
     + [Abstraction](#abstraction)
 - [More information](#more-information)
 - [TODO](#todo)
+- [License](#license)
+- [Contributing](#contributing)
 
 <!-- tocstop -->
 
@@ -70,7 +72,7 @@ As mentioned in the concepts, one of Honeydipper's main selling points is abstra
 
 Please find the main document index at [docs/README.md](./docs/README.md).
 
-To install, See [instaill guilde](./docs/INSTALL.md).
+To install, See [Installation Guide](./docs/INSTALL.md).
 
 For driver developers, please read this guide. [Honeydipper driver developer's guide](./docs/developer.md)
 
@@ -85,3 +87,10 @@ To get started on developing. See [How to setup local test environment](./docs/h
  * Repo jailing
  * RBAC
 
+## License
+
+Honeydipper is licensed under the [MPLv2 License](./LICENSE).
+
+## Contributing
+
+Thank you for your interest! Please refer to the [Code of Conduct](./CODE_OF_CONDUCT.md) for guidance.
