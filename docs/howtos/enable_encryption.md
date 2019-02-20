@@ -47,7 +47,7 @@ Note that the above configuration snippet is for your information purpose, you d
 
 ## Config the driver
 
-The `gcloud-kms` driver assumes that there is a default google credential where the daemon is running. This is usually the case when you run Honeydipper in gcloud either in compute engine or in kubernetes clusters. See gcloud documentation on how to configure the compute engine instance or kubernetes clusters with a service account. If you are running this from your workstation, make sure you run `gcloud auth login` to authenticate with gcloud. The service account or the credential you are using needs to have `roles/kms.CryptoKeyDecryptor` IAM role. If you are running the Honeydipper in a docker container other than gcloud, you will need to pass a service account to the container using `GOOGLE_CREDENTIALS` environment variable or `GOOGLE_APPLICATION_CREDENTIALS`.
+The `gcloud-kms` driver assumes that there is a default google credential where the daemon is running. This is usually the case when you run Honeydipper in gcloud either in Compute Engine or in Kubernetes clusters. See GCP documentation on how to configure the Compute Engine instance or Kubernetes clusters with a service account. If you are running this from your workstation, make sure you run `gcloud auth login` to authenticate with gcloud. The service account or the credential you are using needs to have `roles/kms.CryptoKeyDecryptor` IAM role. If you are running the Honeydipper in a docker container other than gcloud, you will need to mount a service account key file into the container and set `GOOGLE_APPLICATION_CREDENTIALS` environment variable.
 
 The `gcloud-kms` driver expects a configuration item under `drivers.gcloud-kms` named `keyname`.
 
@@ -66,7 +66,7 @@ Once this is configured in your repo and loaded by the daemon, you can start to 
 
 ## How to encrypt your secret
 
-Assuming you have gcloud command installed, and authenticated, and you have the `roles/kms.CryptoKeyEncryptor` role.
+Assuming you have `gcloud` command installed, and authenticated, and you have the `roles/kms.CryptoKeyEncryptor` role.
 
 ```bash
 echo -n xxxx_your_secret_xxxx |
@@ -85,6 +85,3 @@ systems:
 ```
 
 See the [interpolation guide](../interpolation.md) for more information on eyaml syntax.
-
-
-

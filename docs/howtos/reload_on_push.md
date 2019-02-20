@@ -27,7 +27,7 @@ systems:
     oauth_token: ENC[gcloud-kms,xxxxxx...]
 ```
 
-By config the github integration, we enabled a webhook at certain url (by default, `/github/push`, see your infrastructure configuration for the url host and port). As of now, Honeydipper webhook driver doesn't support authentication using signature header, so we use a token to authenticate requests coming from github.
+By configuring the github integration, we enabled a webhook at certain url (by default, `/github/push`, see your infrastructure configuration for the url host and port). As of now, the Honeydipper webhook driver doesn't support authentication using signature header, so we use a token to authenticate requests coming from github.
 
 ## Config webhook in Github repo
 

@@ -1,4 +1,4 @@
-# Installing Honeydipper
+# Instailling Honeydipper
 
 <!-- toc -->
 
@@ -86,7 +86,7 @@ If you want to use an older version of the chart, (as of now, the latest one is 
 
 #### Create your own manifest file
 
-You can use the below manifest file as a template to create your own. Note that, the basic information needed, besides the docker image for Honeydipper deamon, is the same, `REPO` and `HONEY_SSH_KEY`.
+You can use the below manifest file as a template to create your own. Note that, the basic information needed, besides the docker image for Honeydipper daemon, is the same, `REPO` and `HONEY_SSH_KEY`.
 
 ```yaml
 ---
