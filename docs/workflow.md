@@ -31,7 +31,7 @@ rules:
         driver: web
         rawAction: request
         parameters:
-          URL: http://external-system.com
+          URL: http://example.com
 ```
 
 An example of a workflow defined in a rule calling a system function:
@@ -44,7 +44,7 @@ systems:
         driver: web
         rawAction: request
         parameters:
-          URL: https://slackurl.com/sdfa/sdaffasd
+          URL: https://example.net/sdfa/sdaffasd
           header:
             Content-Type: application/json
           method: POST
