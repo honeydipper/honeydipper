@@ -7,7 +7,7 @@
 package driver
 
 import (
-	"github.com/honeyscience/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/config"
 )
 
 // DriverStates represents driver states.

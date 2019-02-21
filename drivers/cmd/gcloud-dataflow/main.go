@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 	"golang.org/x/oauth2/google"
 	dataflow "google.golang.org/api/dataflow/v1b3"

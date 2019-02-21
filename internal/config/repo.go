@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/ghodss/yaml"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"gopkg.in/src-d/go-git.v4"
 	gitCfg "gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"

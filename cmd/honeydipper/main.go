@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/honeyscience/honeydipper/internal/config"
-	"github.com/honeyscience/honeydipper/internal/daemon"
-	"github.com/honeyscience/honeydipper/internal/service"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/daemon"
+	"github.com/honeydipper/honeydipper/internal/service"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
 var cfg config.Config

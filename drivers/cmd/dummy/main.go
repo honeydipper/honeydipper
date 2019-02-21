@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
 func initFlags() {

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	kms "cloud.google.com/go/kms/apiv1"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 

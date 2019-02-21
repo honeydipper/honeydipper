@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/honeyscience/honeydipper/internal/config"
-	"github.com/honeyscience/honeydipper/internal/driver"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/driver"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/imdario/mergo"
 	"github.com/mitchellh/mapstructure"
 )

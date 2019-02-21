@@ -14,7 +14,7 @@ import (
 	"strconv"
 
 	"github.com/DataDog/datadog-go/statsd"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/op/go-logging"
 )

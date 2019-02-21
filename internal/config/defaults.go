@@ -33,7 +33,7 @@ var BuiltinDrivers = map[string]DriverMeta{
 		Services: []string{"engine", "receiver"},
 		Data: map[string]interface{}{
 			"Type":    "go",
-			"Package": "github.com/honeyscience/honeydipper/drivers/cmd/redisqueue",
+			"Package": "github.com/honeydipper/honeydipper/drivers/cmd/redisqueue",
 		},
 	},
 }

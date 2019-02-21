@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
 )
 

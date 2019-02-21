@@ -11,9 +11,9 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/honeyscience/honeydipper/internal/config"
-	"github.com/honeyscience/honeydipper/internal/daemon"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/daemon"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
 // replace the func variable with mock during testing
