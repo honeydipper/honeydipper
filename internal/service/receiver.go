@@ -9,8 +9,8 @@ package service
 import (
 	"strconv"
 
-	"github.com/honeyscience/honeydipper/internal/config"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/imdario/mergo"
 )
 

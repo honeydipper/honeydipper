@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/go-errors/errors"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/imdario/mergo"
 )
 

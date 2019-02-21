@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/honeyscience/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 

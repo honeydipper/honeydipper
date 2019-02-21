@@ -2,79 +2,67 @@
 defaults: &defaults
   docker:
     - image: golang:1.11.1-alpine3.8
-  environment:
-    TZ: "/usr/share/zoneinfo/America/Los_Angeles"
-  working_directory: /go/src/github.com/honeyscience/honeydipper
+  working_directory: /go/src/github.com/honeydipper/honeydipper
+
+restore_deps: &restore_deps
+  restore_cache:
+    key: gopkg-{{ .Branch }}-{{ checksum "Gopkg.lock" }}
+    paths:
+      - /go/src/github.com/honeydipper/honeydipper/vendor
 
 version: 2
 jobs:
   lint:
     <<: *defaults
     steps:
-      - run:
-          name: addinggit
-          command: apk add git
+      - run: apk add git openssh-client
       - checkout
-      - run:
-          name: addinggolint
-          command: go get -u golang.org/x/lint/golint
-      - run:
-          name: gofmt
-          command: go fmt
-      - run:
-          name: golint
-          command: golint
+      - run: go get -u golang.org/x/lint/golint
+      - run: go fmt
+      - run: golint
   test:
     <<: *defaults
     steps:
-      - run:
-          name: addingosdeps
-          command: apk add git gcc libc-dev
-      - run:
-          name: addingdep
-          command: go get -u github.com/golang/dep/cmd/dep
+      - run: apk add git openssh-client gcc libc-dev
       - run:
           name: adding-golangci-lint
           command: wget -O - -q https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.13.2
       - checkout
-      - run:
-          name: dependencies
-          command: dep ensure
-      - run:
-          name: golangci-lint
-          command: golangci-lint run
-      - run:
-          name: gotest
-          command: go test -v ./...
+      - *restore_deps
+      - run: go get -u github.com/golang/dep/cmd/dep
+      - run: dep ensure
+      - save_cache:
+          key: gopkg-{{ .Branch }}-{{ checksum "Gopkg.lock" }}
+          paths:
+            - /go/src/github.com/honeydipper/honeydipper/vendor
+      - run: golangci-lint run
+      - run: go test -v ./...
   integration:
     <<: *defaults
+    docker:
+      - image: golang:1.11.1-alpine3.8
+      - image: redis:4.0-alpine
     steps:
       - run:
-          name: addingosdeps
-          command: apk add git gcc libc-dev redis
-      - run:
-          name: addingdep
-          command: go get -u github.com/golang/dep/cmd/dep
+          name: install dependencies
+          command: >
+            apk add --repository http://dl-3.alpinelinux.org/alpine/edge/testing
+            git openssh-client gcc libc-dev dockerize
       - checkout
+      - *restore_deps
+      - run: go get -u github.com/golang/dep/cmd/dep
+      - run: dep ensure
+      - run: go install ./...
       - run:
-          name: dependencies
-          command: dep ensure
-      - run:
-          name: redis
-          command: redis-server --bind 127.0.0.1
-          background: true
-      - run:
-          name: build
-          command: go install ./...
-      - run:
-          name: gointegrationtest
-          command: go test -tags=integration -v ./...
+          name: Wait for Redis
+          command: dockerize -wait tcp://127.0.0.1:6379 -timeout 120s
+      - run: go test -tags=integration -v ./...
   build:
     docker:
       - image: google/cloud-sdk
     environment:
       TZ: "/usr/share/zoneinfo/America/Los_Angeles"
-    working_directory: /go/src/github.com/honeyscience/honeydipper
+    working_directory: /go/src/github.com/honeydipper/honeydipper
     steps:
       - setup_remote_docker
       - checkout
@@ -82,25 +70,18 @@ jobs:
           name: dockerbuildpush
           command: |
             export VERSION=$(git describe --match '[0-9]*' --tags $(git log -n1 --pretty='%h'))
-            export TAG=us.gcr.io/$GOOGLE_PROJECT_ID/honeydipper:$VERSION
+            export TAG=honeydipper/honeydipper:$VERSION
             cp build/docker/Dockerfile .
             docker build -t $TAG .
-            SA_VAR_NAME=$(echo ${GOOGLE_PROJECT_ID#*-} |awk '{print toupper($0)}'| sed 's/-/_/g')_ACCT_AUTH
-            eval 'echo $'$SA_VAR_NAME | base64 --decode | gcloud auth activate-service-account --key-file=-
-            gcloud config set project $GOOGLE_PROJECT_ID
-            gcloud config set compute/zone $GOOGLE_COMPUTE_ZONE
-            gcloud auth configure-docker
             docker push $TAG
   buildcharts:
     docker:
       - image: alpine/helm
-    environment:
-      TZ: "/usr/share/zoneinfo/America/Los_Angeles"
-    working_directory: /go/src/github.com/honeyscience/honeydipper
+    working_directory: /go/src/github.com/honeydipper/honeydipper
     steps:
       - run:
           name: addingosdeps
-          command: apk add git curl
+          command: apk add git openssh-client curl
       - checkout
       - run:
           name: buildpushcharts
@@ -111,11 +92,6 @@ jobs:
             helm init --client-only
             helm package honeydipper
             helm plugin install https://github.com/nouney/helm-gcs
-            SA_VAR_NAME=$(echo ${GOOGLE_PROJECT_ID#*-} |awk '{print toupper($0)}'| sed 's/-/_/g')_ACCT_AUTH
-            eval 'echo $'$SA_VAR_NAME | base64 -d > sa.json
-            GOOGLE_APPLICATION_CREDENTIALS=$PWD/sa.json helm gcs init gs://honey-helm-charts/
-            GOOGLE_APPLICATION_CREDENTIALS=$PWD/sa.json helm repo add honey gs://honey-helm-charts/
-            GOOGLE_APPLICATION_CREDENTIALS=$PWD/sa.json helm gcs push --force --retry honeydipper-${VERSION}.tgz honey
 
 workflows:
   version: 2
@@ -168,7 +144,6 @@ workflows:
             branches:
               ignore: /.*/
       - build:
-          context: org-global
           requires:
             - integration
           filters:
@@ -180,7 +155,6 @@ workflows:
   buildcharts:
     jobs:
       - buildcharts:
-          context: org-global
           filters:
             tags:
               only: /^chart-[0-9]+\.[0-9]+\.[0-9]+.*/

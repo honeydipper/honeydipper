@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"

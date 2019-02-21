@@ -15,7 +15,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/container/v1"

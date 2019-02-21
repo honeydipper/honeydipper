@@ -188,14 +188,6 @@
   revision = "787624de3eb7bd915c329cba748687a3b22666a6"
 
 [[projects]]
-  digest = "1:574f4e0c57e045c9d109d23c60c586b2198eaead53daa97ed5f65c616e22a9b0"
-  name = "github.com/h2non/parth"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "b4df798d65426f8c8ab5ca5f9987aec5575d26c9"
-  version = "v2.0.1"
-
-[[projects]]
   digest = "1:f9a5e090336881be43cfc1cf468330c1bdd60abdc9dd194e0b1ab69f4b94dd7c"
   name = "github.com/huandu/xstrings"
   packages = ["."]
@@ -560,14 +552,6 @@
   version = "v1.16.0"
 
 [[projects]]
-  digest = "1:fb332c4b0e1944eb132e2075ea0447873a1081ecdabb140ff9696327ac8b947b"
-  name = "gopkg.in/h2non/gock.v1"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "ba88c4862a27596539531ce469478a91bc5a0511"
-  version = "v1.0.14"
-
-[[projects]]
   digest = "1:ef72505cf098abdd34efeea032103377bec06abb61d8a06f002d5d296a4b1185"
   name = "gopkg.in/inf.v0"
   packages = ["."]
@@ -812,12 +796,12 @@
     "github.com/stretchr/testify/assert",
     "golang.org/x/crypto/ssh",
     "golang.org/x/crypto/ssh/terminal",
+    "golang.org/x/oauth2",
     "golang.org/x/oauth2/google",
     "google.golang.org/api/container/v1",
     "google.golang.org/api/dataflow/v1b3",
     "google.golang.org/api/googleapi",
     "google.golang.org/genproto/googleapis/cloud/kms/v1",
-    "gopkg.in/h2non/gock.v1",
     "gopkg.in/src-d/go-git.v4",
     "gopkg.in/src-d/go-git.v4/config",
     "gopkg.in/src-d/go-git.v4/plumbing",

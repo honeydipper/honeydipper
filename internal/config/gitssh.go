@@ -10,7 +10,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	crypto_ssh "golang.org/x/crypto/ssh"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"

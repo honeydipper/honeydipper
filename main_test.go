@@ -7,7 +7,7 @@
 package main
 
 import (
-	"github.com/honeyscience/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"os"
 	"testing"
 )
