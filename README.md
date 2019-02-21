@@ -1,6 +1,6 @@
 # Honeydipper
 
- * **master** [![CircleCI](https://circleci.com/gh/honeyscience/honeydipper.svg?style=svg&circle-token=60ce48f25e09dc164d4bdcff204182e2570fcf0d)](https://circleci.com/gh/honeyscience/honeydipper)
+ * **master** [![CircleCI](https://circleci.com/gh/honeydipper/honeydipper.svg?style=svg)](https://circleci.com/gh/honeydipper/honeydipper)
 
 ---
 
