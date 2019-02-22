@@ -53,7 +53,7 @@ func TestReceiverCollapseTrigger(t *testing.T) {
 	assert.Equal(t, cfg.Systems["testsystem"].Triggers["testtrigger"], finalTrigger, "should collapse trigger to the raw driver/rawevent trigger 'noname'")
 	assert.Equal(t, map[string]interface{}{"key1": "val1", "key3": "val3"}, conditions, "should combine the trigger chain conditions")
 
-	trigger.Conditions.(map[string]interface{})["key1"] = "newval1"
+	trigger.Conditions["key1"] = "newval1"
 	_, conditions = collapseTrigger(trigger, cfg)
 	assert.Equal(t, map[string]interface{}{"key1": "newval1", "key3": "val3"}, conditions, "should override the conditions with inheriting trigger")
 }
