@@ -1,0 +1,12 @@
+daemon:
+  env:
+    - name: REPO
+      # this repo
+      value: https://github.com/honeydipper/honeydipper
+    - name: PATH
+      value: /deployments/helm/honeydipper/test_fixtures
+
+drivers:
+  webhook:
+    service:
+      type: ClusterIP

@@ -23,6 +23,10 @@ spec:
       {{ toYaml . | indent 6 | trim }}
       {{- end }}
       containers:
+        {{- if .Values.drivers.redis.local }}
+        - name: {{ .Chart.Name }}-redis
+          image: "redis:latest"
+        {{- end }}
         - name: {{ .Chart.Name }}
           {{- if .Values.daemon.useSource }}
           image: "golang:alpine"
@@ -34,10 +38,15 @@ spec:
               go get -u github.com/golang/dep/cmd/dep &&
               mkdir -p ~/.ssh &&
               chmod 700 ~/.ssh &&
-              echo $'Host github.com\n\tStrictHostKeyChecking\tno\n\tUserKnownHostsFile\t/dev/null\n\tIdentityFile\t'{{ .Values.daemon.gitIdentityFilePath }}/id_rsa > ~/.ssh/config &&
-              mkdir -p /go/src/github.com/honeyscience &&
-              cd /go/src/github.com/honeyscience &&
-              git clone git@github.com:honeyscience/honeydipper.git &&
+              {{- if .Values.daemon.gitIdentityFilePath }}
+              echo $'Host github.com\n\tIdentityFile\t'{{ .Values.daemon.gitIdentityFilePath }}/id_rsa > ~/.ssh/config &&
+              {{- end }}
+              {{- if .Values.daemon.gitHostKey }}
+              echo 'github.com ssh-rsa {{ .Values.daemon.githubHostKey }}' > ~/.ssh/known_hosts &&
+              {{- end }}
+              mkdir -p /go/src/github.com/honeydipper &&
+              cd /go/src/github.com/honeydipper &&
+              git clone {{ .Values.daemon.sourceRepo }} &&
               cd honeydipper &&
               git checkout {{ .Values.daemon.useBranch }} &&
               dep ensure &&

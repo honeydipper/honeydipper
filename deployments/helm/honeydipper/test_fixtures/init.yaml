@@ -1,0 +1,21 @@
+---
+repos:
+  - repo: https://github.com/honeydipper/honeydipper-config-essentials
+
+drivers:
+  webhook:
+    Addr: ":8080"
+  redisqueue:
+    connection:
+      Addr: "127.0.0.1:6379"
+  redispubsub:
+    connection:
+      Addr: "127.0.0.1:6379"
+
+rules:
+  - when:
+      driver: webhook
+      conditions:
+        url: "/health"
+    do:
+      content: noop
