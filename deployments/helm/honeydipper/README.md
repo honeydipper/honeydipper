@@ -62,7 +62,7 @@ To perform a sanity test (i.e. ensure Honeydipper daemon is running, and when yo
 helm install -f test-values.yaml --name trial stable/honeydipper --debug
 ```
 
- 2. Runt the tests
+ 2. Run the tests
 
 ```
 helm test trial
