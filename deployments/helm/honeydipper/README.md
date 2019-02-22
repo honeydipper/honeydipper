@@ -1,6 +1,6 @@
 # Honeydipper
 
-[Honeydipper](https://github.com/honeydipper/honeydipper) is bsically, your Swiss army knife for systems engineering and operations. An event-driven, policy-based orchestration system, with a pluggable open architecture.
+[Honeydipper](https://github.com/honeydipper/honeydipper) is basically, your swiss army knife for systems engineering and operations. An event-driven, policy-based orchestration system, with a pluggable open architecture.
 
 ## Introduction
 
@@ -55,12 +55,6 @@ The following options are supported . See [values.yaml](./values.yaml) for more 
 ## Testing the Deployment
 
 To perform a sanity test (i.e. ensure Honeydipper daemon is running, and when you curl the webhook url `http(s)://your-service-url/health`, you should get a `200` response code.)
-
- 1. Install a redis chart for testing
-
-```
-helm install --name honeydipper-test stable/redis
-```
 
  1. Install the chart
 

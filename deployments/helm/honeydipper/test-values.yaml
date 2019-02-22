@@ -13,4 +13,5 @@ drivers:
     service:
       type: ClusterIP
   redis:
+    # use this only for testing
     local: true
