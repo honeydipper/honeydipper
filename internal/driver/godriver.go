@@ -7,10 +7,11 @@
 package driver
 
 import (
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"os/exec"
 	"strings"
+
+	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
 // GoDriver is a driver type that runs a golang executable program.
