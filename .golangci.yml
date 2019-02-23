@@ -9,8 +9,6 @@ linters:
     # code to be refactored at some point
     # but seems necessary to have global variables
     - gochecknoglobals
-    # dont know how to make this work
-    - goimports
 
 linters-settings:
   lll:
