@@ -106,7 +106,9 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		if r := recover(); r != nil {
 			dipper.Logger.Infof("Resuming after error: %v", r)
 			dipper.Logger.Infof("[%s] skip reloading feature: %s", s.name, feature)
-			s.setDriverRuntime(feature, &driver.Runtime{State: driver.DriverFailed})
+			if runtime := s.getDriverRuntime(feature); runtime != nil {
+				runtime.State = driver.DriverFailed
+			}
 			if err, ok := r.(error); ok {
 				rerr = err
 			} else {
@@ -208,11 +210,17 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		}(s, feature, &driverRuntime)
 
 		if oldRuntime != nil {
-			// closing the output writer will cause child process to panic
-			oldRuntime.Output.Close()
+			s.checkDeleteDriverRuntime(feature, nil)
 			if feature == FeatureEmitter {
+				// emitter is being replaced
 				delete(daemon.Emitters, s.name)
 			}
+			go func(runtime *driver.Runtime) {
+				defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Meta.Name)
+				// allow 50 millisecond for the data to drain
+				time.Sleep(50 * time.Millisecond)
+				runtime.Output.Close()
+			}(oldRuntime)
 		}
 	}
 	return affected, driverName, nil
@@ -283,8 +291,17 @@ func (s *Service) getFeatureList() map[string]bool {
 func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 	for feature, runtime := range s.driverRuntimes {
 		if _, ok := featureList[feature]; !ok {
+			if feature == FeatureEmitter {
+				// emitter is removed
+				delete(daemon.Emitters, s.name)
+			}
 			s.checkDeleteDriverRuntime(feature, nil)
-			runtime.Output.Close()
+			go func(runtime *driver.Runtime) {
+				defer dipper.SafeExitOnError("[%s] unused runtime %s output is already closed", s.name, runtime.Meta.Name)
+				// allow 50 millisecond for the data to drain
+				time.Sleep(50 * time.Millisecond)
+				runtime.Output.Close()
+			}(runtime)
 		}
 	}
 }
@@ -307,6 +324,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 						func(*dipper.Message) {
 							s.driverRuntimes[feature].State = driver.DriverAlive
 							if feature == FeatureEmitter {
+								// emitter is loaded
 								daemon.Emitters[s.name] = s
 							}
 						},
@@ -341,6 +359,7 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 						func(*dipper.Message) {
 							s.driverRuntimes[feature].State = driver.DriverAlive
 							if feature == FeatureEmitter {
+								// emitter is loaded
 								daemon.Emitters[s.name] = s
 							}
 						},
@@ -395,6 +414,7 @@ func (s *Service) serviceLoop() {
 			if chosen < len(orderedRuntimes) {
 				orderedRuntimes[chosen].State = driver.DriverFailed
 				if orderedRuntimes[chosen].Feature == FeatureEmitter {
+					// emitter has crashed
 					delete(daemon.Emitters, s.name)
 				}
 			}
@@ -421,9 +441,9 @@ func (s *Service) serviceLoop() {
 			}()
 		}
 	}
-	for _, runtime := range s.driverRuntimes {
+	for fname, runtime := range s.driverRuntimes {
 		func() {
-			defer dipper.SafeExitOnError("[%s] service driver runtime %s already closed", s.name, runtime.Meta.Name)
+			defer dipper.SafeExitOnError("[%s] driver runtime for feature %s already closed", s.name, fname)
 			runtime.Output.Close()
 		}()
 	}
@@ -603,52 +623,61 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 // CounterIncr increases a counter metric.
 func (s *Service) CounterIncr(name string, tags []string) {
 	if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
-		go s.RPC.Caller.CallNoWait(emitter.Output, FeatureEmitter, "counter_increment", map[string]interface{}{
-			"name": name,
-			"tags": tags,
-		})
+		go func() {
+			defer dipper.SafeExitOnError("[%s] emitter crashed")
+			s.RPC.Caller.CallNoWait(emitter.Output, FeatureEmitter, "counter_increment", map[string]interface{}{
+				"name": name,
+				"tags": tags,
+			})
+		}()
 	}
 }
 
 // GaugeSet sets the value for a gauge metric.
 func (s *Service) GaugeSet(name string, value string, tags []string) {
 	if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
-		go s.RPC.Caller.CallNoWait(emitter.Output, FeatureEmitter, "gauge_set", map[string]interface{}{
-			"name":  name,
-			"value": value,
-			"tags":  tags,
-		})
+		go func() {
+			defer dipper.SafeExitOnError("[%s] emitter crashed")
+			s.RPC.Caller.CallNoWait(emitter.Output, FeatureEmitter, "gauge_set", map[string]interface{}{
+				"name":  name,
+				"value": value,
+				"tags":  tags,
+			})
+		}()
 	}
 }
 
 func (s *Service) metricsLoop() {
 	for !daemon.ShuttingDown {
-		if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
-			counts := map[int]int{
-				driver.DriverLoading:   0,
-				driver.DriverAlive:     0,
-				driver.DriverFailed:    0,
-				driver.DriverReloading: 0,
+		func() {
+			defer dipper.SafeExitOnError("[%s] metrics loop crashing")
+			if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
+				counts := map[int]int{
+					driver.DriverLoading:   0,
+					driver.DriverAlive:     0,
+					driver.DriverFailed:    0,
+					driver.DriverReloading: 0,
+				}
+				for _, runtime := range s.driverRuntimes {
+					counts[runtime.State]++
+				}
+				s.GaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[driver.DriverLoading]), []string{
+					"service:" + s.name,
+					"state:loading",
+				})
+				s.GaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[driver.DriverAlive]), []string{
+					"service:" + s.name,
+					"state:alive",
+				})
+				s.GaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[driver.DriverFailed]), []string{
+					"service:" + s.name,
+					"state:failed",
+				})
 			}
-			for _, runtime := range s.driverRuntimes {
-				counts[runtime.State]++
+			if s.EmitMetrics != nil {
+				s.EmitMetrics()
 			}
-			s.GaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[driver.DriverLoading]), []string{
-				"service:" + s.name,
-				"state:loading",
-			})
-			s.GaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[driver.DriverAlive]), []string{
-				"service:" + s.name,
-				"state:alive",
-			})
-			s.GaugeSet("honey.honeydipper.drivers", strconv.Itoa(counts[driver.DriverFailed]), []string{
-				"service:" + s.name,
-				"state:failed",
-			})
-		}
-		if s.EmitMetrics != nil {
-			s.EmitMetrics()
-		}
+		}()
 		time.Sleep(time.Minute)
 	}
 }

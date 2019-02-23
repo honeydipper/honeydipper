@@ -22,8 +22,11 @@ import (
 )
 
 func TestServiceLoopCatchError(t *testing.T) {
-	f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
-	dipper.GetLogger("test service", "DEBUG", f, f)
+	if dipper.Logger == nil {
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		defer f.Close()
+		dipper.GetLogger("test service", "DEBUG", f, f)
+	}
 
 	svc := &Service{
 		name: "testsvc",
@@ -137,4 +140,256 @@ func TestServiceLoopCatchError(t *testing.T) {
 	}
 	daemon.ShutDown()
 	daemon.ShuttingDown = false
+}
+
+func TestServiceRemoveEmitter(t *testing.T) {
+	if dipper.Logger == nil {
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		defer f.Close()
+		dipper.GetLogger("test service", "DEBUG", f, f)
+	}
+
+	svc := &Service{
+		name: "testsvc",
+		driverRuntimes: map[string]*driver.Runtime{
+			"driver:d1": &driver.Runtime{
+				State: driver.DriverAlive,
+				Meta: &config.DriverMeta{
+					Name: "d1",
+				},
+			},
+			"emitter": &driver.Runtime{
+				State: driver.DriverAlive,
+				Meta: &config.DriverMeta{
+					Name: "test-emitter",
+				},
+				Feature: "emitter",
+			},
+		},
+		Route: func(m *dipper.Message) []RoutedMessage {
+			return nil
+		},
+	}
+	daemon.Emitters["testsvc"] = svc
+
+	daemon.ShuttingDown = false
+	svc.driverRuntimes["driver:d1"].Stream = make(chan dipper.Message, 1)
+	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["emitter"].Stream = make(chan dipper.Message, 1)
+	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0777)
+	go func() {
+		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter is removed")
+	}()
+
+	go func() {
+		daemon.Children.Add(1)
+		defer daemon.Children.Done()
+
+		assert.NotPanics(t, func() {
+			for i := 0; i < 50; i = i + 1 {
+				select {
+				case svc.driverRuntimes["driver:d1"].Stream <- dipper.Message{
+					Channel: "test",
+					Subject: "noerror",
+				}:
+					dipper.Logger.Infof("writen msg no. %+v", i)
+					time.Sleep(10 * time.Millisecond)
+				default:
+					dipper.Logger.Infof("unable to write, server shutdown")
+				}
+			}
+		}, "sending message to service should not panic when emitter is removed")
+	}()
+
+	newCfg := &config.Config{
+		DataSet: &config.DataSet{
+			Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"features": map[string]interface{}{
+						"global": []interface{}{
+							map[string]interface{}{
+								"name": "driver:d1",
+							},
+						},
+					},
+					"drivers": map[string]interface{}{
+						"d1": map[string]interface{}{
+							"name": "d1",
+						},
+					},
+				},
+			},
+		},
+	}
+	svc.config = newCfg
+
+	time.Sleep(100 * time.Millisecond)
+	assert.NotPanics(t, svc.Reload, "service reload should not panic when emitter is removed")
+	time.Sleep(100 * time.Millisecond)
+
+	daemon.ShutDown()
+}
+
+func TestServiceEmitterCrashing(t *testing.T) {
+	if dipper.Logger == nil {
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		defer f.Close()
+		dipper.GetLogger("test service", "DEBUG", f, f)
+	}
+
+	svc := &Service{
+		name: "testsvc",
+		driverRuntimes: map[string]*driver.Runtime{
+			"driver:d1": &driver.Runtime{
+				State: driver.DriverAlive,
+				Meta: &config.DriverMeta{
+					Name: "d1",
+				},
+			},
+			"emitter": &driver.Runtime{
+				State: driver.DriverAlive,
+				Meta: &config.DriverMeta{
+					Name: "test-emitter",
+				},
+				Feature: "emitter",
+			},
+		},
+		Route: func(m *dipper.Message) []RoutedMessage {
+			return nil
+		},
+	}
+	daemon.Emitters["testsvc"] = svc
+
+	daemon.ShuttingDown = false
+	svc.driverRuntimes["driver:d1"].Stream = make(chan dipper.Message, 1)
+	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["emitter"].Stream = make(chan dipper.Message, 1)
+	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0777)
+	go func() {
+		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter crashes")
+	}()
+
+	go func() {
+		daemon.Children.Add(1)
+		defer daemon.Children.Done()
+
+		assert.NotPanics(t, func() {
+			for i := 0; i < 50; i = i + 1 {
+				select {
+				case svc.driverRuntimes["driver:d1"].Stream <- dipper.Message{
+					Channel: "test",
+					Subject: "noerror",
+				}:
+					dipper.Logger.Infof("writen msg no. %+v", i)
+					time.Sleep(10 * time.Millisecond)
+				default:
+					dipper.Logger.Infof("unable to write, server shutdown")
+				}
+			}
+		}, "sending message to service should not panic when emitter crashes")
+	}()
+	time.Sleep(100 * time.Millisecond)
+	// crash emitter
+	svc.driverRuntimes["emitter"].Output.Close()
+	close(svc.driverRuntimes["emitter"].Stream)
+	time.Sleep(100 * time.Millisecond)
+
+	daemon.ShutDown()
+}
+
+func TestServiceReplaceEmitter(t *testing.T) {
+	if dipper.Logger == nil {
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		defer f.Close()
+		dipper.GetLogger("test service", "DEBUG", f, f)
+	}
+
+	svc := &Service{
+		name: "testsvc",
+		driverRuntimes: map[string]*driver.Runtime{
+			"driver:d1": &driver.Runtime{
+				State: driver.DriverAlive,
+				Meta: &config.DriverMeta{
+					Name: "d1",
+				},
+			},
+			"emitter": &driver.Runtime{
+				State: driver.DriverAlive,
+				Meta: &config.DriverMeta{
+					Name: "test-emitter",
+				},
+				Feature: "emitter",
+			},
+		},
+		Route: func(m *dipper.Message) []RoutedMessage {
+			return nil
+		},
+	}
+	daemon.Emitters["testsvc"] = svc
+
+	daemon.ShuttingDown = false
+	svc.driverRuntimes["driver:d1"].Stream = make(chan dipper.Message, 1)
+	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["emitter"].Stream = make(chan dipper.Message, 1)
+	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0777)
+	go func() {
+		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter is changed")
+	}()
+
+	go func() {
+		daemon.Children.Add(1)
+		defer daemon.Children.Done()
+
+		assert.NotPanics(t, func() {
+			for i := 0; i < 50; i = i + 1 {
+				select {
+				case svc.driverRuntimes["driver:d1"].Stream <- dipper.Message{
+					Channel: "test",
+					Subject: "noerror",
+				}:
+					dipper.Logger.Infof("writen msg no. %+v", i)
+					time.Sleep(10 * time.Millisecond)
+				default:
+					dipper.Logger.Infof("unable to write, server shutdown")
+				}
+			}
+		}, "sending message to service should not panic when emitter is changed")
+	}()
+
+	newCfg := &config.Config{
+		DataSet: &config.DataSet{
+			Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"featureMap": map[string]interface{}{
+						"emitter": "emitter2",
+					},
+					"features": map[string]interface{}{
+						"global": []interface{}{
+							map[string]interface{}{
+								"name": "driver:d1",
+							},
+							map[string]interface{}{
+								"name": "emitter",
+							},
+						},
+					},
+					"drivers": map[string]interface{}{
+						"d1": map[string]interface{}{
+							"name": "d1",
+						},
+						"emitter2": map[string]interface{}{
+							"name": "emitter2",
+						},
+					},
+				},
+			},
+		},
+	}
+	svc.config = newCfg
+
+	time.Sleep(100 * time.Millisecond)
+	assert.NotPanics(t, svc.Reload, "service reload should not panic when emitter is changed")
+	time.Sleep(100 * time.Millisecond)
+
+	daemon.ShutDown()
 }
