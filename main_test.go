@@ -18,6 +18,7 @@ func TestMain(m *testing.M) {
 		if err != nil {
 			panic(err)
 		}
+		defer logFile.Close()
 		dipper.GetLogger("test", "INFO", logFile, logFile)
 	}
 	os.Exit(m.Run())
