@@ -84,6 +84,7 @@ func NewService(cfg *config.Config, name string) *Service {
 }
 
 func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{}, replace bool) {
+	dipper.Logger.Debugf("[%s] decrypting %s", s.name, key)
 	if str, ok := val.(string); ok {
 		if strings.HasPrefix(str, "ENC[") {
 			parts := strings.SplitN(str[4:len(str)-1], ",", 2)
@@ -194,14 +195,16 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 
 		s.setDriverRuntime(feature, &driverRuntime)
 		go func(s *Service, feature string, runtime *driver.Runtime) {
-			//nolint:errcheck
-			runtime.Run.Wait()
-			func() {
+			defer dipper.SafeExitOnError("[%s] driver runtime %s crash", s.name, runtime.Meta.Name)
+			defer s.checkDeleteDriverRuntime(feature, runtime)
+			defer func() {
 				s.selectLock.Lock()
 				defer s.selectLock.Unlock()
 				close(runtime.Stream)
 			}()
-			s.checkDeleteDriverRuntime(feature, runtime)
+
+			//nolint:errcheck
+			runtime.Run.Wait()
 		}(s, feature, &driverRuntime)
 
 		if oldRuntime != nil {
@@ -230,10 +233,8 @@ func (s *Service) start() {
 // Reload the service when configuration changes are detected.
 func (s *Service) Reload() {
 	dipper.Logger.Infof("[%s] reloading service", s.name)
-	if s.ServiceReload != nil {
-		s.ServiceReload(s.config)
-	}
-	featureList := s.getFeatureList()
+	var featureList map[string]bool
+
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -241,8 +242,13 @@ func (s *Service) Reload() {
 				s.config.RollBack()
 			}
 		}()
+		if s.ServiceReload != nil {
+			s.ServiceReload(s.config)
+		}
+		featureList = s.getFeatureList()
 		s.loadRequiredFeatures(featureList, false)
 	}()
+
 	s.loadAdditionalFeatures(featureList)
 	s.removeUnusedFeatures(featureList)
 }
@@ -416,7 +422,10 @@ func (s *Service) serviceLoop() {
 		}
 	}
 	for _, runtime := range s.driverRuntimes {
-		runtime.Output.Close()
+		func() {
+			defer dipper.SafeExitOnError("[%s] service driver runtime %s already closed", s.name, runtime.Meta.Name)
+			runtime.Output.Close()
+		}()
 	}
 	dipper.Logger.Warningf("[%s] service closed for business", s.name)
 }
@@ -426,7 +435,10 @@ func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
 	expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.Meta.Name)
 	if expects, ok := s.deleteExpect(expectKey); ok {
 		for _, f := range expects {
-			go f(&msg)
+			go func(f ExpectHandler) {
+				defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
+				f(&msg)
+			}(f)
 		}
 	}
 
@@ -434,22 +446,35 @@ func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
 	// responder
 	if responders, ok := s.responders[key]; ok {
 		for _, f := range responders {
-			go f(runtime, &msg)
+			go func(f MessageResponder) {
+				defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
+				f(runtime, &msg)
+			}(f)
 		}
 	}
 
 	go func(msg *dipper.Message) {
+		defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
+
 		// transformer
 		if transformers, ok := s.transformers[key]; ok {
 			for _, f := range transformers {
 				msg = f(runtime, msg)
+				if msg == nil {
+					break
+				}
 			}
 		}
 
-		// router
-		routedMsgs := s.Route(msg)
-		for _, routedMsg := range routedMsgs {
-			routedMsg.driverRuntime.SendMessage(routedMsg.message)
+		if msg != nil {
+			// router
+			routedMsgs := s.Route(msg)
+
+			if len(routedMsgs) > 0 {
+				for _, routedMsg := range routedMsgs {
+					routedMsg.driverRuntime.SendMessage(routedMsg.message)
+				}
+			}
 		}
 	}(&msg)
 }
@@ -476,6 +501,7 @@ func (s *Service) addExpect(expectKey string, processor ExpectHandler, timeout t
 					delete(s.expects, expectKey)
 				}
 			}()
+			defer dipper.SafeExitOnError("[%s] panic in except handler for %s", s.name, expectKey)
 			except()
 		}
 	}()
