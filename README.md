@@ -2,7 +2,7 @@
 
 [![CircleCI](https://circleci.com/gh/honeydipper/honeydipper.svg?style=svg)](https://circleci.com/gh/honeydipper/honeydipper)
 
-<img src="https://github.com/honeydipper/honeydipper/raw/master/logo/logo_medium.png" width="100">
+<img src="https://raw.githubusercontent.com/honeydipper/honeydipper/master/logo/log_medium.png" width="100">
 
 ---
 
