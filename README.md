@@ -1,6 +1,8 @@
 # Honeydipper
 
- * **master** [![CircleCI](https://circleci.com/gh/honeydipper/honeydipper.svg?style=svg)](https://circleci.com/gh/honeydipper/honeydipper)
+[![CircleCI](https://circleci.com/gh/honeydipper/honeydipper.svg?style=svg)](https://circleci.com/gh/honeydipper/honeydipper)
+
+<img src="https://github.com/honeydipper/honeydipper/raw/master/logo/logo_medium.png" width="100">
 
 ---
 
