@@ -394,6 +394,7 @@ func (s *Service) serviceLoop() {
 			}
 		} else if chosen < len(orderedRuntimes) {
 			func() {
+				defer dipper.SafeExitOnError("[%s] service loop continue", s.name)
 				runtime := orderedRuntimes[chosen]
 				msg := value.Interface().(dipper.Message)
 				if runtime.Feature != FeatureEmitter {

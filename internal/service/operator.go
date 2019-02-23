@@ -68,6 +68,9 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		dipper.Logger.Debugf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
 
 		worker := operator.getDriverRuntime("driver:" + driver)
+		if worker == nil {
+			panic(fmt.Errorf("driver %s not defined", driver))
+		}
 		finalParams := params
 		if params != nil {
 			// interpolate twice for giving an chance for using sysData in wfdata
