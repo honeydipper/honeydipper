@@ -27,7 +27,7 @@ Inside your repo, you will need a `init.yaml` file. It is the main entry point t
 # init.yaml
 ---
 repos:
-  - repo: git@github.com/honeyscience/honeydipper-config-essentials.git
+  - repo: https://github.com/honeydipper/honeydipper-config-essentials.git
 
 drivers:
   redisqueue:
@@ -50,15 +50,7 @@ This is the recommended way of using Honeydipper. Not only this is the easiest w
 
 #### Using helm charts
 
-First, we need to add the helm chart repo to the workstation/server where we are going to run the helm commands.
-
-```bash
-helm plugin install https://github.com/nouney/helm-gcs
-helm repo add honeydipper gs://<bucket name>
-helm repo update
-```
-
-Secondly, we need to pass the information about the bootstrap repo to Honeydipper daemon. The recommended way is to put all the information in a yaml file then use `--values` option during `helm install`. For example:
+To pass the information about the bootstrap config repo to Honeydipper daemon, the recommended way is to put all the information in a yaml file then use `--values` option during `helm install`. For example:
 
 ```yaml
 # values.yaml
@@ -76,13 +68,27 @@ daemon:
 
 Note that, we need to provide a ssh key for Honeydipper daemon to be able to fetch the private repo using ssh protocol. Make sure that the key exists in your cluster as a `secret`.
 
-Now, you can run the `helm install` command.
+Once the values file is prepared, you can run the `helm install` command like below.
 
 ```bash
-helm install --values values.yaml orchestrator honeydipper/honeydipper
+helm install --values values.yaml orchestrator stable/honeydipper
 ```
 
-If you want to use an older version of the chart, (as of now, the latest one is 0.1.1), use `--version` to specify the chart version. By default, the chart uses the latest stable version of the Honeydipper daemon docker image, (latest is 0.1.6 as of now).  You can change the version by specifying `--set daemon.image.tag=x.x.x` in your `helm install` command.
+If you want to use an older version of the chart, (as of now, the latest one is 0.1.2), use `--version` to specify the chart version. By default, the chart uses the latest stable version of the Honeydipper daemon docker image, (latest is 0.1.6 as of now).  You can change the version by specifying `--set daemon.image.tag=x.x.x` in your `helm install` command.
+
+---
+We are still working on putting the Honeydipper helm chart into the official helm chart repo. For now, you can package the chart yourself using the source code as decribed below.
+
+Download the source code using `git` or `go get` command. Run the commands below. Your path may vary.
+
+```bash
+cd  ~/go/src/github.com/honeydipper/honeydipper # your repo root
+cd deployments/helm/
+helm package honeydipper
+```
+You should see the chart file `honeydipper-x.y.z.tgz` in your current directory.
+
+---
 
 #### Create your own manifest file
 
@@ -94,6 +100,8 @@ apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: honeydipper-daemon
+  labels:
+    app: honeydipper-daemon
 spec:
   template:
     metadata:
@@ -113,10 +121,27 @@ spec:
                   key: id_rsa
 ```
 
+For the webhook driver, you will need to create a service.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: honeydipper-webhook
+spec:
+  type: LoadBalancer
+  ports:
+  - name: webhook
+    targetPort: 8080
+    port: 8080
+`selector:
+    app: honeydipper-daemon
+```
+
 ### Running as docker container
 
 ```bash
-docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "HONEY_SSH_KEY=$(cat ~/.ssh/id_rsa)"  us.gcr.io/.../honeydipper:latest
+docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "HONEY_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper:latest
 ```
 
 Replace the repo url with your own, and speicify the private key path for accessing the private repo remotely.

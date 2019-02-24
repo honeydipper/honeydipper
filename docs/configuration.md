@@ -20,7 +20,7 @@ As mentioned in the [Architecture/Design](../README.md), Honeydipper requires al
 
 Inside every repo, when loading files, an including file will be loaded after all the files that it includes are loaded. So the including file can override anything in the included files. Similarly, repos are loaded after their dependency repos, so they can override anything in the depended repo.
 
-One of the key selling point of Honeydipper is the ability to reuse and share. The drivers, systems, workflows and rules can all be packaged into repos then shared among projects, teams and organizations. Overtime, we are expecting to see a number of reusable public config repos contributed and maintained by communities. The seed of the repos is the [honeydipper-config-essentials](https://github.com/honeyscience/honeydipper-config-essentials) repo, and the reference document can be found at [here](https://honeyscience.github.io/honeydipper-config-essentials/).
+One of the key selling point of Honeydipper is the ability to reuse and share. The drivers, systems, workflows and rules can all be packaged into repos then shared among projects, teams and organizations. Overtime, we are expecting to see a number of reusable public config repos contributed and maintained by communities. The seed of the repos is the [honeydipper-config-essentials](https://github.com/honeydipper/honeydipper-config-essentials) repo, and the reference document can be found at [here](https://honeydipper.github.io/honeydipper-config-essentials/).
 
 ## Data Set
 
@@ -157,5 +157,5 @@ Refer to the Systems section for the definition of `Trigger`, and see [Workflow 
 
 For a list of available drivers, systems, and workflows that you can take advantage of immediately, see the reference here.
 
- * [Honeydipper config essentials](https://honeyscience.github.io/honeydipper-config-essentials/)
+ * [Honeydipper config essentials](https://honeydipper.github.io/honeydipper-config-essentials/)
 
