@@ -7,6 +7,7 @@
 ```bash
 mkdir ~/go
 export GOPATH=$GOPATH:$PWD/go
+export PATH=$PATH:$GOPATH/bin
 ```
 
  * Clone the code

@@ -77,7 +77,7 @@ helm install --values values.yaml orchestrator stable/honeydipper
 If you want to use an older version of the chart, (as of now, the latest one is 0.1.2), use `--version` to specify the chart version. By default, the chart uses the latest stable version of the Honeydipper daemon docker image, (latest is 0.1.6 as of now).  You can change the version by specifying `--set daemon.image.tag=x.x.x` in your `helm install` command.
 
 ---
-We are still working on putting the Honeydipper helm chart into the official helm chart repo. For now, You can package the chart yourself using the source code as decribed below.
+We are still working on putting the Honeydipper helm chart into the official helm chart repo. For now, you can package the chart yourself using the source code as decribed below.
 
 Download the source code using `git` or `go get` command. Run the commands below. Your path may vary.
 
