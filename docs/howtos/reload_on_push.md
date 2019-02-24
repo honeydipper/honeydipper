@@ -13,7 +13,7 @@ After following this guide, the Honeydipper daemon should not pull from config r
 
 ## Github Integration in Honeydipper
 
-Create a yaml file in your config repo to store the settings for github integration, and make sure it is loaded through `includes` in `init.yaml`. See the [github integration reference](https://honeyscience.github.io/honeydipper-config-essentials/#HoneydipperConfigClass:Essentials.Systems.github) for detail on how to config. 
+Create a yaml file in your config repo to store the settings for github integration, and make sure it is loaded through `includes` in `init.yaml`. See the [github integration reference](https://honeydipper.github.io/honeydipper-config-essentials/#HoneydipperConfigClass:Essentials.Systems.github) for detail on how to config. 
 
 For example:
 

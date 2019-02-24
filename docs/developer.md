@@ -32,7 +32,7 @@ package main
 
 import (
   "flag"
-  "github.com/honeyscience/honeydipper/pkg/dipper"
+  "github.com/honeydipper/honeydipper/pkg/dipper"
   "os"
   "time"
 )

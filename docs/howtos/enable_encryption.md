@@ -17,7 +17,7 @@ When you include the `honeydipper-config-essentials` repo from your bootstrap re
 ```yaml
 ---
 repos:
-  - repo: git@github.com/honeyscience/honeydipper-config-essentials
+  - repo: https://github.com/honeydipper/honeydipper-config-essentials.git
     path: /gcloud
 ```
 
@@ -40,7 +40,7 @@ drivers:
         name: gcloud-kms
         data:
           Type: go
-          Package: github.com/honeyscience/honeydipper/drivers/cmd/gcloud-kms
+          Package: github.com/honeydipper/honeydipper/drivers/cmd/gcloud-kms
 ```
 
 Note that the above configuration snippet is for your information purpose, you don't have to manually type them in if you include the `gcloud` bundle from the `honeydipper-config-essential` repo.

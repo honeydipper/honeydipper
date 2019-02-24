@@ -9,7 +9,7 @@
    * [Workflow Composing Guide](./workflow.md)
    * [Interpolation Guide](./interpolation.md)
    * Community Repos
-     + [Honeydipper Config Essentials](https://honeyscience.github.io/honeydipper-config-essentials/)
+     + [Honeydipper Config Essentials](https://honeydipper.github.io/honeydipper-config-essentials/)
  * HowTos
    * [Setup local environment](./howtos/setup_local.md)
    * [Enable encrypted configuration](./howtos/enable_encryption.md)
