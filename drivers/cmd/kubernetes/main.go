@@ -217,12 +217,35 @@ func recycleDeployment(m *dipper.Message) {
 		nameSpace = DefaultNamespace
 	}
 
+	// to accurately identify the replicaset, we have to retrieve the revision
+	// from the deployment
+	deploymentclient := k8client.AppsV1().Deployments(nameSpace)
+	deployments, err := deploymentclient.List(metav1.ListOptions{LabelSelector: deploymentName})
+	if err != nil || len(deployments.Items) == 0 {
+		log.Panicf("[%s] unable to find the deployment %+v", driver.Service, err)
+	}
+	revision := deployments.Items[0].Annotations["deployment.kubernetes.io/revision"]
+
 	rsclient := k8client.AppsV1().ReplicaSets(nameSpace)
 	rs, err := rsclient.List(metav1.ListOptions{LabelSelector: deploymentName})
 	if err != nil || len(rs.Items) == 0 {
 		log.Panicf("[%s] unable to find the replicaset for the deployment %+v", driver.Service, err)
 	}
-	rsName := rs.Items[0].Name
+
+	var rsName string
+
+	// annotations are not supported field selectors for replicaset rsource,
+	// so we have to iterate over the list to find the one with correct revision
+	for _, currentRs := range rs.Items {
+		if currentRs.Annotations["deployment.kubernetes.io/revision"] == revision {
+			rsName = currentRs.Name
+			break
+		}
+	}
+	if len(rsName) == 0 {
+		log.Panicf("[%s] unable to figure out which is current replicaset", driver.Service)
+	}
+
 	err = rsclient.Delete(rsName, &metav1.DeleteOptions{})
 	if err != nil {
 		log.Panicf("[%s] failed to recycle replicaset %+v", driver.Service, err)
