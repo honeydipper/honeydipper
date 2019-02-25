@@ -171,7 +171,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 	}
 
 	data := msg.Payload
-	if msg.Subject != dipper.EventbusReturn {
+	if msg.Subject == dipper.EventbusMessage {
 		data, _ = dipper.GetMapData(msg.Payload, "data")
 	}
 
