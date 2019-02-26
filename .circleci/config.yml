@@ -57,106 +57,15 @@ jobs:
           name: Wait for Redis
           command: dockerize -wait tcp://127.0.0.1:6379 -timeout 120s
       - run: go test -tags=integration -v ./...
-  build:
-    docker:
-      - image: google/cloud-sdk
-    environment:
-      TZ: "/usr/share/zoneinfo/America/Los_Angeles"
-    working_directory: /go/src/github.com/honeydipper/honeydipper
-    steps:
-      - setup_remote_docker
-      - checkout
-      - run:
-          name: dockerbuildpush
-          command: |
-            export VERSION=$(git describe --match '[0-9]*' --tags $(git log -n1 --pretty='%h'))
-            export TAG=honeydipper/honeydipper:$VERSION
-            cp build/docker/Dockerfile .
-            docker build -t $TAG .
-            docker push $TAG
-  buildcharts:
-    docker:
-      - image: alpine/helm
-    working_directory: /go/src/github.com/honeydipper/honeydipper
-    steps:
-      - run:
-          name: addingosdeps
-          command: apk add git openssh-client curl
-      - checkout
-      - run:
-          name: buildpushcharts
-          command: |
-            export VERSION=$(git describe --match 'chart-*' --tags $(git log -n1 --pretty='%h') | sed 's/^chart-//g')
-            cd deployments/helm
-            sed -i.bak 's/^version: .*$/version: '${VERSION}'/g' honeydipper/Chart.yaml
-            helm init --client-only
-            helm package honeydipper
-            helm plugin install https://github.com/nouney/helm-gcs
 
 workflows:
   version: 2
   run_tests:
     jobs:
-      - lint:
-          filters:
-            tags:
-              ignore: /.+/
-            branches:
-              only: /.*/
+      - lint
       - test:
           requires:
             - lint
-          filters:
-            tags:
-              ignore: /.+/
-            branches:
-              only: /.*/
       - integration:
           requires:
             - test
-          filters:
-            tags:
-              ignore: /.+/
-            branches:
-              only: /.*/
-  build:
-    jobs:
-      - lint:
-          filters:
-            tags:
-              only: /^[0-9]+\.[0-9]+\.[0-9]+.*/
-            branches:
-              ignore: /.*/
-      - test:
-          requires:
-            - lint
-          filters:
-            tags:
-              only: /^[0-9]+\.[0-9]+\.[0-9]+.*/
-            branches:
-              ignore: /.*/
-      - integration:
-          requires:
-            - test
-          filters:
-            tags:
-              only: /^[0-9]+\.[0-9]+\.[0-9]+.*/
-            branches:
-              ignore: /.*/
-      - build:
-          requires:
-            - integration
-          filters:
-            tags:
-              only: /^[0-9]+\.[0-9]+\.[0-9]+.*/
-            branches:
-              ignore: /.*/
-
-  buildcharts:
-    jobs:
-      - buildcharts:
-          filters:
-            tags:
-              only: /^chart-[0-9]+\.[0-9]+\.[0-9]+.*/
-            branches:
-              ignore: /.*/
