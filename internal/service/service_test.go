@@ -33,9 +33,13 @@ func TestServiceLoopCatchError(t *testing.T) {
 		driverRuntimes: map[string]*driver.Runtime{
 			"d1": &driver.Runtime{
 				State: driver.DriverAlive,
-				Meta: &config.DriverMeta{
-					Name: "testdriver1",
-				},
+				Handler: driver.NewDriver(map[string]interface{}{
+					"name": "testdriver1",
+					"type": "builtin",
+					"handlerData": map[string]interface{}{
+						"shortName": "testdriver1",
+					},
+				}),
 			},
 		},
 		responders: map[string][]MessageResponder{
@@ -120,7 +124,7 @@ func TestServiceLoopCatchError(t *testing.T) {
 	svc.driverRuntimes["d1"].Stream = make(chan dipper.Message, 1)
 	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
 	// injecting error in process
-	svc.driverRuntimes["d1"].Meta = nil
+	svc.driverRuntimes["d1"].Handler = nil
 	go func() {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic in process itself")
 	}()
@@ -129,9 +133,13 @@ func TestServiceLoopCatchError(t *testing.T) {
 		Subject: "error3",
 	}
 	// recover the service object to avoid crash during quiting
-	svc.driverRuntimes["d1"].Meta = &config.DriverMeta{
-		Name: "testdriver1",
-	}
+	svc.driverRuntimes["d1"].Handler = driver.NewDriver(map[string]interface{}{
+		"name": "testdriver1",
+		"type": "builtin",
+		"handlerData": map[string]interface{}{
+			"shortName": "testdriver1",
+		},
+	})
 	time.Sleep(30 * time.Millisecond)
 	// quiting faster by send an extra message
 	svc.driverRuntimes["d1"].Stream <- dipper.Message{
@@ -154,15 +162,23 @@ func TestServiceRemoveEmitter(t *testing.T) {
 		driverRuntimes: map[string]*driver.Runtime{
 			"driver:d1": &driver.Runtime{
 				State: driver.DriverAlive,
-				Meta: &config.DriverMeta{
-					Name: "d1",
-				},
+				Handler: driver.NewDriver(map[string]interface{}{
+					"name": "d1",
+					"type": "builtin",
+					"handlerData": map[string]interface{}{
+						"shortName": "testdriver1",
+					},
+				}),
 			},
 			"emitter": &driver.Runtime{
 				State: driver.DriverAlive,
-				Meta: &config.DriverMeta{
-					Name: "test-emitter",
-				},
+				Handler: driver.NewDriver(map[string]interface{}{
+					"name": "test-emitter",
+					"type": "builtin",
+					"handlerData": map[string]interface{}{
+						"shortName": "testdriver1",
+					},
+				}),
 				Feature: "emitter",
 			},
 		},
@@ -215,6 +231,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 					"drivers": map[string]interface{}{
 						"d1": map[string]interface{}{
 							"name": "d1",
+							"type": "builtin",
 						},
 					},
 				},
@@ -242,15 +259,23 @@ func TestServiceEmitterCrashing(t *testing.T) {
 		driverRuntimes: map[string]*driver.Runtime{
 			"driver:d1": &driver.Runtime{
 				State: driver.DriverAlive,
-				Meta: &config.DriverMeta{
-					Name: "d1",
-				},
+				Handler: driver.NewDriver(map[string]interface{}{
+					"name": "d1",
+					"type": "builtin",
+					"handlerData": map[string]interface{}{
+						"shortName": "testdriver1",
+					},
+				}),
 			},
 			"emitter": &driver.Runtime{
 				State: driver.DriverAlive,
-				Meta: &config.DriverMeta{
-					Name: "test-emitter",
-				},
+				Handler: driver.NewDriver(map[string]interface{}{
+					"name": "test-emitter",
+					"type": "builtin",
+					"handlerData": map[string]interface{}{
+						"shortName": "testdriver1",
+					},
+				}),
 				Feature: "emitter",
 			},
 		},
@@ -309,15 +334,23 @@ func TestServiceReplaceEmitter(t *testing.T) {
 		driverRuntimes: map[string]*driver.Runtime{
 			"driver:d1": &driver.Runtime{
 				State: driver.DriverAlive,
-				Meta: &config.DriverMeta{
-					Name: "d1",
-				},
+				Handler: driver.NewDriver(map[string]interface{}{
+					"name": "d1",
+					"type": "builtin",
+					"handlerData": map[string]interface{}{
+						"shortName": "testdriver1",
+					},
+				}),
 			},
 			"emitter": &driver.Runtime{
 				State: driver.DriverAlive,
-				Meta: &config.DriverMeta{
-					Name: "test-emitter",
-				},
+				Handler: driver.NewDriver(map[string]interface{}{
+					"name": "test-emitter",
+					"type": "builtin",
+					"handlerData": map[string]interface{}{
+						"shortName": "testdriver1",
+					},
+				}),
 				Feature: "emitter",
 			},
 		},

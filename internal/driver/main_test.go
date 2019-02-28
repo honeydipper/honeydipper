@@ -15,11 +15,9 @@ import (
 
 func TestMain(m *testing.M) {
 	if dipper.Logger == nil {
-		logFile, err := os.Create("test.log")
-		if err != nil {
-			panic(err)
-		}
-		dipper.GetLogger("test", "INFO", logFile, logFile)
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		defer f.Close()
+		dipper.GetLogger("test driver", "DEBUG", f, f)
 	}
 	os.Exit(m.Run())
 }

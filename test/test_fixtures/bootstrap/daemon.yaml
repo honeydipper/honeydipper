@@ -1,44 +1,43 @@
 ---
 drivers:
   daemon:
+    loglevel: DEBUG
+    featureMap:
+      global:
+        eventbus: redisqueue
     features:
       global:
-        - name: "driver:kms"
+        - name: "driver:gcloud-kms"
+          required: true
+        - name: "eventbus"
           required: true
       operator:
-        - name: "driver:gcloud"
+        - name: "driver:gcloud-gke"
         - name: "driver:kubernetes"
     drivers:
+      redisqueue:
+        name: redisqueue
+        type: builtin
+        handlerData:
+          shortName: redisqueue
       webhook:
         name: webhook
-        feature: webhook
-        services:
-          - receiver
-        data:
-          Type: go
-          Package: github.com/honeydipper/honeydipper/drivers/cmd/webhook
-      gcloud:
+        type: builtin
+        handlerData:
+          shortName: webhook
+      gcloud-gke:
         name: gcloud-gke
-        feature: rpc
-        services:
-          - engine
-        data:
-          Type: go
-          Package: github.com/honeydipper/honeydipper/drivers/cmd/gcloud-gke
-      kms:
+        type: builtin
+        handlerData:
+          shortName: gcloud-gke
+      gcloud-kms:
         name: gcloud-kms
-        feature: decryption
-        services:
-          - engine
-        data:
-          Type: go
-          Package: github.com/honeydipper/honeydipper/drivers/cmd/gcloud-kms
+        type: builtin
+        handlerData:
+          shortName: gcloud-kms
       kubernetes:
         name: kubernetes
-        feature: operator
-        services:
-          - engine
-        data:
-          Type: go
-          Package: github.com/honeydipper/honeydipper/drivers/cmd/kubernetes
+        type: builtin
+        handlerData:
+          shortName: kubernetes
 

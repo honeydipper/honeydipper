@@ -11,6 +11,7 @@ package driver
 import (
 	"os"
 	"os/exec"
+	"testing"
 )
 
 var fakeExecCommandCount = 0
@@ -26,4 +27,12 @@ func generateFakeExecCommand(fname string) func(string, ...string) *exec.Cmd {
 		return cmd
 	}
 	return fakeExecCommand
+}
+
+func TestExecCommandDummy(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+	// some code here to check arguments perhaps?
+	os.Exit(0)
 }

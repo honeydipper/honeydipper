@@ -74,18 +74,3 @@ type DataSet struct {
 	Repos     []RepoInfo             `json:"repos,omitempty"`
 	Workflows map[string]Workflow    `json:"workflows,omitempty"`
 }
-
-// DriverMeta holds the meta information about the driver itself.
-type DriverMeta struct {
-	Name     string
-	Feature  string
-	Services []string
-	Data     interface{}
-}
-
-// Driver is The parent class for all driver handlers.
-type Driver struct {
-	Type       string
-	Executable string
-	Arguments  []string
-}
