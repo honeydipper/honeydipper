@@ -60,6 +60,7 @@ drivers:
     service:
       type: LoadBalancer
       port: 8080
+      nodePort: 0
 
     # change to true if use ingress controller
     ingress:
