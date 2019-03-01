@@ -45,6 +45,7 @@ The following options are supported . See [values.yaml](./values.yaml) for more 
 | daemon.env | A list of environment variables as defined in a pod spec | |
 | drivers.webhook.service.type | The exposed service type for the webhook | `LoadBalancer` |
 | drivers.webhook.service.port | The exposed service port for the webhook, needs to match the driver configurations set in the configuration repo | 8080 |
+| drivers.webhook.service.nodePort | The exposed service node port for the webhook. If set to 0, Kubernetes will assign a random port. | 0 |
 | drivers.webhook.ingress.enabled | Use ingress controller for the webhook service | `false` |
 | drivers.webhook.ingress.annotations | If using ingress controllers, specify a map of anotations | |
 | drivers.webhook.ingress.path | If using ingress controllers, specify the path mapped to webhook | |
