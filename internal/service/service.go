@@ -20,7 +20,6 @@ import (
 	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/internal/driver"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/mitchellh/mapstructure"
 )
 
 // features known to the service for providing some functionalities
@@ -135,9 +134,6 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			}
 		}
 		if !ok {
-			driverName, ok = config.Defaults[feature]
-		}
-		if !ok {
 			panic("driver not defined for the feature")
 		}
 	}
@@ -148,31 +144,27 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 	if strings.HasPrefix(feature, "driver:") {
 		dynamicData = s.dynamicFeatureData[feature]
 	}
-	driverMeta, ok := config.BuiltinDrivers[driverName]
-	if !ok {
-		if cfgItem, ok := s.config.GetDriverData(fmt.Sprintf("daemon.drivers.%s", driverName)); ok {
-			err := mapstructure.Decode(cfgItem, &driverMeta)
-			if err != nil {
-				panic("invalid driver metadata")
-			}
-		} else {
-			panic("unable to get driver metadata")
-		}
+
+	var driverHandler driver.Handler
+	if driverMeta, ok := s.config.GetDriverData(fmt.Sprintf("daemon.drivers.%s", driverName)); ok {
+		driverHandler = driver.NewDriver(driverMeta.(map[string]interface{}))
+	} else {
+		panic("unable to get driver metadata")
 	}
 
 	dipper.Recursive(driverData, s.decryptDriverData)
 	dipper.Recursive(dynamicData, s.decryptDriverData)
 
-	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverMeta)
+	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverHandler.Meta())
 	driverRuntime := driver.Runtime{
 		Feature:     feature,
-		Meta:        &driverMeta,
 		Data:        driverData,
 		DynamicData: dynamicData,
 		State:       driver.DriverLoading,
+		Handler:     driverHandler,
 	}
 
-	if oldRuntime != nil && oldRuntime.State != driver.DriverFailed && reflect.DeepEqual(*oldRuntime.Meta, *driverRuntime.Meta) {
+	if oldRuntime != nil && oldRuntime.State != driver.DriverFailed && reflect.DeepEqual(*oldRuntime.Handler.Meta(), *driverHandler.Meta()) {
 		if reflect.DeepEqual(oldRuntime.Data, driverRuntime.Data) && reflect.DeepEqual(oldRuntime.DynamicData, driverRuntime.DynamicData) {
 			dipper.Logger.Infof("[%s] driver not affected: %s", s.name, driverName)
 		} else {
@@ -186,18 +178,11 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 	} else {
 		// cold reload
 		affected = true
-		switch Type, _ := dipper.GetMapDataStr(driverMeta.Data, "Type"); Type {
-		case "go":
-			godriver := driver.NewGoDriver(driverMeta.Data.(map[string]interface{}))
-			driverRuntime.Handler = &godriver
-			driverRuntime.Start(s.name)
-		default:
-			panic(fmt.Sprintf("unknown driver type %s", Type))
-		}
+		driverRuntime.Start(s.name)
 
 		s.setDriverRuntime(feature, &driverRuntime)
 		go func(s *Service, feature string, runtime *driver.Runtime) {
-			defer dipper.SafeExitOnError("[%s] driver runtime %s crash", s.name, runtime.Meta.Name)
+			defer dipper.SafeExitOnError("[%s] driver runtime %s crash", s.name, runtime.Handler.Meta().Name)
 			defer s.checkDeleteDriverRuntime(feature, runtime)
 			defer func() {
 				s.selectLock.Lock()
@@ -216,7 +201,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 				delete(daemon.Emitters, s.name)
 			}
 			go func(runtime *driver.Runtime) {
-				defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Meta.Name)
+				defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Handler.Meta().Name)
 				// allow 50 millisecond for the data to drain
 				time.Sleep(50 * time.Millisecond)
 				runtime.Output.Close()
@@ -275,9 +260,6 @@ func (s *Service) getFeatureList() map[string]bool {
 			featureList[featureName], _ = dipper.GetMapDataBool(feature, "required")
 		}
 	}
-	for _, feature := range config.RequiredFeatures[s.name] {
-		featureList[feature] = true
-	}
 	if s.DiscoverFeatures != nil {
 		s.dynamicFeatureData = s.DiscoverFeatures(s.config.DataSet)
 		for name := range s.dynamicFeatureData {
@@ -297,7 +279,7 @@ func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 			}
 			s.checkDeleteDriverRuntime(feature, nil)
 			go func(runtime *driver.Runtime) {
-				defer dipper.SafeExitOnError("[%s] unused runtime %s output is already closed", s.name, runtime.Meta.Name)
+				defer dipper.SafeExitOnError("[%s] unused runtime %s output is already closed", s.name, runtime.Handler.Meta().Name)
 				// allow 50 millisecond for the data to drain
 				time.Sleep(50 * time.Millisecond)
 				runtime.Output.Close()
@@ -427,7 +409,7 @@ func (s *Service) serviceLoop() {
 					if emitter, ok := daemon.Emitters[s.name]; ok {
 						emitter.CounterIncr("honey.honeydipper.local.message", []string{
 							"service:" + s.name,
-							"driver:" + runtime.Meta.Name,
+							"driver:" + runtime.Handler.Meta().Name,
 							"direction:inbound",
 							"channel:" + msg.Channel,
 							"subject:" + msg.Subject,
@@ -452,7 +434,7 @@ func (s *Service) serviceLoop() {
 
 func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
 	defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-	expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.Meta.Name)
+	expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.Handler.Meta().Name)
 	if expects, ok := s.deleteExpect(expectKey); ok {
 		for _, f := range expects {
 			go func(f ExpectHandler) {

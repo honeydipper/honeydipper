@@ -43,10 +43,14 @@ func intTestDaemonStartup(t *testing.T) {
 		}
 		dipper.GetLogger("test", "INFO", logFile, logFile)
 	}
+	workingBranch, ok := os.LookupEnv("CIRCLE_BRANCH")
+	if !ok {
+		workingBranch = "master"
+	}
 	cfg := config.Config{
 		InitRepo: config.RepoInfo{
 			Repo:   "..",
-			Branch: "master",
+			Branch: workingBranch,
 			Path:   "/test/test_fixtures/bootstrap",
 		},
 	}

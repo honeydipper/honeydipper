@@ -6,9 +6,14 @@
 
 package driver
 
-import (
-	"github.com/honeydipper/honeydipper/internal/config"
-)
+// Meta holds the meta information about the driver itself.
+type Meta struct {
+	Name        string
+	Type        string
+	Executable  string
+	Arguments   []string
+	HandlerData map[string]interface{}
+}
 
 // DriverStates represents driver states.
 const (
@@ -17,11 +22,3 @@ const (
 	DriverAlive
 	DriverFailed
 )
-
-// Handler is an interface that a driver implement to manage the lifecycle of itself.
-type Handler interface {
-	// Provides access to the driver definition data.
-	Driver() *config.Driver
-	// This will be executed before the driver process is started.
-	PreStart(string, *Runtime)
-}

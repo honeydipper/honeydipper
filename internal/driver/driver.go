@@ -7,40 +7,58 @@
 package driver
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 
-	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/mitchellh/mapstructure"
 )
+
+// Handler provides common functions for handling a driver
+type Handler interface {
+	Acquire()
+	Prepare()
+	Meta() *Meta
+}
 
 // replace the func variable with mock during testing
 var execCommand = exec.Command
 
 // NewDriver creates a driver object to represent a child process.
-func NewDriver(data map[string]interface{}) config.Driver {
-	cmd, ok := data["Executable"].(string)
-	if !ok {
-		cmd = ""
+func NewDriver(data map[string]interface{}) Handler {
+	var meta Meta
+	err := mapstructure.Decode(data, &meta)
+	if err != nil {
+		panic(fmt.Errorf("malformat driver meta %+v %+v", data, err))
 	}
 
-	args, ok := data["Arguments"].([]string)
-	if !ok {
-		args = []string{}
+	if meta.Name == "" {
+		panic(fmt.Errorf("driver name missing %+v", meta))
 	}
 
-	drv := config.Driver{
-		Executable: cmd,
-		Arguments:  args,
+	var dh Handler
+
+	switch meta.Type {
+	case "builtin":
+		dh = NewBuiltinDriver(&meta)
+	default:
+		panic(fmt.Errorf("unsupported driver type %s", meta.Type))
 	}
-	return drv
+
+	dh.Acquire()
+	dh.Prepare()
+
+	if meta.Executable == "" {
+		panic(fmt.Errorf("executable not defined for driver %s", meta.Name))
+	}
+	return dh
 }
 
 // Runtime contains the runtime information of the running driver.
 type Runtime struct {
-	Meta        *config.DriverMeta
 	Data        interface{}
 	DynamicData interface{}
 	Feature     string
@@ -57,10 +75,9 @@ type Runtime struct {
 func (runtime *Runtime) Start(service string) {
 	runtime.Service = service
 
-	runtime.Handler.PreStart(service, runtime)
+	m := runtime.Handler.Meta()
 
-	args := append([]string{service}, runtime.Handler.Driver().Arguments...)
-	run := execCommand(runtime.Handler.Driver().Executable, args...)
+	run := execCommand(m.Executable, append([]string{service}, m.Arguments...)...)
 	if input, err := run.StdoutPipe(); err != nil {
 		dipper.Logger.Panicf("[%s] Unable to link to driver stdout %v", service, err)
 	} else {
@@ -68,11 +85,13 @@ func (runtime *Runtime) Start(service string) {
 		runtime.Stream = make(chan dipper.Message, 10)
 		go runtime.fetchMessages()
 	}
+
 	if output, err := run.StdinPipe(); err != nil {
 		dipper.Logger.Panicf("[%s] Unable to link to driver stdin %v", service, err)
 	} else {
 		runtime.Output = output
 	}
+
 	run.Stderr = os.Stderr
 	run.ExtraFiles = []*os.File{os.Stdout} // giving child process stdout for logging
 	if err := run.Start(); err != nil {
@@ -106,7 +125,7 @@ func (runtime *Runtime) SendMessage(msg *dipper.Message) {
 		if emitter, ok := daemon.Emitters[runtime.Service]; ok {
 			emitter.CounterIncr("honey.honeydipper.local.message", []string{
 				"service:" + runtime.Service,
-				"driver:" + runtime.Meta.Name,
+				"driver:" + runtime.Handler.Meta().Name,
 				"direction:outbound",
 				"channel:" + msg.Channel,
 				"subject:" + msg.Subject,
@@ -125,7 +144,7 @@ func (runtime *Runtime) fetchMessages() {
 			defer dipper.SafeExitOnError(
 				"failed to fetching messages from driver %s.%s",
 				runtime.Service,
-				runtime.Meta.Name,
+				runtime.Handler.Meta().Name,
 			)
 			defer dipper.CatchError(io.EOF, func() { quit = true })
 			for !quit && !daemon.ShuttingDown {
@@ -134,5 +153,5 @@ func (runtime *Runtime) fetchMessages() {
 			}
 		}()
 	}
-	dipper.Logger.Warningf("[%s-%s] driver close for business", runtime.Service, runtime.Meta.Name)
+	dipper.Logger.Warningf("[%s-%s] driver closed for business", runtime.Service, runtime.Handler.Meta().Name)
 }
