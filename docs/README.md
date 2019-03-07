@@ -1,6 +1,12 @@
 # Honeydipper Guides
 
- * [Architecture/Design](../README.md)
+[![CircleCI](https://circleci.com/gh/honeydipper/honeydipper.svg?style=svg)](https://circleci.com/gh/honeydipper/honeydipper)
+
+<img src="https://raw.githubusercontent.com/honeydipper/honeydipper/master/logo/log_medium.png" width="100">
+
+---
+
+ * [Architecture/Design](https://github.com/honeydipper/honeydipper)
  * Developers
    * [Driver Developer Guide](./developer.md)
  * Administrators
