@@ -53,11 +53,13 @@ func decrypt(msg *dipper.Message) {
 	}
 	client, err := kms.NewKeyManagementClient(ctx)
 	if err != nil {
-		panic(errors.New("failed to create kms client"))
+		dipper.Logger.Warning("failed to create kms client")
+		panic(err)
 	}
 	resp, err := client.Decrypt(ctx, req)
 	if err != nil {
-		panic(errors.New("failed to decrypt"))
+		dipper.Logger.Warning("failed to decrypt")
+		panic(err)
 	}
 
 	msg.Reply <- dipper.Message{
