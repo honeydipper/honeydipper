@@ -57,33 +57,59 @@ spec:
           image: "{{ .Values.daemon.image.repository }}:{{ .Values.daemon.image.tag }}"
           {{- end }}
           imagePullPolicy: {{ .Values.daemon.image.pullPolicy }}
-    {{- with .Values.daemon.args }}
+          {{- with .Values.daemon.args }}
           args:
             {{ toYaml . | indent 12 | trim }}
-    {{- end }}
-    {{- with .Values.daemon.env }}
+          {{- end }}
+          {{- with .Values.daemon.env }}
           env:
-            {{ toYaml . | indent 12 | trim }}
-    {{- end }}
-    {{- with .Values.daemon.volumeMounts }}
-          volumeMounts:
-            {{ toYaml . | indent 12 | trim }}
-    {{- end }}
+            {{- range $envName, $envValue := . }}
+            - name: {{ $envName }}
+              {{- if kindIs "string" $envValue }}
+              value: {{ $envValue }}
+              {{- else }}
+              valueFrom:
+                {{ toYaml $envValue | indent 16 | trim }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.daemon.resources }}
           resources:
             {{ toYaml .Values.daemon.resources | indent 12 | trim }}
-    {{- with .Values.daemon.nodeSelector }}
+          {{- end }}
+          {{- with .Values.daemon.volumes }}
+          volumeMounts:
+            {{- range $vName, $vMount := . }}
+            - name: {{ $vName }}
+              {{ omit $vMount "spec" | toYaml | indent 14 | trim }}
+            {{- end }}
+          {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.drivers.webhook.service.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.drivers.webhook.service.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+      {{- with .Values.daemon.nodeSelector }}
       nodeSelector:
         {{ toYaml . | indent 8 | trim }}
-    {{- end }}
-    {{- with .Values.daemon.affinity }}
+      {{- end }}
+      {{- with .Values.daemon.affinity }}
       affinity:
         {{ toYaml . | indent 8 | trim }}
-    {{- end }}
-    {{- with .Values.daemon.tolerations }}
+      {{- end }}
+      {{- with .Values.daemon.tolerations }}
       tolerations:
         {{ toYaml . | indent 8 | trim }}
-    {{- end }}
-    {{- with .Values.daemon.volumes }}
+      {{- end }}
+      {{- with .Values.daemon.volumes }}
       volumes:
-        {{ toYaml . | indent 8 | trim }}
-    {{- end }}
+        {{- range $vName, $vMount := . }}
+        - name: {{ $vName }}
+          {{ index $vMount "spec" | toYaml | indent 10 | trim }}
+        {{- end }}
+      {{- end }}
