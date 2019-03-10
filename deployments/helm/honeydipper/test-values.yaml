@@ -1,17 +1,4 @@
 daemon:
-  # use source code in chart until we have the docker image built
-  useSource: true
   env:
-    - name: REPO
-      # this repo
-      value: https://github.com/honeydipper/honeydipper
-    - name: BOOTSTRAP_PATH
-      value: /deployments/helm/honeydipper/test_fixtures
-
-drivers:
-  webhook:
-    service:
-      type: ClusterIP
-  redis:
-    # use this only for testing
-    local: true
+    REPO: https://github.com/honeydipper/honeydipper
+    BOOTSTRAP_PATH: /deployments/helm/honeydipper/test_fixtures

@@ -3,3 +3,4 @@ appVersion: "latest"
 description: An event driven orchestration system
 name: honeydipper
 version: 0.1.2
+icon: "https://raw.githubusercontent.com/honeydipper/honeydipper/master/logo/log_medium.png"
