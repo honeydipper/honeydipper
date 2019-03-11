@@ -153,10 +153,19 @@ func sendRequest(m *dipper.Message) {
 		defer resp.Body.Close()
 	}
 
-	m.Reply <- dipper.Message{
-		Payload: extractHTTPResponseData(resp),
+	response := extractHTTPResponseData(resp)
+	statusCode, _ := strconv.Atoi(response["status_code"].(string))
+	ret := dipper.Message{
+		Payload: response,
 		IsRaw:   false,
 	}
+	if statusCode >= 400 {
+		ret.Labels = map[string]string{
+			"error": fmt.Sprintf("Error: got status code: %d", statusCode),
+		}
+	}
+
+	m.Reply <- ret
 }
 
 func extractHTTPResponseData(r *http.Response) map[string]interface{} {
