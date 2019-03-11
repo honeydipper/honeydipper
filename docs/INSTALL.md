@@ -57,10 +57,8 @@ To pass the information about the bootstrap config repo to Honeydipper daemon, t
 ---
 daemon:
   env:
-    - name: REPO
-      value: git@github.com/example/honeydipper-config.git
-    - name: HONEY_SSH_KEY
-      valueFrom:
+    REPO: git@github.com/example/honeydipper-config.git
+    HONEY_SSH_KEY:
         secretKeyRef:
           name: example-secret
           key: id_rsa

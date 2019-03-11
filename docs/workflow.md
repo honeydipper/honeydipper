@@ -216,7 +216,7 @@ Repeat the same `work` for the specified number of times, the `work` should be a
 
 For example:
 
-```yaml
+```
 rules:
   - when:
       source:
@@ -246,7 +246,7 @@ Repeat the same workflow in `work` for each of the item listed in the `items`. W
 
 For example:
 
-```yaml
+```
 workflows:
   tell_my_favorite:
     content: foreach
@@ -271,7 +271,7 @@ Same as the `pipe` version of the `foreach`, `foreach_parallel` will repeat the 
 
 For example:
 
-```yaml
+```
 workflows:
   notify_all:
     content: foreach
