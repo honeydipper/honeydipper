@@ -28,8 +28,8 @@ var log *logging.Logger
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
-		fmt.Printf("    This driver supports operator service")
-		fmt.Printf("  This program provides honeydipper with capability of access webhooks")
+		fmt.Printf("  This driver supports operator service\n")
+		fmt.Printf("  This driver is used for Honeydipper to make outgoing web requests\n")
 	}
 }
 
