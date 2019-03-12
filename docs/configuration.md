@@ -16,15 +16,26 @@
 
 ## Topology and loading order
 
-As mentioned in the [Architecture/Design](../README.md), Honeydipper requires almost no local configuration to bootstrap, only requries a few environment variable to point it towards the git repo where the bootstrap configurations are loaded from. The bootstrap repo can load other repos using `repos` section in any of the loaded yaml files. Inside every repo, Honeydipper will first load the `init.yaml`, and then load all the yaml files under `includes` section. Any of the files can also use a `includes` section to load even more files, and so on.
+As mentioned in the [Architecture/Design](../README.md), Honeydipper requires almost no local configuration to bootstrap; it only requires a
+few environment variables to point it towards the git repo from which the bootstrap configurations are loaded. The bootstrap repo can load
+other repos using the `repos` section in any of the loaded yaml files. Inside every repo, Honeydipper will first load the `init.yaml`, and
+then load all the yaml files under `includes` section. Any of the files can also use a `includes` section to load even more files, and so
+on.
 
-Inside every repo, when loading files, an including file will be loaded after all the files that it includes are loaded. So the including file can override anything in the included files. Similarly, repos are loaded after their dependency repos, so they can override anything in the depended repo.
+Inside every repo, when loading files, an including file will be loaded after all the files that it includes are loaded. So the including
+file can override anything in the included files. Similarly, repos are loaded after their dependency repos, so they can override anything in
+the depended repo.
 
-One of the key selling point of Honeydipper is the ability to reuse and share. The drivers, systems, workflows and rules can all be packaged into repos then shared among projects, teams and organizations. Overtime, we are expecting to see a number of reusable public config repos contributed and maintained by communities. The seed of the repos is the [honeydipper-config-essentials](https://github.com/honeydipper/honeydipper-config-essentials) repo, and the reference document can be found at [here](https://honeydipper.github.io/honeydipper-config-essentials/).
+One of the key selling point of Honeydipper is the ability to reuse and share. The drivers, systems, workflows and rules can all be packaged
+into repos then shared among projects, teams and organizations. Over time, we are expecting to see a number of reusable public config repos
+contributed and maintained by communities. The seed of the repos is the
+[honeydipper-config-essentials](https://github.com/honeydipper/honeydipper-config-essentials) repo, and the reference document can be found
+[here](https://honeydipper.github.io/honeydipper-config-essentials/).
 
 ## Data Set
 
-Every file contains a `DataSet`. In the end, all the files in all the repos will be merged into a final `DataSet`. A `DataSet` should contain some of the below mentioned sections. See [a sample config file](../configs/sample-init.yaml) for examples.
+Every file contains a `DataSet`. In the end, all the files in all the repos will be merged into a final `DataSet`. A `DataSet` should
+contain some of the below-mentioned sections. See [a sample config file](../configs/sample-init.yaml) for examples.
 
 ```go
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.
@@ -38,7 +49,9 @@ type DataSet struct {
 }
 ```
 
-While it is possible to fit everything into a single file, it is recommended to organzie your configurations into smaller chunks in a way that each chunk contains only relevant settings. For example, a file can define just a system and all its functions and triggers. Or, a file can define all the infomation about a driver. Another example would be to define a workflow in a file separately.
+While it is possible to fit everything into a single file, it is recommended to organize your configurations into smaller chunks in a way
+that each chunk contains only relevant settings. For example, a file can define just a system and all its functions and triggers. Or, a file
+can define all the infomation about a driver. Another example would be to define a workflow in a file separately.
 
 ## Repos
 
@@ -66,7 +79,9 @@ repos:
 
 ## Drivers
 
-`drivers` section provides driver specific config data, such as webhook listening port, redis connections etc. It is a map from the names of the drivers to their data. The data element and structure of the driver data is only meaningful to the driver itself.  Honeydipper just pass the data as-is, a `map[string]interface{}` in `go`.
+The `drivers` section provides driver specific config data, such as webhook listening port, Redis connections etc. It is a map from the
+names of the drivers to their data. The data element and structure of the driver data is only meaningful to the driver itself. Honeydipper
+just passes the data as-is, a `map[string]interface{}` in `go`.
 
 ### Daemon configuration
 
@@ -131,7 +146,10 @@ type Function struct {
 }
 ```
 
-A system can extend another system to inherit data, triggers and functions, and then can override any of the inherited data with its own definition.  We can create some abstract systems that contains part of the data that can be shared by multiple child systems. A `Function` can either be defined using `driver` and `rawAction` or inherit definition from another `Function` by specifying a `target`. Similarly, a `Trigger` can be defined using `driver` and `rawEvent` or inherit definition from another `Trigger` using `source`.
+A system can extend another system to inherit data, triggers and functions, and then can override any of the inherited data with its own
+definition.  We can create some abstract systems that contains part of the data that can be shared by multiple child systems. A `Function`
+can either be defined using `driver` and `rawAction` or inherit definition from another `Function` by specifying a `target`. Similarly, a
+`Trigger` can be defined using `driver` and `rawEvent` or inherit definition from another `Trigger` using `source`.
 
 See the [sample file](../configs/sample-init.yaml) for examples.
 
