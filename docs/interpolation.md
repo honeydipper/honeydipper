@@ -118,7 +118,7 @@ workflow definitions(data, content), workflow conidtion, and function parameters
 Unlike in typical templating languages, where templates were executed before yaml rendering, Honeydipper renders all configuration yaml at
 boot time or when reloading, and only executes the template when the particular content is needed. This allows Honeydipper to provide
 runtime data to the template when it is executed. However, that also means that templates can only be stored in strings. You can't wrap yaml
-tags in templates, unless you store the yaml as text like in the example for `:yaml:` prefix interpolation. Also, you can't use `{{` at the
+tags in templates, unless you store the yaml as text like in the example for `:yaml:` prefix interpolation. Also, you can't use <!-- {% raw %} -->`{{`<!-- {% endraw %} --> at the
 begining of a string without quoting, because the yaml renderer may treat it as the start of a data structure.
 
 ### go template
