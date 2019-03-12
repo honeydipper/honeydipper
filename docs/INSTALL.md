@@ -58,7 +58,7 @@ To pass the information about the bootstrap config repo to Honeydipper daemon, t
 daemon:
   env:
     REPO: git@github.com/example/honeydipper-config.git
-    HONEY_SSH_KEY:
+    DIPPER_SSH_KEY:
         secretKeyRef:
           name: example-secret
           key: id_rsa
@@ -90,7 +90,7 @@ You should see the chart file `honeydipper-x.y.z.tgz` in your current directory.
 
 #### Create your own manifest file
 
-You can use the below manifest file as a template to create your own. Note that, the basic information needed, besides the docker image for Honeydipper daemon, is the same, `REPO` and `HONEY_SSH_KEY`.
+You can use the below manifest file as a template to create your own. Note that, the basic information needed, besides the docker image for Honeydipper daemon, is the same, `REPO` and `DIPPER_SSH_KEY`.
 
 ```yaml
 ---
@@ -112,7 +112,7 @@ spec:
           env:
             - name: REPO
               value: git@github.com/example/honeydipper-config.git
-            - name: HONEY_SSH_KEY
+            - name: DIPPER_SSH_KEY
               valueFrom:
                 secretKeyRef:
                   namne: example-secret
@@ -139,7 +139,7 @@ selector:
 ### Running as docker container
 
 ```bash
-docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "HONEY_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper:latest
+docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "DIPPER_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper:latest
 ```
 
 Replace the repo url with your own, and speicify the private key path for accessing the private repo remotely.
@@ -150,9 +150,9 @@ Assuming you have go 1.11 or up installed, you can use `go get` to download and 
 
 ```bash
 go get -u github.com/honeydipper/honeydipper.git
-REPO=git@github.com/example/honeydipper-config.git HONEY_SSH_KEY="$(cat ~/.ssh/id_rsa)" honeydipper
+REPO=git@github.com/example/honeydipper-config.git DIPPER_SSH_KEY="$(cat ~/.ssh/id_rsa)" honeydipper
 ```
-You don't have to specify `HONEY_SSH_KEY` if the key is used by your ssh client by default.
+You don't have to specify `DIPPER_SSH_KEY` if the key is used by your ssh client by default.
 
 Alternatively, you can follow the [developer setup guide](./howtos/setup_local.md) the download and build.
 
