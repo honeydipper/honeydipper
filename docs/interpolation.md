@@ -19,13 +19,18 @@
 
 <!-- tocstop -->
 
-Honeydipper functions and workflows are dynamic in nature. Parameters, system data, workflow data can be overridden at various phases, and we can use interpolation to tweak the function calls to pick up the parameters dynamically, or even changing the flow of the execution at runtime.
+Honeydipper functions and workflows are dynamic in nature. Parameters, system data, workflow data can be overridden at various phases, and
+we can use interpolation to tweak the function calls to pick up the parameters dynamically, or even to change the flow of execution at
+runtime.
 
 ## Prefix interpolation
 When a string value starts with certain prefixes, Honeydipper will transform the value based on the function specified by the prefix.
 
 ### *`ENC[driver,ciphertext/base64==]`* Encrypted content
-Encrypted contents are usually kept in system data. The value should be specified in `eyaml` style, start with `ENC[` prefix. Following the prefix is the name of the driver that can be used for decrypting the content. Following the driver name is a "," and the base64 encoded ciphertext.
+
+Encrypted contents are usually kept in system data. The value should be specified in `eyaml` style, start with `ENC[` prefix. Following the
+prefix is the name of the driver that can be used for decrypting the content. Following the driver name is a "," and the base64 encoded
+ciphertext.
 
 Can be used in system data, event conditions.
 
@@ -38,7 +43,9 @@ systems:
 ```
 
 ### *:regex:* Regular expression pattern
-yaml doesn't have native support for regular expression. When Honeydipper detects a string value starts with this prefix, it will interpret the following string as a regular expresstion pattern used for matching the conditions.
+
+yaml doesn't have native support for regular expressions. When Honeydipper detects a string value starts with this prefix, it will interpret
+the following string as a regular expresstion pattern used for matching the conditions.
 
 Can be used in system data, event conditions.
 
@@ -54,7 +61,9 @@ rules:
 ```
 
 ### *:yaml:* Building data structure with yaml
-At first look, It may seem odd to have this prefix, since the config is yaml to begin with. In some cases, combining with the inline go template, we can dynamically generate complex yaml structure that we can't write at config time.
+
+At first look, It may seem odd to have this prefix, since the config is yaml to begin with. In some cases, combining with the inline Go
+template, we can dynamically generate complex yaml structure that we can't write at config time.
 
 Can be used in workflow definitions(data, content), workflow condition, function parameters.
 
@@ -79,7 +88,10 @@ workflows:
 ```
 
 ### *:path:* Referencing context data with given path
-When Honeydipper executes a `workflow`, some data is kept in the context. We can use either the `:path:` prefix or the inline go template to fetch the context data. The benefit of using `:path:` prefix is that we can get the data as a structure such as map or list instead of a string representation.
+
+When Honeydipper executes a `workflow`, some data is kept in the context. We can use either the `:path:` prefix or the inline go template to
+fetch the context data. The benefit of using `:path:` prefix is that we can get the data as a structure such as map or list instead of a
+string representation.
 
 Can be used in workflow definitions(data, content), workflow condition, function parameters.
 
@@ -94,12 +106,19 @@ workflows:
 
 ## Inline go template
 
-Besides the `:path:` prefix, we can also use inline go template to access the workflow context data. The inline go template can be used in workflow definitions(data, content), workflow conidtion, and function parameters.
+Besides the `:path:` prefix, we can also use inline go template to access the workflow context data. The inline go template can be used in
+workflow definitions(data, content), workflow conidtion, and function parameters.
 
 ### Caveat: What does "inline" mean?
-Not like usual templating, where templates were executed before yaml rendering, Honeydipper renders all configuration yaml at boot time and reloading time, and only executes the template when the particular content is needed. This allows Honeydipper to provide runtime data to the template when it is executed. However, that also means that templates can only be stored in strings. You can't wrap yaml tag intemplates, unless you store the yaml as text like in the example for `:yaml:` prefix interpolation. Also, you can't use `{{` at the begining of a string without quoting, because yaml renderer may treat it as the start of a data structure.
+
+Unlike in typical templating languages, where templates were executed before yaml rendering, Honeydipper renders all configuration yaml at
+boot time or when reloading, and only executes the template when the particular content is needed. This allows Honeydipper to provide
+runtime data to the template when it is executed. However, that also means that templates can only be stored in strings. You can't wrap yaml
+tags in templates, unless you store the yaml as text like in the example for `:yaml:` prefix interpolation. Also, you can't use `{{` at the
+begining of a string without quoting, because the yaml renderer may treat it as the start of a data structure.
 
 ### go template
+
 Here are some available resources for go template:
  * How to use go template? [https://golang.org/pkg/text/template/]
  * [sprig functions](http://masterminds.github.io/sprig/)
@@ -107,7 +126,9 @@ Here are some available resources for go template:
 ### Functions offerred by Honeydipper
 
 ### fromPath
-Like the `:path:` prefix interpolation, the `fromPath` function takes a parameter as path and return the data the path points to. It is similar to the `index` built in function, but uses a more condensed path expression.
+
+Like the `:path:` prefix interpolation, the `fromPath` function takes a parameter as path and return the data the path points to. It is
+similar to the `index` built in function, but uses a more condensed path expression.
 
 For example:
 ```yaml

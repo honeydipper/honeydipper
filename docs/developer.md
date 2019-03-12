@@ -192,13 +192,13 @@ func MyFunc(m *dipper.Message) {
 
 ## Driver Options
 
-As mentioned earlier, the driver receives the options/configuratins from daemon automatically through the
+As mentioned earlier, the driver receives the options / configurations from the daemon automatically through the
 helper object. As the data is stored in hashmap, the helper method *driver.GetOption* will accept a path and return an
-*Interface()* ojbect. The path is a dot separated key names traverse into the data structure. If the returned data is
+*Interface()* ojbect. The path consists of the dot-delimited key names. If the returned data is
 also a map, you can use *dipper.GetMapData* or *dipper.GetMapDataStr* to retrive information from them as well.
 If you are sure the data is a *string*, you can use *driver.GetOptionStr* to directly receive it as *string*.
 
-The helper functions follow the golang idiologic style, that returns the value along with a bool to indicate if it is
+The helper functions follow the golang convention of returning the value along with a bool to indicate if it is
 acceptable or not. See below for example.
 ```go
   NewAddr, ok := driver.GetOptionStr("data.Addr")
@@ -224,7 +224,7 @@ drivers:
 
 ## Collapsed Events
 
-Usually an event receiver driver just fires raw events to the daemon, it doesn't have to know what the daemon is expecting. There are some
+Usually an event receiver driver just fires raw events to the daemon; it doesn't have to know what the daemon is expecting. There are some
 exceptions, for example, the webhook driver needs to know if the daemon is expecting some kind of webhook so it can decide what response to
 send to the web request sender, 200, 404 etc. A collapsed event is an event definition that has all the conditions, including the conditions
 from events that the current event is inheritting from. Dipper sends the collapsed events to the driver in the options with key name
@@ -276,7 +276,7 @@ function to determine if a rawevent is triggering events defined in systems.
 
 ## Provide Commands
 
-A command is a raw function that provides response to an event. The work flow engine service sends "eventbus:command" messages to operator
+A command is a raw function that provides response to an event. The workflow engine service sends "eventbus:command" messages to the operator
 service, and operator service will map the message to the corresponding driver and raw function, then forward the message to the
 corresponding driver with all the parameters as a "collapsed function". The driver helper provides ways to map raw actions to the function
 and handle the communications to back to the daemon.
@@ -304,17 +304,17 @@ Note that the reply is sent in a go routine; it is useful if you want to make yo
 
 ## Publishing and packaging
 
-To make it easier for users to adopt your driver, and use it efficiently. You can create a public git repo and let your user
-to load some predefined configurations to jump start the integration.  The configuration in the repo should usually include
+To make it easier for users to adopt your driver, and use it efficiently, you can create a public git repo and let users
+load some predefined configurations to jumpstart the integration.  The configuration in the repo should usually include:
 
  * `driver` definition and `fearture` loading under the `daemon` section;
  * some wrapper `system` to define some `trigger`, `function` that can be used in rules;
  * some `workflow` to help users use the `function`s, see [Workflow composing guide](./workflow.md) for detail
 
-It is recommended to comment the confiurations thoroughly with examples and use [Natural Docs](https://www.naturaldocs.org/) to
+It is recommended to comment the configuration thoroughly with examples and use [Natural Docs](https://www.naturaldocs.org/) to
 generate reference documents so the users can learn how to use your integration.
 
-For example, hypothetically, I created an integration for a z-wave switch, the configuration might look like below.
+For example, I created a hypothetical integration for a z-wave switch, the configuration might look like:
 ```yaml
 ---
 daemon:

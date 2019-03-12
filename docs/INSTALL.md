@@ -19,9 +19,9 @@
  * A running redis server
 
 ## Step 1: Prepare your bootstrap repo
-As described in the [architecture/design document](../README.md), Honeydipper loads configurations directly from one or many git repos. You can put the repo locally on the machine or pod where Honeydipper is running, or you can put the repos in github, bitbucket or gitlab etc, or even mix them together. Make sure you configuration repo is private, and protected from unauthorized changes. Although, you can store all the sensitive information in encrypted form in the repo, you don't want this to become a target.
+As described in the [architecture/design document](../README.md), Honeydipper loads configurations directly from one or many git repos. You can put the repo locally on the machine or pod where Honeydipper is running, or you can put the repos in GitHub, Bitbucket or Gitlab etc, or even mix them together. Make sure you configuration repo is private, and protected from unauthorized changes. Although, you can store all the sensitive information in encrypted form in the repo, you don't want this to become a target.
 
-Inside your repo, you will need a `init.yaml` file. It is the main entry point that Honeydipper daemon seeks in each repo. See the [Configuration Guide](./configuration.md) for detailed explanation. Below is an example of minimum required data to get the daemon bootstrapped.
+Inside your repo, you will need a `init.yaml` file. It is the main entrypoint that Honeydipper daemon seeks in each repo. See the [Configuration Guide](./configuration.md) for detailed explanation. Below is an example of the minimum required data to get the daemon bootstrapped:
 
 ```yaml
 # init.yaml
@@ -132,7 +132,7 @@ spec:
   - name: webhook
     targetPort: 8080
     port: 8080
-`selector:
+selector:
     app: honeydipper-daemon
 ```
 
@@ -158,5 +158,5 @@ Alternatively, you can follow the [developer setup guide](./howtos/setup_local.m
 
 ## Step 3: Hacking away
 
-That's it, your Honeydipper daemon is bootstrapped. You can start to configure it to suite your need. The daemon is pulling your config repos every minute, and will reload when changes are detected. See the [Honeydipper Guides](./README.md) for more documents, including a way to setup github push event-driven reload.
+That's it &mdash; your Honeydipper daemon is bootstrapped. You can start to configure it to suit your needs. The daemon pulls your config repos every minute, and will reload when changes are detected. See the [Honeydipper Guides](./README.md) for more documents, including a way to setup GitHub push event-driven reload.
 
