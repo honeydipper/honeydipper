@@ -68,6 +68,7 @@ template, we can dynamically generate complex yaml structure that we can't write
 Can be used in workflow definitions(data, content), workflow condition, function parameters.
 
 For example:
+<!-- {% raw %} -->
 ```yaml
 workflows:
   foreach_parallel:
@@ -86,6 +87,7 @@ workflows:
                 current: "{{ . }}"
             {{- end }}
 ```
+<!-- {% endraw %} -->
 
 ### *:path:* Referencing context data with given path
 
@@ -96,6 +98,7 @@ string representation.
 Can be used in workflow definitions(data, content), workflow condition, function parameters.
 
 For example:
+<!-- {% raw %} -->
 ```yaml
 workflows:
   next_if_success:
@@ -103,6 +106,7 @@ workflows:
     condition: '{{ eq .labels.status "success" }}'
     content: :path:wfdata.work
 ```
+<!-- {% endraw %} -->
 
 ## Inline go template
 
@@ -131,6 +135,7 @@ Like the `:path:` prefix interpolation, the `fromPath` function takes a paramete
 similar to the `index` built in function, but uses a more condensed path expression.
 
 For example:
+<!-- {% raw %} -->
 ```yaml
 systems:
   opsgenie:
@@ -157,6 +162,7 @@ rules:
       parameters:
         alertIdPath: event.json.alert.Id
 ```
+<!-- {% endraw %} -->
 
 ## Escaping function parameter interpolation
 Honeydipper executes the inline go templates and run `:path:`, `:yaml:` interpolations at two places:
@@ -166,7 +172,8 @@ Honeydipper executes the inline go templates and run `:path:`, `:yaml:` interpol
 When a workflow starts, Honeydipper workflow engine needs all information to determine how the workflow should be executed, so the `data`, `content` and `condition` fields are interpolated. It will not interpolate/execute the function parameters, because the contextual data for the function call has not been finalized yet, and it may very well be overridden by the children workflows. So, we want to leave the function parameters to the `operator` service to interpolate when all the data is available and finalized. Sometimes, we want to define some abstract workflows, such as `repeat` `foreach`, where the actual workflow content including the parameters is passed as workflow data, we will need to escape the parameters interpolation, if used, so workflow engine won't interpolate them too early.
 
 For example:
-```
+<!-- {% raw %} -->
+```yaml
 rules:
   - when:
       source:
@@ -190,6 +197,7 @@ rules:
               # see below how to escape the interpolation
               channel: '{{ "{{ .wfdata.current }}" }}'
 ```
+<!-- {% endraw %} -->
 
 ## Workflow contextual data
 Depending on where the interpolation is executed, 1) workflow engine, 2) operator (function parameters), the available contextual data is slightly different.

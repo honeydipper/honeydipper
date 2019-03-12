@@ -107,7 +107,7 @@ rules:
 When the `type` is 'if', an additional `condition` field is required. The `content` should be a list of at most two child workflows. If the value of `condition` field is "truy", such as 1, "true", "True" etc., the first child workflow will be executed, otherwise, the second child workflow will be executed if present. To use interpolation in the `condition` field see the [Interpoation Guide](./interpolation.md) for detail.
 
 For example:
-
+<!-- {% raw %} -->
 ```yaml
 rules:
   - when:
@@ -124,12 +124,14 @@ rules:
               system: server_room_ac
               function: turn_on
 ```
+<!-- {% endraw %} -->
 
 ### Pipe workflow
 When the `type` is set to 'pipe', the `content` will be interpreted as a list of child workflows. The child workflows will be executed one by one in the order listed. The return information of the previous child workflow will be available to the next children through interpolation. See [Interpoation Guide](./interpolation.md) for detail.
 
 For example:
 
+<!-- {% raw %} -->
 ```yaml
 rules:
   - when:
@@ -149,6 +151,7 @@ rules:
           content:
             - content: run_deploy
 ```         
+<!-- {% endraw %} -->
 
 ### Parallel workflow
 Similiar to `pipe` workflow, the `content` of `parallel` workflow is also a list of child workflows. The child workflows will be executed in parallel.
@@ -170,6 +173,7 @@ workflows:
 
 For example:
 
+<!-- {% raw %} -->
 ```yaml
 workflows:
   slashcommands:
@@ -183,12 +187,14 @@ workflows:
       "*":
         content: show_unknown_command_err
 ```
+<!-- {% endraw %} -->
 
 ### Suspend workflow
 A workflow can be suspended to wait for manual approval or manual intervention. It is useful in conjunction with slack (or other chat system) interactive components, web dashboards, etc. to inject manual interaction into the automation. The `content` should be a globally unique string serving as an identifer for the workflow.  The workflow will continue when a message with "resume_session" subject carries the identifier in `key` field of the payload.
 
 For example
 
+<!-- {% raw %} -->
 ```yaml
 workflows:
   confirm_then_apply:
@@ -207,6 +213,7 @@ workflows:
         content:
           - content: tf_apply
 ```
+<!-- {% endraw %} -->
 
 ## Workflow helper
 With the combination of the various type of workflows, it is possible to create a lot of complex workflows. To keep our rules and workflows simple and DRY, we have created a few helper workflows that can be used in some common cases. They are implemented using the same building blocks introduced in the above chapters. Feel free to check them out in the `workflow_helper.yaml`. They also serve as a showcase on how we can use the building blocks.
@@ -216,7 +223,8 @@ Repeat the same `work` for the specified number of times, the `work` should be a
 
 For example:
 
-```
+<!-- {% raw %} -->
+```yaml
 rules:
   - when:
       source:
@@ -240,13 +248,15 @@ rules:
                     text: hooray! {{ "{{ .wfdata.times }}" }}
                   channel: '#corp'
 ```
+<!-- {% endraw %} -->
 
 ### For each (pipe)
 Repeat the same workflow in `work` for each of the item listed in the `items`. While the loop is running, the remaining items can be accessed through `wfdata` using interpolation. Again, the interpolation in `work` should be escaped.  See [Interpoation Guide](./interpolation.md)  for detail.
 
 For example:
 
-```
+<!-- {% raw %} -->
+```yaml
 workflows:
   tell_my_favorite:
     content: foreach
@@ -265,13 +275,15 @@ workflows:
             content:
               text: I like {{ "{{ first .wfdata.items }}" }}
 ```
+<!-- {% endraw %} -->
 
 ### For each (parallel)
 Same as the `pipe` version of the `foreach`, `foreach_parallel` will repeat the `work` for each item listed.  The difference is that the parallel version will run the child workflow with all the items in parallel.  There is no guanrantee of order, there is no "remaing items".  The current item can still be accessed through `.wfdata.current`.
 
 For example:
 
-```
+<!-- {% raw %} -->
+```yaml
 workflows:
   notify_all:
     content: foreach
@@ -291,6 +303,7 @@ workflows:
               text: Notifying something
             channel: '{{ "{{ .wfdata.current }}" }}'
 ```
+<!-- {% endraw %} -->
 
 ### Wanted
 More helpers wanted
