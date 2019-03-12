@@ -109,6 +109,6 @@ REPO=/path/to/mytest honeydipper
 curl -D- http://127.0.0.1:8080/health
 ```
 
-You should see a `200` response code and `Done` in the payload.
+You should see a `200` response code. There is no payload in the response.
 
 See [configuration guide](../configuration.md) for detail on how to configure your system.

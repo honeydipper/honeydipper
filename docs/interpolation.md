@@ -145,7 +145,7 @@ Honeydipper executes the inline go templates and run `:path:`, `:yaml:` interpol
 When a workflow starts, Honeydipper workflow engine needs all information to determine how the workflow should be executed, so the `data`, `content` and `condition` fields are interpolated. It will not interpolate/execute the function parameters, because the contextual data for the function call has not been finalized yet, and it may very well be overridden by the children workflows. So, we want to leave the function parameters to the `operator` service to interpolate when all the data is available and finalized. Sometimes, we want to define some abstract workflows, such as `repeat` `foreach`, where the actual workflow content including the parameters is passed as workflow data, we will need to escape the parameters interpolation, if used, so workflow engine won't interpolate them too early.
 
 For example:
-```yaml
+```
 rules:
   - when:
       source:
