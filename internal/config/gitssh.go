@@ -24,9 +24,9 @@ func GetGitSSHAuth() transport.AuthMethod {
 	if !loadedSSHAuth {
 		loadedSSHAuth = true
 
-		keypass := os.Getenv("HONEY_SSH_PASS")
-		keybytes := os.Getenv("HONEY_SSH_KEY")
-		keyfile := os.Getenv("HONEY_SSH_KEYFILE")
+		keypass := os.Getenv("DIPPER_SSH_PASS")
+		keybytes := os.Getenv("DIPPER_SSH_KEY")
+		keyfile := os.Getenv("DIPPER_SSH_KEYFILE")
 		keysock := os.Getenv("SSH_AUTH_SOCK")
 
 		if len(keybytes) > 0 || len(keyfile) > 0 || len(keysock) == 0 {
