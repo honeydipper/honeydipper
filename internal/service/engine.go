@@ -175,6 +175,10 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 		data, _ = dipper.GetMapData(msg.Payload, "data")
 	}
 
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+
 	envData := map[string]interface{}{
 		"data":   data,
 		"labels": msg.Labels,
