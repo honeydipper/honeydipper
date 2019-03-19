@@ -149,8 +149,11 @@ func sendRequest(m *dipper.Message) {
 
 	client := http.Client{}
 	resp, err := client.Do(req)
-	if err != nil {
+	if resp != nil {
 		defer resp.Body.Close()
+	}
+	if err != nil {
+		panic(err)
 	}
 
 	response := extractHTTPResponseData(resp)
