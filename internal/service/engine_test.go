@@ -9,24 +9,33 @@
 package service
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/driver"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 
+type bytesBuffer struct {
+	*bytes.Buffer
+}
+
+func (b bytesBuffer) Close() error {
+	return nil
+}
+
 func TestExecuteWorkflow(t *testing.T) {
-	sessionID := "123"
 	wf := config.Workflow{
-		Type: "if",
-		Content: []config.Workflow{
-			{
-				Type: "",
-				Content: "noop",
-			},
+		Type: "function",
+		Content: map[string]interface{}{
+			"driver":    "test",
+			"rawAction": "test",
 		},
-		Condition: "false",
+		Data: map[string]interface{}{
+			"param1": "{{ empty .data.test }}",
+		},
 	}
 	msg := &dipper.Message{
 		Channel: "eventbus",
@@ -36,22 +45,35 @@ func TestExecuteWorkflow(t *testing.T) {
 		},
 		Payload: nil,
 	}
-	parent := &WorkflowSession {
-		work: []*config.Workflow {
-			{
-				Type: "pipe",
-				Content: []config.Workflow{
-					{
-						Type: "function",
-					},
-					wf,
-				},
+	parent := &WorkflowSession{
+		step:  1,
+		Type:  "pipe",
+		event: map[string]interface{}{},
+		work: []*config.Workflow{
+			&config.Workflow{
+				Type: "function",
+			},
+			&wf,
+		},
+	}
+	sessions = map[string]*WorkflowSession{}
+	dipper.IDMapMetadata = map[dipper.IDMap]*dipper.IDMapMeta{}
+	dipper.InitIDMap(&sessions)
+
+	var b = bytesBuffer{&bytes.Buffer{}}
+	b.Grow(512)
+	engine = &Service{
+		name: "test",
+		driverRuntimes: map[string]*driver.Runtime{
+			"eventbus": &driver.Runtime{
+				Output: b,
 			},
 		},
 	}
-	sessions[sessionID] = parent
+	sessionID := dipper.IDMapPut(&sessions, parent)
 	testFunc := func() {
 		executeWorkflow(sessionID, &wf, msg)
 	}
 	assert.NotPanics(t, testFunc, "Should not panic when Payload is nil")
+	assert.NotZero(t, b.Len(), "Should send message to eventbus")
 }
