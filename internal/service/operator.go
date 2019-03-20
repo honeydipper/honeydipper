@@ -52,6 +52,9 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		dipper.Logger.Debugf("[operator] function call payload %+v", msg.Payload)
 		function := config.Function{}
 		data, _ := dipper.GetMapData(msg.Payload, "data")
+		if data == nil {
+			data = map[string]interface{}{}
+		}
 		event, _ := dipper.GetMapData(msg.Payload, "event")
 		wfdata, _ := dipper.GetMapData(msg.Payload, "wfdata")
 		funcDef, ok := dipper.GetMapData(msg.Payload, "function")
