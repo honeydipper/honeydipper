@@ -30,7 +30,9 @@ type Config struct {
 		DataSet *DataSet
 		Loaded  map[RepoInfo]*Repo
 	}
-	OnChange func()
+	OnChange      func()
+	IsConfigCheck bool
+	CheckRemote   bool
 }
 
 // Bootstrap loads the configuration during daemon bootstrap.

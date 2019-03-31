@@ -243,6 +243,14 @@
   version = "0.5"
 
 [[projects]]
+  branch = "master"
+  digest = "1:be40f095cd741773905744f16c1f7a21fd9226ccd0529f019deb7da6d667f71c"
+  name = "github.com/logrusorgru/aurora"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a7b3b318ed4e1ae5b80602b08627267303c68572"
+
+[[projects]]
   digest = "1:78bbb1ba5b7c3f2ed0ea1eab57bdd3859aec7e177811563edc41198a760b06af"
   name = "github.com/mitchellh/go-homedir"
   packages = ["."]
@@ -808,6 +816,7 @@
     "github.com/go-redis/redis",
     "github.com/h2non/gock",
     "github.com/imdario/mergo",
+    "github.com/logrusorgru/aurora",
     "github.com/mitchellh/mapstructure",
     "github.com/op/go-logging",
     "github.com/stretchr/testify/assert",
