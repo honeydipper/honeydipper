@@ -70,7 +70,7 @@ func (c *Repo) loadFile(filename string) {
 			panic(err)
 		}
 		var content DataSet
-		err = yaml.Unmarshal(yamlFile, &content)
+		err = yaml.UnmarshalStrict(yamlFile, &content, yaml.DisallowUnknownFields)
 		if err != nil {
 			panic(err)
 		}
