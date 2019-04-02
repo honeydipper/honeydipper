@@ -10,6 +10,7 @@
 - [Systems](#systems)
 - [Workflows](#workflows)
 - [Rules](#rules)
+- [Config check](#config-check)
 - [References](#references)
 
 <!-- tocstop -->
@@ -170,6 +171,38 @@ type Rule struct {
 ```
 
 Refer to the Systems section for the definition of `Trigger`, and see [Workflow Composing Guide](./workflow.md) for workflows.
+
+## Config check
+
+Honeydipper 0.1.8 and above comes with a configcheck functionality that can help checking configuration validity before any updates
+are committed or pushed to the git repos. It can also be used in the CI/CD pipelines to ensure the quality of the configuration files.
+
+You can follow the [installation guide](./INSTALL.md) to install the Honeydipper binary or docker image, then use below commands to check
+the local configuration files.
+
+```bash
+REPO=</path/to/local/files> honeydipper configcheck
+```
+
+If using a docker image
+
+```bash
+docker run -it -v </path/to/config>:/config -e REPO=/config honeydipper/honeydipper:x.x.x configcheck
+```
+
+If your local config loads remote git repos and you want to validate them too, use `CHECK_REMOTE` environment variable.
+
+```bash
+REPO=</path/to/config> CHECK_REMOTE=1 honeydipper configcheck
+```
+
+If using docker image
+
+```bash
+docker run -it -v </path/to/config>:/config -e REPO=/config -e CHECK_REMOTE=1 honeydipper/honeydipper:x.x.x configcheck
+```
+
+You can also use `-h` option to see a full list of supported environment variables.
 
 ## References
 

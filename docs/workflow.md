@@ -1,5 +1,8 @@
 # Workflow Composing Guide
 
+Tips: use [Honeydipper config check](./configuration.md#config-check) feature to quickly identify errors and issues before committing your configuration changes, or setup
+your configuration repo with CI to run config check upon every push or PR.
+
 <!-- toc -->
 
 - [Basics of workflow](#basics-of-workflow)
@@ -8,10 +11,14 @@
   * [Conditional workflow](#conditional-workflow)
   * [Pipe workflow](#pipe-workflow)
   * [Parallel workflow](#parallel-workflow)
+  * [Switch workflow](#switch-workflow)
+  * [Suspend workflow](#suspend-workflow)
+  * [Data workflow](#data-workflow)
 - [Workflow helper](#workflow-helper)
   * [Repeat](#repeat)
   * [For each (pipe)](#for-each-pipe)
   * [For each (parallel)](#for-each-parallel)
+  * [Pipe](#pipe)
   * [Wanted](#wanted)
 
 <!-- tocstop -->
@@ -215,6 +222,32 @@ workflows:
 ```
 <!-- {% endraw %} -->
 
+### Data workflow
+Most cases, we use `wfdata` to handle data manipulation such as extracting data from previous step, mutating data then feeding into `.wfdata` for the following steps. However, in some rear cases, we want to be able to construct and return data from our workflow that may be consumed outside of our workflow.
+
+For example:
+<!-- {% raw %} -->
+```yaml
+workflows:
+  test:
+    type: pipe
+    data:
+      "success": work done
+      "failure": work failed
+    content:
+      - content: step1
+      - content: step2
+      - content: step3
+      - type: data
+        content:
+          result: '{{ index .wfdata .labels.status }}'
+```
+<!-- {% endraw %} -->
+
+In the above example, we constructed the return data with the last step status and the data then can be consumed outside of current workflow, e.g. using as `.data` block in the invoking workflow's next step.
+
+You can see another example of using data type workflow in the `pipe` named workflow.
+
 ## Workflow helper
 With the combination of the various type of workflows, it is possible to create a lot of complex workflows. To keep our rules and workflows simple and DRY, we have created a few helper workflows that can be used in some common cases. They are implemented using the same building blocks introduced in the above chapters. Feel free to check them out in the `workflow_helper.yaml`. They also serve as a showcase on how we can use the building blocks.
 
@@ -304,6 +337,52 @@ workflows:
             channel: '{{ "{{ .wfdata.current }}" }}'
 ```
 <!-- {% endraw %} -->
+
+### Pipe
+We already have a native `pipe` type workflow, why do we need another `pipe` named workflow? Well, the native `pipe` workflow is too simple, and lacking some of the features. Below is what the `pipe` named workflow offers:
+
+ * error handling option `on_error`: `exit`, `continue` to next step or jump to `final` step
+ * advanced data handling when combined with `data` workflow
+ * steps can be named
+
+For example:
+
+<!-- {% raw %} -->
+```yaml
+workflows:
+  mywork:
+    content: pipe
+    data:
+      steps:
+        - name: step1
+          work:
+            content: workflow1
+        - name: preserve step1 data
+          work:
+            type: data
+            content:
+              work_data:
+                step1_data: '{{ `{{ .data.result }}` }}'
+        - name: step2
+          work:
+            content: workflow2
+        - name: preserve step2 data
+          work:
+            type: data
+            content:
+              work_data:
+                step2_data: '{{ `{{ .data.result }}` }}'
+        - name: final announcement
+          work:
+            content: notify
+            data:
+              is_error: '{{ `{{ eq .data.work_status "success" }}` }}'
+              message:
+                text: '{{ `{{ eq .data.work_status "success" | ternary "all good" (list "failed at" .data.step | join " ") }}` }}'
+```
+<!-- {% endraw %} -->
+
+The above workflow will return both step data in `.data.work_data`. And when complete, it will send a chat message to announce all good or the failed step.
 
 ### Wanted
 More helpers wanted

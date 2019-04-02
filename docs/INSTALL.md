@@ -139,7 +139,7 @@ selector:
 ### Running as docker container
 
 ```bash
-docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "DIPPER_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper:latest
+docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "DIPPER_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper/honeydipper:latest
 ```
 
 Replace the repo url with your own, and speicify the private key path for accessing the private repo remotely.
@@ -150,6 +150,10 @@ Assuming you have go 1.11 or up installed, you can use `go get` to download and 
 
 ```bash
 go get -u github.com/honeydipper/honeydipper.git
+pushd $GOPATH/src/github.com/honeydipper/honeydipper
+dep ensure
+go install ./...
+popd
 REPO=git@github.com/example/honeydipper-config.git DIPPER_SSH_KEY="$(cat ~/.ssh/id_rsa)" honeydipper
 ```
 You don't have to specify `DIPPER_SSH_KEY` if the key is used by your ssh client by default.
