@@ -13,11 +13,18 @@ import (
 	"strings"
 
 	"github.com/ghodss/yaml"
+	"github.com/go-errors/errors"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"gopkg.in/src-d/go-git.v4"
 	gitCfg "gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 )
+
+// Error represents a configuration error
+type Error struct {
+	Error error
+	File  string
+}
 
 // Repo contains runtime repo info used to track what has been loaded in a repo.
 type Repo struct {
@@ -26,6 +33,7 @@ type Repo struct {
 	DataSet DataSet
 	files   map[string]bool
 	root    string
+	Errors  []Error
 }
 
 func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*DataSet, map[RepoInfo]*Repo) {
@@ -47,7 +55,14 @@ func (c *Repo) isFileLoaded(filename string) bool {
 }
 
 func (c *Repo) loadFile(filename string) {
-	defer dipper.SafeExitOnError("config file [%v] skipped", filename)
+	defer func() {
+		if r := recover(); r != nil {
+			dipper.Logger.Warningf("Resuming after error: %v", r)
+			dipper.Logger.Warning(errors.Wrap(r, 1).ErrorStack())
+			dipper.Logger.Warningf("config file [%v] skipped", filename)
+			c.Errors = append(c.Errors, Error{Error: r.(error), File: filename})
+		}
+	}()
 
 	if !c.isFileLoaded(filename) {
 		yamlFile, err := ioutil.ReadFile(path.Join(c.root, filename[1:]))
@@ -55,15 +70,17 @@ func (c *Repo) loadFile(filename string) {
 			panic(err)
 		}
 		var content DataSet
-		err = yaml.Unmarshal(yamlFile, &content)
+		err = yaml.UnmarshalStrict(yamlFile, &content, yaml.DisallowUnknownFields)
 		if err != nil {
 			panic(err)
 		}
 
 		if content.Repos != nil {
-			for _, referredRepo := range content.Repos {
-				if !c.parent.isRepoLoaded(referredRepo) {
-					c.parent.loadRepo(referredRepo)
+			if c.parent.IsConfigCheck && c.parent.CheckRemote || !c.parent.IsConfigCheck {
+				for _, referredRepo := range content.Repos {
+					if !c.parent.isRepoLoaded(referredRepo) {
+						c.parent.loadRepo(referredRepo)
+					}
 				}
 			}
 		}
@@ -85,17 +102,31 @@ func (c *Repo) loadFile(filename string) {
 }
 
 func newRepo(c *Config, repo RepoInfo) *Repo {
-	return &(Repo{c, &repo, DataSet{}, map[string]bool{}, ""})
+	return &(Repo{c, &repo, DataSet{}, map[string]bool{}, "", []Error{}})
 }
 
 func (c *Repo) loadRepo() {
-	defer dipper.SafeExitOnError("repo [%v] skipped", c.repo.Repo)
+	defer func() {
+		if r := recover(); r != nil {
+			dipper.Logger.Warningf("Resuming after error: %v", r)
+			dipper.Logger.Warning(errors.Wrap(r, 1).ErrorStack())
+			dipper.Logger.Warningf("repo [%v] skipped", c.repo.Repo)
+			c.Errors = append(c.Errors, Error{Error: r.(error), File: "_"})
+		}
+	}()
 
-	opts := &git.CloneOptions{URL: c.repo.Repo}
-	var repoObj *git.Repository
 	var err error
-	if c.root == "" {
+	if c.parent.IsConfigCheck && *c.repo == c.parent.InitRepo {
+		c.root = c.repo.Repo
+		dipper.Logger.Infof("using working copy of repo [%v]", c.root)
+		// uncomment below to ensure the working copy is a repo
+		// if _, err = git.PlainOpen(c.root); err != nil {
+		//   panic(err)
+		// }
+	} else {
 		dipper.Logger.Infof("cloning repo [%v]", c.repo.Repo)
+		var repoObj *git.Repository
+		opts := &git.CloneOptions{URL: c.repo.Repo}
 		if c.root, err = ioutil.TempDir(c.parent.WorkingDir, "git"); err != nil {
 			dipper.Logger.Errorf("%v", err)
 			dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
@@ -111,32 +142,30 @@ func (c *Repo) loadRepo() {
 		if err != nil {
 			panic(err)
 		}
-	} else if repoObj, err = git.PlainOpen(c.root); err != nil {
-		panic(err)
-	}
 
-	dipper.Logger.Infof("fetching repo [%v]", c.repo.Repo)
-	branch := "master"
-	if c.repo.Branch != "" {
-		branch = c.repo.Branch
-	}
-	err = repoObj.Fetch(&git.FetchOptions{
-		RefSpecs: []gitCfg.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
-		Auth:     opts.Auth,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	dipper.Logger.Infof("using branch [%v] in repo [%v]", branch, c.repo.Repo)
-	if tree, err := repoObj.Worktree(); err != nil {
-		panic(err)
-	} else {
-		err = tree.Checkout(&git.CheckoutOptions{
-			Branch: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
+		dipper.Logger.Infof("fetching repo [%v]", c.repo.Repo)
+		branch := "master"
+		if c.repo.Branch != "" {
+			branch = c.repo.Branch
+		}
+		err = repoObj.Fetch(&git.FetchOptions{
+			RefSpecs: []gitCfg.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
+			Auth:     opts.Auth,
 		})
 		if err != nil {
 			panic(err)
+		}
+
+		dipper.Logger.Infof("using branch [%v] in repo [%v]", branch, c.repo.Repo)
+		if tree, err := repoObj.Worktree(); err != nil {
+			panic(err)
+		} else {
+			err = tree.Checkout(&git.CheckoutOptions{
+				Branch: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
+			})
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 
@@ -150,7 +179,17 @@ func (c *Repo) loadRepo() {
 }
 
 func (c *Repo) refreshRepo() bool {
-	defer dipper.SafeExitOnError("repo [%v] skipped", c.repo.Repo)
+	c.Errors = []Error{}
+
+	defer func() {
+		if r := recover(); r != nil {
+			dipper.Logger.Warningf("Resuming after error: %v", r)
+			dipper.Logger.Warning(errors.Wrap(r, 1).ErrorStack())
+			dipper.Logger.Warningf("repo [%v] skipped", c.repo.Repo)
+			c.Errors = append(c.Errors, Error{Error: r.(error), File: "_"})
+		}
+	}()
+
 	var repoObj *git.Repository
 	var err error
 	dipper.Logger.Infof("refreshing repo [%v]", c.repo.Repo)

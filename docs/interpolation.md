@@ -1,5 +1,8 @@
 # Honeydipper Interpolation Guide
 
+Tips: use [Honeydipper config check](./configuration.md#config-check) feature to quickly identify errors and issues before committing your configuration changes, or setup
+your configuration repo with CI to run config check upon every push or PR.
+
 <!-- toc -->
 
 - [Prefix interpolation](#prefix-interpolation)
