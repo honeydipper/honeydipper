@@ -186,6 +186,8 @@ func extractHTTPResponseData(r *http.Response) map[string]interface{} {
 		"status_code": strconv.Itoa(r.StatusCode),
 		"cookies":     cookies,
 		"headers":     r.Header,
+		"host":        r.Request.Host,
+		"remoteAddr":  r.Request.RemoteAddr,
 		"body":        string(bodyBytes),
 	}
 

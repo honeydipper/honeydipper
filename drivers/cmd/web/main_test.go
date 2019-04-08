@@ -50,6 +50,10 @@ func TestSendRequest(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
+	_, ok := response.Payload.(map[string]interface{})["host"]
+	assert.True(t, ok, "host missing")
+	_, ok = response.Payload.(map[string]interface{})["remoteAddr"]
+	assert.True(t, ok, "remoteAddr missing")
 }
 
 func TestSendRequestInvalid(t *testing.T) {
