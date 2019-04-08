@@ -50,6 +50,8 @@ func TestSendRequest(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
+	foo, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	assert.Equal(t, "bar", foo, "JSON data miss-match")
 }
 
 func TestSendRequestInvalid(t *testing.T) {
