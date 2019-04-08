@@ -193,7 +193,7 @@ func extractHTTPResponseData(r *http.Response) map[string]interface{} {
 
 	contentType := r.Header.Get("Content-type")
 	if len(contentType) > 0 && strings.HasPrefix(contentType, "application/json") {
-		bodyObj := map[string]interface{}{}
+		var bodyObj interface{}
 		err := json.Unmarshal(bodyBytes, &bodyObj)
 		if err != nil {
 			log.Panicf("[%s] invalid json in response body", driver.Service)
