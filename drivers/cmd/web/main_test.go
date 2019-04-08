@@ -50,6 +50,33 @@ func TestSendRequest(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
+	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
+}
+
+func TestRecieveListJson(t *testing.T) {
+
+	defer gock.Off()
+
+	gock.New("http://example.com").
+		Get("/test").
+		Reply(200).
+		JSON([]string{"foo", "bar"})
+
+	request := &dipper.Message{
+		Channel: "event",
+		Subject: "command",
+		Payload: map[string]interface{}{
+			"URL": "http://example.com/test",
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+	sendRequest(request)
+	response := <-request.Reply
+	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
+	assert.NotContains(t, response.Labels, "error")
+	firstElement := response.Payload.(map[string]interface{})["json"].([]interface{})[0]
+	assert.Equal(t, "foo", firstElement, "JSON data mismatch")
 }
 
 func TestSendRequestInvalid(t *testing.T) {
