@@ -194,5 +194,57 @@ func checkWorkflow(w config.Workflow) (string, string) {
 		}
 	}
 
+	// check wfdata
+	if childLocation, dataErr := checkWfdata(w.Data); dataErr != "" {
+		return location + "/" + childLocation, dataErr
+	}
+
+	return "", ""
+}
+
+func checkWfdata(data interface{}) (string, string) {
+	var location = "data"
+	switch v := data.(type) {
+	case string:
+		return location, ""
+	case []interface{}:
+		for index, value := range v {
+			location = strconv.Itoa(index)
+			if childLocation, errMsg := checkWfdata(value); errMsg != "" {
+				return location + "/" + childLocation, errMsg
+			}
+		}
+	case map[string]interface{}:
+		for name, value := range v {
+			location = "data/" + name
+			if name == "steps" {
+				return location, "use `*steps` to avoid merging of the steps from outer workflows"
+			} else if name == "work" {
+				if wfstr, ok := value.(string); ok {
+					if len(wfstr) == 0 {
+						return location, "empty `work`"
+					} else if wfstr[0] != ':' {
+						return location, "`work` should be a workflow object or something interpolated into a workflow object"
+					}
+				} else if dict, ok := value.(map[string]interface{}); ok {
+					var cw config.Workflow
+					err := mapstructure.Decode(dict, &cw)
+					if err != nil {
+						return location, "`work` should be a workflow object: " + err.Error()
+					}
+					childLocation, errMsg := checkWorkflow(cw)
+					if len(errMsg) > 0 {
+						return location + "/" + childLocation, errMsg
+					}
+				} else {
+					return location, "`work` should be a workflow object or something interpolated into a workflow object"
+				}
+			}
+			childLocation, errMsg := checkWfdata(value)
+			if errMsg != "" {
+				return location + "/" + childLocation, errMsg
+			}
+		}
+	}
 	return "", ""
 }
