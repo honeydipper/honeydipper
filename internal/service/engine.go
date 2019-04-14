@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/internal/driver"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/imdario/mergo"
@@ -377,6 +379,36 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			}
 			suspendedSessions[key] = sessionID
 			dipper.Logger.Infof("[engine] suspending session %+v", sessionID)
+			var d time.Duration
+			if timeout, ok := dipper.GetMapData(w.Data, "timeout"); ok {
+				if timeoutSec, ok := timeout.(int); ok {
+					d = time.Duration(timeoutSec) * time.Second
+				} else {
+					var err error
+					if d, err = time.ParseDuration(timeout.(string)); err != nil {
+						dipper.Logger.Panicf("[engine] fail to time.ParseDuration timeout %+v", sessionID)
+					}
+				}
+				if d > 0 {
+					daemon.Children.Add(1)
+					go func() {
+						defer daemon.Children.Done()
+						defer dipper.SafeExitOnError("[engine] resuming session on timeout failed %+v", sessionID)
+						<-time.After(d)
+						dipper.Logger.Infof("[engine] resuming session on timeout %+v", sessionID)
+						payload, _ := dipper.GetMapData(w.Data, "payload")
+						labels := dipper.MustGetMapData(w.Data, "labels")
+
+						resumeSession(nil, &dipper.Message{
+							Payload: map[string]interface{}{
+								"key":     key,
+								"payload": payload,
+								"labels":  labels,
+							},
+						})
+					}()
+				}
+			}
 		} else {
 			dipper.Logger.Panicf("[engine] can not suspend without a session")
 		}
