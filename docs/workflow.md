@@ -199,6 +199,8 @@ workflows:
 ### Suspend workflow
 A workflow can be suspended to wait for manual approval or manual intervention. It is useful in conjunction with slack (or other chat system) interactive components, web dashboards, etc. to inject manual interaction into the automation. The `content` should be a globally unique string serving as an identifer for the workflow.  The workflow will continue when a message with "resume_session" subject carries the identifier in `key` field of the payload.
 
+Suspended workflow can also be automatically resumed with a timeout (See [time.ParseDuration](https://golang.org/pkg/time/#ParseDuration) for allowed time format). The timeout value, returned data payload and labels can be specified in `data` section. The optional `payload` data maybe used by the next step in the pipe through intepolation using `.data`.  The `status` label is required as each step of the workflow requires a `status`.
+
 For example
 
 <!-- {% raw %} -->
@@ -215,12 +217,20 @@ workflows:
           callback_id: '{{ .wfdata.interactive_id }}'
       - type: suspend
         content: '{{ .wfdata.interactive_id }}'
+        data:
+          timeout: "1800"
+          payload:
+            reply: "no"
+          labels:
+            status: "success"
       - type: if
         condition: '{{ eq .data.reply "yes" }}'
         content:
           - content: tf_apply
 ```
 <!-- {% endraw %} -->
+
+The above example will suspend the workflow waiting an answer from slack for 30 minutes before canceling the next step.
 
 ### Data workflow
 Most cases, we use `wfdata` to handle data manipulation such as extracting data from previous step, mutating data then feeding into `.wfdata` for the following steps. However, in some rear cases, we want to be able to construct and return data from our workflow that may be consumed outside of our workflow.
