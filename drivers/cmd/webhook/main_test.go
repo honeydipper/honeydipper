@@ -8,12 +8,12 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"testing"
-	"net/http"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/honeydipper/honeydipper/internal/daemon"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -40,11 +40,11 @@ func TestExtractEvent(t *testing.T) {
 		go server.Shutdown(context.Background())
 	}
 	server = &http.Server{
-		Addr: "127.0.0.1:8999",
+		Addr:    "127.0.0.1:8999",
 		Handler: http.HandlerFunc(hookHandlerTest),
 	}
 	daemon.Children.Add(1)
-	go func () {
+	go func() {
 		defer daemon.Children.Done()
 		server.ListenAndServe()
 	}()

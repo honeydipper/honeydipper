@@ -152,7 +152,7 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 		"method":     r.Method,
 		"form":       r.Form,
 		"headers":    r.Header,
-		"host":	      r.Host,
+		"host":       r.Host,
 		"remoteAddr": r.RemoteAddr,
 	}
 
