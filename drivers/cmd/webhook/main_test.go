@@ -50,8 +50,8 @@ func TestExtractEvent(t *testing.T) {
 		server.ListenAndServe()
 	}()
 	resp, _ := http.Get("http://127.0.0.1:8999")
-	waitgroup.Wait()
 	resp.Body.Close()
+	waitgroup.Wait()
 
 	assert.Containsf(t, eventData, "host", "host is missing in eventData")
 	assert.Containsf(t, eventData, "remoteAddr", "remoteAddr is missing in eventData")
