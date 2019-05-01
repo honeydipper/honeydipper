@@ -10,8 +10,8 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"sync"
 	"testing"
+	"sync"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
@@ -46,8 +46,8 @@ func TestExtractEvent(t *testing.T) {
 	}
 	waitgroup.Add(1)
 	go func() {
+		defer waitgroup.Done()
 		server.ListenAndServe()
-		waitgroup.Done()
 	}()
 	resp, _ := http.Get("http://127.0.0.1:8999")
 	waitgroup.Wait()
