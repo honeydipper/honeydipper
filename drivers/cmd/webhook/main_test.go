@@ -10,9 +10,9 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
@@ -34,6 +34,7 @@ func TestMain(m *testing.M) {
 func TestExtractEvent(t *testing.T) {
 	var eventData map[string]interface{}
 	var server *http.Server
+	var waitgroup sync.WaitGroup
 	hookHandlerTest := func(w http.ResponseWriter, r *http.Request) {
 		eventData = extractEventData(w, r)
 		w.WriteHeader(http.StatusOK)
@@ -43,13 +44,14 @@ func TestExtractEvent(t *testing.T) {
 		Addr:    "127.0.0.1:8999",
 		Handler: http.HandlerFunc(hookHandlerTest),
 	}
-	daemon.Children.Add(1)
+	waitgroup.Add(1)
 	go func() {
-		defer daemon.Children.Done()
 		server.ListenAndServe()
+		waitgroup.Done()
 	}()
-	http.Get("http://127.0.0.1:8999")
-	daemon.Children.Wait()
+	resp, _ := http.Get("http://127.0.0.1:8999")
+	waitgroup.Wait()
+	resp.Body.Close()
 
 	assert.Containsf(t, eventData, "host", "host is missing in eventData")
 	assert.Containsf(t, eventData, "remoteAddr", "remoteAddr is missing in eventData")
