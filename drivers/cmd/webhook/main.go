@@ -148,10 +148,12 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 	dipper.PanicError(r.ParseForm())
 
 	eventData := map[string]interface{}{
-		"url":     r.URL.Path,
-		"method":  r.Method,
-		"form":    r.Form,
-		"headers": r.Header,
+		"url":        r.URL.Path,
+		"method":     r.Method,
+		"form":       r.Form,
+		"headers":    r.Header,
+		"host":       r.Host,
+		"remoteAddr": r.RemoteAddr,
 	}
 
 	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
