@@ -10,8 +10,9 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"testing"
 	"sync"
+	"testing"
+	"time"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
@@ -24,10 +25,9 @@ func TestMain(m *testing.M) {
 			panic(err)
 		}
 		defer logFile.Close()
-		dipper.GetLogger("test", "INFO", logFile, logFile)
+		log = dipper.GetLogger("test", "INFO", logFile, logFile)
 	}
 	driver = &dipper.Driver{Service: "test"}
-	log = driver.GetLogger()
 	m.Run()
 }
 
@@ -49,7 +49,14 @@ func TestExtractEvent(t *testing.T) {
 		defer waitgroup.Done()
 		server.ListenAndServe()
 	}()
-	resp, _ := http.Get("http://127.0.0.1:8999")
+	// without this the client will send request too early and server is not ready
+	<-time.After(100 * time.Millisecond)
+	resp, err := http.Get("http://127.0.0.1:8999")
+
+	assert.NoError(t, err, "client should not get err")
+	assert.NotEmpty(t, resp, "response should not be empty")
+	assert.NotNil(t, resp.Body, "response body stream should not be nil")
+
 	resp.Body.Close()
 	waitgroup.Wait()
 
