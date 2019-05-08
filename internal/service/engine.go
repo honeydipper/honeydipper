@@ -34,13 +34,15 @@ const (
 
 // WorkflowSession is the data structure about a running workflow and its definition.
 type WorkflowSession struct {
-	work   []*config.Workflow
-	data   interface{}
-	step   int
-	Type   string
-	parent string
-	event  interface{}
-	wfdata map[string]interface{}
+	work     []*config.Workflow
+	step     int
+	Type     string
+	parent   string
+	event    interface{}
+	ctx      map[string]interface{}
+	function *config.Function
+	exported *map[string]interface{}
+	export   map[string]interface{}
 }
 
 var sessions = map[string]*WorkflowSession{}
@@ -71,6 +73,75 @@ func StartEngine(cfg *config.Config) {
 	engine.start()
 }
 
+func mergeWithOverride(dst *map[string]interface{}, src interface{}) {
+	err := mergo.Merge(dst, src, mergo.WithOverride, mergo.WithAppendSlice)
+	if err != nil {
+		panic(err)
+	}
+	for k, v := range *dst {
+		if k[0] == '*' {
+			(*dst)[k[1:]] = v
+			delete(*dst, k)
+		}
+	}
+}
+
+// putting raw data from event, function output into context as abstracted fields
+func exportContext(source interface{}, envData map[string]interface{}) map[string]interface{} {
+	var ctx map[string]interface{}
+	var exports map[string]interface{}
+	var parent interface{}
+
+	cfg := engine.config.DataSet
+
+	switch src := source.(type) {
+	case config.Trigger:
+		exports = src.Export
+		if len(src.Source.System) > 0 {
+			parentSys, ok := cfg.Systems[src.Source.System]
+			if !ok {
+				panic("unable to export context, parent system not defined")
+			}
+			t, ok := parentSys.Triggers[src.Source.Trigger]
+			if !ok {
+				panic("unable to export context, parent function not defined")
+			}
+			parent = t
+		}
+	case config.Function:
+		exports = src.Export
+		if len(src.Target.System) > 0 {
+			parentSys, ok := cfg.Systems[src.Target.System]
+			if !ok {
+				panic("unable to export context, parent system not defined")
+			}
+			f, ok := parentSys.Functions[src.Target.Function]
+			if !ok {
+				panic("unable to export context, parent function not defined")
+			}
+			parent = f
+		}
+	default:
+		dipper.Logger.Panicf("unable to export to context, not a trigger or function %+v", source)
+	}
+
+	if parent != nil {
+		ctx = exportContext(parent, envData)
+	}
+
+	if len(exports) > 0 {
+		if ctx == nil {
+			ctx = map[string]interface{}{}
+		}
+
+		envData["ctx"] = ctx
+		newCtx := dipper.Interpolate(exports, envData)
+		mergeWithOverride(&ctx, newCtx)
+	}
+
+	return ctx
+}
+
 func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	dipper.Logger.Infof("[engine] routing message %s.%s", msg.Channel, msg.Subject)
 
@@ -93,7 +164,11 @@ func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 							cr.OriginalRule.When.Source.System,
 							cr.OriginalRule.When.Source.Trigger,
 						)
-						go executeWorkflow("", &cr.OriginalRule.Do, msg)
+						envData := map[string]interface{}{
+							"event": data,
+						}
+						ctx := exportContext(cr.OriginalRule.When, envData)
+						go executeWorkflow("", &cr.OriginalRule.Do, msg, &ctx)
 					}
 				}
 			}
@@ -105,15 +180,48 @@ func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			dipper.Logger.Panic("[enigne] command return without session id")
 		}
 		dipper.Logger.Infof("[engine] command return")
-		go continueWorkflow(sessionID, msg)
+		go continueWorkflow(sessionID, msg, nil)
 	}
 
 	return ret
 }
 
-func continueWorkflow(sessionID string, msg *dipper.Message) {
+func continueWorkflow(sessionID string, msg *dipper.Message, exported *map[string]interface{}) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
 	session := sessions[sessionID]
+
+	if session.function != nil {
+		envData := map[string]interface{}{
+			"event":  session.event,
+			"ctx":    session.ctx,
+			"wfdata": session.ctx,
+			"labels": msg.Labels,
+		}
+
+		if msg.Payload == nil {
+			envData["data"] = map[string]interface{}{}
+		} else {
+			envData["data"] = msg.Payload
+		}
+
+		newCtx := exportContext(*session.function, envData)
+		session.function = nil
+		mergeWithOverride(&session.ctx, newCtx)
+		if session.exported == nil {
+			session.exported = &newCtx
+		} else {
+			mergeWithOverride(session.exported, newCtx)
+		}
+	}
+
+	if exported != nil {
+		mergeWithOverride(&session.ctx, *exported)
+		if session.exported == nil {
+			session.exported = exported
+		} else {
+			mergeWithOverride(session.exported, *exported)
+		}
+	}
 
 	switch session.Type {
 	case WorkflowTypeNamed:
@@ -128,7 +236,7 @@ func continueWorkflow(sessionID string, msg *dipper.Message) {
 			terminateWorkflow(sessionID, msg)
 			return
 		}
-		executeWorkflow(sessionID, session.work[session.step], msg)
+		executeWorkflow(sessionID, session.work[session.step], msg, nil)
 
 	case WorkflowTypeIf:
 		dipper.Logger.Infof("[engine] if session completed %s", sessionID)
@@ -152,7 +260,7 @@ func continueWorkflow(sessionID string, msg *dipper.Message) {
 
 // to be refactored to simpler function or functions
 //nolint:gocyclo
-func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message) {
+func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message, ctx *map[string]interface{}) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
 	if len(sessionID) > 0 {
 		defer func() {
@@ -188,10 +296,14 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 	var parentSession *WorkflowSession
 	if sessionID != "" {
 		parentSession = sessions[sessionID]
-		envData["wfdata"] = parentSession.wfdata
+		ctx = &parentSession.ctx
+		envData["wfdata"] = *ctx
+		envData["ctx"] = *ctx
 		envData["event"] = parentSession.event
 	} else {
 		envData["event"] = data
+		envData["wfdata"] = *ctx
+		envData["ctx"] = *ctx
 	}
 
 	w := interpolateWorkflow(wf, envData)
@@ -199,28 +311,21 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 	var session = &WorkflowSession{
 		Type:   w.Type,
 		parent: sessionID,
-		data:   msg.Payload,
+		export: w.Export,
 	}
 	if parentSession != nil {
 		session.event = parentSession.event
-		wfdata, _ := dipper.DeepCopy(parentSession.wfdata)
-		err := mergo.Merge(&wfdata, w.Data, mergo.WithOverride, mergo.WithAppendSlice)
-		for k, v := range wfdata {
-			if k[0] == '*' {
-				wfdata[k[1:]] = v
-				delete(wfdata, k)
-			}
-		}
-		if err != nil {
-			panic(err)
-		}
-		session.wfdata = wfdata
+		newCtx, _ := dipper.DeepCopy(parentSession.ctx)
+		mergeWithOverride(&newCtx, w.Data)
+		session.ctx = newCtx
 	} else {
 		session.event = envData["event"]
-		session.wfdata = w.Data
+		session.ctx = *ctx
+		mergeWithOverride(&session.ctx, w.Data)
 	}
 
-	envData["wfdata"] = session.wfdata
+	envData["wfdata"] = session.ctx
+	envData["ctx"] = session.ctx
 
 	switch w.Type {
 	case WorkflowTypeNamed:
@@ -231,7 +336,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 		childID := dipper.IDMapPut(&sessions, session)
 		dipper.Logger.Infof("[engine] starting named session %s %s", w.Content.(string), childID)
 
-		executeWorkflow(childID, &next, msg)
+		executeWorkflow(childID, &next, msg, nil)
 
 	case WorkflowTypeFunction:
 		function := config.Function{}
@@ -253,7 +358,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			}
 		}
 		payload["event"] = session.event
-		payload["wfdata"] = session.wfdata
+		payload["ctx"] = session.ctx
 		cmdmsg := &dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: "command",
@@ -268,6 +373,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			} else {
 				cmdmsg.Labels["sessionID"] = sessionID
 			}
+			parentSession.function = &function
 		}
 		dipper.SendMessage(worker.Output, cmdmsg)
 
@@ -284,7 +390,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 		// TODO: global session timeout should be handled
 
 		dipper.Logger.Infof("[engine] starting pipe session %s", sessionID)
-		executeWorkflow(sessionID, session.work[0], msg)
+		executeWorkflow(sessionID, session.work[0], msg, nil)
 
 	case WorkflowTypeSwitch:
 		var choices = map[string]config.Workflow{}
@@ -305,7 +411,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 		if ok {
 			childSessionID := dipper.IDMapPut(&sessions, session)
 			dipper.Logger.Infof("[engine] starting switch session %s", childSessionID)
-			executeWorkflow(childSessionID, &selected, msg)
+			executeWorkflow(childSessionID, &selected, msg, nil)
 		}
 
 	case WorkflowTypeIf:
@@ -329,7 +435,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			if len(choices) > 1 {
 				childSessionID := dipper.IDMapPut(&sessions, session)
 				dipper.Logger.Infof("[engine] starting if session %s", childSessionID)
-				executeWorkflow(childSessionID, session.work[1], msg)
+				executeWorkflow(childSessionID, session.work[1], msg, nil)
 			} else if sessionID != "" {
 				continueWorkflow(sessionID, &dipper.Message{
 					Labels: map[string]string{
@@ -338,12 +444,12 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 						"reason":          msg.Labels["reason"],
 					},
 					Payload: msg.Payload,
-				})
+				}, nil)
 			}
 		} else { // true
 			childSessionID := dipper.IDMapPut(&sessions, session)
 			dipper.Logger.Infof("[engine] starting if session %s", childSessionID)
-			executeWorkflow(childSessionID, session.work[0], msg)
+			executeWorkflow(childSessionID, session.work[0], msg, nil)
 		}
 
 	case WorkflowTypeParallel:
@@ -364,7 +470,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 			if err != nil {
 				panic(err)
 			}
-			go executeWorkflow(childSessionID, current, mcopy)
+			go executeWorkflow(childSessionID, current, mcopy, nil)
 		}
 
 	case WorkflowTypeSuspend:
@@ -422,7 +528,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message)
 				"reason":          msg.Labels["reason"],
 			},
 			Payload: retData,
-		})
+		}, nil)
 
 	default:
 		dipper.Logger.Panicf("[engine] unknown workflow type %s", w.Type)
@@ -434,7 +540,26 @@ func terminateWorkflow(sessionID string, msg *dipper.Message) {
 	if session != nil {
 		dipper.IDMapDel(&sessions, sessionID)
 		if session.parent != "" {
-			go continueWorkflow(session.parent, msg)
+			if len(session.export) > 0 {
+				envData := map[string]interface{}{
+					"event":  session.event,
+					"labels": msg.Labels,
+					"ctx":    session.ctx,
+					"wfdata": session.ctx,
+				}
+				if msg.Payload == nil {
+					envData["data"] = map[string]interface{}{}
+				} else {
+					envData["data"] = msg.Payload
+				}
+				wfExported := dipper.Interpolate(session.export, envData).(map[string]interface{})
+				if session.exported == nil {
+					session.exported = &wfExported
+				} else {
+					mergeWithOverride(session.exported, wfExported)
+				}
+			}
+			go continueWorkflow(session.parent, msg, session.exported)
 		}
 	}
 	if emitter, ok := engine.driverRuntimes["emitter"]; ok && emitter.State == driver.DriverAlive {
@@ -480,7 +605,8 @@ func buildRuleMap(cfg *config.Config) {
 
 func interpolateWorkflow(v *config.Workflow, data interface{}) *config.Workflow {
 	ret := config.Workflow{
-		Type: v.Type,
+		Type:   v.Type,
+		Export: v.Export,
 	}
 	switch v.Type {
 	case WorkflowTypeNamed:
@@ -559,6 +685,6 @@ func resumeSession(d *driver.Runtime, m *dipper.Message) {
 			Subject: dipper.EventbusReturn,
 			Labels:  sessionLabels,
 			Payload: sessionPayload,
-		})
+		}, nil)
 	}
 }

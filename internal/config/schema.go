@@ -24,7 +24,8 @@ type Trigger struct {
 	RawEvent   string                 `json:"rawevent,omitempty"`
 	Conditions map[string]interface{} `json:"conditions,omitempty"`
 	// A trigger should have only one of source event a raw event.
-	Source Event `json:"source,omitempty"`
+	Source Event                  `json:"source,omitempty"`
+	Export map[string]interface{} `json:"export,omitempty"`
 }
 
 // Function is the datastructure hold the information to run actions.
@@ -33,7 +34,8 @@ type Function struct {
 	RawAction  string                   `json:"rawaction,omitempty"`
 	Parameters map[string](interface{}) `json:"parameters,omitempty"`
 	// An action should have only one of target action or a raw action.
-	Target Action `json:"target,omitempty"`
+	Target Action                 `json:"target,omitempty"`
+	Export map[string]interface{} `json:"export,omitempty"`
 }
 
 // System is an abstract construct to group data, trigger and function definitions.
@@ -50,6 +52,7 @@ type Workflow struct {
 	Condition string `json:"condition,omitempty"`
 	Content   interface{}
 	Data      map[string]interface{}
+	Export    map[string]interface{}
 }
 
 // Rule is a data structure defining what action to take when certain event happen.

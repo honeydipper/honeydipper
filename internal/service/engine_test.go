@@ -74,7 +74,7 @@ func TestExecuteWorkflow(t *testing.T) {
 	}
 	sessionID := dipper.IDMapPut(&sessions, parent)
 	testFunc := func() {
-		executeWorkflow(sessionID, &wf, msg)
+		executeWorkflow(sessionID, &wf, msg, nil)
 	}
 	assert.NotPanics(t, testFunc, "Should not panic when Payload is nil")
 	assert.NotZero(t, b.Len(), "Should send message to eventbus")
@@ -135,7 +135,7 @@ func TestSuspendWorkflowTimeout(t *testing.T) {
 	}
 	sessionID := dipper.IDMapPut(&sessions, parent)
 	testFunc := func() {
-		executeWorkflow(sessionID, &wf, msg)
+		executeWorkflow(sessionID, &wf, msg, nil)
 	}
 	assert.NotPanics(t, testFunc, "Should not panic when Payload is nil")
 	assert.NotEmpty(t, suspendedSessions, "Session should be suspended but kept in memory")
@@ -151,5 +151,169 @@ func TestSuspendWorkflowTimeout(t *testing.T) {
 		assert.Fail(t, "Timeout waiting for resuming suspended session")
 	case <-s:
 		assert.Empty(t, suspendedSessions, "Resumed session should be removed after completion")
+	}
+}
+
+func TestExportEventContext(t *testing.T) {
+	engine = &Service{
+		name: "test",
+		config: &config.Config{
+			DataSet: &config.DataSet{
+				Systems: map[string]config.System{
+					"test_system1": config.System{
+						Triggers: map[string]config.Trigger{
+							"direct": config.Trigger{
+								Driver:   "test_driver",
+								RawEvent: "test_raw_event",
+								Export: map[string]interface{}{
+									"field1": "value1",
+									"field2": "value2_old",
+									"list1": []interface{}{
+										"str1",
+										"str2",
+									},
+									"list2": []interface{}{
+										"str1",
+										"{{ .event.line1 }}",
+									},
+								},
+							},
+							"override1": config.Trigger{
+								Source: config.Event{
+									System:  "test_system1",
+									Trigger: "direct",
+								},
+								Export: map[string]interface{}{
+									"field2": "value2_new",
+								},
+							},
+							"override2": config.Trigger{
+								Source: config.Event{
+									System:  "test_system1",
+									Trigger: "direct",
+								},
+								Export: map[string]interface{}{
+									"list1": []interface{}{
+										"str3",
+										"str4",
+									},
+									"*list2": []interface{}{
+										"str3",
+										"str4",
+									},
+								},
+							},
+							"override3": config.Trigger{
+								Source: config.Event{
+									System:  "test_system1",
+									Trigger: "override1",
+								},
+								Export: map[string]interface{}{
+									"list1": []interface{}{
+										"str3",
+										"str4",
+									},
+									"*list2": []interface{}{
+										"str3",
+										"str4",
+									},
+									"field3": "value3_new",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	envData := map[string]interface{}{
+		"event": map[string]interface{}{
+			"line1": "words words words",
+		},
+	}
+
+	var ctx map[string]interface{}
+	tests := []map[string]interface{}{
+		{
+			"name": "trigger calling rawEvent",
+			"func": func() { ctx = exportContext(engine.config.DataSet.Systems["test_system1"].Triggers["direct"], envData) },
+			"expected": map[string]interface{}{
+				"field1": "value1",
+				"field2": "value2_old",
+				"list1": []interface{}{
+					"str1",
+					"str2",
+				},
+				"list2": []interface{}{
+					"str1",
+					"words words words",
+				},
+			},
+		},
+		{
+			"name": "override1 trigger",
+			"func": func() {
+				ctx = exportContext(engine.config.DataSet.Systems["test_system1"].Triggers["override1"], envData)
+			},
+			"expected": map[string]interface{}{
+				"field1": "value1",
+				"field2": "value2_new",
+				"list1": []interface{}{
+					"str1",
+					"str2",
+				},
+				"list2": []interface{}{
+					"str1",
+					"words words words",
+				},
+			},
+		},
+		{
+			"name": "override2 trigger with lists",
+			"func": func() {
+				ctx = exportContext(engine.config.DataSet.Systems["test_system1"].Triggers["override2"], envData)
+			},
+			"expected": map[string]interface{}{
+				"field1": "value1",
+				"field2": "value2_old",
+				"list1": []interface{}{
+					"str1",
+					"str2",
+					"str3",
+					"str4",
+				},
+				"list2": []interface{}{
+					"str3",
+					"str4",
+				},
+			},
+		},
+		{
+			"name": "override3 over override1",
+			"func": func() {
+				ctx = exportContext(engine.config.DataSet.Systems["test_system1"].Triggers["override3"], envData)
+			},
+			"expected": map[string]interface{}{
+				"field1": "value1",
+				"field2": "value2_new",
+				"field3": "value3_new",
+				"list1": []interface{}{
+					"str1",
+					"str2",
+					"str3",
+					"str4",
+				},
+				"list2": []interface{}{
+					"str3",
+					"str4",
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		assert.NotPanicsf(t, test["func"].(func()), "exporting from %v should not panic", test["name"])
+		assert.Equalf(t, test["expected"], ctx, "exported context from %v should match", test["name"])
 	}
 }

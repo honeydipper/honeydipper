@@ -31,7 +31,7 @@ func TestServiceLoopCatchError(t *testing.T) {
 	svc := &Service{
 		name: "testsvc",
 		driverRuntimes: map[string]*driver.Runtime{
-			"d1": &driver.Runtime{
+			"d1": {
 				State: driver.DriverAlive,
 				Handler: driver.NewDriver(map[string]interface{}{
 					"name": "testdriver1",
@@ -43,14 +43,14 @@ func TestServiceLoopCatchError(t *testing.T) {
 			},
 		},
 		responders: map[string][]MessageResponder{
-			"test:error1": []MessageResponder{
+			"test:error1": {
 				func(d *driver.Runtime, m *dipper.Message) {
 					panic(fmt.Errorf("error in responder"))
 				},
 			},
 		},
 		transformers: map[string][]func(*driver.Runtime, *dipper.Message) *dipper.Message{
-			"test:error2": []func(*driver.Runtime, *dipper.Message) *dipper.Message{
+			"test:error2": {
 				func(d *driver.Runtime, m *dipper.Message) *dipper.Message {
 					panic(fmt.Errorf("error in transformer"))
 				},
@@ -160,7 +160,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 	svc := &Service{
 		name: "testsvc",
 		driverRuntimes: map[string]*driver.Runtime{
-			"driver:d1": &driver.Runtime{
+			"driver:d1": {
 				State: driver.DriverAlive,
 				Handler: driver.NewDriver(map[string]interface{}{
 					"name": "d1",
@@ -170,7 +170,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 					},
 				}),
 			},
-			"emitter": &driver.Runtime{
+			"emitter": {
 				State: driver.DriverAlive,
 				Handler: driver.NewDriver(map[string]interface{}{
 					"name": "test-emitter",
@@ -257,7 +257,7 @@ func TestServiceEmitterCrashing(t *testing.T) {
 	svc := &Service{
 		name: "testsvc",
 		driverRuntimes: map[string]*driver.Runtime{
-			"driver:d1": &driver.Runtime{
+			"driver:d1": {
 				State: driver.DriverAlive,
 				Handler: driver.NewDriver(map[string]interface{}{
 					"name": "d1",
@@ -267,7 +267,7 @@ func TestServiceEmitterCrashing(t *testing.T) {
 					},
 				}),
 			},
-			"emitter": &driver.Runtime{
+			"emitter": {
 				State: driver.DriverAlive,
 				Handler: driver.NewDriver(map[string]interface{}{
 					"name": "test-emitter",
@@ -332,7 +332,7 @@ func TestServiceReplaceEmitter(t *testing.T) {
 	svc := &Service{
 		name: "testsvc",
 		driverRuntimes: map[string]*driver.Runtime{
-			"driver:d1": &driver.Runtime{
+			"driver:d1": {
 				State: driver.DriverAlive,
 				Handler: driver.NewDriver(map[string]interface{}{
 					"name": "d1",
@@ -342,7 +342,7 @@ func TestServiceReplaceEmitter(t *testing.T) {
 					},
 				}),
 			},
-			"emitter": &driver.Runtime{
+			"emitter": {
 				State: driver.DriverAlive,
 				Handler: driver.NewDriver(map[string]interface{}{
 					"name": "test-emitter",

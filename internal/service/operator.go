@@ -56,7 +56,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			data = map[string]interface{}{}
 		}
 		event, _ := dipper.GetMapData(msg.Payload, "event")
-		wfdata, _ := dipper.GetMapData(msg.Payload, "wfdata")
+		ctx, _ := dipper.GetMapData(msg.Payload, "ctx")
 		funcDef, ok := dipper.GetMapData(msg.Payload, "function")
 		if !ok {
 			dipper.Logger.Panicf("[operator] no function received")
@@ -76,24 +76,26 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		}
 		finalParams := params
 		if params != nil {
-			// interpolate twice for giving an chance for using sysData in wfdata
-			if wfdata != nil {
-				wfdata = dipper.Interpolate(wfdata, map[string]interface{}{
+			// interpolate twice for giving an chance for using sysData in ctx
+			if ctx != nil {
+				ctx = dipper.Interpolate(ctx, map[string]interface{}{
 					"sysData": sysData,
 					"data":    data,
 					"event":   event,
 					"labels":  msg.Labels,
-					"wfdata":  wfdata,
+					"wfdata":  ctx,
+					"ctx":     ctx,
 					"params":  params,
 				}).(map[string]interface{})
 			}
-			// use interpolated wfdata to assemble final params
+			// use interpolated ctx to assemble final params
 			finalParams = dipper.Interpolate(params, map[string]interface{}{
 				"sysData": sysData,
 				"data":    data,
 				"event":   event,
 				"labels":  msg.Labels,
-				"wfdata":  wfdata,
+				"ctx":     ctx,
+				"wfdata":  ctx,
 				"params":  params,
 			}).(map[string]interface{})
 		}

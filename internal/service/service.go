@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	serrors "github.com/go-errors/errors"
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/internal/driver"
@@ -103,8 +104,9 @@ func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{
 func (s *Service) loadFeature(feature string) (affected bool, driverName string, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
-			dipper.Logger.Infof("Resuming after error: %v", r)
-			dipper.Logger.Infof("[%s] skip reloading feature: %s", s.name, feature)
+			dipper.Logger.Warningf("Resuming after error: %v", r)
+			dipper.Logger.Warningf(serrors.Wrap(r, 1).ErrorStack())
+			dipper.Logger.Warningf("[%s] skip reloading feature: %s", s.name, feature)
 			if runtime := s.getDriverRuntime(feature); runtime != nil {
 				runtime.State = driver.DriverFailed
 			}
@@ -332,7 +334,7 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 		if !required {
 			affected, driverName, err := s.loadFeature(feature)
 			if err != nil {
-				dipper.Logger.Infof("[%s] skip feature %s error %v", s.name, feature, err)
+				dipper.Logger.Warningf("[%s] skip feature %s error %v", s.name, feature, err)
 			}
 			if affected {
 				func(feature string, driverName string) {
