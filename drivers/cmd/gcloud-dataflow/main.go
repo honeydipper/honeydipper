@@ -43,6 +43,7 @@ func main() {
 	driver.CommandProvider.Commands["waitForJob"] = waitForJob
 	driver.CommandProvider.Commands["getJob"] = getJob
 	driver.CommandProvider.Commands["listJob"] = listJob
+	driver.CommandProvider.Commands["updateJob"] = updateJob
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
@@ -80,14 +81,7 @@ func createJob(msg *dipper.Message) {
 	if !ok {
 		panic(errors.New("project required"))
 	}
-	regional := false
-	if regionalData, ok := dipper.GetMapData(params, "regional"); ok {
-		regional = regionalData.(bool)
-	}
-	location, ok := dipper.GetMapDataStr(params, "location")
-	if !regional && !ok {
-		panic(errors.New("location required for location based dataflow job"))
-	}
+	location, withLocation := dipper.GetMapDataStr(params, "location")
 	job, ok := dipper.GetMapData(params, "job")
 	if !ok {
 		panic(errors.New("job spec required"))
@@ -104,7 +98,7 @@ func createJob(msg *dipper.Message) {
 	var result *dataflow.Job
 	func() {
 		defer cancel()
-		if regional {
+		if !withLocation {
 			result, err = dataflowService.Projects.Templates.Create(project, &jobSpec).Context(execContext).Do()
 		} else {
 			result, err = dataflowService.Projects.Locations.Templates.Create(project, location, &jobSpec).Context(execContext).Do()
@@ -128,14 +122,7 @@ func getJob(msg *dipper.Message) {
 	if !ok {
 		panic(errors.New("project required"))
 	}
-	regional := false
-	if regionalData, ok := dipper.GetMapData(params, "regional"); ok {
-		regional = regionalData.(bool)
-	}
-	location, ok := dipper.GetMapDataStr(params, "location")
-	if !regional && !ok {
-		panic(errors.New("location required for location based dataflow job"))
-	}
+	location, withLocation := dipper.GetMapDataStr(params, "location")
 	jobID, ok := dipper.GetMapDataStr(params, "jobID")
 	if !ok {
 		panic(errors.New("jobID required"))
@@ -157,7 +144,7 @@ func getJob(msg *dipper.Message) {
 	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	func() {
 		defer cancel()
-		if regional {
+		if !withLocation {
 			getCall := dataflowService.Projects.Jobs.Get(project, jobID)
 			if len(fieldList) > 0 {
 				getCall = getCall.Fields(fieldList...)
@@ -236,14 +223,7 @@ func waitForJob(msg *dipper.Message) {
 	if !ok {
 		panic(errors.New("project required"))
 	}
-	regional := false
-	if regionalData, ok := dipper.GetMapData(params, "regional"); ok {
-		regional = regionalData.(bool)
-	}
-	location, ok := dipper.GetMapDataStr(params, "location")
-	if !regional && !ok {
-		panic(errors.New("location required for location based dataflow job"))
-	}
+	location, withLocation := dipper.GetMapDataStr(params, "location")
 	jobID, ok := dipper.GetMapDataStr(params, "jobID")
 	if !ok {
 		panic(errors.New("jobID required"))
@@ -280,7 +260,7 @@ func waitForJob(msg *dipper.Message) {
 			execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 			func() {
 				defer cancel()
-				if regional {
+				if !withLocation {
 					result, err = dataflowService.Projects.Jobs.Get(project, jobID).Context(execContext).Do()
 				} else {
 					result, err = dataflowService.Projects.Locations.Jobs.Get(project, location, jobID).Context(execContext).Do()
@@ -320,5 +300,47 @@ func waitForJob(msg *dipper.Message) {
 	case <-time.After(time.Duration(timeout) * time.Second):
 		expired = true
 		panic(errors.New("time out"))
+	}
+}
+
+func updateJob(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
+	project, ok := dipper.GetMapDataStr(params, "project")
+	if !ok {
+		panic(errors.New("project required"))
+	}
+	location, withLocation := dipper.GetMapDataStr(params, "location")
+	job, ok := dipper.GetMapData(params, "jobSpec")
+	if !ok {
+		panic(errors.New("job spec required"))
+	}
+	var jobSpec dataflow.Job
+	err := mapstructure.Decode(job, &jobSpec)
+	if err != nil {
+		panic(err)
+	}
+	jobID := dipper.MustGetMapDataStr(params, "jobID")
+
+	var dataflowService = getDataflowService(serviceAccountBytes)
+
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	var result *dataflow.Job
+	func() {
+		defer cancel()
+		if !withLocation {
+			result, err = dataflowService.Projects.Jobs.Update(project, jobID, &jobSpec).Context(execContext).Do()
+		} else {
+			result, err = dataflowService.Projects.Locations.Jobs.Update(project, location, jobID, &jobSpec).Context(execContext).Do()
+		}
+	}()
+	if err != nil {
+		panic(errors.New("failed to update dataflow job in gcloud"))
+	}
+	msg.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"job": *result,
+		},
 	}
 }
