@@ -46,7 +46,7 @@ func runConfigCheck(cfg *config.Config) bool {
 	for _, rule := range cfg.DataSet.Rules {
 		location, errMsg := checkWorkflow(rule.Do)
 		if len(errMsg) > 0 {
-			rule.When.Conditions = map[string]interface{}{
+			rule.When.Match = map[string]interface{}{
 				"_": aurora.Cyan("truncated ..."),
 			}
 			if !ruleErrors {
