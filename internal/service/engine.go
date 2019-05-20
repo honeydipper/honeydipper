@@ -48,10 +48,9 @@ type WorkflowSession struct {
 var sessions = map[string]*WorkflowSession{}
 var suspendedSessions = map[string]string{}
 
-// CollapsedRule maps the rule to its all collapsed conditions.
+// CollapsedRule maps the rule to its all collapsed match.
 type CollapsedRule struct {
-	// The collapsed conditions
-	Conditions   interface{}
+	Trigger      config.CollapsedTrigger
 	OriginalRule *config.Rule
 }
 
@@ -158,8 +157,8 @@ func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			crs, ok := ruleMap[event]
 			if ok && crs != nil {
 				for _, cr := range *crs {
-					dipper.Recursive(cr.Conditions, engine.decryptDriverData)
-					if dipper.CompareAll(data, cr.Conditions) {
+					dipper.Recursive(cr.Trigger.Match, engine.decryptDriverData)
+					if dipper.CompareAll(data, cr.Trigger.Match) {
 						dipper.Logger.Infof("[engine] raw event triggers an event %s.%s",
 							cr.OriginalRule.When.Source.System,
 							cr.OriginalRule.When.Source.Trigger,
@@ -583,9 +582,8 @@ func buildRuleMap(cfg *config.Config) {
 					dipper.Logger.Warningf("[engine] skipping invalid rule.When %+v with error %+v", rule.When, r)
 				}
 			}()
-			rawTrigger, conditions := collapseTrigger(rule.When, cfg.DataSet)
-			dipper.Recursive(conditions, dipper.RegexParser)
-			// collpaseTrigger function is in receiver.go, might need to be moved
+			rawTrigger, collapsedTrigger := config.CollapseTrigger(rule.When, cfg.DataSet)
+			dipper.Recursive(collapsedTrigger.Match, dipper.RegexParser)
 
 			rawTriggerKey := rawTrigger.Driver + "." + rawTrigger.RawEvent
 			rawRules, ok := ruleMap[rawTriggerKey]
@@ -593,7 +591,7 @@ func buildRuleMap(cfg *config.Config) {
 				rawRules = &[]*CollapsedRule{}
 			}
 			*rawRules = append(*rawRules, &CollapsedRule{
-				Conditions:   conditions,
+				Trigger:      collapsedTrigger,
 				OriginalRule: &rule,
 			})
 			if !ok {

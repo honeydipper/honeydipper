@@ -137,6 +137,16 @@ func RecursiveWithPrefix(
 		for i := 0; i < vfrom.Len(); i++ {
 			RecursiveWithPrefix(from, newPrefixes, i, vfrom.Index(i).Interface(), process)
 		}
+	case reflect.Ptr:
+		vfrom = vfrom.Elem()
+		if vfrom.Kind() == reflect.Struct {
+			for i := 0; i < vfrom.NumField(); i++ {
+				field := vfrom.Field(i)
+				if field.IsValid() && field.CanSet() {
+					RecursiveWithPrefix(from, newPrefixes, i, field.Interface(), process)
+				}
+			}
+		}
 	default:
 		if parent == nil {
 			return
@@ -149,6 +159,11 @@ func RecursiveWithPrefix(
 				vparent.SetMapIndex(reflect.ValueOf(key), vval)
 			case reflect.Slice, reflect.Array:
 				vparent.Index(key.(int)).Set(vval)
+			case reflect.Ptr:
+				vparent = vparent.Elem()
+				if vparent.Kind() == reflect.Struct {
+					vparent.Field(key.(int)).Set(vval)
+				}
 			default:
 				panic(fmt.Errorf("unable to change value in parent"))
 			}

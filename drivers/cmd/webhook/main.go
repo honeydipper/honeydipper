@@ -100,7 +100,8 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	if eventData["url"] != "/hz/alive" {
 		matched := false
 		for _, hook := range hooks {
-			for _, condition := range hook.([]interface{}) {
+			for _, collapsed := range hook.([]interface{}) {
+				condition, _ := dipper.GetMapData(collapsed, "match")
 				auth, ok := dipper.GetMapData(condition, ":auth:")
 				if ok {
 					authDriver := dipper.MustGetMapDataStr(auth, "driver")

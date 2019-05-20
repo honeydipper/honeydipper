@@ -11,7 +11,6 @@ import (
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/imdario/mergo"
 )
 
 var receiver *Service
@@ -40,48 +39,6 @@ func receiverRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	return ret
 }
 
-func collapseTrigger(t config.Trigger, c *config.DataSet) (config.Trigger, interface{}) {
-	current := t
-	sysData := map[string]interface{}{}
-	var stack []interface{}
-	if current.Conditions != nil {
-		stack = append(stack, current.Conditions)
-	}
-	for len(current.Source.System) > 0 {
-		if len(current.Driver) > 0 {
-			dipper.Logger.Panicf("[receiver] a trigger cannot have both driver and source %+v", current)
-		}
-		currentSys := c.Systems[current.Source.System]
-		currentSysData, _ := dipper.DeepCopy(currentSys.Data)
-		err := mergo.Merge(&sysData, currentSysData, mergo.WithOverride, mergo.WithAppendSlice)
-		if err != nil {
-			panic(err)
-		}
-		current = currentSys.Triggers[current.Source.Trigger]
-		if current.Conditions != nil {
-			stack = append(stack, current.Conditions)
-		}
-	}
-	if len(current.Driver) == 0 {
-		dipper.Logger.Panicf("[receiver] a trigger should have a driver or a source %+v", current)
-	}
-	conditions := map[string]interface{}{}
-	for i := len(stack) - 1; i >= 0; i-- {
-		c, _ := stack[i].(map[string]interface{})
-		cp, _ := dipper.DeepCopy(c)
-		err := mergo.Merge(&conditions, cp, mergo.WithOverride, mergo.WithAppendSlice)
-		if err != nil {
-			panic(err)
-		}
-	}
-	if len(sysData) > 0 {
-		conditions = dipper.Interpolate(conditions, map[string]interface{}{
-			"sysData": sysData,
-		}).(map[string]interface{})
-	}
-	return current, conditions
-}
-
 // ReceiverFeatures goes through the config data to figure out what driver/feature to start for receiving events
 func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 	dynamicData := map[string]interface{}{}
@@ -94,7 +51,7 @@ func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 					dipper.Logger.Warningf("[receiver] failed to process rule.When %+v with error %+v", rule.When, r)
 				}
 			}()
-			rawTrigger, conditions := collapseTrigger(rule.When, c)
+			rawTrigger, collapsed := config.CollapseTrigger(rule.When, c)
 			var driverData map[string]interface{}
 			data, ok := dynamicData["driver:"+rawTrigger.Driver]
 			if !ok {
@@ -118,7 +75,7 @@ func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 			} else {
 				collapsedEvent, _ = list.([]interface{})
 			}
-			collapsedEvent = append(collapsedEvent, conditions)
+			collapsedEvent = append(collapsedEvent, &collapsed)
 			numCollapsedEvents++
 
 			driverData["collapsedEvents"].(map[string]interface{})[eventName] = collapsedEvent
