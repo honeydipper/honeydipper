@@ -66,3 +66,14 @@ func IDMapDel(m IDMap, key string) {
 	mapValue := reflect.ValueOf(m).Elem()
 	mapValue.SetMapIndex(reflect.ValueOf(key), reflect.Value{})
 }
+
+// IDMapGet : getting a value from ID map
+func IDMapGet(m IDMap, key string) interface{} {
+	meta := IDMapMetadata[m]
+	meta.Lock.Lock()
+	defer meta.Lock.Unlock()
+
+	mapValue := reflect.ValueOf(m).Elem()
+	ret := mapValue.MapIndex(reflect.ValueOf(key)).Interface()
+	return ret
+}
