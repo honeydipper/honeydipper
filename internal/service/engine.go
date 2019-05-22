@@ -188,7 +188,7 @@ func engineRoute(msg *dipper.Message) (ret []RoutedMessage) {
 
 func continueWorkflow(sessionID string, msg *dipper.Message, exported *map[string]interface{}) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
-	session := sessions[sessionID]
+	session := dipper.IDMapGet(&sessions, sessionID).(*WorkflowSession)
 
 	if session.function != nil {
 		envData := map[string]interface{}{
@@ -295,7 +295,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message,
 	}
 	var parentSession *WorkflowSession
 	if sessionID != "" {
-		parentSession = sessions[sessionID]
+		parentSession = dipper.IDMapGet(&sessions, sessionID).(*WorkflowSession)
 		ctx = &parentSession.ctx
 		envData["wfdata"] = *ctx
 		envData["ctx"] = *ctx
@@ -536,7 +536,7 @@ func executeWorkflow(sessionID string, wf *config.Workflow, msg *dipper.Message,
 }
 
 func terminateWorkflow(sessionID string, msg *dipper.Message) {
-	session := sessions[sessionID]
+	session := dipper.IDMapGet(&sessions, sessionID).(*WorkflowSession)
 	if session != nil {
 		dipper.IDMapDel(&sessions, sessionID)
 		if session.parent != "" {

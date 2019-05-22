@@ -97,46 +97,50 @@ func startWebhook(m *dipper.Message) {
 func hookHandler(w http.ResponseWriter, r *http.Request) {
 	eventData := extractEventData(w, r)
 
-	matched := false
-	for _, hook := range hooks {
-		for _, condition := range hook.([]interface{}) {
-			auth, ok := dipper.GetMapData(condition, ":auth:")
-			if ok {
-				authDriver := dipper.MustGetMapDataStr(auth, "driver")
-				authResult, err := driver.RPCCall("driver:"+authDriver, "webhookAuth", map[string]interface{}{
-					"event":     eventData,
-					"condition": auth,
-				})
-				if err != nil || string(authResult) != "authenticated" {
-					log.Warningf("[%s] failed to authenticate webhook request with %s error %+v", driver.Service, authDriver, err)
-					continue
+	if eventData["url"] != "/hz/alive" {
+		matched := false
+		for _, hook := range hooks {
+			for _, condition := range hook.([]interface{}) {
+				auth, ok := dipper.GetMapData(condition, ":auth:")
+				if ok {
+					authDriver := dipper.MustGetMapDataStr(auth, "driver")
+					authResult, err := driver.RPCCall("driver:"+authDriver, "webhookAuth", map[string]interface{}{
+						"event":     eventData,
+						"condition": auth,
+					})
+					if err != nil || string(authResult) != "authenticated" {
+						log.Warningf("[%s] failed to authenticate webhook request with %s error %+v", driver.Service, authDriver, err)
+						continue
+					}
+				}
+				if dipper.CompareAll(eventData, condition) {
+					matched = true
+					break
 				}
 			}
-			if dipper.CompareAll(eventData, condition) {
-				matched = true
+			if matched {
 				break
 			}
 		}
+
 		if matched {
-			break
+			driver.SendMessage(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "message",
+				Payload: map[string]interface{}{
+					"events": []interface{}{"webhook."},
+					"data":   eventData,
+				},
+			})
+
+			w.WriteHeader(http.StatusOK)
+			return
 		}
-	}
 
-	if matched {
-		driver.SendMessage(&dipper.Message{
-			Channel: "eventbus",
-			Subject: "message",
-			Payload: map[string]interface{}{
-				"events": []interface{}{"webhook."},
-				"data":   eventData,
-			},
-		})
-
+		http.NotFound(w, r)
+	} else {
 		w.WriteHeader(http.StatusOK)
-		return
 	}
-
-	http.NotFound(w, r)
 }
 
 func badRequest(w http.ResponseWriter) {
