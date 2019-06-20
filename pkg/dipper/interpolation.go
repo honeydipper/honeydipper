@@ -52,11 +52,23 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:
 		if strings.HasPrefix(v, ":path:") {
-			ret, ok := GetMapData(data, v[6:])
-			if !ok {
-				panic(fmt.Errorf("invalid path %s", v[6:]))
+			var keys []string
+			allowNull := (v[6] == '?')
+			if allowNull {
+				keys = strings.Split(v[7:], ",")
+			} else {
+				keys = strings.Split(v[6:], ",")
 			}
-			return ret
+			for _, key := range keys {
+				ret, _ := GetMapData(data, key)
+				if ret != nil {
+					return ret
+				}
+			}
+			if allowNull {
+				return nil
+			}
+			panic(fmt.Errorf("invalid path %s", v[6:]))
 		}
 		ret := InterpolateStr(v, data)
 		if strings.HasPrefix(ret, ":yaml:") {

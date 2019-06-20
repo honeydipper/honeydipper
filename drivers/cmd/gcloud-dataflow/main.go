@@ -42,7 +42,7 @@ func main() {
 	driver.CommandProvider.Commands["createJob"] = createJob
 	driver.CommandProvider.Commands["waitForJob"] = waitForJob
 	driver.CommandProvider.Commands["getJob"] = getJob
-	driver.CommandProvider.Commands["listJob"] = listJob
+	driver.CommandProvider.Commands["findJobByName"] = findJobByName
 	driver.CommandProvider.Commands["updateJob"] = updateJob
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
@@ -56,32 +56,44 @@ func getDataflowService(serviceAccountBytes string) *dataflow.Service {
 	if len(serviceAccountBytes) > 0 {
 		conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
 		if err != nil {
-			panic(errors.New("invalid service account"))
+			panic(err)
 		}
 		client = conf.Client(context.Background())
 	} else {
 		client, err = google.DefaultClient(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
 	}
 	if err != nil {
-		panic(errors.New("unable to create gcloud client credential"))
+		panic(err)
 	}
 
 	dataflowService, err := dataflow.New(client)
 	if err != nil {
-		panic(errors.New("unable to create dataflow service client"))
+		panic(err)
 	}
 	return dataflowService
 }
 
-func createJob(msg *dipper.Message) {
-	msg = dipper.DeserializePayload(msg)
-	params := msg.Payload
+func getCommonParams(params interface{}) (string, string, string) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
 		panic(errors.New("project required"))
 	}
-	location, withLocation := dipper.GetMapDataStr(params, "location")
+	location, ok := dipper.GetMapDataStr(params, "location")
+	if ok {
+		suffix := location[len(location)-2:]
+		if suffix >= "-a" && suffix <= "-z" {
+			location = location[:len(location)-2]
+		}
+	}
+	return serviceAccountBytes, project, location
+}
+
+func createJob(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+	serviceAccountBytes, project, location := getCommonParams(params)
+
 	job, ok := dipper.GetMapData(params, "job")
 	if !ok {
 		panic(errors.New("job spec required"))
@@ -98,14 +110,14 @@ func createJob(msg *dipper.Message) {
 	var result *dataflow.Job
 	func() {
 		defer cancel()
-		if !withLocation {
+		if len(location) == 0 {
 			result, err = dataflowService.Projects.Templates.Create(project, &jobSpec).Context(execContext).Do()
 		} else {
 			result, err = dataflowService.Projects.Locations.Templates.Create(project, location, &jobSpec).Context(execContext).Do()
 		}
 	}()
 	if err != nil {
-		panic(errors.New("failed to create dataflow job in gcloud"))
+		panic(err)
 	}
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
@@ -117,12 +129,8 @@ func createJob(msg *dipper.Message) {
 func getJob(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
-	project, ok := dipper.GetMapDataStr(params, "project")
-	if !ok {
-		panic(errors.New("project required"))
-	}
-	location, withLocation := dipper.GetMapDataStr(params, "location")
+	serviceAccountBytes, project, location := getCommonParams(params)
+
 	jobID, ok := dipper.GetMapDataStr(params, "jobID")
 	if !ok {
 		panic(errors.New("jobID required"))
@@ -144,7 +152,7 @@ func getJob(msg *dipper.Message) {
 	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	func() {
 		defer cancel()
-		if !withLocation {
+		if len(location) == 0 {
 			getCall := dataflowService.Projects.Jobs.Get(project, jobID)
 			if len(fieldList) > 0 {
 				getCall = getCall.Fields(fieldList...)
@@ -169,61 +177,77 @@ func getJob(msg *dipper.Message) {
 	}
 }
 
-func listJob(msg *dipper.Message) {
+func findJobByName(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
-	project, ok := dipper.GetMapDataStr(params, "project")
+	serviceAccountBytes, project, location := getCommonParams(params)
+
+	jobName, ok := dipper.GetMapDataStr(params, "name")
 	if !ok {
-		panic(errors.New("project required"))
+		panic(errors.New("name required"))
 	}
 
 	var dataflowService = getDataflowService(serviceAccountBytes)
 
 	listJobCall := dataflowService.Projects.Jobs.List(project)
-	if fields, ok := dipper.GetMapData(params, "fields"); ok {
-		fieldList := []googleapi.Field{}
-		for _, v := range fields.([]interface{}) {
-			fieldList = append(fieldList, v.(googleapi.Field))
-		}
-		listJobCall = listJobCall.Fields(fieldList...)
+	fieldList := []googleapi.Field{
+		"nextPageToken",
+		"jobs(id,name,currentState)",
 	}
-	if filter, ok := dipper.GetMapDataStr(params, "filter"); ok {
-		listJobCall = listJobCall.Filter(filter)
-	}
-	if location, ok := dipper.GetMapDataStr(params, "location"); ok {
+	listJobCall = listJobCall.Fields(fieldList...)
+	listJobCall = listJobCall.Filter("ACTIVE")
+	if len(location) > 0 {
 		listJobCall = listJobCall.Location(location)
 	}
 
 	var (
 		result *dataflow.ListJobsResponse
 		err    error
+		job    *dataflow.Job
 	)
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	func() {
-		defer cancel()
-		result, err = listJobCall.Context(execContext).Do()
-	}()
-	if err != nil {
-		panic(err)
+	for job == nil {
+		execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		func() {
+			defer cancel()
+			result, err = listJobCall.Context(execContext).Do()
+		}()
+
+		if err != nil {
+			panic(err)
+		}
+
+		if len(result.Jobs) > 0 {
+			for _, j := range result.Jobs {
+				if j.Name == jobName {
+					job = j
+					break
+				}
+			}
+		}
+
+		if len(result.NextPageToken) > 0 {
+			listJobCall.PageToken(result.NextPageToken)
+		} else {
+			break
+		}
 	}
 
-	msg.Reply <- dipper.Message{
-		Payload: map[string]interface{}{
-			"result": *result,
-		},
+	if job != nil {
+		msg.Reply <- dipper.Message{
+			Payload: map[string]interface{}{
+				"job": *job,
+			},
+		}
+	} else {
+		panic(errors.New("job not found"))
 	}
 }
 
 func waitForJob(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
-	project, ok := dipper.GetMapDataStr(params, "project")
-	if !ok {
-		panic(errors.New("project required"))
-	}
-	location, withLocation := dipper.GetMapDataStr(params, "location")
+	serviceAccountBytes, project, location := getCommonParams(params)
+
 	jobID, ok := dipper.GetMapDataStr(params, "jobID")
 	if !ok {
 		panic(errors.New("jobID required"))
@@ -260,7 +284,7 @@ func waitForJob(msg *dipper.Message) {
 			execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 			func() {
 				defer cancel()
-				if !withLocation {
+				if len(location) == 0 {
 					result, err = dataflowService.Projects.Jobs.Get(project, jobID).Context(execContext).Do()
 				} else {
 					result, err = dataflowService.Projects.Locations.Jobs.Get(project, location, jobID).Context(execContext).Do()
@@ -306,12 +330,8 @@ func waitForJob(msg *dipper.Message) {
 func updateJob(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
-	project, ok := dipper.GetMapDataStr(params, "project")
-	if !ok {
-		panic(errors.New("project required"))
-	}
-	location, withLocation := dipper.GetMapDataStr(params, "location")
+	serviceAccountBytes, project, location := getCommonParams(params)
+
 	job, ok := dipper.GetMapData(params, "jobSpec")
 	if !ok {
 		panic(errors.New("job spec required"))
@@ -329,14 +349,14 @@ func updateJob(msg *dipper.Message) {
 	var result *dataflow.Job
 	func() {
 		defer cancel()
-		if !withLocation {
+		if len(location) == 0 {
 			result, err = dataflowService.Projects.Jobs.Update(project, jobID, &jobSpec).Context(execContext).Do()
 		} else {
 			result, err = dataflowService.Projects.Locations.Jobs.Update(project, location, jobID, &jobSpec).Context(execContext).Do()
 		}
 	}()
 	if err != nil {
-		panic(errors.New("failed to update dataflow job in gcloud"))
+		panic(err)
 	}
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
