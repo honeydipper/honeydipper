@@ -16,6 +16,7 @@ import (
 	"github.com/honeydipper/honeydipper/internal/service"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
+	"gopkg.in/src-d/go-git.v4"
 	"os"
 	"os/exec"
 	"runtime"
@@ -45,7 +46,16 @@ func intTestDaemonStartup(t *testing.T) {
 	}
 	workingBranch, ok := os.LookupEnv("CIRCLE_BRANCH")
 	if !ok {
-		workingBranch = "master"
+		repo, err := git.PlainOpen("..")
+		if err != nil {
+			panic(err)
+		}
+		currentBranch, err := repo.Head()
+		if err != nil {
+			panic(err)
+		}
+		ref := strings.Split(string(currentBranch.Name()), "/")
+		workingBranch = ref[len(ref)-1]
 	}
 	cfg := config.Config{
 		InitRepo: config.RepoInfo{
