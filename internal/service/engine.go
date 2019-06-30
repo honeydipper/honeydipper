@@ -50,7 +50,7 @@ var suspendedSessions = map[string]string{}
 
 // CollapsedRule maps the rule to its all collapsed match.
 type CollapsedRule struct {
-	Trigger      config.CollapsedTrigger
+	Trigger      dipper.CollapsedTrigger
 	OriginalRule *config.Rule
 }
 

@@ -20,9 +20,10 @@ type Action struct {
 
 // Trigger is the datastructure hold the information to match and process an event.
 type Trigger struct {
-	Driver   string                 `json:"driver,omitempty"`
-	RawEvent string                 `json:"rawevent,omitempty"`
-	Match    map[string]interface{} `json:"match,omitempty"`
+	Driver     string                 `json:"driver,omitempty"`
+	RawEvent   string                 `json:"rawevent,omitempty"`
+	Match      map[string]interface{} `json:"match,omitempty"`
+	Parameters map[string]interface{} `json:"parameters,omitempty"`
 	// A trigger should have only one of source event a raw event.
 	Source Event                  `json:"source,omitempty"`
 	Export map[string]interface{} `json:"export,omitempty"`

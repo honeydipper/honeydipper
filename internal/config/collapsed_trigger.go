@@ -11,15 +11,8 @@ import (
 	"github.com/imdario/mergo"
 )
 
-// CollapsedTrigger is a trigger with collapsed matching criteria, merged sysData and stack of exports
-type CollapsedTrigger struct {
-	Match   map[string]interface{}   `json:"match"`
-	Exports []map[string]interface{} `json:"exports"`
-	SysData map[string]interface{}   `json:"sysData"`
-}
-
 // CollapseTrigger collapses matching criteria, exports and sysData of a trigger and its inheritted triggers
-func CollapseTrigger(t Trigger, c *DataSet) (Trigger, CollapsedTrigger) {
+func CollapseTrigger(t Trigger, c *DataSet) (Trigger, dipper.CollapsedTrigger) {
 	current := t
 	sysData := map[string]interface{}{}
 	var stack []Trigger
@@ -45,6 +38,7 @@ func CollapseTrigger(t Trigger, c *DataSet) (Trigger, CollapsedTrigger) {
 		dipper.Logger.Panicf("[receiver] a trigger should have a driver or a source %+v", current)
 	}
 	match := map[string]interface{}{}
+	params := map[string]interface{}{}
 	var exports []map[string]interface{}
 	for i := len(stack) - 1; i >= 0; i-- {
 		cp, _ := dipper.DeepCopy(stack[i].Match)
@@ -52,16 +46,24 @@ func CollapseTrigger(t Trigger, c *DataSet) (Trigger, CollapsedTrigger) {
 		if err != nil {
 			panic(err)
 		}
+		cpParams, _ := dipper.DeepCopy(stack[i].Parameters)
+		err = mergo.Merge(&params, cpParams, mergo.WithOverride, mergo.WithAppendSlice)
+		if err != nil {
+			panic(err)
+		}
 		exports = append(exports, stack[i].Export)
 	}
 	if len(sysData) > 0 {
-		match = dipper.Interpolate(match, map[string]interface{}{
+		envData := map[string]interface{}{
 			"sysData": sysData,
-		}).(map[string]interface{})
+		}
+		match = dipper.Interpolate(match, envData).(map[string]interface{})
+		params = dipper.Interpolate(params, envData).(map[string]interface{})
 	}
-	return current, CollapsedTrigger{
-		Match:   match,
-		Exports: exports,
-		SysData: sysData,
+	return current, dipper.CollapsedTrigger{
+		Match:      match,
+		Exports:    exports,
+		SysData:    sysData,
+		Parameters: params,
 	}
 }
