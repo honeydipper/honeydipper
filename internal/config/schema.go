@@ -35,8 +35,10 @@ type Function struct {
 	RawAction  string                   `json:"rawaction,omitempty"`
 	Parameters map[string](interface{}) `json:"parameters,omitempty"`
 	// An action should have only one of target action or a raw action.
-	Target Action                 `json:"target,omitempty"`
-	Export map[string]interface{} `json:"export,omitempty"`
+	Target          Action                 `json:"target,omitempty"`
+	Export          map[string]interface{} `json:"export,omitempty"`
+	ExportOnSuccess map[string]interface{} `json:"export_on_success,omitempty"`
+	ExportOnFailure map[string]interface{} `json:"export_on_failure,omitempty"`
 }
 
 // System is an abstract construct to group data, trigger and function definitions.
@@ -49,11 +51,45 @@ type System struct {
 
 // Workflow defines one or more actions needed to complete certain task and how they are orchestrated.
 type Workflow struct {
-	Type      string `json:"type,omitempty"`
-	Condition string `json:"condition,omitempty"`
-	Content   interface{}
-	Data      map[string]interface{}
-	Export    map[string]interface{}
+	Name     string                 `json:"name,omitempty"`
+	Context  string                 `json:"context,omitempty"`
+	Contexts []string               `json:"contexts,omitempty"`
+	Local    map[string]interface{} `json:"with,omitempty"`
+
+	Match     map[string]interface{} `json:"match,omitempty"`
+	If        []string               `json:"if,omitempty"`
+	IfAny     []string               `json:"if_any,omitempty"`
+	Unless    []string               `json:"unless,omitempty"`
+	UnlessAny []string               `json:"unless_all,omitempty"`
+	While     []string               `json:"while,omitempty"`
+	WhileAny  []string               `json:"while_any,omitempty"`
+	Until     []string               `json:"until,omitempty"`
+	UntilAny  []string               `json:"until_any,omitempty"`
+
+	Else interface{} `json:"else,omitempty"`
+
+	Iterate         interface{} `json:"iterate,omitempty"`
+	IterateParallel interface{} `json:"iterate_parallel,omitempty"`
+	IterateAs       string      `json:"iterate_as,omitempty"`
+
+	Retry   string `json:"retry,omitempty"`
+	Backoff string `json:"backoff,omitempty"`
+
+	Workflow string     `json:"workflow,omitempty"`
+	Function Function   `json:"function,omitempty"`
+	CallFunc string     `json:"call_function,omitempty"`
+	Steps    []Workflow `json:"steps,omitempty"`
+	Threads  []Workflow `json:"threads,omitempty"`
+	Wait     string     `json:"wait,omitempty"`
+
+	Switch  string                 `json:"switch,omitempty"`
+	Cases   map[string]interface{} `json:"cases,omitempty"`
+	Default interface{}            `json:"default,omitempty"`
+
+	Export          map[string]interface{} `json:"export,omitempty"`
+	ExportOnSuccess map[string]interface{} `json:"export_on_success,omitempty"`
+	ExportOnFailure map[string]interface{} `json:"export_on_failure,omitempty"`
+	NoExport        []string               `json:"no_export,omitempty"`
 }
 
 // Rule is a data structure defining what action to take when certain event happen.
@@ -69,6 +105,9 @@ type RepoInfo struct {
 	Path   string `json:"path,omitempty"`
 }
 
+// Context is a datastructure holds pre-defined contextual data
+type Context map[string]map[string]interface{}
+
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.
 type DataSet struct {
 	Systems   map[string]System      `json:"systems,omitempty"`
@@ -77,4 +116,5 @@ type DataSet struct {
 	Includes  []string               `json:"includes,omitempty"`
 	Repos     []RepoInfo             `json:"repos,omitempty"`
 	Workflows map[string]Workflow    `json:"workflows,omitempty"`
+	Contexts  map[string]Context     `json:"contexts,omitempty"`
 }

@@ -87,6 +87,12 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			ret[k] = Interpolate(val, data)
 		}
 		return ret
+	case []string:
+		ret := []string{}
+		for _, val := range v {
+			ret = append(ret, InterpolateStr(val, data))
+		}
+		return ret
 	case []interface{}:
 		ret := []interface{}{}
 		for _, val := range v {

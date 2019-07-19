@@ -470,7 +470,7 @@ func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
 			}
 		}
 
-		if msg != nil {
+		if msg != nil && s.Route != nil {
 			// router
 			routedMsgs := s.Route(msg)
 
@@ -481,6 +481,10 @@ func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
 			}
 		}
 	}(&msg)
+}
+
+func (s *Service) addResponder(channelSubject string, f MessageResponder) {
+	s.responders[channelSubject] = append(s.responders[channelSubject], f)
 }
 
 func (s *Service) addExpect(expectKey string, processor ExpectHandler, timeout time.Duration, except func()) {

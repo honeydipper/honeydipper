@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/imdario/mergo"
 )
 
 //nolint:gochecknoinits
@@ -250,4 +252,37 @@ func DeepCopy(m map[string]interface{}) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return copy, nil
+}
+
+// MustDeepCopy : performs a deep copy of the given map m, panic if run into errors
+func MustDeepCopy(m map[string]interface{}) map[string]interface{} {
+	ret, err := DeepCopy(m)
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+// MergeMap : merge the data from source to destination with some overriding rule
+func MergeMap(dst map[string]interface{}, src interface{}) {
+	err := mergo.Merge(&dst, src, mergo.WithOverride)
+	if err != nil {
+		panic(err)
+	}
+	for k, v := range dst {
+		if k[len(k)-1] == '-' {
+			if _, ok := dst[k[:len(k)-1]]; !ok {
+				dst[k[:len(k)-1]] = v
+			}
+			delete(dst, k)
+		} else if k[len(k)-1] == '+' {
+			ev, ok := dst[k[:len(k)-1]]
+			if !ok {
+				dst[k[:len(k)-1]] = v
+			} else {
+				dst[k[:len(k)-1]] = reflect.AppendSlice(reflect.ValueOf(ev), reflect.ValueOf(v)).Interface()
+			}
+			delete(dst, k)
+		}
+	}
 }
