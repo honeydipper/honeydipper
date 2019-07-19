@@ -22,7 +22,7 @@ func TestReceiverCollapseTrigger(t *testing.T) {
 		},
 	}
 
-	finalTrigger, collapsed := CollapseTrigger(trigger, nil)
+	finalTrigger, collapsed := CollapseTrigger(&trigger, nil)
 	assert.Equal(t, trigger, finalTrigger, "should collapse trigger to the raw driver/rawevent trigger 'noname'")
 	assert.Equal(t, collapsed.Match, trigger.Match, "the collapsed condition should be the same as the raw trigger condition")
 	collapsed.Match["key2"] = "val2"
@@ -48,11 +48,11 @@ func TestReceiverCollapseTrigger(t *testing.T) {
 		},
 	}
 
-	finalTrigger, collapsed = CollapseTrigger(extendingTrigger, cfg)
+	finalTrigger, collapsed = CollapseTrigger(&extendingTrigger, cfg)
 	assert.Equal(t, trigger, finalTrigger, "should collapse trigger to the raw driver/rawevent trigger 'noname'")
 	assert.Equal(t, map[string]interface{}{"key1": "val1", "key3": "val3"}, collapsed.Match, "should combine the trigger chain match")
 
 	extendingTrigger.Match["key1"] = "newval1"
-	_, collapsed = CollapseTrigger(extendingTrigger, cfg)
+	_, collapsed = CollapseTrigger(&extendingTrigger, cfg)
 	assert.Equal(t, map[string]interface{}{"key1": "newval1", "key3": "val3"}, collapsed.Match, "should override the match with extending trigger")
 }

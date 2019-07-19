@@ -35,7 +35,7 @@ func (p *CommandProvider) ReturnError(call *Message, reason string) {
 		Subject: p.Subject,
 		Labels:  call.Labels,
 	}
-	retMsg.Labels["status"] = "failure"
+	retMsg.Labels["status"] = "error"
 	retMsg.Labels["reason"] = reason
 	SendMessage(p.ReturnWriter, retMsg)
 }
@@ -47,7 +47,11 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 		Subject: p.Subject,
 		Labels:  call.Labels,
 	}
-	retMsg.Labels["status"] = "success"
+	if status, ok := retval.Labels["status"]; ok {
+		retMsg.Labels["status"] = status
+	} else {
+		retMsg.Labels["status"] = "success"
+	}
 	retMsg.Payload = retval.Payload
 	retMsg.IsRaw = retval.IsRaw
 	SendMessage(p.ReturnWriter, retMsg)

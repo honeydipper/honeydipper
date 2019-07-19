@@ -8,51 +8,42 @@ package config
 
 import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/imdario/mergo"
 )
 
+// CollapsedTrigger is a trigger with collapsed matching criteria, parameters, merged sysData and stack of exports
+type CollapsedTrigger struct {
+	Match      map[string]interface{}   `json:"match"`
+	Exports    []map[string]interface{} `json:"exports"`
+	SysData    map[string]interface{}   `json:"sysData"`
+	Parameters map[string]interface{}   `json:"parameters"`
+}
+
 // CollapseTrigger collapses matching criteria, exports and sysData of a trigger and its inheritted triggers
-func CollapseTrigger(t Trigger, c *DataSet) (Trigger, dipper.CollapsedTrigger) {
+func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
+	var stack []*Trigger
 	current := t
-	sysData := map[string]interface{}{}
-	var stack []Trigger
-	if current.Match != nil {
-		stack = append(stack, current)
-	}
 	for len(current.Source.System) > 0 {
-		if len(current.Driver) > 0 {
-			dipper.Logger.Panicf("[receiver] a trigger cannot have both driver and source %+v", current)
-		}
-		currentSys := c.Systems[current.Source.System]
-		currentSysData, _ := dipper.DeepCopy(currentSys.Data)
-		err := mergo.Merge(&sysData, currentSysData, mergo.WithOverride, mergo.WithAppendSlice)
-		if err != nil {
-			panic(err)
-		}
-		current = currentSys.Triggers[current.Source.Trigger]
-		if current.Match != nil {
-			stack = append(stack, current)
-		}
+		stack = append(stack, current)
+		sourceSys := c.Systems[current.Source.System]
+		currentTrigger := sourceSys.Triggers[current.Source.Trigger]
+		current = &currentTrigger
 	}
-	if len(current.Driver) == 0 {
-		dipper.Logger.Panicf("[receiver] a trigger should have a driver or a source %+v", current)
-	}
-	match := map[string]interface{}{}
-	params := map[string]interface{}{}
-	var exports []map[string]interface{}
+
+	match := dipper.MustDeepCopy(current.Match)
+	params := dipper.MustDeepCopy(current.Parameters)
+	sysData := map[string]interface{}{}
+	exports := []map[string]interface{}{current.Export}
+
 	for i := len(stack) - 1; i >= 0; i-- {
-		cp, _ := dipper.DeepCopy(stack[i].Match)
-		err := mergo.Merge(&match, cp, mergo.WithOverride, mergo.WithAppendSlice)
-		if err != nil {
-			panic(err)
-		}
-		cpParams, _ := dipper.DeepCopy(stack[i].Parameters)
-		err = mergo.Merge(&params, cpParams, mergo.WithOverride, mergo.WithAppendSlice)
-		if err != nil {
-			panic(err)
-		}
-		exports = append(exports, stack[i].Export)
+		trigger := stack[i]
+		sourceSys := c.Systems[trigger.Source.System]
+
+		dipper.MergeMap(sysData, dipper.MustDeepCopy(sourceSys.Data))
+		dipper.MergeMap(params, dipper.MustDeepCopy(trigger.Parameters))
+		dipper.MergeMap(match, dipper.MustDeepCopy(trigger.Match))
+		exports = append(exports, trigger.Export)
 	}
+
 	if len(sysData) > 0 {
 		envData := map[string]interface{}{
 			"sysData": sysData,
@@ -60,10 +51,25 @@ func CollapseTrigger(t Trigger, c *DataSet) (Trigger, dipper.CollapsedTrigger) {
 		match = dipper.Interpolate(match, envData).(map[string]interface{})
 		params = dipper.Interpolate(params, envData).(map[string]interface{})
 	}
-	return current, dipper.CollapsedTrigger{
+
+	return current, &CollapsedTrigger{
 		Match:      match,
 		Exports:    exports,
 		SysData:    sysData,
 		Parameters: params,
 	}
+}
+
+// ExportContext putting raw data from event into context as abstracted fields
+func (t *CollapsedTrigger) ExportContext(envData map[string]interface{}) map[string]interface{} {
+	newCtx := map[string]interface{}{}
+	envData["ctx"] = newCtx
+	envData["sysData"] = t.SysData
+
+	for _, layer := range t.Exports {
+		delta := dipper.Interpolate(layer, envData)
+		dipper.MergeMap(newCtx, delta)
+	}
+
+	return newCtx
 }

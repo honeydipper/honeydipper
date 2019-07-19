@@ -255,11 +255,3 @@ func MessageCopy(m *Message) (*Message, error) {
 	}
 	return &mcopy, nil
 }
-
-// CollapsedTrigger is a trigger with collapsed matching criteria, parameters, merged sysData and stack of exports
-type CollapsedTrigger struct {
-	Match      map[string]interface{}   `json:"match"`
-	Exports    []map[string]interface{} `json:"exports"`
-	SysData    map[string]interface{}   `json:"sysData"`
-	Parameters map[string]interface{}   `json:"parameters"`
-}

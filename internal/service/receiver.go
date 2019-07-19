@@ -51,7 +51,7 @@ func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 					dipper.Logger.Warningf("[receiver] failed to process rule.When %+v with error %+v", rule.When, r)
 				}
 			}()
-			rawTrigger, collapsed := config.CollapseTrigger(rule.When, c)
+			rawTrigger, collapsed := config.CollapseTrigger(&rule.When, c)
 			var driverData map[string]interface{}
 			data, ok := dynamicData["driver:"+rawTrigger.Driver]
 			if !ok {
