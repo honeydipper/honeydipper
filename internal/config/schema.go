@@ -79,8 +79,9 @@ type Workflow struct {
 	Threads  []Workflow `json:"threads,omitempty"`
 	Wait     string     `json:"wait,omitempty"`
 
-	Switch string                 `json:"switch,omitempty"`
-	Cases  map[string]interface{} `json:"cases,omitempty"`
+	Switch  string                 `json:"switch,omitempty"`
+	Cases   map[string]interface{} `json:"cases,omitempty"`
+	Default interface{}            `json:"default,omitempty"`
 
 	Export          map[string]interface{} `json:"export,omitempty"`
 	ExportOnSuccess map[string]interface{} `json:"export_on_success,omitempty"`

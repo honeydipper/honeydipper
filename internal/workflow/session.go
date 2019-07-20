@@ -221,6 +221,7 @@ func (w *Session) interpolateWorkflow(v *config.Workflow, msg *dipper.Message) {
 	ret.ExportOnFailure = v.ExportOnFailure // delayed
 	ret.Switch = v.Switch                   // delayed
 	ret.Cases = v.Cases                     // delayed
+	ret.Default = v.Default                 // delayed
 
 	ret.Context = v.Context   // no interpolate
 	ret.Contexts = v.Contexts // no interpolate

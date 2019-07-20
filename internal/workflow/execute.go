@@ -165,7 +165,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 	envData := w.buildEnvData(msg)
 	match := dipper.InterpolateStr(w.workflow.Switch, envData)
 	for key, branch := range w.workflow.Cases {
-		if key == match || key == SessionContextDefault {
+		if key == match {
 			wf := &config.Workflow{}
 			err := mapstructure.Decode(branch, wf)
 			if err != nil {
@@ -175,6 +175,16 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 			child.execute(msg)
 			return
 		}
+	}
+	if w.workflow.Default != nil {
+		var defaultBranch config.Workflow
+		err := mapstructure.Decode(w.workflow.Default, &defaultBranch)
+		if err != nil {
+			panic(err)
+		}
+		child := w.createChildSession(&defaultBranch, msg)
+		child.execute(msg)
+		return
 	}
 	w.continueExec(msg, nil)
 }
