@@ -244,6 +244,9 @@ func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *
 // createChildSessionWithName creates a child workflow session
 func (w *Session) createChildSessionWithName(name string, msg *dipper.Message) *Session {
 	src := w.store.GetConfig().DataSet.Workflows[name]
+	if src.Name == "" {
+		src.Name = name
+	}
 	wf := &src
 	return w.createChildSession(wf, msg)
 }
