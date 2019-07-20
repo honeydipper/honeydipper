@@ -220,9 +220,13 @@ func (w *Session) executeAction(msg *dipper.Message) {
 
 // callFunction makes a call to a function
 func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
+	envData := w.buildEnvData(msg)
+	interpolatedFunc := *f
+	interpolatedFunc.Target.System = dipper.InterpolateStr(f.Target.System, envData)
+	interpolatedFunc.Target.Function = dipper.InterpolateStr(f.Target.Function, envData)
 
 	// stored for doing export context later
-	w.collapsedFunction = config.CollapseFunction(nil, f, w.store.GetConfig())
+	w.collapsedFunction = config.CollapseFunction(nil, &interpolatedFunc, w.store.GetConfig())
 
 	payload := w.buildEnvData(msg)
 	payload["function"] = *f
