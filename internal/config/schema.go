@@ -70,6 +70,7 @@ type Workflow struct {
 
 	Iterate         interface{} `json:"iterate,omitempty"`
 	IterateParallel interface{} `json:"iterate_parallel,omitempty"`
+	IterateAs       string      `json:"iterate_as,omitempty"`
 
 	Retry   string `json:"retry,omitempty"`
 	Backoff string `json:"backoff,omitempty"`

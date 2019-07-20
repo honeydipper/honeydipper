@@ -82,6 +82,9 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 		w.current = 0
 		if w.workflow.Iterate != nil {
 			w.ctx["current"] = reflect.ValueOf(w.workflow.Iterate).Index(int(w.iteration)).Interface()
+			if w.workflow.IterateAs != "" {
+				w.ctx[w.workflow.IterateAs] = w.ctx["current"]
+			}
 			w.fireHook("on_item", msg)
 			if w.currentHook == "" {
 				w.executeAction(msg)
