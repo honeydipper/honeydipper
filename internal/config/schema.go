@@ -56,14 +56,15 @@ type Workflow struct {
 	Contexts []string               `json:"contexts,omitempty"`
 	Local    map[string]interface{} `json:"local,omitempty"`
 
-	If        []string `json:"if,omitempty"`
-	IfAny     []string `json:"if_any,omitempty"`
-	Unless    []string `json:"unless,omitempty"`
-	UnlessAny []string `json:"unless_all,omitempty"`
-	While     []string `json:"while,omitempty"`
-	WhileAny  []string `json:"while_any,omitempty"`
-	Until     []string `json:"until,omitempty"`
-	UntilAny  []string `json:"until_any,omitempty"`
+	Match     map[string]interface{} `json:"match,omitempty"`
+	If        []string               `json:"if,omitempty"`
+	IfAny     []string               `json:"if_any,omitempty"`
+	Unless    []string               `json:"unless,omitempty"`
+	UnlessAny []string               `json:"unless_all,omitempty"`
+	While     []string               `json:"while,omitempty"`
+	WhileAny  []string               `json:"while_any,omitempty"`
+	Until     []string               `json:"until,omitempty"`
+	UntilAny  []string               `json:"until_any,omitempty"`
 
 	Else interface{} `json:"else,omitempty"`
 

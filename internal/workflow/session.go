@@ -201,6 +201,7 @@ func (w *Session) interpolateWorkflow(v *config.Workflow, msg *dipper.Message) {
 	ret.IfAny = dipper.Interpolate(v.IfAny, envData).([]string)
 	ret.Unless = dipper.Interpolate(v.Unless, envData).([]string)
 	ret.UnlessAny = dipper.Interpolate(v.UnlessAny, envData).([]string)
+	ret.Match = dipper.Interpolate(v.Match, envData).(map[string]interface{})
 	ret.Iterate = dipper.Interpolate(v.Iterate, envData)
 	ret.IterateParallel = dipper.Interpolate(v.IterateParallel, envData)
 	ret.Retry = dipper.InterpolateStr(v.Retry, envData)
