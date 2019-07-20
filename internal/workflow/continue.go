@@ -83,6 +83,14 @@ func (w *Session) processExport(msg *dipper.Message) {
 		if exports != nil {
 			w.mergeContext(exports.(map[string]interface{}))
 		}
+
+		for _, key := range w.workflow.NoExport {
+			if key == "*" {
+				w.exported = nil
+				break
+			}
+			delete(w.exported, key)
+		}
 	}
 }
 

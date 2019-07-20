@@ -226,6 +226,7 @@ func (w *Session) interpolateWorkflow(v *config.Workflow, msg *dipper.Message) {
 
 	ret.Context = v.Context   // no interpolate
 	ret.Contexts = v.Contexts // no interpolate
+	ret.NoExport = v.NoExport // no interpolate
 
 	w.workflow = &ret
 }

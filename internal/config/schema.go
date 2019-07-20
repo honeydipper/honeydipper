@@ -87,6 +87,7 @@ type Workflow struct {
 	Export          map[string]interface{} `json:"export,omitempty"`
 	ExportOnSuccess map[string]interface{} `json:"export_on_success,omitempty"`
 	ExportOnFailure map[string]interface{} `json:"export_on_failure,omitempty"`
+	NoExport        []string               `json:"no_export,omitempty"`
 }
 
 // Rule is a data structure defining what action to take when certain event happen.
