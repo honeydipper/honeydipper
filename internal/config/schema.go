@@ -77,6 +77,7 @@ type Workflow struct {
 
 	Workflow string     `json:"workflow,omitempty"`
 	Function Function   `json:"function,omitempty"`
+	CallFunc string     `json:"call_function,omitempty"`
 	Steps    []Workflow `json:"steps,omitempty"`
 	Threads  []Workflow `json:"threads,omitempty"`
 	Wait     string     `json:"wait,omitempty"`

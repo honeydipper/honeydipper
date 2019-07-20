@@ -201,7 +201,10 @@ func (w *Session) executeAction(msg *dipper.Message) {
 			child := w.createChildSessionWithName(w.workflow.Workflow, msg)
 			child.execute(msg)
 		case w.isFunction():
-			w.callFunction(&w.workflow.Function, msg)
+			f := w.interpolateFunction(&w.workflow.Function, msg)
+			w.callFunction(f, msg)
+		case w.workflow.CallFunc != "":
+			w.callShorthandFunction(w.workflow.CallFunc, msg)
 		case w.workflow.Steps != nil:
 			w.current = 0
 			w.executeStep(msg)
@@ -218,15 +221,34 @@ func (w *Session) executeAction(msg *dipper.Message) {
 	}
 }
 
-// callFunction makes a call to a function
-func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
+// interpolateFunction interplotes the system name and function names in the target
+func (w *Session) interpolateFunction(f *config.Function, msg *dipper.Message) *config.Function {
 	envData := w.buildEnvData(msg)
 	interpolatedFunc := *f
 	interpolatedFunc.Target.System = dipper.InterpolateStr(f.Target.System, envData)
 	interpolatedFunc.Target.Function = dipper.InterpolateStr(f.Target.Function, envData)
 
+	return &interpolatedFunc
+}
+
+// callShorthandFunction makes a call to a function defined in short hand fashion
+func (w *Session) callShorthandFunction(f string, msg *dipper.Message) {
+	envData := w.buildEnvData(msg)
+	interpolatedNames := strings.Split(".", dipper.InterpolateStr(f, envData))
+	systemName, funcName := interpolatedNames[0], interpolatedNames[1]
+
+	w.callFunction(&config.Function{
+		Target: config.Action{
+			System:   systemName,
+			Function: funcName,
+		},
+	}, msg)
+}
+
+// callFunction makes a call to a function
+func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 	// stored for doing export context later
-	w.collapsedFunction = config.CollapseFunction(nil, &interpolatedFunc, w.store.GetConfig())
+	w.collapsedFunction = config.CollapseFunction(nil, f, w.store.GetConfig())
 
 	payload := w.buildEnvData(msg)
 	payload["function"] = *f

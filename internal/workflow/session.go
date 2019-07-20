@@ -215,6 +215,7 @@ func (w *Session) interpolateWorkflow(v *config.Workflow, msg *dipper.Message) {
 	ret.Else = v.Else                       // delayed
 	ret.Workflow = v.Workflow               // delayed
 	ret.Function = v.Function               // delayed
+	ret.CallFunc = v.CallFunc               // delayed
 	ret.Steps = v.Steps                     // delayed
 	ret.Threads = v.Threads                 // delayed
 	ret.Export = v.Export                   // delayed
