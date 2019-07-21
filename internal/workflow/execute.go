@@ -70,6 +70,9 @@ func (w *Session) executeRound(msg *dipper.Message) {
 	}
 
 	if _, ok := w.ctx["waiter"]; !ok {
+		if w.ctx == nil {
+			w.ctx = map[string]interface{}{}
+		}
 		w.ctx["waiter"] = "/" + w.workflow.Name + "/" + w.ID
 	}
 
