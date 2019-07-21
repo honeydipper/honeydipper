@@ -54,7 +54,7 @@ type Workflow struct {
 	Name     string                 `json:"name,omitempty"`
 	Context  string                 `json:"context,omitempty"`
 	Contexts []string               `json:"contexts,omitempty"`
-	Local    map[string]interface{} `json:"local,omitempty"`
+	Local    map[string]interface{} `json:"with,omitempty"`
 
 	Match     map[string]interface{} `json:"match,omitempty"`
 	If        []string               `json:"if,omitempty"`
