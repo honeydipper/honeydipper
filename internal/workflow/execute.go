@@ -21,7 +21,8 @@ import (
 func (w *Session) execute(msg *dipper.Message) {
 	w.fireHook("on_session", msg)
 	if w.currentHook == "" {
-		if w.checkCondition() && w.checkLoopCondition(msg) {
+		switch {
+		case w.checkCondition() && w.checkLoopCondition(msg):
 			if !w.isIteration() || w.lenOfIterate() > 0 {
 				w.loopCount = 0
 				if w.ID == "" {
@@ -37,7 +38,7 @@ func (w *Session) execute(msg *dipper.Message) {
 					w.executeRound(msg)
 				}
 			}
-		} else if w.workflow.Else != nil {
+		case w.workflow.Else != nil:
 			var elseBranch config.Workflow
 			err := mapstructure.Decode(w.workflow.Else, &elseBranch)
 			if err != nil {
@@ -53,6 +54,8 @@ func (w *Session) execute(msg *dipper.Message) {
 				child := w.createChildSession(w.elseBranch, msg)
 				child.execute(msg)
 			}()
+		case w.parent != "":
+			go w.store.ContinueSession(w.parent, msg, nil)
 		}
 	}
 }
