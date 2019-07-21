@@ -25,15 +25,27 @@ var FuncMap = template.FuncMap{
 	"ISO8601":  func(t time.Time) string { return t.Format(time.RFC3339) },
 }
 
-// InterpolateStr : parse the string as go template
+// InterpolateStr : interpolate a string and return a string
 func InterpolateStr(pattern string, data interface{}) string {
-	tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
-	buf := new(bytes.Buffer)
-	if err := tmpl.Execute(buf, data); err != nil {
-		Logger.Warningf("interpolation pattern failed: %+v", pattern)
-		Logger.Panicf("failed to interpolate: %+v", err)
+	ret := Interpolate(pattern, data)
+	if ret != nil {
+		return fmt.Sprintf("%+v", ret)
 	}
-	return buf.String()
+	return ""
+}
+
+// InterpolateGoTemplate : parse the string as go template
+func InterpolateGoTemplate(pattern string, data interface{}) string {
+	if strings.Contains(pattern, "{{") {
+		tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
+		buf := new(bytes.Buffer)
+		if err := tmpl.Execute(buf, data); err != nil {
+			Logger.Warningf("interpolation pattern failed: %+v", pattern)
+			Logger.Panicf("failed to interpolate: %+v", err)
+		}
+		return buf.String()
+	}
+	return pattern
 }
 
 // ParseYaml : load the data in the string as yaml
@@ -70,7 +82,7 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			}
 			panic(fmt.Errorf("invalid path %s", v[6:]))
 		}
-		ret := InterpolateStr(v, data)
+		ret := InterpolateGoTemplate(v, data)
 		if strings.HasPrefix(ret, ":yaml:") {
 			defer func() {
 				if r := recover(); r != nil {
