@@ -130,15 +130,19 @@ func (w *Session) injectNamedCTX(name string) {
 			if err != nil {
 				panic(err)
 			}
-			dipper.MergeMap(w.ctx, ctx)
+			w.ctx = dipper.MergeMap(w.ctx, ctx)
+			dipper.Logger.Infof("merged global values (*) from named context %s to workflow", name)
 		}
-		ctx, ok = namedCTXs[w.workflow.Name]
-		if ok {
-			ctx, err = dipper.DeepCopy(ctx)
-			if err != nil {
-				panic(err)
+		if w.workflow.Name != "" {
+			ctx, ok := namedCTXs[w.workflow.Name]
+			if ok {
+				ctx, err = dipper.DeepCopy(ctx)
+				if err != nil {
+					panic(err)
+				}
+				w.ctx = dipper.MergeMap(w.ctx, ctx)
+				dipper.Logger.Infof("[workflow] merged named context %s to workflow %s", name, w.workflow.Name)
 			}
-			dipper.MergeMap(w.ctx, ctx)
 		}
 	}
 }
@@ -184,7 +188,7 @@ func (w *Session) initCTX() {
 // injectEventCTX injects the contextual data from the event into the workflow
 func (w *Session) injectEventCTX(ctx map[string]interface{}) {
 	if ctx != nil {
-		dipper.MergeMap(w.ctx, ctx)
+		w.ctx = dipper.MergeMap(w.ctx, ctx)
 	}
 }
 
@@ -194,7 +198,7 @@ func (w *Session) injectLocalCTX(msg *dipper.Message) {
 		envData := w.buildEnvData(msg)
 		locals := dipper.Interpolate(w.workflow.Local, envData)
 
-		dipper.MergeMap(w.ctx, locals)
+		w.ctx = dipper.MergeMap(w.ctx, locals)
 	}
 }
 

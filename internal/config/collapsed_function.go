@@ -48,14 +48,14 @@ func CollapseFunction(s *System, f *Function, cfg *Config) *CollapsedFunction {
 		if ret.SysData == nil {
 			ret.SysData = map[string]interface{}{}
 		}
-		dipper.MergeMap(ret.SysData, currentSysDataCopy)
+		ret.SysData = dipper.MergeMap(ret.SysData, currentSysDataCopy)
 	}
 	if f.Parameters != nil {
 		currentParamCopy, _ := dipper.DeepCopy(f.Parameters)
 		if ret.Parameters == nil {
 			ret.Parameters = map[string]interface{}{}
 		}
-		dipper.MergeMap(ret.Parameters, currentParamCopy)
+		ret.Parameters = dipper.MergeMap(ret.Parameters, currentParamCopy)
 	}
 
 	ret.Stack = append(ret.Stack, f)
@@ -73,14 +73,14 @@ func (f *CollapsedFunction) ExportContext(status string, envData map[string]inte
 	if status != "error" {
 		for _, layer := range f.Stack {
 			delta := dipper.Interpolate(layer.Export, envData)
-			dipper.MergeMap(newCtx, delta)
+			newCtx = dipper.MergeMap(newCtx, delta)
 			switch status {
 			case "success":
 				delta := dipper.Interpolate(layer.ExportOnSuccess, envData)
-				dipper.MergeMap(newCtx, delta)
+				newCtx = dipper.MergeMap(newCtx, delta)
 			case "failure":
 				delta := dipper.Interpolate(layer.ExportOnFailure, envData)
-				dipper.MergeMap(newCtx, delta)
+				newCtx = dipper.MergeMap(newCtx, delta)
 			}
 		}
 	}

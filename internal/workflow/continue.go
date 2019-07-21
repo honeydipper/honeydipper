@@ -56,13 +56,13 @@ func (w *Session) routeNext(msg *dipper.Message) int {
 
 // mergeContext merges child workflow exported context to parent workflow
 func (w *Session) mergeContext(export map[string]interface{}) {
-	dipper.MergeMap(w.ctx, export)
-	dipper.MergeMap(w.exported, export)
+	w.ctx = dipper.MergeMap(w.ctx, export)
+	w.exported = dipper.CombineMap(w.exported, export)
 }
 
 // processExport export the data into parent workflow session
 func (w *Session) processExport(msg *dipper.Message) {
-	if w.elseBranch != nil {
+	if w.elseBranch == nil {
 		var exports interface{}
 		envData := w.buildEnvData(msg)
 		status := msg.Labels["status"]
@@ -74,10 +74,12 @@ func (w *Session) processExport(msg *dipper.Message) {
 			exports = dipper.Interpolate(w.workflow.Export, envData)
 		}
 		if status == SessionStatusSuccess {
-			exports = dipper.Interpolate(w.workflow.ExportOnSuccess, envData)
+			delta := dipper.Interpolate(w.workflow.ExportOnSuccess, envData)
+			exports = dipper.CombineMap(exports.(map[string]interface{}), delta)
 		}
 		if status == SessionStatusFailure {
-			exports = dipper.Interpolate(w.workflow.ExportOnFailure, envData)
+			delta := dipper.Interpolate(w.workflow.ExportOnFailure, envData)
+			exports = dipper.CombineMap(exports.(map[string]interface{}), delta)
 		}
 
 		if exports != nil {
@@ -90,6 +92,8 @@ func (w *Session) processExport(msg *dipper.Message) {
 				break
 			}
 			delete(w.exported, key)
+			delete(w.exported, key+"-")
+			delete(w.exported, key+"+")
 		}
 	}
 }
@@ -155,6 +159,7 @@ func (w *Session) onError() {
 
 // continueExec resume a session with given dipper message
 func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{}) {
+	w.mergeContext(export)
 	if w.currentHook != "" {
 		if msg.Labels["status"] == SessionStatusSuccess {
 			switch w.currentHook {
@@ -189,7 +194,6 @@ func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{
 			})
 		}
 	} else {
-		w.mergeContext(export)
 		switch w.routeNext(msg) {
 		case WorkflowNextStep:
 			w.current++
