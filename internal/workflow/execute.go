@@ -118,15 +118,15 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 
 // startWait puts a session into waiting state
 func (w *Session) startWait() {
-	waiter, ok := w.ctx["waiter"]
+	waiter, ok := w.ctx["waiter"].(string)
 	if !ok || waiter == "" {
 		dipper.Logger.Panicf("[workflow] wait identifier missing for session %s", w.ID)
 	}
-	oldWaiterSession, ok := w.store.suspendedSessions[waiter.(string)]
+	oldWaiterSession, ok := w.store.suspendedSessions[waiter]
 	if ok {
 		dipper.Logger.Panicf("[workflow] wait identifier collided for sessions %s and %s", w.ID, oldWaiterSession)
 	}
-	w.store.suspendedSessions[waiter.(string)] = w.ID
+	w.store.suspendedSessions[waiter] = w.ID
 
 	if strings.ToLower(w.workflow.Wait) != "infinite" {
 		d, err := time.ParseDuration(w.workflow.Wait)
@@ -149,7 +149,7 @@ func (w *Session) startWait() {
 			<-time.After(d)
 			dipper.Logger.Infof("[workflow] resuming session on timeout %+v", waiter)
 
-			w.store.ResumeSession(&dipper.Message{
+			go w.store.ResumeSession(waiter, &dipper.Message{
 				Payload: map[string]interface{}{
 					"key": waiter,
 					"labels": map[string]interface{}{

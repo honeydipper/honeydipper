@@ -60,6 +60,7 @@ func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
 
 // StartSession starts a workflow session
 func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
+	defer dipper.SafeExitOnError("[workflow] error when creating workflow session")
 	w := s.newSession("", wf)
 	w.injectMsg(msg)
 	w.initCTX()
@@ -72,6 +73,7 @@ func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ct
 
 // ContinueSession resume a session with given dipper message
 func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, export map[string]interface{}) {
+	defer dipper.SafeExitOnError("[workflow] error when continuing workflow session %s", sessionID)
 	w := dipper.IDMapGet(&s.sessions, sessionID).(*Session)
 	if w != nil {
 		defer w.onError()
@@ -82,21 +84,20 @@ func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, ex
 }
 
 // ResumeSession resume a session that is in waiting state
-func (s *SessionStore) ResumeSession(msg *dipper.Message) {
-	m := dipper.DeserializePayload(msg)
-	key := dipper.MustGetMapDataStr(m.Payload, "key")
+func (s *SessionStore) ResumeSession(key string, msg *dipper.Message) {
+	defer dipper.SafeExitOnError("[workflow] error when resuming session for key %s", key)
 	sessionID, ok := s.suspendedSessions[key]
 	if ok {
 		delete(s.suspendedSessions, key)
-		sessionPayload, _ := dipper.GetMapData(m.Payload, "payload")
+		sessionPayload, _ := dipper.GetMapData(msg.Payload, "payload")
 		sessionLabels := map[string]string{}
-		if labels, ok := dipper.GetMapData(m.Payload, "labels"); ok {
+		if labels, ok := dipper.GetMapData(msg.Payload, "labels"); ok {
 			err := mapstructure.Decode(labels, &sessionLabels)
 			if err != nil {
 				panic(err)
 			}
 		}
-		s.ContinueSession(sessionID, &dipper.Message{
+		go s.ContinueSession(sessionID, &dipper.Message{
 			Subject: dipper.EventbusReturn,
 			Labels:  sessionLabels,
 			Payload: sessionPayload,

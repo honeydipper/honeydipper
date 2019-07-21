@@ -125,5 +125,8 @@ func engineMetrics() {
 }
 
 func resumeSession(d *driver.Runtime, m *dipper.Message) {
-	sessionStore.ResumeSession(m)
+	defer dipper.SafeExitOnError("[engine] continue processing rules")
+	m = dipper.DeserializePayload(m)
+	key := dipper.MustGetMapDataStr(m.Payload, "key")
+	go sessionStore.ResumeSession(key, m)
 }
