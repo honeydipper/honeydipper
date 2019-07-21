@@ -149,6 +149,7 @@ func (w *Session) onError() {
 			},
 			Payload: map[string]interface{}{},
 		})
+		panic(r)
 	}
 }
 
