@@ -144,7 +144,7 @@ func (w *Session) injectNamedCTX(name string) {
 }
 
 // initCTX initialize the contextual data used in this workflow
-func (w *Session) initCTX(wf *config.Workflow) {
+func (w *Session) initCTX() {
 	w.injectNamedCTX(SessionContextDefault)
 	if w.parent == "" {
 		w.injectNamedCTX(SessionContextEvents)
@@ -159,14 +159,14 @@ func (w *Session) initCTX(wf *config.Workflow) {
 		w.injectNamedCTX(name)
 	}
 
-	if wf.Context != "" {
-		if wf.Context == SessionContextHooks {
+	if w.workflow.Context != "" {
+		if w.workflow.Context == SessionContextHooks {
 			isHook = true
 		}
-		w.injectNamedCTX(wf.Context)
-		w.loadedContexts = append(w.loadedContexts, wf.Context)
+		w.injectNamedCTX(w.workflow.Context)
+		w.loadedContexts = append(w.loadedContexts, w.workflow.Context)
 	} else {
-		for _, name := range wf.Contexts {
+		for _, name := range w.workflow.Contexts {
 			if name == SessionContextHooks {
 				isHook = true
 			}
@@ -189,17 +189,18 @@ func (w *Session) injectEventCTX(ctx map[string]interface{}) {
 }
 
 // injectLocalCTX injects the workflow local context data
-func (w *Session) injectLocalCTX(wf *config.Workflow, msg *dipper.Message) {
-	if wf.Local != nil {
+func (w *Session) injectLocalCTX(msg *dipper.Message) {
+	if w.workflow.Local != nil {
 		envData := w.buildEnvData(msg)
-		locals := dipper.Interpolate(wf.Local, envData)
+		locals := dipper.Interpolate(w.workflow.Local, envData)
 
 		dipper.MergeMap(w.ctx, locals)
 	}
 }
 
 // interpolateWorkflow creates a copy of the workflow and interpolates it with envData
-func (w *Session) interpolateWorkflow(v *config.Workflow, msg *dipper.Message) {
+func (w *Session) interpolateWorkflow(msg *dipper.Message) {
+	v := w.workflow
 	envData := w.buildEnvData(msg)
 	ret := config.Workflow{}
 
@@ -242,11 +243,11 @@ func (w *Session) interpolateWorkflow(v *config.Workflow, msg *dipper.Message) {
 
 // createChildSession creates a child workflow session
 func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *Session {
-	child := w.store.newSession(w.ID)
+	child := w.store.newSession(w.ID, wf)
 	child.injectMsg(msg)
-	child.initCTX(wf)
-	child.injectLocalCTX(wf, msg)
-	child.interpolateWorkflow(wf, msg)
+	child.initCTX()
+	child.injectLocalCTX(msg)
+	child.interpolateWorkflow(msg)
 	return child
 }
 

@@ -36,12 +36,13 @@ func (s *SessionStore) Len() int {
 }
 
 // newSession creates the workflow session
-func (s *SessionStore) newSession(parent string) *Session {
+func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
 	dipper.Logger.Infof("[workflow] workflow created with parent ID [%s]", parent)
 	var err error
 	var w = &Session{
-		parent: parent,
-		store:  s,
+		parent:   parent,
+		store:    s,
+		workflow: wf,
 	}
 
 	if w.parent != "" {
@@ -59,12 +60,12 @@ func (s *SessionStore) newSession(parent string) *Session {
 
 // StartSession starts a workflow session
 func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
-	w := s.newSession("")
+	w := s.newSession("", wf)
 	w.injectMsg(msg)
-	w.initCTX(wf)
+	w.initCTX()
 	w.injectEventCTX(ctx)
-	w.injectLocalCTX(wf, msg)
-	w.interpolateWorkflow(wf, msg)
+	w.injectLocalCTX(msg)
+	w.interpolateWorkflow(msg)
 
 	w.execute(msg)
 }
