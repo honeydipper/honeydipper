@@ -124,15 +124,22 @@ func (w *Session) injectNamedCTX(name string) {
 		dipper.Logger.Panicf("[workflow] named workflow %s not defined", name)
 	}
 	if namedCTXs != nil {
-		ctx, ok := namedCTXs[w.workflow.Name]
-		if !ok {
-			ctx = namedCTXs["default"]
+		ctx, ok := namedCTXs["*"]
+		if ok {
+			ctx, err = dipper.DeepCopy(ctx)
+			if err != nil {
+				panic(err)
+			}
+			dipper.MergeMap(w.ctx, ctx)
 		}
-		ctx, err = dipper.DeepCopy(ctx)
-		if err != nil {
-			panic(err)
+		ctx, ok = namedCTXs[w.workflow.Name]
+		if ok {
+			ctx, err = dipper.DeepCopy(ctx)
+			if err != nil {
+				panic(err)
+			}
+			dipper.MergeMap(w.ctx, ctx)
 		}
-		dipper.MergeMap(w.ctx, ctx)
 	}
 }
 
