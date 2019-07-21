@@ -264,7 +264,13 @@ func MustDeepCopy(m map[string]interface{}) map[string]interface{} {
 }
 
 // MergeMap : merge the data from source to destination with some overriding rule
-func MergeMap(dst map[string]interface{}, src interface{}) {
+func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
+	if src == nil {
+		return dst
+	}
+	if dst == nil {
+		dst = map[string]interface{}{}
+	}
 	err := mergo.Merge(&dst, src, mergo.WithOverride)
 	if err != nil {
 		panic(err)
@@ -285,4 +291,6 @@ func MergeMap(dst map[string]interface{}, src interface{}) {
 			delete(dst, k)
 		}
 	}
+
+	return dst
 }

@@ -101,12 +101,19 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 			single := config.Workflow{
 				Workflow: w.workflow.Workflow,
 				Function: w.workflow.Function,
+				CallFunc: w.workflow.CallFunc,
+				Switch:   w.workflow.Switch,
+				Cases:    w.workflow.Cases,
+				Default:  w.workflow.Default,
 				Steps:    w.workflow.Steps,
 				Threads:  w.workflow.Threads,
 			}
 			for i := 0; i < l; i++ {
 				child := w.createChildSession(&single, msg)
 				child.ctx["current"] = iter.Index(i).Interface()
+				if w.workflow.IterateAs != "" {
+					child.ctx[w.workflow.IterateAs] = child.ctx["current"]
+				}
 				child.ctx["waiter"] = ""
 				daemon.Children.Add(1)
 				go func(child *Session) {
@@ -267,7 +274,7 @@ func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 
 	cmdmsg := &dipper.Message{
 		Channel: dipper.ChannelEventbus,
-		Subject: "Command",
+		Subject: "command",
 		Payload: payload,
 		Labels:  labels,
 	}

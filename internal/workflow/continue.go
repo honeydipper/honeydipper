@@ -56,8 +56,8 @@ func (w *Session) routeNext(msg *dipper.Message) int {
 
 // mergeContext merges child workflow exported context to parent workflow
 func (w *Session) mergeContext(export map[string]interface{}) {
-	dipper.MergeMap(w.ctx, export)
-	dipper.MergeMap(w.exported, export)
+	w.ctx = dipper.MergeMap(w.ctx, export)
+	w.exported = dipper.MergeMap(w.exported, export)
 }
 
 // processExport export the data into parent workflow session
