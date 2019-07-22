@@ -22,7 +22,7 @@ type Action struct {
 type Trigger struct {
 	Driver     string                 `json:"driver,omitempty"`
 	RawEvent   string                 `json:"rawevent,omitempty"`
-	Match      map[string]interface{} `json:"match,omitempty"`
+	Match      map[string]interface{} `json:"if_match,omitempty"`
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
 	// A trigger should have only one of source event a raw event.
 	Source Event                  `json:"source,omitempty"`
@@ -56,7 +56,7 @@ type Workflow struct {
 	Contexts []string               `json:"contexts,omitempty"`
 	Local    map[string]interface{} `json:"with,omitempty"`
 
-	Match     map[string]interface{} `json:"match,omitempty"`
+	Match     map[string]interface{} `json:"if_match,omitempty"`
 	If        []string               `json:"if,omitempty"`
 	IfAny     []string               `json:"if_any,omitempty"`
 	Unless    []string               `json:"unless,omitempty"`

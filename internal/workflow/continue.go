@@ -100,25 +100,21 @@ func (w *Session) processExport(msg *dipper.Message) {
 
 // fireCompleteHooks fires all the hooks at completion time asychronously
 func (w *Session) fireCompleteHooks(msg *dipper.Message) {
+	defer dipper.SafeExitOnError("session [%s] error on running completion hooks", w.ID)
+	var hookName string
 	switch msg.Labels["status"] {
 	case SessionStatusError:
-		w.fireHook("on_success", msg)
+		hookName = "on_error"
 	case SessionStatusFailure:
-		w.fireHook("on_failure", msg)
+		hookName = "on_failure"
 	default:
-		w.fireHook("on_success", msg)
+		hookName = "on_success"
 	}
-	w.fireHook("on_complete", msg)
 
-	if w.parent == "" {
-		switch msg.Labels["status"] {
-		case SessionStatusError:
-			w.fireHook("on_exit_success", msg)
-		case SessionStatusFailure:
-			w.fireHook("on_exit_failure", msg)
-		default:
-			w.fireHook("on_exit_success", msg)
-		}
+	if w.currentHook == "" || w.currentHook == hookName {
+		w.fireHook(hookName, msg)
+	}
+	if w.currentHook == "" || w.currentHook == "on_exit" {
 		w.fireHook("on_exit", msg)
 	}
 }
@@ -127,11 +123,15 @@ func (w *Session) fireCompleteHooks(msg *dipper.Message) {
 func (w *Session) complete(msg *dipper.Message) {
 	if w.ID != "" {
 		if _, ok := w.store.sessions[w.ID]; ok {
+			if w.currentHook == "" {
+				w.processExport(msg)
+			}
+			w.fireCompleteHooks(msg)
+			if w.currentHook != "" {
+				return
+			}
+
 			dipper.IDMapDel(&w.store.sessions, w.ID)
-			w.processExport(msg)
-
-			go w.fireCompleteHooks(msg)
-
 			if w.parent != "" {
 				go w.store.ContinueSession(w.parent, msg, w.exported)
 			}
@@ -165,12 +165,26 @@ func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{
 			switch w.currentHook {
 			case "on_session":
 				w.execute(w.savedMsg)
+			case "on_first_round":
+				fallthrough
 			case "on_round":
 				w.executeRound(w.savedMsg)
+			case "on_first_item":
+				fallthrough
 			case "on_item":
 				w.executeIteration(w.savedMsg)
+			case "on_first_action":
+				fallthrough
 			case "on_action":
 				w.executeAction(w.savedMsg)
+			case "on_exit":
+				fallthrough
+			case "on_failure":
+				fallthrough
+			case "on_success":
+				fallthrough
+			case "on_error":
+				w.complete(w.savedMsg)
 			default:
 				w.complete(&dipper.Message{
 					Channel: dipper.ChannelEventbus,

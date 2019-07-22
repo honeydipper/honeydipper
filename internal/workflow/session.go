@@ -182,6 +182,8 @@ func (w *Session) initCTX() {
 	if isHook {
 		// avoid hook in hook
 		delete(w.ctx, "hooks")
+	} else {
+		w.ctx["_workflow_name"] = w.workflow.Name
 	}
 }
 

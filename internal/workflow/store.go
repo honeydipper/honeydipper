@@ -49,10 +49,11 @@ func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
 		parentSession := dipper.IDMapGet(&s.sessions, w.parent).(*Session)
 		w.event = parentSession.event
 		w.ctx, err = dipper.DeepCopy(parentSession.ctx)
-		w.loadedContexts = append([]string{}, parentSession.loadedContexts...)
 		if err != nil {
 			panic(err)
 		}
+		delete(w.ctx, "hooks") // hooks don't get inherited
+		w.loadedContexts = append([]string{}, parentSession.loadedContexts...)
 	}
 
 	return w
