@@ -74,7 +74,12 @@ func createSessions(d *driver.Runtime, msg *dipper.Message) {
 					envData := map[string]interface{}{
 						"event": data,
 					}
-					ctx := rule.Trigger.ExportContext(envData)
+
+					firedEvent := "driver:" + event
+					if rule.OriginalRule.When.Source.System != "" {
+						firedEvent = rule.OriginalRule.When.Source.System + "." + rule.OriginalRule.When.Source.Trigger
+					}
+					ctx := rule.Trigger.ExportContext(firedEvent, envData)
 					go sessionStore.StartSession(&rule.OriginalRule.Do, msg, ctx)
 				}
 			}

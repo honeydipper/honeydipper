@@ -22,7 +22,7 @@ type Action struct {
 type Trigger struct {
 	Driver     string                 `json:"driver,omitempty"`
 	RawEvent   string                 `json:"rawevent,omitempty"`
-	Match      map[string]interface{} `json:"match,omitempty"`
+	Match      map[string]interface{} `json:"if_match,omitempty"`
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
 	// A trigger should have only one of source event a raw event.
 	Source Event                  `json:"source,omitempty"`
@@ -51,12 +51,13 @@ type System struct {
 
 // Workflow defines one or more actions needed to complete certain task and how they are orchestrated.
 type Workflow struct {
-	Name     string                 `json:"name,omitempty"`
-	Context  string                 `json:"context,omitempty"`
-	Contexts []string               `json:"contexts,omitempty"`
-	Local    map[string]interface{} `json:"with,omitempty"`
+	Name        string                 `json:"name,omitempty"`
+	Description string                 `json:"description,omitempty"`
+	Context     string                 `json:"context,omitempty"`
+	Contexts    []string               `json:"contexts,omitempty"`
+	Local       map[string]interface{} `json:"with,omitempty"`
 
-	Match     map[string]interface{} `json:"match,omitempty"`
+	Match     map[string]interface{} `json:"if_match,omitempty"`
 	If        []string               `json:"if,omitempty"`
 	IfAny     []string               `json:"if_any,omitempty"`
 	Unless    []string               `json:"unless,omitempty"`
@@ -75,12 +76,14 @@ type Workflow struct {
 	Retry   string `json:"retry,omitempty"`
 	Backoff string `json:"backoff,omitempty"`
 
-	Workflow string     `json:"workflow,omitempty"`
-	Function Function   `json:"function,omitempty"`
-	CallFunc string     `json:"call_function,omitempty"`
-	Steps    []Workflow `json:"steps,omitempty"`
-	Threads  []Workflow `json:"threads,omitempty"`
-	Wait     string     `json:"wait,omitempty"`
+	OnError   string     `json:"on_error,omitempty"`
+	OnFailure string     `json:"on_failure,omitempty"`
+	Workflow  string     `json:"workflow,omitempty"`
+	Function  Function   `json:"function,omitempty"`
+	CallFunc  string     `json:"call_function,omitempty"`
+	Steps     []Workflow `json:"steps,omitempty"`
+	Threads   []Workflow `json:"threads,omitempty"`
+	Wait      string     `json:"wait,omitempty"`
 
 	Switch  string                 `json:"switch,omitempty"`
 	Cases   map[string]interface{} `json:"cases,omitempty"`

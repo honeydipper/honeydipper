@@ -66,6 +66,12 @@ func (w *Session) execute(msg *dipper.Message) {
 func (w *Session) executeRound(msg *dipper.Message) {
 	if w.isLoop() {
 		w.ctx["loop_count"] = w.loopCount
+		if w.loopCount == 0 {
+			w.fireHook("on_first_round", msg)
+			if w.currentHook != "" {
+				return
+			}
+		}
 		w.fireHook("on_round", msg)
 		if w.currentHook != "" {
 			return
@@ -92,6 +98,12 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 			w.ctx["current"] = reflect.ValueOf(w.workflow.Iterate).Index(int(w.iteration)).Interface()
 			if w.workflow.IterateAs != "" {
 				w.ctx[w.workflow.IterateAs] = w.ctx["current"]
+			}
+			if w.loopCount == 0 && int(w.iteration) == 0 {
+				w.fireHook("on_first_item", msg)
+				if w.currentHook != "" {
+					return
+				}
 			}
 			w.fireHook("on_item", msg)
 			if w.currentHook == "" {
@@ -209,6 +221,12 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 
 // executeAction takes actions for a single iteration in a single loop round
 func (w *Session) executeAction(msg *dipper.Message) {
+	if w.loopCount == 0 && int(w.iteration) == 0 && int(w.current) == 0 {
+		w.fireHook("on_first_action", msg)
+		if w.currentHook != "" {
+			return
+		}
+	}
 	w.fireHook("on_action", msg)
 	if w.currentHook == "" {
 		switch {

@@ -182,6 +182,9 @@ func (w *Session) initCTX() {
 	if isHook {
 		// avoid hook in hook
 		delete(w.ctx, "hooks")
+	} else {
+		w.ctx["_meta_name"] = w.workflow.Name
+		w.ctx["_meta_desc"] = w.workflow.Description
 	}
 }
 
@@ -237,12 +240,25 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.Cases = v.Cases                     // delayed
 	ret.Default = v.Default                 // delayed
 
-	ret.Context = v.Context     // no interpolation
-	ret.Contexts = v.Contexts   // no interpolation
-	ret.NoExport = v.NoExport   // no interpolation
-	ret.IterateAs = v.IterateAs // no interpolation
+	ret.Context = v.Context         // no interpolation
+	ret.Contexts = v.Contexts       // no interpolation
+	ret.NoExport = v.NoExport       // no interpolation
+	ret.IterateAs = v.IterateAs     // no interpolation
+	ret.Description = v.Description // no interpolation
+	ret.OnError = v.OnError         // no interpolation
+	ret.OnFailure = v.OnFailure     // no interpolation
 
 	w.workflow = &ret
+}
+
+// inheritParentSettings copies some workflow settings from the parent session
+func (w *Session) inheritParentSettings(p *Session) {
+	if w.workflow.OnError == "" {
+		w.workflow.OnError = p.workflow.OnError
+	}
+	if w.workflow.OnFailure == "" {
+		w.workflow.OnFailure = p.workflow.OnFailure
+	}
 }
 
 // createChildSession creates a child workflow session
@@ -252,6 +268,7 @@ func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *
 	child.initCTX()
 	child.injectLocalCTX(msg)
 	child.interpolateWorkflow(msg)
+	child.inheritParentSettings(w)
 	return child
 }
 

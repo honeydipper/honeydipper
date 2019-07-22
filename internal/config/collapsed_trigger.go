@@ -61,7 +61,7 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 }
 
 // ExportContext putting raw data from event into context as abstracted fields
-func (t *CollapsedTrigger) ExportContext(envData map[string]interface{}) map[string]interface{} {
+func (t *CollapsedTrigger) ExportContext(eventName string, envData map[string]interface{}) map[string]interface{} {
 	newCtx := map[string]interface{}{}
 	envData["ctx"] = newCtx
 	envData["sysData"] = t.SysData
@@ -70,6 +70,8 @@ func (t *CollapsedTrigger) ExportContext(envData map[string]interface{}) map[str
 		delta := dipper.Interpolate(layer, envData)
 		newCtx = dipper.MergeMap(newCtx, delta)
 	}
+
+	newCtx["_meta_event"] = eventName
 
 	return newCtx
 }

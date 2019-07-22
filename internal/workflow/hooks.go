@@ -36,9 +36,11 @@ func (w *Session) fireHook(name string, msg *dipper.Message) {
 				w.save()
 				defer w.onError()
 
+				dipper.Logger.Infof("[workflow] firing hook %s for new session", name)
 				w.executeHook(msg, hookBlock)
 			}()
 		} else {
+			dipper.Logger.Infof("[workflow] firing hook %s for session [%s]", name, w.ID)
 			w.executeHook(msg, hookBlock)
 		}
 	}
@@ -49,13 +51,13 @@ func (w *Session) executeHook(msg *dipper.Message, hookBlock interface{}) {
 
 	if hook, ok := hookBlock.(string); ok {
 		child = w.createChildSession(&config.Workflow{
-			Context:  "_hook",
+			Context:  SessionContextHooks,
 			Workflow: hook,
 		}, msg)
 	} else {
 		v := reflect.ValueOf(hookBlock)
 		childWf := config.Workflow{
-			Context: "_hook",
+			Context: SessionContextHooks,
 		}
 		for i := 0; i < v.Len(); i++ {
 			childWf.Steps = append(childWf.Steps, config.Workflow{Workflow: v.Index(i).Interface().(string)})
