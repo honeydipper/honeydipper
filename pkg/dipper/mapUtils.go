@@ -263,8 +263,8 @@ func MustDeepCopy(m map[string]interface{}) map[string]interface{} {
 	return ret
 }
 
-// MergeMap : merge the data from source to destination with some overriding rule
-func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
+// CombineMap : combine the data form two maps without merging them
+func CombineMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
 	if src == nil {
 		return dst
 	}
@@ -275,6 +275,12 @@ func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{
 	if err != nil {
 		panic(err)
 	}
+	return dst
+}
+
+// MergeMap : merge the data from source to destination with some overriding rule
+func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
+	dst = CombineMap(dst, src)
 	for k, v := range dst {
 		if k[len(k)-1] == '-' {
 			if _, ok := dst[k[:len(k)-1]]; !ok {

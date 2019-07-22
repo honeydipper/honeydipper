@@ -37,6 +37,8 @@ func (w *Session) execute(msg *dipper.Message) {
 				} else {
 					w.executeRound(msg)
 				}
+			} else if w.parent != "" {
+				go w.store.ContinueSession(w.parent, msg, nil)
 			}
 		case w.workflow.Else != nil:
 			var elseBranch config.Workflow
