@@ -31,6 +31,13 @@ const (
 
 // routeNext determines what to do next for the workflow
 func (w *Session) routeNext(msg *dipper.Message) int {
+	if msg.Labels["status"] == SessionStatusError && w.workflow.OnError != "continue" {
+		return WorkflowNextComplete
+	}
+	if msg.Labels["status"] == SessionStatusFailure && w.workflow.OnFailure == "exit" {
+		return WorkflowNextComplete
+	}
+
 	switch {
 	case w.elseBranch != nil:
 		return WorkflowNextComplete

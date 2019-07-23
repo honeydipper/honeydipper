@@ -245,8 +245,16 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.NoExport = v.NoExport       // no interpolation
 	ret.IterateAs = v.IterateAs     // no interpolation
 	ret.Description = v.Description // no interpolation
+	ret.OnError = v.OnError         // no interpolation
+	ret.OnFailure = v.OnFailure     // no interpolation
 
 	w.workflow = &ret
+}
+
+// inheritParentSettings copies some workflow settings from the parent session
+func (w *Session) inheritParentSettings(p *Session) {
+	w.workflow.OnError = p.workflow.OnError
+	w.workflow.OnFailure = p.workflow.OnFailure
 }
 
 // createChildSession creates a child workflow session
@@ -256,6 +264,7 @@ func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *
 	child.initCTX()
 	child.injectLocalCTX(msg)
 	child.interpolateWorkflow(msg)
+	child.inheritParentSettings(w)
 	return child
 }
 
