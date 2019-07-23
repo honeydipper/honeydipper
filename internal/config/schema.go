@@ -51,10 +51,11 @@ type System struct {
 
 // Workflow defines one or more actions needed to complete certain task and how they are orchestrated.
 type Workflow struct {
-	Name     string                 `json:"name,omitempty"`
-	Context  string                 `json:"context,omitempty"`
-	Contexts []string               `json:"contexts,omitempty"`
-	Local    map[string]interface{} `json:"with,omitempty"`
+	Name        string                 `json:"name,omitempty"`
+	Description string                 `json:"description,omitempty"`
+	Context     string                 `json:"context,omitempty"`
+	Contexts    []string               `json:"contexts,omitempty"`
+	Local       map[string]interface{} `json:"with,omitempty"`
 
 	Match     map[string]interface{} `json:"if_match,omitempty"`
 	If        []string               `json:"if,omitempty"`
