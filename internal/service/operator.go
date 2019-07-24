@@ -33,7 +33,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			if r := recover(); r != nil {
 				if sessionID, ok := msg.Labels["sessionID"]; ok && sessionID != "" {
 					newLabels := msg.Labels
-					newLabels["status"] = "blocked"
+					newLabels["status"] = "error"
 					newLabels["reason"] = fmt.Sprintf("%+v", r)
 					eventbus := operator.getDriverRuntime(dipper.ChannelEventbus)
 					dipper.SendMessage(eventbus.Output, &dipper.Message{
