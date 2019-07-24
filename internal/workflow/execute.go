@@ -216,7 +216,11 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 		child.execute(msg)
 		return
 	}
-	w.continueExec(msg, nil)
+	w.continueExec(&dipper.Message{
+		Labels: map[string]string{
+			"status": SessionStatusSuccess,
+		},
+	}, nil)
 }
 
 // executeAction takes actions for a single iteration in a single loop round
@@ -249,6 +253,11 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		case w.workflow.Switch != "":
 			w.executeSwitch(msg)
 		default:
+			w.continueExec(&dipper.Message{
+				Labels: map[string]string{
+					"status": SessionStatusSuccess,
+				},
+			}, nil)
 			w.continueExec(msg, nil)
 		}
 	}
@@ -299,6 +308,14 @@ func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 		Labels:  labels,
 	}
 
+	if w.performing == "" {
+		if f.Target.System != "" {
+			w.performing = f.Target.System + "." + f.Target.Function
+		} else {
+			w.performing = "driver:" + f.Driver + "." + f.RawAction
+		}
+	}
+
 	w.store.SendMessage(cmdmsg)
 }
 
@@ -306,6 +323,7 @@ func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 func (w *Session) executeStep(msg *dipper.Message) {
 	wf := w.workflow.Steps[w.current]
 	child := w.createChildSession(&wf, msg)
+	child.ctx["step_number"] = w.current
 	child.execute(msg)
 }
 

@@ -138,12 +138,8 @@ func (w *Session) fireCompleteHooks(msg *dipper.Message) {
 
 // complete gracefully terminates a session and return exported data to parent
 func (w *Session) complete(msg *dipper.Message) {
-	if msg.Labels["status"] != SessionStatusSuccess && msg.Labels["when"] == "" {
-		when := w.workflow.Name
-		if w.workflow.Description != "" {
-			when = w.workflow.Description
-		}
-		msg.Labels["when"] = when
+	if msg.Labels["status"] != SessionStatusSuccess && msg.Labels["performing"] == "" {
+		msg.Labels["performing"] = w.performing
 	}
 	dipper.Logger.Debugf("[workflow] session [%s] completing with msg labels %+v", w.ID, msg.Labels)
 	if w.ID != "" {
