@@ -253,8 +253,12 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 
 // inheritParentSettings copies some workflow settings from the parent session
 func (w *Session) inheritParentSettings(p *Session) {
-	w.workflow.OnError = p.workflow.OnError
-	w.workflow.OnFailure = p.workflow.OnFailure
+	if w.workflow.OnError == "" {
+		w.workflow.OnError = p.workflow.OnError
+	}
+	if w.workflow.OnFailure == "" {
+		w.workflow.OnFailure = p.workflow.OnFailure
+	}
 }
 
 // createChildSession creates a child workflow session

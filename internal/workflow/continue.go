@@ -29,6 +29,16 @@ const (
 	WorkflowNextRound
 )
 
+// WorkflowNextStrings are used for logging the routing result
+var WorkflowNextStrings = []string{
+	"complete",
+	"next step",
+	"next thread",
+	"next item",
+	"next item(parallel)",
+	"next loop round",
+}
+
 // routeNext determines what to do next for the workflow
 func (w *Session) routeNext(msg *dipper.Message) int {
 	if msg.Labels["status"] == SessionStatusError && w.workflow.OnError != "continue" {
@@ -135,6 +145,7 @@ func (w *Session) complete(msg *dipper.Message) {
 		}
 		msg.Labels["when"] = when
 	}
+	dipper.Logger.Debugf("[workflow] session [%s] completing with msg labels %+v", w.ID, msg.Labels)
 	if w.ID != "" {
 		if _, ok := w.store.sessions[w.ID]; ok {
 			if w.currentHook == "" {
@@ -222,7 +233,9 @@ func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{
 			})
 		}
 	} else {
-		switch w.routeNext(msg) {
+		route := w.routeNext(msg)
+		dipper.Logger.Debugf("[workflow] session [%s] routing with '%s'", w.ID, WorkflowNextStrings[route])
+		switch route {
 		case WorkflowNextStep:
 			w.current++
 			w.executeStep(msg)
