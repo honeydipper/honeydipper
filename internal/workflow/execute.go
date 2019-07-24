@@ -306,10 +306,13 @@ func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 	payload := w.buildEnvData(msg)
 	payload["function"] = *f
 
-	labels := msg.Labels
-	if labels == nil {
-		labels = map[string]string{}
+	labels := map[string]string{}
+	for k, v := range msg.Labels {
+		labels[k] = v
 	}
+	delete(labels, "status")
+	delete(labels, "reason")
+	delete(labels, "performing")
 	labels["sessionID"] = w.ID
 
 	cmdmsg := &dipper.Message{
