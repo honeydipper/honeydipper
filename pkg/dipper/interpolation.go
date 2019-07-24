@@ -63,13 +63,13 @@ func ParseYaml(pattern string) interface{} {
 func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:
-		if strings.HasPrefix(v, ":path:") {
+		if strings.HasPrefix(v, "$") {
 			var keys []string
-			allowNull := (v[6] == '?')
+			allowNull := (v[1] == '?')
 			if allowNull {
-				keys = strings.Split(v[7:], ",")
+				keys = strings.Split(v[2:], ",")
 			} else {
-				keys = strings.Split(v[6:], ",")
+				keys = strings.Split(v[1:], ",")
 			}
 			for _, key := range keys {
 				ret, _ := GetMapData(data, key)
@@ -80,9 +80,11 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			if allowNull {
 				return nil
 			}
-			panic(fmt.Errorf("invalid path %s", v[6:]))
+			panic(fmt.Errorf("invalid path %s", v[1:]))
 		}
+
 		ret := InterpolateGoTemplate(v, data)
+
 		if strings.HasPrefix(ret, ":yaml:") {
 			defer func() {
 				if r := recover(); r != nil {
@@ -92,6 +94,8 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			}()
 			return ParseYaml(ret[6:])
 		}
+
+		ret = strings.TrimPrefix(ret, "\\")
 		return ret
 	case map[string]interface{}:
 		ret := map[string]interface{}{}
