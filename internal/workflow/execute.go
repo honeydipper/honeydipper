@@ -269,7 +269,6 @@ func (w *Session) executeAction(msg *dipper.Message) {
 					"status": SessionStatusSuccess,
 				},
 			}, nil)
-			w.continueExec(msg, nil)
 		}
 	}
 }
