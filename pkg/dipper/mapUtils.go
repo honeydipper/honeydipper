@@ -283,7 +283,7 @@ func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{
 	dst = CombineMap(dst, src)
 	for k, v := range dst {
 		if k[len(k)-1] == '-' {
-			if _, ok := dst[k[:len(k)-1]]; !ok {
+			if ev, ok := dst[k[:len(k)-1]]; !ok || ev == nil {
 				dst[k[:len(k)-1]] = v
 			}
 			delete(dst, k)

@@ -80,11 +80,11 @@ func (w *Session) executeRound(msg *dipper.Message) {
 		w.current = 0
 	}
 
-	if _, ok := w.ctx["waiter"]; !ok {
+	if _, ok := w.ctx["resume_token"]; !ok {
 		if w.ctx == nil {
 			w.ctx = map[string]interface{}{}
 		}
-		w.ctx["waiter"] = "/" + w.workflow.Name + "/" + w.ID
+		w.ctx["resume_token"] = "/" + w.workflow.Name + "/" + w.ID
 	}
 
 	w.executeIteration(msg)
@@ -128,7 +128,8 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 				if w.workflow.IterateAs != "" {
 					child.ctx[w.workflow.IterateAs] = child.ctx["current"]
 				}
-				child.ctx["waiter"] = ""
+				delete(child.ctx, "resume_token")
+
 				daemon.Children.Add(1)
 				go func(child *Session) {
 					defer daemon.Children.Done()
@@ -136,6 +137,7 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 					defer w.onError()
 					child.execute(msg)
 				}(child)
+
 			}
 		}
 	} else {
@@ -145,25 +147,25 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 
 // startWait puts a session into waiting state
 func (w *Session) startWait() {
-	waiter, ok := w.ctx["waiter"].(string)
-	if !ok || waiter == "" {
+	resumeToken, ok := w.ctx["resume_token"].(string)
+	if !ok || resumeToken == "" {
 		dipper.Logger.Panicf("[workflow] wait identifier missing for session %s", w.ID)
 	}
-	oldWaiterSession, ok := w.store.suspendedSessions[waiter]
+	oldWaiterSession, ok := w.store.suspendedSessions[resumeToken]
 	if ok {
 		dipper.Logger.Panicf("[workflow] wait identifier collided for sessions %s and %s", w.ID, oldWaiterSession)
 	}
-	w.store.suspendedSessions[waiter] = w.ID
+	w.store.suspendedSessions[resumeToken] = w.ID
 
 	if strings.ToLower(w.workflow.Wait) != "infinite" {
 		d, err := time.ParseDuration(w.workflow.Wait)
 		if err != nil {
-			dipper.Logger.Panicf("[workflow] fail to time.ParseDuration '%s' for %+v", w.workflow.Wait, waiter)
+			dipper.Logger.Panicf("[workflow] fail to time.ParseDuration '%s' for %+v", w.workflow.Wait, resumeToken)
 		}
 		daemon.Children.Add(1)
 		go func() {
 			defer daemon.Children.Done()
-			defer dipper.SafeExitOnError("[workflow] resuming session on timeout failed %+v", waiter)
+			defer dipper.SafeExitOnError("[workflow] resuming session on timeout failed %+v", resumeToken)
 
 			timeoutStatus, _ := dipper.GetMapDataStr(w.ctx, "timeout_status")
 			reason := "time out"
@@ -174,11 +176,11 @@ func (w *Session) startWait() {
 			timeoutPayload := w.ctx["return_on_timeout"]
 
 			<-time.After(d)
-			dipper.Logger.Infof("[workflow] resuming session on timeout %+v", waiter)
+			dipper.Logger.Infof("[workflow] resuming session on timeout %+v", resumeToken)
 
-			go w.store.ResumeSession(waiter, &dipper.Message{
+			go w.store.ResumeSession(resumeToken, &dipper.Message{
 				Payload: map[string]interface{}{
-					"key": waiter,
+					"key": resumeToken,
 					"labels": map[string]interface{}{
 						"status": timeoutStatus,
 						"reason": reason,
@@ -196,6 +198,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 	match := dipper.InterpolateStr(w.workflow.Switch, envData)
 	for key, branch := range w.workflow.Cases {
 		if key == match {
+			w.performing = "switch branch " + key
 			wf := &config.Workflow{}
 			err := mapstructure.Decode(branch, wf)
 			if err != nil {
@@ -207,6 +210,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 		}
 	}
 	if w.workflow.Default != nil {
+		w.performing = "switch default branch"
 		var defaultBranch config.Workflow
 		err := mapstructure.Decode(w.workflow.Default, &defaultBranch)
 		if err != nil {
@@ -216,7 +220,11 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 		child.execute(msg)
 		return
 	}
-	w.continueExec(msg, nil)
+	w.continueExec(&dipper.Message{
+		Labels: map[string]string{
+			"status": SessionStatusSuccess,
+		},
+	}, nil)
 }
 
 // executeAction takes actions for a single iteration in a single loop round
@@ -231,24 +239,36 @@ func (w *Session) executeAction(msg *dipper.Message) {
 	if w.currentHook == "" {
 		switch {
 		case w.workflow.Workflow != "":
+			w.performing = w.workflow.Workflow
 			child := w.createChildSessionWithName(w.workflow.Workflow, msg)
 			child.execute(msg)
 		case w.isFunction():
+			w.performing = "function"
 			f := w.interpolateFunction(&w.workflow.Function, msg)
 			w.callFunction(f, msg)
 		case w.workflow.CallFunc != "":
+			w.performing = "function " + w.workflow.CallFunc
 			w.callShorthandFunction(w.workflow.CallFunc, msg)
 		case w.workflow.Steps != nil:
+			w.performing = "steps"
 			w.current = 0
 			w.executeStep(msg)
 		case w.workflow.Threads != nil:
+			w.performing = "threads"
 			w.current = 0
 			w.executeThreads(msg)
 		case w.workflow.Wait != "":
+			w.performing = "suspending"
 			w.startWait()
 		case w.workflow.Switch != "":
+			w.performing = "switch"
 			w.executeSwitch(msg)
 		default:
+			w.continueExec(&dipper.Message{
+				Labels: map[string]string{
+					"status": SessionStatusSuccess,
+				},
+			}, nil)
 			w.continueExec(msg, nil)
 		}
 	}
@@ -306,6 +326,7 @@ func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 func (w *Session) executeStep(msg *dipper.Message) {
 	wf := w.workflow.Steps[w.current]
 	child := w.createChildSession(&wf, msg)
+	child.ctx["step_number"] = w.current
 	child.execute(msg)
 }
 
@@ -319,7 +340,7 @@ func (w *Session) executeThreads(msg *dipper.Message) {
 			defer w.onError()
 			child := w.createChildSession(&w.workflow.Threads[i], msg)
 			child.ctx["thread_number"] = i
-			child.ctx["waiter"] = ""
+			delete(child.ctx, "resume_token")
 			child.execute(msg)
 		}(i)
 	}

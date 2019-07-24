@@ -30,6 +30,7 @@ type Session struct {
 	loadedContexts    []string
 	currentHook       string
 	savedMsg          *dipper.Message
+	performing        string
 }
 
 const (
@@ -264,6 +265,7 @@ func (w *Session) inheritParentSettings(p *Session) {
 // createChildSession creates a child workflow session
 func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *Session {
 	child := w.store.newSession(w.ID, wf)
+	w.performing = child.performing
 	child.injectMsg(msg)
 	child.initCTX()
 	child.injectLocalCTX(msg)

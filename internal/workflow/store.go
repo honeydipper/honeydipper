@@ -37,13 +37,26 @@ func (s *SessionStore) Len() int {
 
 // newSession creates the workflow session
 func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
-	dipper.Logger.Infof("[workflow] workflow %s instantiated with parent ID [%s]", wf.Name, parent)
 	var err error
 	var w = &Session{
 		parent:   parent,
 		store:    s,
 		workflow: wf,
 	}
+
+	switch {
+	case wf.Description != "":
+		w.performing = wf.Description
+	case wf.Function.Target.System != "":
+		w.performing = wf.Function.Target.System + "." + wf.Function.Target.Function
+	case wf.Function.Driver != "":
+		w.performing = "driver:" + wf.Function.Driver + "." + wf.Function.RawAction
+	case wf.CallFunc != "":
+		w.performing = wf.CallFunc
+	default:
+		w.performing = w.workflow.Name
+	}
+	dipper.Logger.Infof("[workflow] workflow [%s] instantiated with parent ID [%s]", w.performing, parent)
 
 	if w.parent != "" {
 		parentSession := dipper.IDMapGet(&s.sessions, w.parent).(*Session)
