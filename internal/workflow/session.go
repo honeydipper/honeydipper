@@ -134,6 +134,19 @@ func (w *Session) injectNamedCTX(name string) {
 			w.ctx = dipper.MergeMap(w.ctx, ctx)
 			dipper.Logger.Infof("merged global values (*) from named context %s to workflow", name)
 		}
+
+		if w.parent == "" {
+			ctx, ok := namedCTXs["_events"]
+			if ok {
+				ctx, err = dipper.DeepCopy(ctx)
+				if err != nil {
+					panic(err)
+				}
+				w.ctx = dipper.MergeMap(w.ctx, ctx)
+				dipper.Logger.Infof("[workflow] merged _events section of context [%s] to workflow [%s]", name, w.performing)
+			}
+		}
+
 		if w.workflow.Name != "" {
 			ctx, ok := namedCTXs[w.workflow.Name]
 			if ok {
@@ -142,7 +155,7 @@ func (w *Session) injectNamedCTX(name string) {
 					panic(err)
 				}
 				w.ctx = dipper.MergeMap(w.ctx, ctx)
-				dipper.Logger.Infof("[workflow] merged named context %s to workflow %s", name, w.workflow.Name)
+				dipper.Logger.Infof("[workflow] merged named context [%s] to workflow [%s]", name, w.performing)
 			}
 		}
 	}
