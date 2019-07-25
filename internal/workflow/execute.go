@@ -198,6 +198,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 	match := dipper.InterpolateStr(w.workflow.Switch, envData)
 	for key, branch := range w.workflow.Cases {
 		if key == match {
+			w.performing = "switch branch " + key
 			wf := &config.Workflow{}
 			err := mapstructure.Decode(branch, wf)
 			if err != nil {
@@ -209,6 +210,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 		}
 	}
 	if w.workflow.Default != nil {
+		w.performing = "switch default branch"
 		var defaultBranch config.Workflow
 		err := mapstructure.Decode(w.workflow.Default, &defaultBranch)
 		if err != nil {
@@ -237,22 +239,29 @@ func (w *Session) executeAction(msg *dipper.Message) {
 	if w.currentHook == "" {
 		switch {
 		case w.workflow.Workflow != "":
+			w.performing = w.workflow.Workflow
 			child := w.createChildSessionWithName(w.workflow.Workflow, msg)
 			child.execute(msg)
 		case w.isFunction():
+			w.performing = "function"
 			f := w.interpolateFunction(&w.workflow.Function, msg)
 			w.callFunction(f, msg)
 		case w.workflow.CallFunc != "":
+			w.performing = "function " + w.workflow.CallFunc
 			w.callShorthandFunction(w.workflow.CallFunc, msg)
 		case w.workflow.Steps != nil:
+			w.performing = "steps"
 			w.current = 0
 			w.executeStep(msg)
 		case w.workflow.Threads != nil:
+			w.performing = "threads"
 			w.current = 0
 			w.executeThreads(msg)
 		case w.workflow.Wait != "":
+			w.performing = "suspending"
 			w.startWait()
 		case w.workflow.Switch != "":
+			w.performing = "switch"
 			w.executeSwitch(msg)
 		default:
 			w.continueExec(&dipper.Message{
