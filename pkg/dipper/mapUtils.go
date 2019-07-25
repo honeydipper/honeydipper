@@ -28,21 +28,29 @@ func init() {
 func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 	var current = reflect.ValueOf(from)
 	if !current.IsValid() {
-		return nil, ok
+		return nil, false
 	}
 	components := strings.Split(path, ".")
 	for _, component := range components {
-		if current.Kind() != reflect.Map {
-			return nil, ok
+		var nextValue reflect.Value
+		switch current.Kind() {
+		case reflect.Map:
+			nextValue = current.MapIndex(reflect.ValueOf(component))
+		case reflect.Slice:
+			fallthrough
+		case reflect.Array:
+			i, err := strconv.Atoi(component)
+			if err == nil && i >= 0 && i < current.Len() {
+				nextValue = current.Index(i)
+			}
 		}
-		nextValue := current.MapIndex(reflect.ValueOf(component))
 		if !nextValue.IsValid() {
-			return nil, ok
+			return nil, false
 		}
 		current = reflect.ValueOf(nextValue.Interface())
 	}
 	if !current.IsValid() {
-		return nil, ok
+		return nil, false
 	}
 	return current.Interface(), true
 }
