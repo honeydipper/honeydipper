@@ -71,7 +71,9 @@ func (t *CollapsedTrigger) ExportContext(eventName string, envData map[string]in
 		newCtx = dipper.MergeMap(newCtx, delta)
 	}
 
-	newCtx["_meta_event"] = eventName
+	if _, ok := newCtx["_meta_event"]; !ok {
+		newCtx["_meta_event"] = eventName
+	}
 
 	return newCtx
 }
