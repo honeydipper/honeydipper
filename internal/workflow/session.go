@@ -7,6 +7,7 @@
 package workflow
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/honeydipper/honeydipper/internal/config"
@@ -289,7 +290,10 @@ func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *
 
 // createChildSessionWithName creates a child workflow session
 func (w *Session) createChildSessionWithName(name string, msg *dipper.Message) *Session {
-	src := w.store.GetConfig().DataSet.Workflows[name]
+	src, ok := w.store.GetConfig().DataSet.Workflows[name]
+	if !ok {
+		panic(fmt.Errorf("workflow %s not defined", name))
+	}
 	if src.Name == "" {
 		src.Name = name
 	}
