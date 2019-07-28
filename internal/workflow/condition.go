@@ -51,6 +51,8 @@ func (w *Session) checkCondition() bool {
 		return false
 	case len(w.workflow.Match) > 0:
 		return dipper.CompareAll(w.ctx, w.workflow.Match)
+	case len(w.workflow.UnlessMatch) > 0:
+		return !dipper.CompareAll(w.ctx, w.workflow.UnlessMatch)
 	}
 	return true
 }
