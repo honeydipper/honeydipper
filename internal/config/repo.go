@@ -95,6 +95,7 @@ func (c *Repo) loadFile(filename string) {
 			}
 		}
 
+		c.normalizeFilePaths(filename, &content)
 		dipper.PanicError(mergeDataSet(&(c.DataSet), content))
 		c.files[filename] = true
 		dipper.Logger.Infof("config file [%v] loaded", filename)
