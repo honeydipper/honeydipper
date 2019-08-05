@@ -12,16 +12,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
-	"golang.org/x/oauth2/google"
 	dataflow "google.golang.org/api/dataflow/v1b3"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
 )
 
 func initFlags() {
@@ -50,26 +49,18 @@ func main() {
 
 func getDataflowService(serviceAccountBytes string) *dataflow.Service {
 	var (
-		client *http.Client
-		err    error
+		dataflowService *dataflow.Service
+		err             error
 	)
 	if len(serviceAccountBytes) > 0 {
-		conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
-		if err != nil {
-			panic(err)
-		}
-		client = conf.Client(context.Background())
+		dataflowService, err = dataflow.NewService(context.Background(), option.WithCredentialsJSON([]byte(serviceAccountBytes)))
 	} else {
-		client, err = google.DefaultClient(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
+		dataflowService, err = dataflow.NewService(context.Background())
 	}
 	if err != nil {
 		panic(err)
 	}
 
-	dataflowService, err := dataflow.New(client)
-	if err != nil {
-		panic(err)
-	}
 	return dataflowService
 }
 
