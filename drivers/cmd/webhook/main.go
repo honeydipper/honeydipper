@@ -161,7 +161,6 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 		"remoteAddr": r.RemoteAddr,
 	}
 
-	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
 	if r.Method == http.MethodPost {
 		bodyBytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -180,6 +179,8 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 			eventData["json"] = bodyObj
 		}
 	}
+
+	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
 
 	return eventData
 }
