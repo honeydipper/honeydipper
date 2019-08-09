@@ -113,6 +113,30 @@ func (c *Config) RollBack() {
 func (c *Config) assemble() {
 	c.DataSet, c.Loaded = c.Loaded[c.InitRepo].assemble(&(DataSet{}), map[RepoInfo]*Repo{})
 	c.extendAllSystems()
+	c.parseWorkflowRegex()
+}
+
+func (c *Config) parseWorkflowRegex() {
+	var processor func(key string, val interface{}) (interface{}, bool)
+
+	processor = func(name string, val interface{}) (interface{}, bool) {
+		switch v := val.(type) {
+		case string:
+			return dipper.RegexParser(name, val)
+		case Rule:
+			dipper.Recursive(&v.Do, processor)
+		case Workflow:
+			dipper.Recursive(v.Match, processor)
+			dipper.Recursive(v.Steps, processor)
+			dipper.Recursive(v.Threads, processor)
+			dipper.Recursive(v.Else, processor)
+			dipper.Recursive(v.Cases, processor)
+		}
+		return nil, false
+	}
+
+	dipper.Recursive(c.DataSet.Workflows, processor)
+	dipper.Recursive(c.DataSet.Rules, processor)
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
