@@ -286,7 +286,7 @@ func (w *Session) interpolateFunction(f *config.Function, msg *dipper.Message) *
 // callShorthandFunction makes a call to a function defined in short hand fashion
 func (w *Session) callShorthandFunction(f string, msg *dipper.Message) {
 	envData := w.buildEnvData(msg)
-	interpolatedNames := strings.Split(".", dipper.InterpolateStr(f, envData))
+	interpolatedNames := strings.Split(dipper.InterpolateStr(f, envData), ".")
 	systemName, funcName := interpolatedNames[0], interpolatedNames[1]
 
 	w.callFunction(&config.Function{
