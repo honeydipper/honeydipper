@@ -32,6 +32,7 @@ type Session struct {
 	currentHook       string
 	savedMsg          *dipper.Message
 	performing        string
+	isHook            bool
 }
 
 const (
@@ -169,35 +170,38 @@ func (w *Session) initCTX() {
 		w.injectNamedCTX(SessionContextEvents)
 	}
 
-	var isHook bool
-
 	for _, name := range w.loadedContexts {
 		if name == SessionContextHooks {
-			isHook = true
+			w.isHook = true
 		}
 		w.injectNamedCTX(name)
 	}
 
 	if w.workflow.Context != "" {
 		if w.workflow.Context == SessionContextHooks {
-			isHook = true
+			w.isHook = true
 		}
 		w.injectNamedCTX(w.workflow.Context)
 		w.loadedContexts = append(w.loadedContexts, w.workflow.Context)
 	} else {
 		for _, name := range w.workflow.Contexts {
 			if name == SessionContextHooks {
-				isHook = true
+				w.isHook = true
 			}
 			w.injectNamedCTX(name)
 			w.loadedContexts = append(w.loadedContexts, name)
 		}
 	}
 
-	if isHook {
+	if w.isHook {
 		// avoid hook in hook
 		delete(w.ctx, "hooks")
-	} else {
+	}
+}
+
+// injectMeta injects the meta info into context
+func (w *Session) injectMeta() {
+	if !w.isHook {
 		w.ctx["_meta_name"] = w.workflow.Name
 		w.ctx["_meta_desc"] = w.workflow.Description
 	}
@@ -227,6 +231,7 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret := config.Workflow{}
 
 	ret.Name = dipper.InterpolateStr(v.Name, envData)
+	ret.Description = dipper.InterpolateStr(v.Description, envData)
 	ret.If = dipper.Interpolate(v.If, envData).([]string)
 	ret.IfAny = dipper.Interpolate(v.IfAny, envData).([]string)
 	ret.Unless = dipper.Interpolate(v.Unless, envData).([]string)
@@ -256,13 +261,12 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.Cases = v.Cases                     // delayed
 	ret.Default = v.Default                 // delayed
 
-	ret.Context = v.Context         // no interpolation
-	ret.Contexts = v.Contexts       // no interpolation
-	ret.NoExport = v.NoExport       // no interpolation
-	ret.IterateAs = v.IterateAs     // no interpolation
-	ret.Description = v.Description // no interpolation
-	ret.OnError = v.OnError         // no interpolation
-	ret.OnFailure = v.OnFailure     // no interpolation
+	ret.Context = v.Context     // no interpolation
+	ret.Contexts = v.Contexts   // no interpolation
+	ret.NoExport = v.NoExport   // no interpolation
+	ret.IterateAs = v.IterateAs // no interpolation
+	ret.OnError = v.OnError     // no interpolation
+	ret.OnFailure = v.OnFailure // no interpolation
 
 	w.workflow = &ret
 }
@@ -286,6 +290,7 @@ func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *
 	child.injectLocalCTX(msg)
 	child.interpolateWorkflow(msg)
 	child.inheritParentSettings(w)
+	child.injectMeta()
 	return child
 }
 
