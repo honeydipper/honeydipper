@@ -81,6 +81,7 @@ func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ct
 	w.injectEventCTX(ctx)
 	w.injectLocalCTX(msg)
 	w.interpolateWorkflow(msg)
+	w.injectMeta()
 
 	w.execute(msg)
 }
