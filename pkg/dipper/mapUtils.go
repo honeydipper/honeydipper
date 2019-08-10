@@ -319,12 +319,19 @@ func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{
 				dst[k[:len(k)-1]] = v
 			}
 			delete(dst, k)
-		} else if k[len(k)-1] == '+' {
+		}
+	}
+	for k, v := range dst {
+		if k[len(k)-1] == '+' {
 			ev, ok := dst[k[:len(k)-1]]
 			if !ok {
 				dst[k[:len(k)-1]] = v
 			} else {
-				dst[k[:len(k)-1]] = reflect.AppendSlice(reflect.ValueOf(ev), reflect.ValueOf(v)).Interface()
+				if vstr, ok := v.(string); ok {
+					dst[k[:len(k)-1]] = ev.(string) + vstr
+				} else {
+					dst[k[:len(k)-1]] = reflect.AppendSlice(reflect.ValueOf(ev), reflect.ValueOf(v)).Interface()
+				}
 			}
 			delete(dst, k)
 		}
