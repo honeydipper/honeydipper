@@ -44,14 +44,14 @@ func CollapseFunction(s *System, f *Function, cfg *Config) *CollapsedFunction {
 	}
 
 	if s != nil && s.Data != nil {
-		currentSysDataCopy, _ := dipper.DeepCopy(s.Data)
+		currentSysDataCopy, _ := dipper.DeepCopyMap(s.Data)
 		if ret.SysData == nil {
 			ret.SysData = map[string]interface{}{}
 		}
 		ret.SysData = dipper.MergeMap(ret.SysData, currentSysDataCopy)
 	}
 	if f.Parameters != nil {
-		currentParamCopy, _ := dipper.DeepCopy(f.Parameters)
+		currentParamCopy, _ := dipper.DeepCopyMap(f.Parameters)
 		if ret.Parameters == nil {
 			ret.Parameters = map[string]interface{}{}
 		}
@@ -64,7 +64,7 @@ func CollapseFunction(s *System, f *Function, cfg *Config) *CollapsedFunction {
 
 // ExportContext create a context data structure based on the collapsed function exports
 func (f *CollapsedFunction) ExportContext(status string, envData map[string]interface{}) map[string]interface{} {
-	newCtx, err := dipper.DeepCopy(envData["ctx"].(map[string]interface{}))
+	newCtx, err := dipper.DeepCopyMap(envData["ctx"].(map[string]interface{}))
 	if err != nil {
 		panic(err)
 	}
