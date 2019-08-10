@@ -61,7 +61,7 @@ func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
 	if w.parent != "" {
 		parentSession := dipper.IDMapGet(&s.sessions, w.parent).(*Session)
 		w.event = parentSession.event
-		w.ctx, err = dipper.DeepCopy(parentSession.ctx)
+		w.ctx, err = dipper.DeepCopyMap(parentSession.ctx)
 		if err != nil {
 			panic(err)
 		}

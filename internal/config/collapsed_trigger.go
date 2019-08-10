@@ -29,8 +29,8 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		current = &currentTrigger
 	}
 
-	match := dipper.MustDeepCopy(current.Match)
-	params := dipper.MustDeepCopy(current.Parameters)
+	match := dipper.MustDeepCopyMap(current.Match)
+	params := dipper.MustDeepCopyMap(current.Parameters)
 	sysData := map[string]interface{}{}
 	exports := []map[string]interface{}{current.Export}
 
@@ -38,9 +38,9 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		trigger := stack[i]
 		sourceSys := c.Systems[trigger.Source.System]
 
-		sysData = dipper.MergeMap(sysData, dipper.MustDeepCopy(sourceSys.Data))
-		params = dipper.MergeMap(params, dipper.MustDeepCopy(trigger.Parameters))
-		match = dipper.MergeMap(match, dipper.MustDeepCopy(trigger.Match))
+		sysData = dipper.MergeMap(sysData, dipper.MustDeepCopyMap(sourceSys.Data))
+		params = dipper.MergeMap(params, dipper.MustDeepCopyMap(trigger.Parameters))
+		match = dipper.MergeMap(match, dipper.MustDeepCopyMap(trigger.Match))
 		exports = append(exports, trigger.Export)
 	}
 

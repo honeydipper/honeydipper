@@ -128,7 +128,7 @@ func (w *Session) injectNamedCTX(name string) {
 	if namedCTXs != nil {
 		ctx, ok := namedCTXs["*"]
 		if ok {
-			ctx, err = dipper.DeepCopy(ctx)
+			ctx, err = dipper.DeepCopyMap(ctx)
 			if err != nil {
 				panic(err)
 			}
@@ -139,7 +139,7 @@ func (w *Session) injectNamedCTX(name string) {
 		if w.parent == "" {
 			ctx, ok := namedCTXs["_events"]
 			if ok {
-				ctx, err = dipper.DeepCopy(ctx)
+				ctx, err = dipper.DeepCopyMap(ctx)
 				if err != nil {
 					panic(err)
 				}
@@ -151,7 +151,7 @@ func (w *Session) injectNamedCTX(name string) {
 		if w.workflow.Name != "" {
 			ctx, ok := namedCTXs[w.workflow.Name]
 			if ok {
-				ctx, err = dipper.DeepCopy(ctx)
+				ctx, err = dipper.DeepCopyMap(ctx)
 				if err != nil {
 					panic(err)
 				}

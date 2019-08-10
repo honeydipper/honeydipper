@@ -18,6 +18,12 @@ import (
 	"github.com/imdario/mergo"
 )
 
+//nolint:gochecknoinits
+func init() {
+	gob.Register(map[string]interface{}{})
+	gob.Register([]interface{}{})
+}
+
 // Config is a wrapper around the final complete configration of the daemon
 // including history and the runtime information
 type Config struct {
@@ -137,6 +143,7 @@ func (c *Config) parseWorkflowRegex() {
 
 	dipper.Recursive(c.DataSet.Workflows, processor)
 	dipper.Recursive(c.DataSet.Rules, processor)
+	dipper.Recursive(c.DataSet.Contexts, dipper.RegexParser)
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
