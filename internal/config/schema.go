@@ -109,9 +109,6 @@ type RepoInfo struct {
 	Path   string `json:"path,omitempty"`
 }
 
-// Context is a datastructure holds pre-defined contextual data
-type Context map[string]map[string]interface{}
-
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.
 type DataSet struct {
 	Systems   map[string]System      `json:"systems,omitempty"`
@@ -120,5 +117,5 @@ type DataSet struct {
 	Includes  []string               `json:"includes,omitempty"`
 	Repos     []RepoInfo             `json:"repos,omitempty"`
 	Workflows map[string]Workflow    `json:"workflows,omitempty"`
-	Contexts  map[string]Context     `json:"contexts,omitempty"`
+	Contexts  map[string]interface{} `json:"contexts,omitempty"`
 }
