@@ -233,6 +233,8 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.Retry = dipper.InterpolateStr(v.Retry, envData)
 	ret.Backoff = dipper.InterpolateStr(v.Backoff, envData)
 	ret.Wait = dipper.InterpolateStr(v.Wait, envData)
+	ret.CallFunction = dipper.InterpolateStr(v.CallFunction, envData)
+	ret.CallDriver = dipper.InterpolateStr(v.CallDriver, envData)
 
 	ret.While = v.While                     // repeatedly interpolated later
 	ret.WhileAny = v.WhileAny               // repeatedly interpolated later
@@ -241,8 +243,6 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.Else = v.Else                       // delayed
 	ret.Workflow = v.Workflow               // delayed
 	ret.Function = v.Function               // delayed
-	ret.CallFunc = v.CallFunc               // delayed
-	ret.CallDriver = v.CallDriver           // delayed
 	ret.Steps = v.Steps                     // delayed
 	ret.Threads = v.Threads                 // delayed
 	ret.Export = v.Export                   // delayed
