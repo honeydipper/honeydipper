@@ -53,6 +53,8 @@ func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
 		w.performing = "driver:" + wf.Function.Driver + "." + wf.Function.RawAction
 	case wf.CallFunc != "":
 		w.performing = wf.CallFunc
+	case wf.CallDriver != "":
+		w.performing = wf.CallDriver
 	default:
 		w.performing = w.workflow.Name
 	}
