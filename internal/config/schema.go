@@ -77,14 +77,15 @@ type Workflow struct {
 	Retry   string `json:"retry,omitempty"`
 	Backoff string `json:"backoff,omitempty"`
 
-	OnError   string     `json:"on_error,omitempty"`
-	OnFailure string     `json:"on_failure,omitempty"`
-	Workflow  string     `json:"workflow,omitempty"`
-	Function  Function   `json:"function,omitempty"`
-	CallFunc  string     `json:"call_function,omitempty"`
-	Steps     []Workflow `json:"steps,omitempty"`
-	Threads   []Workflow `json:"threads,omitempty"`
-	Wait      string     `json:"wait,omitempty"`
+	OnError    string     `json:"on_error,omitempty"`
+	OnFailure  string     `json:"on_failure,omitempty"`
+	Workflow   string     `json:"call_workflow,omitempty"`
+	Function   Function   `json:"function,omitempty"`
+	CallFunc   string     `json:"call_function,omitempty"`
+	CallDriver string     `json:"call_driver,omitempty"`
+	Steps      []Workflow `json:"steps,omitempty"`
+	Threads    []Workflow `json:"threads,omitempty"`
+	Wait       string     `json:"wait,omitempty"`
 
 	Switch  string                 `json:"switch,omitempty"`
 	Cases   map[string]interface{} `json:"cases,omitempty"`

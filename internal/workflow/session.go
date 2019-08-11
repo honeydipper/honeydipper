@@ -206,7 +206,7 @@ func (w *Session) injectEventCTX(ctx map[string]interface{}) {
 
 // injectLocalCTX injects the workflow local context data
 func (w *Session) injectLocalCTX(msg *dipper.Message) {
-	if w.workflow.Local != nil {
+	if w.workflow.Local != nil && w.workflow.CallDriver == "" {
 		envData := w.buildEnvData(msg)
 		locals := dipper.Interpolate(w.workflow.Local, envData)
 
@@ -242,6 +242,7 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.Workflow = v.Workflow               // delayed
 	ret.Function = v.Function               // delayed
 	ret.CallFunc = v.CallFunc               // delayed
+	ret.CallDriver = v.CallDriver           // delayed
 	ret.Steps = v.Steps                     // delayed
 	ret.Threads = v.Threads                 // delayed
 	ret.Export = v.Export                   // delayed
