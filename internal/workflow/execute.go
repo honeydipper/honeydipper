@@ -113,15 +113,15 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 			iter := reflect.ValueOf(w.workflow.IterateParallel)
 			l := iter.Len()
 			single := config.Workflow{
-				Workflow:   w.workflow.Workflow,
-				Function:   w.workflow.Function,
-				CallFunc:   w.workflow.CallFunc,
-				CallDriver: w.workflow.CallDriver,
-				Switch:     w.workflow.Switch,
-				Cases:      w.workflow.Cases,
-				Default:    w.workflow.Default,
-				Steps:      w.workflow.Steps,
-				Threads:    w.workflow.Threads,
+				Workflow:     w.workflow.Workflow,
+				Function:     w.workflow.Function,
+				CallFunction: w.workflow.CallFunction,
+				CallDriver:   w.workflow.CallDriver,
+				Switch:       w.workflow.Switch,
+				Cases:        w.workflow.Cases,
+				Default:      w.workflow.Default,
+				Steps:        w.workflow.Steps,
+				Threads:      w.workflow.Threads,
 			}
 			for i := 0; i < l; i++ {
 				child := w.createChildSession(&single, msg)
@@ -250,9 +250,9 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		case w.workflow.CallDriver != "":
 			w.performing = "driver " + w.workflow.CallDriver
 			w.callDriver(w.workflow.CallDriver, msg)
-		case w.workflow.CallFunc != "":
-			w.performing = "function " + w.workflow.CallFunc
-			w.callShorthandFunction(w.workflow.CallFunc, msg)
+		case w.workflow.CallFunction != "":
+			w.performing = "function " + w.workflow.CallFunction
+			w.callShorthandFunction(w.workflow.CallFunction, msg)
 		case w.workflow.Steps != nil:
 			w.performing = "steps"
 			w.current = 0
@@ -289,12 +289,12 @@ func (w *Session) interpolateFunction(f *config.Function, msg *dipper.Message) *
 
 // callDriver makes a call to a driver function defined in short hand fashion
 func (w *Session) callDriver(f string, msg *dipper.Message) {
-	envData := w.buildEnvData(msg)
-	interpolatedNames := strings.Split(dipper.InterpolateStr(f, envData), ".")
+	interpolatedNames := strings.Split(f, ".")
 	driverName, rawActionName := interpolatedNames[0], interpolatedNames[1]
 
 	var locals map[string]interface{}
 	if w.workflow.Local != nil {
+		envData := w.buildEnvData(msg)
 		locals = dipper.Interpolate(w.workflow.Local, envData).(map[string]interface{})
 	}
 
@@ -307,8 +307,7 @@ func (w *Session) callDriver(f string, msg *dipper.Message) {
 
 // callShorthandFunction makes a call to a function defined in short hand fashion
 func (w *Session) callShorthandFunction(f string, msg *dipper.Message) {
-	envData := w.buildEnvData(msg)
-	interpolatedNames := strings.Split(dipper.InterpolateStr(f, envData), ".")
+	interpolatedNames := strings.Split(f, ".")
 	systemName, funcName := interpolatedNames[0], interpolatedNames[1]
 
 	w.callFunction(&config.Function{
