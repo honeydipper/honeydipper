@@ -257,6 +257,8 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 	}
 
 	s.Systems = map[string]System{}
+	s.Contexts = dipper.MustDeepCopyMap(s.Contexts)
+	s.Drivers = dipper.MustDeepCopyMap(s.Drivers)
 	err := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
 	return err
 }
