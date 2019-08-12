@@ -8,6 +8,7 @@ package dipper
 
 import (
 	"os"
+	"strings"
 
 	"github.com/op/go-logging"
 	"golang.org/x/crypto/ssh/terminal"
@@ -35,6 +36,11 @@ func initLogBackend(level logging.Level, logFile *os.File) logging.Backend {
 
 // GetLogger : getting a logger for the module
 func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.Logger {
+	if debug, ok := os.LookupEnv("DEBUG"); ok {
+		if debug == "*" || strings.Contains(","+debug+",", ","+module+",") {
+			verbosity = "DEBUG"
+		}
+	}
 	errLog := os.Stderr
 	if len(logFiles) > 1 {
 		errLog = logFiles[1]
