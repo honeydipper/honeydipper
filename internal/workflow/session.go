@@ -258,6 +258,7 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.IterateAs = v.IterateAs // no interpolation
 	ret.OnError = v.OnError     // no interpolation
 	ret.OnFailure = v.OnFailure // no interpolation
+	ret.Local = v.Local         // no interpolation
 
 	w.workflow = &ret
 }
