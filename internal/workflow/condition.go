@@ -7,6 +7,7 @@
 package workflow
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
@@ -49,10 +50,36 @@ func (w *Session) checkCondition() bool {
 			}
 		}
 		return false
-	case len(w.workflow.Match) > 0:
-		return dipper.CompareAll(w.ctx, w.workflow.Match)
-	case len(w.workflow.UnlessMatch) > 0:
-		return !dipper.CompareAll(w.ctx, w.workflow.UnlessMatch)
+	case w.workflow.Match != nil:
+		switch scenario := w.workflow.Match.(type) {
+		case map[string]interface{}:
+			if len(scenario) > 0 {
+				return dipper.CompareAll(w.ctx, scenario)
+			}
+			return true
+		case []interface{}:
+			if len(scenario) > 0 {
+				return dipper.CompareAll(w.ctx, scenario)
+			}
+			return true
+		default:
+			panic(errors.New("unsupported match condition"))
+		}
+	case w.workflow.UnlessMatch != nil:
+		switch scenario := w.workflow.UnlessMatch.(type) {
+		case map[string]interface{}:
+			if len(scenario) > 0 {
+				return !dipper.CompareAll(w.ctx, scenario)
+			}
+			return true
+		case []interface{}:
+			if len(scenario) > 0 {
+				return !dipper.CompareAll(w.ctx, scenario)
+			}
+			return true
+		default:
+			panic(errors.New("unsupported unless_match condition"))
+		}
 	}
 	return true
 }

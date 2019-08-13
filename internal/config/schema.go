@@ -57,8 +57,8 @@ type Workflow struct {
 	Contexts    []string
 	Local       map[string]interface{} `json:"with" mapstructure:"with"`
 
-	Match       map[string]interface{} `json:"if_match" mapstructure:"if_match"`
-	UnlessMatch map[string]interface{} `json:"unless_match" mapstructure:"unelss_match"`
+	Match       interface{} `json:"if_match" mapstructure:"if_match"`
+	UnlessMatch interface{} `json:"unless_match" mapstructure:"unelss_match"`
 	If          []string
 	IfAny       []string `json:"if_any" mapstructure:"if_any"`
 	Unless      []string
