@@ -80,7 +80,7 @@ func (w *Session) mergeContext(export map[string]interface{}) {
 // processExport export the data into parent workflow session
 func (w *Session) processExport(msg *dipper.Message) {
 	if w.elseBranch == nil {
-		var exports interface{}
+		var exports map[string]interface{}
 		envData := w.buildEnvData(msg)
 		status := msg.Labels["status"]
 
@@ -88,19 +88,20 @@ func (w *Session) processExport(msg *dipper.Message) {
 			exports = w.collapsedFunction.ExportContext(status, envData)
 		}
 		if status != SessionStatusError {
-			exports = dipper.Interpolate(w.workflow.Export, envData)
+			delta := dipper.Interpolate(w.workflow.Export, envData)
+			exports = dipper.CombineMap(exports, delta)
 		}
 		if status == SessionStatusSuccess {
 			delta := dipper.Interpolate(w.workflow.ExportOnSuccess, envData)
-			exports = dipper.CombineMap(exports.(map[string]interface{}), delta)
+			exports = dipper.CombineMap(exports, delta)
 		}
 		if status == SessionStatusFailure {
 			delta := dipper.Interpolate(w.workflow.ExportOnFailure, envData)
-			exports = dipper.CombineMap(exports.(map[string]interface{}), delta)
+			exports = dipper.CombineMap(exports, delta)
 		}
 
 		if exports != nil {
-			w.mergeContext(exports.(map[string]interface{}))
+			w.mergeContext(exports)
 		}
 
 		for _, key := range w.workflow.NoExport {
