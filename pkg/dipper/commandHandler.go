@@ -49,6 +49,9 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 	}
 	if status, ok := retval.Labels["status"]; ok {
 		retMsg.Labels["status"] = status
+		if status != "success" {
+			retMsg.Labels["reason"] = retval.Labels["reason"]
+		}
 	} else {
 		retMsg.Labels["status"] = "success"
 	}
