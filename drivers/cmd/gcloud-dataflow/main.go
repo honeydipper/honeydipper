@@ -259,12 +259,12 @@ func waitForJob(msg *dipper.Message) {
 	finalStatus := make(chan dipper.Message, 1)
 	expired := false
 	go func() {
-		terminatedStates := map[string]bool{
-			"JOB_STATE_DONE":      true,
-			"JOB_STATE_FAILED":    true,
-			"JOB_STATE_CANCELLED": true,
-			"JOB_STATE_UPDATED":   true,
-			"JOB_STATE_DRAINED":   true,
+		terminatedStates := map[string]string{
+			"JOB_STATE_DONE":      "success",
+			"JOB_STATE_FAILED":    "failure",
+			"JOB_STATE_CANCELLED": "failure",
+			"JOB_STATE_UPDATED":   "success",
+			"JOB_STATE_DRAINED":   "success",
 		}
 
 		for !expired {
@@ -284,16 +284,20 @@ func waitForJob(msg *dipper.Message) {
 			if err != nil {
 				finalStatus <- dipper.Message{
 					Labels: map[string]string{
-						"error": "failed to call polling method",
+						"error": fmt.Sprintf("failed to call polling method: %+v", err),
 					},
 				}
 				break
 			}
 
-			if _, ok := terminatedStates[result.CurrentState]; ok {
+			if status, ok := terminatedStates[result.CurrentState]; ok {
 				finalStatus <- dipper.Message{
 					Payload: map[string]interface{}{
 						"job": *result,
+					},
+					Labels: map[string]string{
+						"status": status,
+						"reason": result.CurrentState,
 					},
 				}
 				break
