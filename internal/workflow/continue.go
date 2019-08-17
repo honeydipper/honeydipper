@@ -221,6 +221,7 @@ func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{
 				})
 			}
 		} else {
+			w.currentHook = ""
 			w.complete(&dipper.Message{
 				Channel: dipper.ChannelEventbus,
 				Subject: dipper.EventbusReturn,
