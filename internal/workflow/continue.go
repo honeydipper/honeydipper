@@ -85,23 +85,30 @@ func (w *Session) processExport(msg *dipper.Message) {
 		status := msg.Labels["status"]
 
 		if w.collapsedFunction != nil && status != SessionStatusError {
-			exports = w.collapsedFunction.ExportContext(status, envData)
+			exports, w.ctx = w.collapsedFunction.ExportContext(status, envData)
+			envData["ctx"] = w.ctx
 		}
 		if status != SessionStatusError {
 			delta := dipper.Interpolate(w.workflow.Export, envData)
-			exports = dipper.CombineMap(exports, delta)
+			exports = dipper.MergeMap(exports, delta)
+			w.ctx = dipper.MergeMap(w.ctx, delta)
+			envData["ctx"] = w.ctx
 		}
 		if status == SessionStatusSuccess {
 			delta := dipper.Interpolate(w.workflow.ExportOnSuccess, envData)
-			exports = dipper.CombineMap(exports, delta)
+			exports = dipper.MergeMap(exports, delta)
+			w.ctx = dipper.MergeMap(w.ctx, delta)
+			envData["ctx"] = w.ctx
 		}
 		if status == SessionStatusFailure {
 			delta := dipper.Interpolate(w.workflow.ExportOnFailure, envData)
-			exports = dipper.CombineMap(exports, delta)
+			exports = dipper.MergeMap(exports, delta)
+			w.ctx = dipper.MergeMap(w.ctx, delta)
+			envData["ctx"] = w.ctx
 		}
 
 		if exports != nil {
-			w.mergeContext(exports)
+			w.exported = dipper.MergeMap(w.exported, exports)
 		}
 
 		for _, key := range w.workflow.NoExport {
@@ -222,13 +229,14 @@ func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{
 				})
 			}
 		} else {
+			reason := fmt.Sprintf("hook [%s] failed with status '%s' due to: %s", w.currentHook, msg.Labels["status"], msg.Labels["reason"])
 			w.currentHook = ""
 			w.complete(&dipper.Message{
 				Channel: dipper.ChannelEventbus,
 				Subject: dipper.EventbusReturn,
 				Labels: map[string]string{
 					"status": SessionStatusError,
-					"reason": fmt.Sprintf("hook [%s] failed with status '%s' due to: %s", w.currentHook, msg.Labels["status"], msg.Labels["reason"]),
+					"reason": reason,
 				},
 				Payload: map[string]interface{}{},
 			})

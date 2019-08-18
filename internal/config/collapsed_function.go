@@ -63,27 +63,33 @@ func CollapseFunction(s *System, f *Function, cfg *Config) *CollapsedFunction {
 }
 
 // ExportContext create a context data structure based on the collapsed function exports
-func (f *CollapsedFunction) ExportContext(status string, envData map[string]interface{}) map[string]interface{} {
-	newCtx, err := dipper.DeepCopyMap(envData["ctx"].(map[string]interface{}))
-	if err != nil {
-		panic(err)
-	}
-	envData["ctx"] = newCtx
+func (f *CollapsedFunction) ExportContext(status string, envData map[string]interface{}) (map[string]interface{}, map[string]interface{}) {
+	var exported map[string]interface{}
+	newCtx := envData["ctx"].(map[string]interface{})
 
-	if status != "error" {
+	if status != "error" && len(f.Stack) > 0 {
+		oldCtx := newCtx
+		newCtx = dipper.MustDeepCopyMap(oldCtx)
+		envData["ctx"] = newCtx
+
 		for _, layer := range f.Stack {
 			delta := dipper.Interpolate(layer.Export, envData)
 			newCtx = dipper.MergeMap(newCtx, delta)
+			exported = dipper.MergeMap(exported, delta)
 			switch status {
 			case "success":
 				delta := dipper.Interpolate(layer.ExportOnSuccess, envData)
 				newCtx = dipper.MergeMap(newCtx, delta)
+				exported = dipper.MergeMap(exported, delta)
 			case "failure":
 				delta := dipper.Interpolate(layer.ExportOnFailure, envData)
 				newCtx = dipper.MergeMap(newCtx, delta)
+				exported = dipper.MergeMap(exported, delta)
 			}
 		}
+
+		envData["ctx"] = oldCtx
 	}
 
-	return newCtx
+	return exported, newCtx
 }
