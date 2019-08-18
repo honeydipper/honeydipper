@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ghodss/yaml"
@@ -29,6 +30,12 @@ import (
 
 // DefaultNamespace is the name of the default space in kubernetes cluster
 const DefaultNamespace string = "default"
+
+// StatusSuccess is the status when the job finished successfully
+const StatusSuccess = "success"
+
+// StatusFailure is the status when the job finished with error or not finished within time limit
+const StatusFailure = "failure"
 
 var log *logging.Logger
 var err error
@@ -77,7 +84,23 @@ func getJobLog(m *dipper.Message) {
 	}
 
 	alllogs := map[string]map[string]string{}
+	returnStatus := StatusSuccess
+	reason := ""
+
 	for _, pod := range pods.Items {
+		if returnStatus == StatusSuccess {
+			cStatuses := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
+			for _, c := range cStatuses {
+				if c.State.Terminated == nil {
+					returnStatus = StatusFailure
+					reason = "container not terminated"
+				} else if c.State.Terminated.ExitCode != 0 {
+					returnStatus = StatusFailure
+					reason = "container exit with error"
+				}
+			}
+		}
+
 		podlogs := map[string]string{}
 		for _, container := range append(pod.Spec.Containers, pod.Spec.InitContainers...) {
 			stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream()
@@ -103,6 +126,10 @@ func getJobLog(m *dipper.Message) {
 	m.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
 			"log": alllogs,
+		},
+		Labels: map[string]string{
+			"status": returnStatus,
+			"reason": reason,
 		},
 	}
 
@@ -135,13 +162,26 @@ func waitForJob(m *dipper.Message) {
 
 	finalStatus := make(chan dipper.Message, 1)
 	go func() {
+		jobStatus := StatusSuccess
+		reason := []string{}
+
 		for evt := range jobstatus.ResultChan() {
 			if evt.Type == "ADDED" || evt.Type == "MODIFIED" {
 				job := evt.Object.(*batchv1.Job)
 				if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
+					if job.Status.Failed > 0 {
+						jobStatus = StatusFailure
+						for _, condition := range job.Status.Conditions {
+							reason = append(reason, condition.Reason)
+						}
+					}
 					finalStatus <- dipper.Message{
 						Payload: map[string]interface{}{
 							"status": job.Status,
+						},
+						Labels: map[string]string{
+							"status": jobStatus,
+							"reason": strings.Join(reason, "\n"),
 						},
 					}
 					break
