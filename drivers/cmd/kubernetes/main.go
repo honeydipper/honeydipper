@@ -85,7 +85,7 @@ func getJobLog(m *dipper.Message) {
 
 	alllogs := map[string]map[string]string{}
 	returnStatus := StatusSuccess
-	reason := ""
+	messages := []string{}
 
 	for _, pod := range pods.Items {
 		if returnStatus == StatusSuccess {
@@ -93,10 +93,10 @@ func getJobLog(m *dipper.Message) {
 			for _, c := range cStatuses {
 				if c.State.Terminated == nil {
 					returnStatus = StatusFailure
-					reason = "container not terminated"
+					messages = append(messages, fmt.Sprintf("container %s.%s not terminated", pod.Name, c.Name))
 				} else if c.State.Terminated.ExitCode != 0 {
 					returnStatus = StatusFailure
-					reason = "container exit with error"
+					messages = append(messages, fmt.Sprintf("container %s.%s exit with code %+v", pod.Name, c.Name, c.State.Terminated.ExitCode))
 				}
 			}
 		}
@@ -105,17 +105,20 @@ func getJobLog(m *dipper.Message) {
 		for _, container := range append(pod.Spec.Containers, pod.Spec.InitContainers...) {
 			stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream()
 			if err != nil {
-				podlogs[container.Name] = "Error: unable to fetch the logs from the container"
+				podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
+				messages = append(messages, podlogs[container.Name])
 				log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
 			} else {
 				func(stream io.ReadCloser) {
 					defer stream.Close()
 					containerlog, err := ioutil.ReadAll(stream)
 					if err != nil {
-						podlogs[container.Name] = "Error: unable to read the logs from the stream"
+						podlogs[container.Name] = fmt.Sprintf("Error: unable to read the logs from the stream %s.%s", pod.Name, container.Name)
+						messages = append(messages, podlogs[container.Name])
 						log.Warningf("[%s] unable to read logs from stream for pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
 					} else {
 						podlogs[container.Name] = string(containerlog)
+						messages = append(messages, podlogs[container.Name])
 					}
 				}(stream)
 			}
@@ -123,16 +126,20 @@ func getJobLog(m *dipper.Message) {
 		alllogs[pod.Name] = podlogs
 	}
 
-	m.Reply <- dipper.Message{
+	output := strings.Join(messages, "\n")
+	returnMsg := dipper.Message{
 		Payload: map[string]interface{}{
-			"log": alllogs,
-		},
-		Labels: map[string]string{
-			"status": returnStatus,
-			"reason": reason,
+			"log":    alllogs,
+			"output": output,
 		},
 	}
-
+	if returnStatus != "success" {
+		returnMsg.Labels = map[string]string{
+			"status": returnStatus,
+			"reason": output,
+		}
+	}
+	m.Reply <- returnMsg
 }
 
 func waitForJob(m *dipper.Message) {
