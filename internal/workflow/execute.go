@@ -38,7 +38,7 @@ func (w *Session) execute(msg *dipper.Message) {
 					w.executeRound(msg)
 				}
 			} else if w.parent != "" {
-				go w.store.ContinueSession(w.parent, msg, nil)
+				w.noop(msg)
 			}
 		case w.workflow.Else != nil:
 			var elseBranch config.Workflow
@@ -57,8 +57,24 @@ func (w *Session) execute(msg *dipper.Message) {
 				child.execute(msg)
 			}()
 		case w.parent != "":
-			go w.store.ContinueSession(w.parent, msg, nil)
+			w.noop(msg)
 		}
+	}
+}
+
+// noop continues the workflow as doing nothing
+func (w *Session) noop(msg *dipper.Message) {
+	if msg.Labels["status"] != "success" {
+		msg = &dipper.Message{
+			Labels: map[string]string{
+				"status": SessionStatusSuccess,
+			},
+		}
+	}
+	if w.ID != "" {
+		w.continueExec(msg, nil)
+	} else {
+		go w.store.ContinueSession(w.parent, msg, nil)
 	}
 }
 
@@ -221,11 +237,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 		child.execute(msg)
 		return
 	}
-	w.continueExec(&dipper.Message{
-		Labels: map[string]string{
-			"status": SessionStatusSuccess,
-		},
-	}, nil)
+	w.noop(msg)
 }
 
 // executeAction takes actions for a single iteration in a single loop round
