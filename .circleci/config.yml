@@ -1,7 +1,7 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.11.1-alpine3.8
+    - image: golang:1.12.9-alpine3.10
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 restore_deps: &restore_deps
@@ -40,7 +40,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.11.1-alpine3.8
+      - image: golang:1.12.9-alpine3.10
       - image: redis:4.0-alpine
     steps:
       - run:
