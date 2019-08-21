@@ -75,7 +75,7 @@ func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 			} else {
 				collapsedEvent, _ = list.([]interface{})
 			}
-			collapsedEvent = append(collapsedEvent, &collapsed)
+			collapsedEvent = append(collapsedEvent, collapsed)
 			numCollapsedEvents++
 
 			driverData["collapsedEvents"].(map[string]interface{})[eventName] = collapsedEvent

@@ -149,13 +149,16 @@ func RecursiveWithPrefix(
 		}
 	case reflect.Ptr:
 		vfrom = vfrom.Elem()
-		if vfrom.Kind() == reflect.Struct {
+		switch vfrom.Kind() {
+		case reflect.Struct:
 			for i := 0; i < vfrom.NumField(); i++ {
 				field := vfrom.Field(i)
 				if field.IsValid() && field.CanSet() {
 					RecursiveWithPrefix(from, newPrefixes, i, field.Interface(), process)
 				}
 			}
+		case reflect.Map, reflect.Slice, reflect.Array:
+			Recursive(vfrom.Interface(), process)
 		}
 	default:
 		if parent == nil {
