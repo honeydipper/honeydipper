@@ -11,7 +11,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/container/v1"
+	"google.golang.org/api/option"
 )
 
 func initFlags() {
@@ -43,24 +43,27 @@ func main() {
 
 func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Token) {
 	var (
-		client *http.Client
-		token  *oauth2.Token
-		err    error
+		containerService *container.Service
+		token            *oauth2.Token
+		err              error
 	)
 	if len(serviceAccountBytes) > 0 {
+		containerService, err = container.NewService(context.Background(), option.WithCredentialsJSON([]byte(serviceAccountBytes)))
+		if err != nil {
+			panic(err)
+		}
 		conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
 		if err != nil {
 			panic(errors.New("invalid service account"))
 		}
-		client = conf.Client(context.Background())
 		token, err = conf.TokenSource(context.Background()).Token()
 		if err != nil {
 			panic(errors.New("failed to fetch a access_token"))
 		}
 	} else {
-		client, err = google.DefaultClient(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
+		containerService, err = container.NewService(context.Background())
 		if err != nil {
-			panic(errors.New("unable to create gcloud client credential"))
+			panic(err)
 		}
 		tokenSource, err := google.DefaultTokenSource(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
 		if err != nil {
@@ -72,10 +75,6 @@ func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Toke
 		}
 	}
 
-	containerService, err := container.New(client)
-	if err != nil {
-		panic(errors.New("unable to create container service client"))
-	}
 	return containerService, token
 }
 
