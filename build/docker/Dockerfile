@@ -1,4 +1,4 @@
-FROM golang:1.11-alpine AS build
+FROM golang:1.12-alpine AS build
 
 WORKDIR /go/src/github.com/honeydipper/honeydipper
 
@@ -7,7 +7,7 @@ COPY ./ ./
 RUN go get -u github.com/golang/dep/cmd/dep && dep ensure
 RUN go install ./... && rm /go/bin/dep
 
-FROM alpine:3.9
+FROM alpine:3.10
 
 LABEL description="Honeydipper - an event-driven orchestration framework" \
       org.label-schema.vcs-url=https://github.com/honeydipper/honeydipper \
