@@ -4,7 +4,7 @@ WORKDIR /go/src/github.com/honeydipper/honeydipper
 
 RUN apk add --no-cache git gcc libc-dev
 COPY ./ ./
-RUN go get -u github.com/golang/dep/cmd/dep && dep ensure
+RUN go get -u github.com/golang/dep/cmd/dep && dep ensure -vendor-only
 RUN go install ./... && rm /go/bin/dep
 
 FROM alpine:3.10
