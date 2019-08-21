@@ -534,7 +534,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:481013fe0b1e639567db179c940a051f29f465d779b6f6901130dda943790ba9"
+  digest = "1:c939e14f42e80c4ca1bc4a96cbccb38545205da3666094cd753e22f00e508103"
   name = "golang.org/x/tools"
   packages = [
     "cmd/goimports",
@@ -556,11 +556,11 @@
     "internal/semver",
   ]
   pruneopts = "UT"
-  revision = "2756c524cc1ca1284d912b9c5ee3b0092ff4459b"
+  revision = "6d4652c779c4add9e1a69db058dabafddba21c37"
 
 [[projects]]
   branch = "master"
-  digest = "1:8beba232512854c0a8a2faf8fd6924f3ba2a7ee12220ace6bdd343aaaa95b991"
+  digest = "1:12599d88fb5a164c36adf30005ba36aa99b5bdef761b531b94e6ee6f92df062f"
   name = "google.golang.org/api"
   packages = [
     "container/v1",
@@ -578,7 +578,7 @@
     "transport/http/internal/propagation",
   ]
   pruneopts = "UT"
-  revision = "616965b2e01e93cec777c66a94f3d336baa87fc3"
+  revision = "dec2ee309f5b09fc59bc40676447c15736284d78"
 
 [[projects]]
   digest = "1:2c26b1c47556c0e5e73cdb05d8361c463737eee4baac35d38b40c728c3074a94"
@@ -954,6 +954,7 @@
     "google.golang.org/api/container/v1",
     "google.golang.org/api/dataflow/v1b3",
     "google.golang.org/api/googleapi",
+    "google.golang.org/api/option",
     "google.golang.org/genproto/googleapis/cloud/kms/v1",
     "gopkg.in/src-d/go-git.v4",
     "gopkg.in/src-d/go-git.v4/config",
