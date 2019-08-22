@@ -1,11 +1,16 @@
 FROM golang:1.12.9-alpine AS build
 
+ARG GOINSTALLOPTS=
+ARG GOGC=
+
+ENV GOGC=$GOGC
+
 WORKDIR /go/src/github.com/honeydipper/honeydipper
 
 RUN apk add --no-cache git gcc libc-dev
 COPY ./ ./
-RUN go get -u github.com/golang/dep/cmd/dep && dep ensure -vendor-only
-RUN go install ./... && rm /go/bin/dep
+RUN go get -u github.com/golang/dep/cmd/dep && dep ensure
+RUN go install $GOINSTALLOPTS ./...
 
 FROM alpine:3.10
 
