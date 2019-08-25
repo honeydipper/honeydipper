@@ -2,17 +2,20 @@
 
 
 [[projects]]
-  digest = "1:47b37cff38bc3278f1b30c7df773d47ca9aef9d80ec505ace61a60f4df7ec22f"
+  digest = "1:e67cf4e275fc4c6f3dd094332243206426471d8edd1a6eebedd7397610db85b2"
   name = "cloud.google.com/go"
   packages = [
     "compute/metadata",
     "iam",
+    "internal",
     "internal/optional",
+    "internal/trace",
     "internal/version",
     "kms/apiv1",
     "pubsub",
     "pubsub/apiv1",
     "pubsub/internal/distribution",
+    "storage",
   ]
   pruneopts = "UT"
   revision = "debcad1964693daf8ef4bc06292d7e828e075130"
@@ -542,7 +545,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:36605ff7311a19ca1aec430748bbd55150c4a424ff727aada09f3f2175b75dd7"
+  digest = "1:fc81fa4d2fae87896b082f84c4cd4540faf1358328aecbae8d1a2bd5448ee0c8"
   name = "google.golang.org/api"
   packages = [
     "container/v1",
@@ -554,6 +557,7 @@
     "internal/gensupport",
     "iterator",
     "option",
+    "storage/v1",
     "support/bundler",
     "transport",
     "transport/grpc",
@@ -586,13 +590,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:e638abd852be31903508869eb0c74b14f68a85e4f9f5c4d84008fa1842db9bfa"
+  digest = "1:91b0dce01dcbcabb874afbdbeb7087481406573585918f0eb0409d85c3f1bada"
   name = "google.golang.org/genproto"
   packages = [
     "googleapis/api/annotations",
     "googleapis/cloud/kms/v1",
     "googleapis/iam/v1",
     "googleapis/pubsub/v1",
+    "googleapis/rpc/code",
     "googleapis/rpc/status",
     "googleapis/type/expr",
     "protobuf/field_mask",
@@ -954,8 +959,10 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "cloud.google.com/go/iam",
     "cloud.google.com/go/kms/apiv1",
     "cloud.google.com/go/pubsub",
+    "cloud.google.com/go/storage",
     "github.com/DataDog/datadog-go/statsd",
     "github.com/Masterminds/sprig",
     "github.com/ghodss/yaml",
@@ -975,6 +982,7 @@
     "google.golang.org/api/container/v1",
     "google.golang.org/api/dataflow/v1b3",
     "google.golang.org/api/googleapi",
+    "google.golang.org/api/iterator",
     "google.golang.org/api/option",
     "google.golang.org/genproto/googleapis/cloud/kms/v1",
     "gopkg.in/src-d/go-git.v4",
