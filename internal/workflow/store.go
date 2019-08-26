@@ -54,6 +54,8 @@ func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
 		w.performing = wf.CallFunction
 	case wf.CallDriver != "":
 		w.performing = wf.CallDriver
+	case wf.Workflow != "":
+		w.performing = wf.Workflow
 	default:
 		w.performing = w.workflow.Name
 	}
@@ -75,12 +77,7 @@ func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
 func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session")
 	w := s.newSession("", wf)
-	w.injectMsg(msg)
-	w.initCTX()
-	w.injectEventCTX(ctx)
-	w.injectLocalCTX(msg)
-	w.interpolateWorkflow(msg)
-	w.injectMeta()
+	w.prepare(msg, nil, ctx)
 
 	w.execute(msg)
 }
