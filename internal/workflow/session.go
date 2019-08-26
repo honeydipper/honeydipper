@@ -276,14 +276,26 @@ func (w *Session) inheritParentSettings(p *Session) {
 // createChildSession creates a child workflow session
 func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *Session {
 	child := w.store.newSession(w.ID, wf)
-	w.performing = child.performing
-	child.injectMsg(msg)
-	child.initCTX()
-	child.injectLocalCTX(msg)
-	child.interpolateWorkflow(msg)
-	child.inheritParentSettings(w)
-	child.injectMeta()
+	child.prepare(msg, w, nil)
 	return child
+}
+
+// prepare prepares a session for execution
+func (w *Session) prepare(msg *dipper.Message, parent *Session, ctx map[string]interface{}) {
+	if parent != nil {
+		parent.performing = w.performing
+	}
+	w.injectMsg(msg)
+	w.initCTX()
+	if ctx != nil {
+		w.injectEventCTX(ctx)
+	}
+	w.injectLocalCTX(msg)
+	w.interpolateWorkflow(msg)
+	if parent != nil {
+		w.inheritParentSettings(w)
+	}
+	w.injectMeta()
 }
 
 // createChildSessionWithName creates a child workflow session
