@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
@@ -165,7 +166,11 @@ func (w *Session) complete(msg *dipper.Message) {
 
 			dipper.IDMapDel(&w.store.sessions, w.ID)
 			if w.parent != "" {
-				go w.store.ContinueSession(w.parent, msg, w.exported)
+				daemon.Children.Add(1)
+				go func() {
+					defer daemon.Children.Done()
+					w.store.ContinueSession(w.parent, msg, w.exported)
+				}()
 			}
 		}
 		dipper.Logger.Infof("[workflow] session [%s] completed", w.ID)

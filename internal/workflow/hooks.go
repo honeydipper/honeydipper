@@ -29,7 +29,7 @@ func (w *Session) fireHook(name string, msg *dipper.Message) {
 		w.currentHook = name
 		w.savedMsg = msg
 		if w.ID == "" {
-			defer daemon.Children.Add(1)
+			daemon.Children.Add(1)
 			go func() {
 				defer daemon.Children.Done()
 				defer dipper.SafeExitOnError("Failed in execute hook %+v", hookBlock)

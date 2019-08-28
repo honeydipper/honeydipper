@@ -74,7 +74,11 @@ func (w *Session) noop(msg *dipper.Message) {
 	if w.ID != "" {
 		w.continueExec(msg, nil)
 	} else {
-		go w.store.ContinueSession(w.parent, msg, nil)
+		daemon.Children.Add(1)
+		go func() {
+			defer daemon.Children.Done()
+			w.store.ContinueSession(w.parent, msg, nil)
+		}()
 	}
 }
 
@@ -195,16 +199,20 @@ func (w *Session) startWait() {
 			<-time.After(d)
 			dipper.Logger.Infof("[workflow] resuming session on timeout %+v", resumeToken)
 
-			go w.store.ResumeSession(resumeToken, &dipper.Message{
-				Payload: map[string]interface{}{
-					"key": resumeToken,
-					"labels": map[string]interface{}{
-						"status": timeoutStatus,
-						"reason": reason,
+			daemon.Children.Add(1)
+			go func() {
+				defer daemon.Children.Done()
+				w.store.ResumeSession(resumeToken, &dipper.Message{
+					Payload: map[string]interface{}{
+						"key": resumeToken,
+						"labels": map[string]interface{}{
+							"status": timeoutStatus,
+							"reason": reason,
+						},
+						"payload": timeoutPayload,
 					},
-					"payload": timeoutPayload,
-				},
-			})
+				})
+			}()
 		}()
 	}
 }
@@ -333,7 +341,7 @@ func (w *Session) callShorthandFunction(f string, msg *dipper.Message) {
 // callFunction makes a call to a function
 func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 	// stored for doing export context later
-	w.collapsedFunction = config.CollapseFunction(nil, f, w.store.GetConfig())
+	w.collapsedFunction = config.CollapseFunction(nil, f, w.store.Helper.GetConfig())
 
 	payload := w.buildEnvData(msg)
 	payload["function"] = *f
@@ -354,7 +362,7 @@ func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 		Labels:  labels,
 	}
 
-	w.store.SendMessage(cmdmsg)
+	w.store.Helper.SendMessage(cmdmsg)
 }
 
 // executeStep run a step in a workflow

@@ -8,23 +8,30 @@ package workflow
 
 import (
 	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 )
 
+// SessionStoreHelper enables SessionStore to actually drive the workflows and load configs
+type SessionStoreHelper interface {
+	GetConfig() *config.Config
+	SendMessage(msg *dipper.Message)
+}
+
 // SessionStore stores session in memory and provides helper function for session to perform
 type SessionStore struct {
-	sessions          map[string]*Session
+	sessions          map[string]SessionHandler
 	suspendedSessions map[string]string
-	GetConfig         func() *config.Config
-	SendMessage       func(msg *dipper.Message)
+	Helper            SessionStoreHelper
 }
 
 // NewSessionStore initialize the session store
-func NewSessionStore() *SessionStore {
+func NewSessionStore(helper SessionStoreHelper) *SessionStore {
 	s := &SessionStore{
-		sessions:          map[string]*Session{},
+		sessions:          map[string]SessionHandler{},
 		suspendedSessions: map[string]string{},
+		Helper:            helper,
 	}
 	dipper.InitIDMap(&s.sessions)
 	return s
@@ -36,39 +43,15 @@ func (s *SessionStore) Len() int {
 }
 
 // newSession creates the workflow session
-func (s *SessionStore) newSession(parent string, wf *config.Workflow) *Session {
+func (s *SessionStore) newSession(parent string, wf *config.Workflow) SessionHandler {
 	var w = &Session{
 		parent:   parent,
 		store:    s,
 		workflow: wf,
 	}
 
-	switch {
-	case wf.Description != "":
-		w.performing = wf.Description
-	case wf.Function.Target.System != "":
-		w.performing = wf.Function.Target.System + "." + wf.Function.Target.Function
-	case wf.Function.Driver != "":
-		w.performing = "driver:" + wf.Function.Driver + "." + wf.Function.RawAction
-	case wf.CallFunction != "":
-		w.performing = wf.CallFunction
-	case wf.CallDriver != "":
-		w.performing = wf.CallDriver
-	case wf.Workflow != "":
-		w.performing = wf.Workflow
-	default:
-		w.performing = w.workflow.Name
-	}
-	dipper.Logger.Infof("[workflow] workflow [%s] instantiated with parent ID [%s]", w.performing, parent)
-
-	if w.parent != "" {
-		parentSession := dipper.IDMapGet(&s.sessions, w.parent).(*Session)
-		w.event = parentSession.event
-		w.ctx = dipper.MustDeepCopyMap(parentSession.ctx)
-
-		delete(w.ctx, "hooks") // hooks don't get inherited
-		w.loadedContexts = append([]string{}, parentSession.loadedContexts...)
-	}
+	performing := w.setPerforming("")
+	dipper.Logger.Infof("[workflow] workflow [%s] instantiated with parent ID [%s]", performing, parent)
 
 	return w
 }
@@ -78,14 +61,13 @@ func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ct
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session")
 	w := s.newSession("", wf)
 	w.prepare(msg, nil, ctx)
-
 	w.execute(msg)
 }
 
 // ContinueSession resume a session with given dipper message
 func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, export map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when continuing workflow session %s", sessionID)
-	w := dipper.IDMapGet(&s.sessions, sessionID).(*Session)
+	w := dipper.IDMapGet(&s.sessions, sessionID).(SessionHandler)
 	if w != nil {
 		defer w.onError()
 		w.continueExec(msg, export)
@@ -108,10 +90,14 @@ func (s *SessionStore) ResumeSession(key string, msg *dipper.Message) {
 				panic(err)
 			}
 		}
-		go s.ContinueSession(sessionID, &dipper.Message{
-			Subject: dipper.EventbusReturn,
-			Labels:  sessionLabels,
-			Payload: sessionPayload,
-		}, nil)
+		daemon.Children.Add(1)
+		go func() {
+			defer daemon.Children.Done()
+			s.ContinueSession(sessionID, &dipper.Message{
+				Subject: dipper.EventbusReturn,
+				Labels:  sessionLabels,
+				Payload: sessionPayload,
+			}, nil)
+		}()
 	}
 }
