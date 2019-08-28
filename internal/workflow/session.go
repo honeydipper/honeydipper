@@ -35,6 +35,14 @@ type Session struct {
 	isHook            bool
 }
 
+// SessionHandler prepare and execute the session provides entry point for SessionStore to invoke and mock for testing
+type SessionHandler interface {
+	prepare(msg *dipper.Message, parent interface{}, ctx map[string]interface{})
+	execute(msg *dipper.Message)
+	continueExec(msg *dipper.Message, export map[string]interface{})
+	onError()
+}
+
 const (
 	// SessionStatusSuccess means the workflow executed successfully
 	SessionStatusSuccess = "success"
@@ -119,7 +127,7 @@ func (w *Session) injectMsg(msg *dipper.Message) {
 
 // injectNamedCTX inject a named context into the workflow
 func (w *Session) injectNamedCTX(name string) {
-	var contexts = w.store.GetConfig().DataSet.Contexts
+	var contexts = w.store.Helper.GetConfig().DataSet.Contexts
 
 	namedCTXs, ok := contexts[name]
 	if name[0] != '_' && !ok {
@@ -277,13 +285,49 @@ func (w *Session) inheritParentSettings(p *Session) {
 func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *Session {
 	child := w.store.newSession(w.ID, wf)
 	child.prepare(msg, w, nil)
-	return child
+	return child.(*Session)
+}
+
+// setPerforming records what is happening within the workflow
+func (w *Session) setPerforming(performing string) string {
+	wf := w.workflow
+	switch {
+	case performing != "":
+		w.performing = performing
+	case wf.Description != "":
+		w.performing = wf.Description
+	case wf.Function.Target.System != "":
+		w.performing = wf.Function.Target.System + "." + wf.Function.Target.Function
+	case wf.Function.Driver != "":
+		w.performing = "driver:" + wf.Function.Driver + "." + wf.Function.RawAction
+	case wf.CallFunction != "":
+		w.performing = wf.CallFunction
+	case wf.CallDriver != "":
+		w.performing = wf.CallDriver
+	case wf.Workflow != "":
+		w.performing = wf.Workflow
+	default:
+		w.performing = wf.Name
+	}
+
+	return w.performing
+}
+
+// inheritParentData prepares the session using parent data
+func (w *Session) inheritParentData(parent *Session) {
+	parent.setPerforming(w.performing)
+
+	w.event = parent.event
+	w.ctx = dipper.MustDeepCopyMap(parent.ctx)
+	w.loadedContexts = append([]string{}, parent.loadedContexts...)
+
+	delete(w.ctx, "hooks") // hooks don't get inherited
 }
 
 // prepare prepares a session for execution
-func (w *Session) prepare(msg *dipper.Message, parent *Session, ctx map[string]interface{}) {
+func (w *Session) prepare(msg *dipper.Message, parent interface{}, ctx map[string]interface{}) {
 	if parent != nil {
-		parent.performing = w.performing
+		w.inheritParentData(parent.(*Session))
 	}
 	w.injectMsg(msg)
 	w.initCTX()
@@ -293,14 +337,14 @@ func (w *Session) prepare(msg *dipper.Message, parent *Session, ctx map[string]i
 	w.injectLocalCTX(msg)
 	w.interpolateWorkflow(msg)
 	if parent != nil {
-		w.inheritParentSettings(w)
+		w.inheritParentSettings(parent.(*Session))
 	}
 	w.injectMeta()
 }
 
 // createChildSessionWithName creates a child workflow session
 func (w *Session) createChildSessionWithName(name string, msg *dipper.Message) *Session {
-	src, ok := w.store.GetConfig().DataSet.Workflows[name]
+	src, ok := w.store.Helper.GetConfig().DataSet.Workflows[name]
 	if !ok {
 		panic(fmt.Errorf("workflow %s not defined", name))
 	}
