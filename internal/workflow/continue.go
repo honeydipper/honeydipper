@@ -222,16 +222,9 @@ func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{
 				fallthrough
 			case "on_error":
 				w.complete(w.savedMsg)
-			default:
-				w.complete(&dipper.Message{
-					Channel: dipper.ChannelEventbus,
-					Subject: dipper.EventbusReturn,
-					Labels: map[string]string{
-						"status": SessionStatusError,
-						"reason": fmt.Sprintf("unknown hook [%s] for session: %s", w.currentHook, w.ID),
-					},
-					Payload: map[string]interface{}{},
-				})
+
+				// default:
+				//   panic(fmt.Errorf("run into unknown hook"))
 			}
 		} else {
 			reason := fmt.Sprintf("hook [%s] failed with status '%s' due to: %s", w.currentHook, msg.Labels["status"], msg.Labels["reason"])
