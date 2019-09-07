@@ -74,7 +74,10 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			for _, key := range keys {
 				ret, _ := GetMapData(data, key)
 				if ret != nil {
-					return Interpolate(ret, data)
+					if strings.HasPrefix(key, "sysData.") {
+						return Interpolate(ret, data)
+					}
+					return ret
 				}
 			}
 			if allowNull {
