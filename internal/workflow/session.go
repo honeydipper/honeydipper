@@ -200,7 +200,11 @@ func (w *Session) initCTX() {
 // injectMeta injects the meta info into context
 func (w *Session) injectMeta() {
 	if !w.isHook {
-		w.ctx["_meta_name"] = w.workflow.Name
+		if w.workflow.Name != "" {
+			w.ctx["_meta_name"] = w.workflow.Name
+		} else {
+			w.ctx["_meta_name"] = w.performing
+		}
 		w.ctx["_meta_desc"] = w.workflow.Description
 	}
 }
@@ -306,6 +310,14 @@ func (w *Session) setPerforming(performing string) string {
 		w.performing = wf.CallDriver
 	case wf.Workflow != "":
 		w.performing = wf.Workflow
+	case w.isIteration():
+		w.performing = "iterating"
+	case w.isLoop():
+		w.performing = "looping"
+	case len(wf.Steps) > 0:
+		w.performing = "steps"
+	case len(wf.Threads) > 0:
+		w.performing = "threads"
 	default:
 		w.performing = wf.Name
 	}
