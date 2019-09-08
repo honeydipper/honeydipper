@@ -327,7 +327,7 @@ func (w *Session) callDriver(f string, msg *dipper.Message) {
 
 // callShorthandFunction makes a call to a function defined in short hand fashion
 func (w *Session) callShorthandFunction(f string, msg *dipper.Message) {
-	interpolatedNames := strings.Split(f, ".")
+	interpolatedNames := strings.SplitN(f, ".", 2)
 	systemName, funcName := interpolatedNames[0], interpolatedNames[1]
 
 	w.callFunction(&config.Function{

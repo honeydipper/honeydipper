@@ -11,6 +11,7 @@ package config
 import (
 	"bytes"
 	"encoding/gob"
+	"strings"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -186,7 +187,15 @@ func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {
 func (c *Config) extendSystem(processed map[string]bool, system string) {
 	var merged System
 	var current = c.DataSet.Systems[system]
-	for _, parent := range current.Extends {
+	for _, extend := range current.Extends {
+		parts := strings.Split(extend, "=")
+		var parent, parentKey string
+		parent = strings.TrimSpace(parts[0])
+		if len(parts) >= 2 {
+			parentKey = parent
+			parent = strings.TrimSpace(parts[1])
+		}
+
 		if _, ok := processed[parent]; !ok {
 			c.extendSystem(processed, parent)
 		}
@@ -197,12 +206,12 @@ func (c *Config) extendSystem(processed map[string]bool, system string) {
 			panic(err)
 		}
 
-		err = mergeSystem(&merged, *parentCopy)
+		err = mergeSystem(&merged, *parentCopy, parentKey)
 		if err != nil {
 			panic(err)
 		}
 	}
-	err := mergeSystem(&merged, current)
+	err := mergeSystem(&merged, current, "")
 	if err != nil {
 		panic(err)
 	}
@@ -243,7 +252,7 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 	for name, system := range s.Systems {
 		exist, ok := d.Systems[name]
 		if ok {
-			err := mergeSystem(&exist, system)
+			err := mergeSystem(&exist, system, "")
 			if err != nil {
 				return err
 			}
@@ -263,44 +272,57 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 	return err
 }
 
-func mergeSystem(d *System, s System) error {
+func mergeSystem(d *System, s System, key string) error {
 	for name, trigger := range s.Triggers {
-		exist, ok := d.Triggers[name]
-		if ok {
-			err := mergo.Merge(&exist, trigger, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				return err
-			}
-		} else {
-			exist = trigger
-		}
 		if d.Triggers == nil {
 			d.Triggers = map[string]Trigger{}
 		}
-		d.Triggers[name] = exist
+		if key == "" {
+			exist, ok := d.Triggers[name]
+			if ok {
+				err := mergo.Merge(&exist, trigger, mergo.WithOverride, mergo.WithAppendSlice)
+				if err != nil {
+					return err
+				}
+			} else {
+				exist = trigger
+			}
+			d.Triggers[name] = exist
+		} else {
+			d.Triggers[key+"."+name] = trigger
+		}
 	}
 
 	for name, function := range s.Functions {
-		exist, ok := d.Functions[name]
-		if ok {
-			err := mergo.Merge(&exist, function, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				return err
-			}
-		} else {
-			exist = function
-		}
 		if d.Functions == nil {
 			d.Functions = map[string]Function{}
 		}
-		d.Functions[name] = exist
+		if key == "" {
+			exist, ok := d.Functions[name]
+			if ok {
+				err := mergo.Merge(&exist, function, mergo.WithOverride, mergo.WithAppendSlice)
+				if err != nil {
+					return err
+				}
+			} else {
+				exist = function
+			}
+			d.Functions[name] = exist
+		} else {
+			d.Functions[key+"."+name] = function
+		}
 	}
 
-	err := mergo.Merge(&d.Data, s.Data, mergo.WithOverride, mergo.WithAppendSlice)
-	if err != nil {
-		return err
+	if key == "" {
+		err := mergo.Merge(&d.Data, s.Data, mergo.WithOverride, mergo.WithAppendSlice)
+		if err != nil {
+			return err
+		}
+
+		d.Extends = append(d.Extends, s.Extends...)
+	} else {
+		d.Data[key] = s.Data
 	}
 
-	d.Extends = append(d.Extends, s.Extends...)
 	return nil
 }
