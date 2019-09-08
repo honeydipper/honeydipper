@@ -126,7 +126,7 @@ func (w *Session) injectMsg(msg *dipper.Message) {
 }
 
 // injectNamedCTX inject a named context into the workflow
-func (w *Session) injectNamedCTX(name string) {
+func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 	var contexts = w.store.Helper.GetConfig().DataSet.Contexts
 
 	namedCTXs, ok := contexts[name]
@@ -134,9 +134,11 @@ func (w *Session) injectNamedCTX(name string) {
 		dipper.Logger.Panicf("[workflow] named workflow %s not defined", name)
 	}
 	if namedCTXs != nil {
+		envData := w.buildEnvData(msg)
 		ctx, ok := namedCTXs.(map[string]interface{})["*"]
 		if ok {
 			ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
+			ctx = dipper.Interpolate(ctx, envData)
 			w.ctx = dipper.MergeMap(w.ctx, ctx)
 			dipper.Logger.Infof("merged global values (*) from named context %s to workflow", name)
 		}
@@ -145,6 +147,7 @@ func (w *Session) injectNamedCTX(name string) {
 			ctx, ok := namedCTXs.(map[string]interface{})["_events"]
 			if ok {
 				ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
+				ctx = dipper.Interpolate(ctx, envData)
 				w.ctx = dipper.MergeMap(w.ctx, ctx)
 				dipper.Logger.Infof("[workflow] merged _events section of context [%s] to workflow [%s]", name, w.performing)
 			}
@@ -154,6 +157,7 @@ func (w *Session) injectNamedCTX(name string) {
 			ctx, ok := namedCTXs.(map[string]interface{})[w.workflow.Name]
 			if ok {
 				ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
+				ctx = dipper.Interpolate(ctx, envData)
 				w.ctx = dipper.MergeMap(w.ctx, ctx)
 				dipper.Logger.Infof("[workflow] merged named context [%s] to workflow [%s]", name, w.performing)
 			}
@@ -162,31 +166,31 @@ func (w *Session) injectNamedCTX(name string) {
 }
 
 // initCTX initialize the contextual data used in this workflow
-func (w *Session) initCTX() {
-	w.injectNamedCTX(SessionContextDefault)
+func (w *Session) initCTX(msg *dipper.Message) {
+	w.injectNamedCTX(SessionContextDefault, msg)
 	if w.parent == "" {
-		w.injectNamedCTX(SessionContextEvents)
+		w.injectNamedCTX(SessionContextEvents, msg)
 	}
 
 	for _, name := range w.loadedContexts {
 		if name == SessionContextHooks {
 			w.isHook = true
 		}
-		w.injectNamedCTX(name)
+		w.injectNamedCTX(name, msg)
 	}
 
 	if w.workflow.Context != "" {
 		if w.workflow.Context == SessionContextHooks {
 			w.isHook = true
 		}
-		w.injectNamedCTX(w.workflow.Context)
+		w.injectNamedCTX(w.workflow.Context, msg)
 		w.loadedContexts = append(w.loadedContexts, w.workflow.Context)
 	} else {
 		for _, name := range w.workflow.Contexts {
 			if name == SessionContextHooks {
 				w.isHook = true
 			}
-			w.injectNamedCTX(name)
+			w.injectNamedCTX(name, msg)
 			w.loadedContexts = append(w.loadedContexts, name)
 		}
 	}
@@ -342,7 +346,7 @@ func (w *Session) prepare(msg *dipper.Message, parent interface{}, ctx map[strin
 		w.inheritParentData(parent.(*Session))
 	}
 	w.injectMsg(msg)
-	w.initCTX()
+	w.initCTX(msg)
 	if ctx != nil {
 		w.injectEventCTX(ctx)
 	}

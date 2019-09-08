@@ -7,6 +7,8 @@
 package config
 
 import (
+	"strings"
+
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
@@ -24,15 +26,24 @@ func CollapseFunction(s *System, f *Function, cfg *Config) *CollapsedFunction {
 	var ret *CollapsedFunction
 
 	if len(f.Driver) == 0 {
-		subSystem, ok := cfg.DataSet.Systems[f.Target.System]
+		childSystem, ok := cfg.DataSet.Systems[f.Target.System]
 		if !ok {
 			dipper.Logger.Panicf("[operator] system not defined %s", f.Target.System)
 		}
-		subFunction, ok := subSystem.Functions[f.Target.Function]
+		childFunction, ok := childSystem.Functions[f.Target.Function]
 		if !ok {
 			dipper.Logger.Panicf("[operator] function not defined %s.%s", f.Target.System, f.Target.Function)
 		}
-		ret = CollapseFunction(&subSystem, &subFunction, cfg)
+		ret = CollapseFunction(&childSystem, &childFunction, cfg)
+
+		// split subsystem from system
+		subsystems := strings.Split(f.Target.Function, ".")
+		for _, subsystem := range subsystems[:len(subsystems)-1] {
+			parent := ret.SysData
+			ret.SysData = parent[subsystem].(map[string]interface{})
+			ret.SysData["parent"] = parent
+		}
+
 	} else {
 		if len(f.Target.System) > 0 {
 			dipper.Logger.Panicf("[operator] function cannot have both driver and target %s.%s %s", f.Target.System, f.Target.Function, f.Driver)

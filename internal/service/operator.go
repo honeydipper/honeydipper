@@ -8,6 +8,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
@@ -131,15 +132,24 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 	var driver string
 	var rawaction string
 	if len(f.Driver) == 0 {
-		subSystem, ok := operator.config.DataSet.Systems[f.Target.System]
+		childSystem, ok := operator.config.DataSet.Systems[f.Target.System]
 		if !ok {
 			dipper.Logger.Panicf("[operator] system not defined %s", f.Target.System)
 		}
-		subFunction, ok := subSystem.Functions[f.Target.Function]
+		childFunction, ok := childSystem.Functions[f.Target.Function]
 		if !ok {
 			dipper.Logger.Panicf("[operator] function not defined %s.%s", f.Target.System, f.Target.Function)
 		}
-		driver, rawaction, params, sysData = collapseFunction(&subSystem, &subFunction)
+		driver, rawaction, params, sysData = collapseFunction(&childSystem, &childFunction)
+
+		// split subsystem data from system
+		subsystems := strings.Split(f.Target.Function, ".")
+		for _, subsystem := range subsystems[:len(subsystems)-1] {
+			parent := sysData
+			sysData = parent[subsystem].(map[string]interface{})
+			sysData["parent"] = parent
+		}
+
 	} else {
 		driver = f.Driver
 		rawaction = f.RawAction
