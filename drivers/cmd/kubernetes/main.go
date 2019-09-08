@@ -102,12 +102,13 @@ func getJobLog(m *dipper.Message) {
 		}
 
 		podlogs := map[string]string{}
-		for _, container := range append(pod.Spec.Containers, pod.Spec.InitContainers...) {
+		for _, container := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
 			stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream()
 			if err != nil {
 				podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
 				messages = append(messages, podlogs[container.Name])
 				log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+				returnStatus = StatusFailure
 			} else {
 				func(stream io.ReadCloser) {
 					defer stream.Close()
@@ -116,6 +117,7 @@ func getJobLog(m *dipper.Message) {
 						podlogs[container.Name] = fmt.Sprintf("Error: unable to read the logs from the stream %s.%s", pod.Name, container.Name)
 						messages = append(messages, podlogs[container.Name])
 						log.Warningf("[%s] unable to read logs from stream for pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+						returnStatus = StatusFailure
 					} else {
 						podlogs[container.Name] = string(containerlog)
 						messages = append(messages, podlogs[container.Name])
