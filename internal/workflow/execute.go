@@ -260,8 +260,10 @@ func (w *Session) executeAction(msg *dipper.Message) {
 	if w.currentHook == "" {
 		switch {
 		case w.workflow.Workflow != "":
-			w.performing = w.workflow.Workflow
-			child := w.createChildSessionWithName(w.workflow.Workflow, msg)
+			envData := w.buildEnvData(msg)
+			work := dipper.InterpolateStr(w.workflow.Workflow, envData)
+			w.performing = work
+			child := w.createChildSessionWithName(work, msg)
 			child.execute(msg)
 		case w.isFunction():
 			w.performing = "function"
