@@ -149,7 +149,7 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 				ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
 				ctx = dipper.Interpolate(ctx, envData)
 				w.ctx = dipper.MergeMap(w.ctx, ctx)
-				dipper.Logger.Infof("[workflow] merged _events section of context [%s] to workflow [%s]", name, w.performing)
+				dipper.Logger.Infof("[workflow] merged _events section of context [%s] to workflow [%s]", name, w.workflow.Name)
 			}
 		}
 
@@ -159,7 +159,7 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 				ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
 				ctx = dipper.Interpolate(ctx, envData)
 				w.ctx = dipper.MergeMap(w.ctx, ctx)
-				dipper.Logger.Infof("[workflow] merged named context [%s] to workflow [%s]", name, w.performing)
+				dipper.Logger.Infof("[workflow] merged named context [%s] to workflow [%s]", name, w.workflow.Name)
 			}
 		}
 	}

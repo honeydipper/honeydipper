@@ -263,6 +263,9 @@ func (w *Session) executeAction(msg *dipper.Message) {
 			envData := w.buildEnvData(msg)
 			work := dipper.InterpolateStr(w.workflow.Workflow, envData)
 			w.performing = work
+			if !w.isHook && w.workflow.Name == "" {
+				w.ctx["_meta_name"] = work
+			}
 			child := w.createChildSessionWithName(work, msg)
 			child.execute(msg)
 		case w.isFunction():
