@@ -102,7 +102,7 @@ func sendRequest(m *dipper.Message) {
 						panic(err)
 					}
 				} else {
-					var postForm url.Values
+					postForm := url.Values{}
 					for key, val := range v {
 						postForm.Add(key, val.(string))
 					}
