@@ -54,7 +54,7 @@ func (w *Session) routeNext(msg *dipper.Message) int {
 		return WorkflowNextComplete
 	case len(w.workflow.Steps) > 0 && int(w.current) < len(w.workflow.Steps)-1:
 		return WorkflowNextStep
-	case len(w.workflow.Threads) > 0 && int(w.current) < len(w.workflow.Threads)-1:
+	case len(w.workflow.Threads) > 0 && !(atomic.AddInt32(&w.current, int32(1)) >= int32(len(w.workflow.Threads))):
 		return WorkflowNextThread
 	}
 
@@ -91,25 +91,25 @@ func (w *Session) processExport(msg *dipper.Message) {
 		}
 		if status != SessionStatusError {
 			delta := dipper.Interpolate(w.workflow.Export, envData)
-			exports = dipper.MergeMap(exports, delta)
+			exports = dipper.CombineMap(exports, delta)
 			w.ctx = dipper.MergeMap(w.ctx, delta)
 			envData["ctx"] = w.ctx
 		}
 		if status == SessionStatusSuccess {
 			delta := dipper.Interpolate(w.workflow.ExportOnSuccess, envData)
-			exports = dipper.MergeMap(exports, delta)
+			exports = dipper.CombineMap(exports, delta)
 			w.ctx = dipper.MergeMap(w.ctx, delta)
 			envData["ctx"] = w.ctx
 		}
 		if status == SessionStatusFailure {
 			delta := dipper.Interpolate(w.workflow.ExportOnFailure, envData)
-			exports = dipper.MergeMap(exports, delta)
+			exports = dipper.CombineMap(exports, delta)
 			w.ctx = dipper.MergeMap(w.ctx, delta)
 			envData["ctx"] = w.ctx
 		}
 
 		if exports != nil {
-			w.exported = dipper.MergeMap(w.exported, exports)
+			w.exported = dipper.CombineMap(w.exported, exports)
 		}
 
 		for _, key := range w.workflow.NoExport {
@@ -247,7 +247,6 @@ func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{
 			w.current++
 			w.executeStep(msg)
 		case WorkflowNextThread:
-			atomic.AddInt32(&w.current, 1)
 		case WorkflowNextIteration:
 			w.iteration++
 			w.executeIteration(msg)
