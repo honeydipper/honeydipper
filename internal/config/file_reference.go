@@ -31,7 +31,7 @@ func (r *Repo) normalizeFilePaths(currentFile string, content *DataSet) {
 	processor = func(_ string, val interface{}) (interface{}, bool) {
 		switch v := val.(type) {
 		case string:
-			if v != "" && v[0:2] == "@:" {
+			if len(v) > 2 && v[0:2] == "@:" {
 				text, err := ioutil.ReadFile(r.normalizeFilePath(cwd, v[2:]))
 				if err != nil {
 					panic(err)

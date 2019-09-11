@@ -310,20 +310,21 @@ func CombineMap(dst map[string]interface{}, src interface{}) map[string]interfac
 	return dst
 }
 
-// MergeMap : merge the data from source to destination with some overriding rule
-func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
-	dst = CombineMap(dst, src)
+func mergeModifier(dst map[string]interface{}) {
 	for k, v := range dst {
-		if k[len(k)-1] == '-' {
+		if k[len(k)-1] == '-' { // set default
 			if ev, ok := dst[k[:len(k)-1]]; !ok || ev == nil {
 				dst[k[:len(k)-1]] = v
 			}
 			delete(dst, k)
 		}
 	}
+
 	for k, v := range dst {
+		vmap, ok := v.(map[string]interface{})
+
 		switch {
-		case k[len(k)-1] == '+':
+		case k[len(k)-1] == '+': // append
 			ev, ok := dst[k[:len(k)-1]]
 			if !ok {
 				dst[k[:len(k)-1]] = v
@@ -335,11 +336,28 @@ func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{
 				}
 			}
 			delete(dst, k)
-		case k[len(k)-1] == '*':
+		case k[len(k)-1] == '*': // override
 			dst[k[:len(k)-1]] = v
+			delete(dst, k)
+		case ok:
+			mergeModifier(vmap)
+		}
+	}
+}
+
+// MergeMap : merge the data from source to destination with some overriding rule
+func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
+	dst = CombineMap(dst, src)
+	for k, v := range dst {
+		if k[len(k)-1] == '-' {
+			if ev, ok := dst[k[:len(k)-1]]; !ok || ev == nil {
+				dst[k[:len(k)-1]] = v
+			}
 			delete(dst, k)
 		}
 	}
+
+	mergeModifier(dst)
 
 	return dst
 }
