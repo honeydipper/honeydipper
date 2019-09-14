@@ -30,6 +30,17 @@ const (
 	WorkflowNextRound
 )
 
+const (
+	// WorkflowHookSuccess is the hook executed when a workflow succeeds.
+	WorkflowHookSuccess = "on_success"
+	// WorkflowHookFailure is the hook executed when a workflow fails.
+	WorkflowHookFailure = "on_failure"
+	// WorkflowHookError is the hook executed when a workflow ran into errors.
+	WorkflowHookError = "on_error"
+	// WorkflowHookExit is the hook executed when a workflow execute.
+	WorkflowHookExit = "on_exit"
+)
+
 // WorkflowNextStrings are used for logging the routing result
 var WorkflowNextStrings = []string{
 	"complete",
@@ -130,19 +141,34 @@ func (w *Session) fireCompleteHooks(msg *dipper.Message) {
 	var hookName string
 	switch msg.Labels["status"] {
 	case SessionStatusError:
-		hookName = "on_error"
+		hookName = WorkflowHookError
 	case SessionStatusFailure:
-		hookName = "on_failure"
+		hookName = WorkflowHookFailure
 	default:
-		hookName = "on_success"
+		hookName = WorkflowHookSuccess
 	}
 
 	if w.currentHook == "" || w.currentHook == hookName {
 		w.fireHook(hookName, msg)
 	}
-	if w.currentHook == "" || w.currentHook == "on_exit" {
-		w.fireHook("on_exit", msg)
+	if w.currentHook == "" || w.currentHook == WorkflowHookExit {
+		w.fireHook(WorkflowHookExit, msg)
 	}
+}
+
+// isInCompleteHooks needs to take care of compete hooks carefully to not fall into crash loop
+func (w *Session) isInCompleteHooks() bool {
+	switch w.currentHook {
+	case WorkflowHookError:
+		fallthrough
+	case WorkflowHookFailure:
+		fallthrough
+	case WorkflowHookSuccess:
+		fallthrough
+	case WorkflowHookExit:
+		return true
+	}
+	return false
 }
 
 // complete gracefully terminates a session and return exported data to parent
@@ -214,21 +240,21 @@ func (w *Session) continueExec(msg *dipper.Message, export map[string]interface{
 				fallthrough
 			case "on_action":
 				w.executeAction(w.savedMsg)
-			case "on_exit":
+			case WorkflowHookExit:
 				fallthrough
-			case "on_failure":
+			case WorkflowHookFailure:
 				fallthrough
-			case "on_success":
+			case WorkflowHookSuccess:
 				fallthrough
-			case "on_error":
+			case WorkflowHookError:
 				w.complete(w.savedMsg)
-
-				// default:
-				//   panic(fmt.Errorf("run into unknown hook"))
 			}
 		} else {
 			reason := fmt.Sprintf("hook [%s] failed with status '%s' due to: %s", w.currentHook, msg.Labels["status"], msg.Labels["reason"])
-			w.currentHook = ""
+			if !w.isInCompleteHooks() {
+				// clear the hook flag start completion process
+				w.currentHook = ""
+			}
 			w.complete(&dipper.Message{
 				Channel: dipper.ChannelEventbus,
 				Subject: dipper.EventbusReturn,
