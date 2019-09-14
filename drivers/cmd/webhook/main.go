@@ -98,6 +98,8 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	eventData := extractEventData(w, r)
 
 	if eventData["url"] != "/hz/alive" {
+		log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
+
 		matched := false
 		for _, hook := range hooks {
 			for _, collapsed := range hook.([]interface{}) {
@@ -179,8 +181,6 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 			eventData["json"] = bodyObj
 		}
 	}
-
-	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
 
 	return eventData
 }
