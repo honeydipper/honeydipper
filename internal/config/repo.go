@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/ghodss/yaml"
@@ -118,7 +119,10 @@ func (c *Repo) loadRepo() {
 
 	var err error
 	if c.parent.IsConfigCheck && *c.repo == c.parent.InitRepo {
-		c.root = c.repo.Repo
+		c.root, err = filepath.Abs(c.repo.Repo)
+		if err != nil {
+			panic(err)
+		}
 		dipper.Logger.Infof("using working copy of repo [%v]", c.root)
 		// uncomment below to ensure the working copy is a repo
 		// if _, err = git.PlainOpen(c.root); err != nil {
