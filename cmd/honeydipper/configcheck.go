@@ -10,10 +10,18 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/logrusorgru/aurora"
+)
+
+const (
+	// ErrorFieldCollision is the error message when two conflicting fields are set
+	ErrorFieldCollision = "cannot define both `%s` and `%s`"
+	// ErrorNotDefined is the error message when an required asset is not defined
+	ErrorNotDefined = "%s `%s` not defined"
 )
 
 func runConfigCheck(cfg *config.Config) bool {
@@ -27,6 +35,8 @@ func runConfigCheck(cfg *config.Config) bool {
 				msg := err.Error.Error()
 				// transforming error message
 				msg = strings.Replace(msg, "error converting YAML to JSON: yaml: ", "", 1)
+				msg = strings.Replace(msg, "error unmarshaling JSON:", "", 1)
+				msg = strings.Replace(msg, "unmarshal errors:\n  ", "", 1)
 
 				fmt.Printf("%s: %s\n", err.File[1:], aurora.Red(msg))
 			}
@@ -35,7 +45,7 @@ func runConfigCheck(cfg *config.Config) bool {
 
 	ruleErrors := false
 	for _, rule := range cfg.DataSet.Rules {
-		location, errMsg := checkWorkflow(rule.Do)
+		location, errMsg := checkWorkflow(rule.Do, cfg)
 		if len(errMsg) > 0 {
 			rule.When.Match = map[string]interface{}{
 				"_": aurora.Cyan("truncated ..."),
@@ -45,21 +55,21 @@ func runConfigCheck(cfg *config.Config) bool {
 				fmt.Println("─────────────────────────────────────────────────────────────")
 				ruleErrors = true
 			}
-			fmt.Printf("rule(%+v, %s): %s\n", rule.When, aurora.Cyan(location), aurora.Red(errMsg))
+			fmt.Printf("rule(%+v, `%s`): %s\n", rule.When, aurora.Cyan(location), aurora.Red(errMsg))
 			hasError = true
 		}
 	}
 
 	workflowErrors := false
 	for name, workflow := range cfg.DataSet.Workflows {
-		location, errMsg := checkWorkflow(workflow)
+		location, errMsg := checkWorkflow(workflow, cfg)
 		if len(errMsg) > 0 {
 			if !workflowErrors {
 				fmt.Printf("\nFound error in Workflows\n")
 				fmt.Println("─────────────────────────────────────────────────────────────")
 				workflowErrors = true
 			}
-			fmt.Printf("workflow(%s, %s): %s\n", name, aurora.Cyan(location), aurora.Red(errMsg))
+			fmt.Printf("workflow(%s, `%s`): %s\n", name, aurora.Cyan(location), aurora.Red(errMsg))
 			hasError = true
 		}
 	}
@@ -67,6 +77,113 @@ func runConfigCheck(cfg *config.Config) bool {
 	return hasError
 }
 
-func checkWorkflow(w config.Workflow) (string, string) {
-	return "", ""
+func checkWorkflow(w config.Workflow, cfg *config.Config) (location string, msg string) {
+	defer func() {
+		if r := recover(); r != nil {
+			msg = r.(error).Error()
+		}
+	}()
+
+	location = "/"
+
+	checkWorkflowActions(w)
+	checkWorkflowConditions(w)
+	checkObjectExists("workflow", w.Workflow, cfg.DataSet.Workflows)
+	checkWorkflowFunction(w, cfg)
+	checkWorkflowDriver(w, cfg)
+
+	for i, step := range w.Steps {
+		l, msg := checkWorkflow(step, cfg)
+		if msg != "" {
+			return fmt.Sprintf("step/%d%s", i, l), msg
+		}
+	}
+
+	for i, thread := range w.Threads {
+		l, msg := checkWorkflow(thread, cfg)
+		if msg != "" {
+			return fmt.Sprintf("thread/%d%s", i, l), msg
+		}
+	}
+	return location, msg
+}
+
+func checkWorkflowFunction(w config.Workflow, cfg *config.Config) {
+	if w.CallFunction != "" && !hasInterpolation(w.CallFunction) {
+		parts := strings.Split(w.CallFunction, ".")
+		checkObjectExists("system", parts[0], cfg.DataSet.Systems)
+		checkObjectExists(parts[0]+" function", parts[1], cfg.DataSet.Systems[parts[0]].Functions)
+	} else if w.Function.Target.System != "" && !hasInterpolation(w.Function.Target.System) {
+		f := w.Function.Target
+		checkObjectExists("system", f.System, cfg.DataSet.Systems)
+		if !hasInterpolation(f.Function) {
+			checkObjectExists(f.System+" function", f.Function, cfg.DataSet.Systems[f.System].Functions)
+		}
+	}
+
+}
+
+func checkWorkflowDriver(w config.Workflow, cfg *config.Config) {
+	if w.CallDriver != "" && !hasInterpolation(w.CallDriver) {
+		parts := strings.Split(w.CallDriver, ".")
+		checkObjectExists("driver", parts[0], cfg.DataSet.Drivers)
+	} else if w.Function.Driver != "" && !hasInterpolation(w.Function.Driver) {
+		checkObjectExists("driver", w.Function.Driver, cfg.DataSet.Drivers)
+	}
+}
+
+func checkObjectExists(t, name string, m interface{}) {
+	if name != "" && !hasInterpolation(name) {
+		if !reflect.ValueOf(m).MapIndex(reflect.ValueOf(name)).IsValid() {
+			panic(fmt.Errorf(ErrorNotDefined, t, name))
+		}
+	}
+}
+
+func checkWorkflowActions(w config.Workflow) {
+	f := &fieldChecker{}
+
+	f.setField("call_workflow", hasLiteral(w.Workflow))
+	f.setField("call_function", hasLiteral(w.CallFunction))
+	f.setField("call_driver", hasLiteral(w.CallDriver))
+	f.setField("wait", w.Wait != "")
+	f.setField("steps", len(w.Steps) > 0)
+	f.setField("threads", len(w.Threads) > 0)
+	f.setField("switch", w.Switch != "")
+}
+
+func checkWorkflowConditions(w config.Workflow) {
+	f := &fieldChecker{}
+
+	f.setField("if_match", w.Match != nil)
+	f.setField("unless_match", w.UnlessMatch != nil)
+	f.setField("if", len(w.If) > 0)
+	f.setField("unless", len(w.Unless) > 0)
+	f.setField("while", len(w.While) > 0)
+	f.setField("until", len(w.Until) > 0)
+}
+
+// helper functions below
+
+func hasLiteral(param string) bool {
+	s := strings.TrimSpace(param)
+	return s != "" && s[0] != '$' && !(strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}"))
+}
+
+func hasInterpolation(param string) bool {
+	s := strings.TrimSpace(param)
+	return s != "" && (s[0] == '$' || strings.Contains(s, "{{"))
+}
+
+type fieldChecker struct {
+	field string
+}
+
+func (f *fieldChecker) setField(name string, condition bool) {
+	if condition {
+		if f.field != "" {
+			panic(fmt.Errorf(ErrorFieldCollision, f.field, name))
+		}
+		f.field = name
+	}
 }
