@@ -189,24 +189,24 @@ func (c *Config) extendSystem(processed map[string]bool, system string) {
 	var current = c.DataSet.Systems[system]
 	for _, extend := range current.Extends {
 		parts := strings.Split(extend, "=")
-		var parent, parentKey string
-		parent = strings.TrimSpace(parts[0])
+		var base, subKey string
+		base = strings.TrimSpace(parts[0])
 		if len(parts) >= 2 {
-			parentKey = parent
-			parent = strings.TrimSpace(parts[1])
+			subKey = base
+			base = strings.TrimSpace(parts[1])
 		}
 
-		if _, ok := processed[parent]; !ok {
-			c.extendSystem(processed, parent)
+		if _, ok := processed[base]; !ok {
+			c.extendSystem(processed, base)
 		}
 
-		parentSys := c.DataSet.Systems[parent]
-		parentCopy, err := SystemCopy(&parentSys)
+		baseSys := c.DataSet.Systems[base]
+		baseCopy, err := SystemCopy(&baseSys)
 		if err != nil {
 			panic(err)
 		}
 
-		err = mergeSystem(&merged, *parentCopy, parentKey)
+		err = mergeSystem(&merged, *baseCopy, subKey)
 		if err != nil {
 			panic(err)
 		}
@@ -321,6 +321,9 @@ func mergeSystem(d *System, s System, key string) error {
 
 		d.Extends = append(d.Extends, s.Extends...)
 	} else {
+		if d.Data == nil {
+			d.Data = map[string]interface{}{}
+		}
 		d.Data[key] = s.Data
 	}
 
