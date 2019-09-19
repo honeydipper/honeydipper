@@ -71,13 +71,30 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			} else {
 				keys = strings.Split(v[1:], ",")
 			}
+
+			var quote byte
+			defaultVal := ""
+
 			for _, key := range keys {
-				ret, _ := GetMapData(data, key)
-				if ret != nil {
-					if strings.HasPrefix(key, "sysData.") {
-						return Interpolate(ret, data)
+				if quote == 0 && strings.ContainsRune("\"'`", rune(key[0])) {
+					quote = key[0]
+					key = key[1:]
+				}
+
+				if quote != 0 {
+					if key[len(key)-1] == quote {
+						defaultVal += key[:len(key)-1]
+						return defaultVal
 					}
-					return ret
+					defaultVal += key
+				} else {
+					ret, _ := GetMapData(data, key)
+					if ret != nil {
+						if strings.HasPrefix(key, "sysData.") {
+							return Interpolate(ret, data)
+						}
+						return ret
+					}
 				}
 			}
 			if allowNull {
