@@ -227,7 +227,7 @@ func TestSessionHooks(t *testing.T) {
 					Payload: map[string]interface{}{
 						"ctx": map[string]interface{}{
 							"_meta_desc":   "",
-							"_meta_name":   "",
+							"_meta_name":   "foo.failure",
 							"resume_token": "//9",
 							"hooks": map[string]interface{}{
 								"on_failure": "send_chat",
@@ -266,7 +266,7 @@ func TestSessionHooks(t *testing.T) {
 							Payload: map[string]interface{}{
 								"ctx": map[string]interface{}{
 									"_meta_desc":   "",
-									"_meta_name":   "",
+									"_meta_name":   "foo.failure",
 									"resume_token": "//9",
 								},
 								"data":  map[string]interface{}{},
@@ -320,7 +320,7 @@ func TestSessionHooks(t *testing.T) {
 					Payload: map[string]interface{}{
 						"ctx": map[string]interface{}{
 							"_meta_desc":   "",
-							"_meta_name":   "",
+							"_meta_name":   "foo.error",
 							"resume_token": "//12",
 							"hooks": map[string]interface{}{
 								"on_failure": "send_chat_failure",
@@ -361,7 +361,7 @@ func TestSessionHooks(t *testing.T) {
 							Payload: map[string]interface{}{
 								"ctx": map[string]interface{}{
 									"_meta_desc":   "",
-									"_meta_name":   "",
+									"_meta_name":   "foo.error",
 									"resume_token": "//12",
 								},
 								"data":  map[string]interface{}{},
