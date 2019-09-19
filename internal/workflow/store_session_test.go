@@ -108,7 +108,7 @@ func TestStoreSessionOps(t *testing.T) {
 					Payload: map[string]interface{}{
 						"ctx": map[string]interface{}{
 							"_meta_desc":   "",
-							"_meta_name":   "",
+							"_meta_name":   "foo.bar",
 							"resume_token": "//3",
 						},
 						"data":  map[string]interface{}{},
@@ -151,7 +151,7 @@ func TestStoreSessionOps(t *testing.T) {
 					Payload: map[string]interface{}{
 						"ctx": map[string]interface{}{
 							"_meta_desc":   "",
-							"_meta_name":   "",
+							"_meta_name":   "foo_sys.bar_func",
 							"resume_token": "//4",
 						},
 						"data":  map[string]interface{}{},
@@ -208,7 +208,7 @@ func TestStoreSessionOps(t *testing.T) {
 					Payload: map[string]interface{}{
 						"ctx": map[string]interface{}{
 							"_meta_desc":   "",
-							"_meta_name":   "",
+							"_meta_name":   "foo_sys.bar_func",
 							"resume_token": "//5",
 							"step_number":  int32(0),
 						},
@@ -246,7 +246,7 @@ func TestStoreSessionOps(t *testing.T) {
 							Payload: map[string]interface{}{
 								"ctx": map[string]interface{}{
 									"_meta_desc":   "",
-									"_meta_name":   "",
+									"_meta_name":   "foo.bar",
 									"resume_token": "//5",
 									"step_number":  int32(1),
 								},
@@ -349,7 +349,7 @@ func TestStoreSessionOps(t *testing.T) {
 					Payload: map[string]interface{}{
 						"ctx": map[string]interface{}{
 							"_meta_desc":   "",
-							"_meta_name":   "",
+							"_meta_name":   "foo_sys.bar_func",
 							"resume_token": "//13",
 							"step_number":  int32(0),
 						},
