@@ -132,7 +132,7 @@ func TestStoreSessionOps(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -177,7 +177,7 @@ func TestStoreSessionOps(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -235,7 +235,7 @@ func TestStoreSessionOps(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 					"asserts": func() {
 						mockHelper.EXPECT().SendMessage(EqVal(&dipper.Message{
 							Channel: "eventbus",
@@ -274,7 +274,7 @@ func TestStoreSessionOps(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -306,7 +306,7 @@ func TestStoreSessionOps(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 				{
 					"sessionID": "12",
@@ -318,7 +318,7 @@ func TestStoreSessionOps(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -376,7 +376,7 @@ func TestStoreSessionOps(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 					"asserts": func() {
 						mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 					},
@@ -452,7 +452,7 @@ workflows:
 		baseLineNumGoRoutine = runtime.NumGoroutine()
 		signal := make(chan int, 1)
 		go func() {
-			s.ContinueSession(teststep["sessionID"].(string), teststep["msg"].(*dipper.Message), teststep["ctx"].(map[string]interface{}))
+			s.ContinueSession(teststep["sessionID"].(string), teststep["msg"].(*dipper.Message), teststep["ctx"].([]map[string]interface{}))
 			daemon.Children.Wait()
 			signal <- 1
 		}()

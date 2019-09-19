@@ -65,15 +65,15 @@ func (mr *MockSessionHandlerMockRecorder) execute(msg interface{}) *gomock.Call 
 }
 
 // continueExec mocks base method
-func (m *MockSessionHandler) continueExec(msg *dipper.Message, export map[string]interface{}) {
+func (m *MockSessionHandler) continueExec(msg *dipper.Message, exports []map[string]interface{}) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "continueExec", msg, export)
+	m.ctrl.Call(m, "continueExec", msg, exports)
 }
 
 // continueExec indicates an expected call of continueExec
-func (mr *MockSessionHandlerMockRecorder) continueExec(msg, export interface{}) *gomock.Call {
+func (mr *MockSessionHandlerMockRecorder) continueExec(msg, exports interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "continueExec", reflect.TypeOf((*MockSessionHandler)(nil).continueExec), msg, export)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "continueExec", reflect.TypeOf((*MockSessionHandler)(nil).continueExec), msg, exports)
 }
 
 // onError mocks base method
