@@ -92,7 +92,7 @@ func TestSessionHooks(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -155,7 +155,7 @@ func TestSessionHooks(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -204,7 +204,7 @@ func TestSessionHooks(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -255,7 +255,7 @@ func TestSessionHooks(t *testing.T) {
 							"reason":    "testing hook on failure",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 					"asserts": func() {
 						mockHelper.EXPECT().SendMessage(EqVal(&dipper.Message{
 							Channel: "eventbus",
@@ -295,7 +295,7 @@ func TestSessionHooks(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -350,7 +350,7 @@ func TestSessionHooks(t *testing.T) {
 							"reason":    "testing hook on error",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 					"asserts": func() {
 						mockHelper.EXPECT().SendMessage(EqVal(&dipper.Message{
 							Channel: "eventbus",
@@ -390,7 +390,7 @@ func TestSessionHooks(t *testing.T) {
 							"status":    "success",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -437,7 +437,7 @@ func TestSessionHooks(t *testing.T) {
 							"status":    "failure",
 						},
 					},
-					"ctx": map[string]interface{}{},
+					"ctx": []map[string]interface{}{},
 				},
 			},
 		},
@@ -481,7 +481,7 @@ workflows:
 		baseLineNumGoRoutine = runtime.NumGoroutine()
 		signal := make(chan int, 1)
 		go func() {
-			s.ContinueSession(teststep["sessionID"].(string), teststep["msg"].(*dipper.Message), teststep["ctx"].(map[string]interface{}))
+			s.ContinueSession(teststep["sessionID"].(string), teststep["msg"].(*dipper.Message), teststep["ctx"].([]map[string]interface{}))
 			daemon.Children.Wait()
 			signal <- 1
 		}()
