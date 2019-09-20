@@ -179,19 +179,33 @@ func (w *Session) initCTX(msg *dipper.Message) {
 		w.injectNamedCTX(name, msg)
 	}
 
+	envdata := w.buildEnvData(msg)
+	w.workflow.Context = dipper.InterpolateStr(w.workflow.Context, envdata)
+	w.workflow.Contexts = dipper.Interpolate(w.workflow.Contexts, envdata)
+
 	if w.workflow.Context != "" {
 		if w.workflow.Context == SessionContextHooks {
 			w.isHook = true
 		}
 		w.injectNamedCTX(w.workflow.Context, msg)
 		w.loadedContexts = append(w.loadedContexts, w.workflow.Context)
-	} else {
-		for _, name := range w.workflow.Contexts {
-			if name == SessionContextHooks {
-				w.isHook = true
+	}
+
+	if w.workflow.Contexts != nil {
+		for _, n := range w.workflow.Contexts.([]interface{}) {
+			if n != nil {
+				name, ok := n.(string)
+				if !ok {
+					panic(fmt.Errorf("contexts must be a list of strings in workflow [%s]", w.workflow.Name))
+				}
+				if name != "" {
+					if name == SessionContextHooks {
+						w.isHook = true
+					}
+					w.injectNamedCTX(name, msg)
+					w.loadedContexts = append(w.loadedContexts, name)
+				}
 			}
-			w.injectNamedCTX(name, msg)
-			w.loadedContexts = append(w.loadedContexts, name)
 		}
 	}
 
@@ -268,8 +282,8 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.Cases = v.Cases                     // delayed
 	ret.Default = v.Default                 // delayed
 
-	ret.Context = v.Context     // no interpolation
-	ret.Contexts = v.Contexts   // no interpolation
+	ret.Context = v.Context     // interpolated in initCTX
+	ret.Contexts = v.Contexts   // interpolated in initCTX
 	ret.NoExport = v.NoExport   // no interpolation
 	ret.IterateAs = v.IterateAs // no interpolation
 	ret.OnError = v.OnError     // no interpolation
