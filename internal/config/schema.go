@@ -54,7 +54,7 @@ type Workflow struct {
 	Name        string
 	Description string
 	Context     string
-	Contexts    []string
+	Contexts    interface{}
 	Local       map[string]interface{} `json:"with" mapstructure:"with"`
 
 	Match       interface{} `json:"if_match" mapstructure:"if_match"`
