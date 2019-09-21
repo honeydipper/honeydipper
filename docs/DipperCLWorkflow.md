@@ -2,7 +2,7 @@
 
 <!-- toc -->
 
-- [Composing Worflows](#composing-worflows)
+- [Composing Workflows](#composing-workflows)
   * [Simple Actions](#simple-actions)
   * [Complex Actions](#complex-actions)
   * [Iterations](#iterations)
@@ -24,12 +24,13 @@
   * [Environment Variables and Volumes](#environment-variables-and-volumes)
   * [Predefined Step](#predefined-step)
   * [Expanding `run_kubernetes`](#expanding-run_kubernetes)
+  * [Using `run_kubernetes` in GKE](#using-run_kubernetes-in-gke)
 
 <!-- tocstop -->
 
 *DipperCL* is the control language that `Honeydipper` uses to configure data, assets and logic for its operation. It is basically a YAML with a `Honeydipper` specific schema.
 
-## Composing Worflows
+## Composing Workflows
 `workflow` defines what to do and how to perform when an event is triggered. `workflow` can be defined in rules directly in the `do` section, or it can be defined independently with a name so it can be re-used/shared among multiple rules and workflows. A `workflow` can be as simple as invoking a single driver `rawAction`. It can also contains complicate logics, procedures dealing with various scenarios. All `workflows` are built with the same building blocks, follow the same process, and they can be stacked/combined with each other to achieve more complicated goals.
 
 An example of a workflow defined in a rule calling an rawAction:
@@ -297,11 +298,11 @@ It is recommended to avoid using `event` and `data` in workflows, and stick to `
 
 *DipperCL* provides following ways of interpolation:
 
- * path interpolation - comma separated multiple paths following a dollar sign, e.g. `$ctx.this,ctx.that,ctx.default`, cannot be mixed in strings
- * inline go template - strings with go templates that get rendered at time of the workflow execution, requires quoting if template is at the start of the string
- * yaml parser - a string following a `:yaml:` prefix, will be parsed at the time of the execution, can be combined with go template
- * e-yaml encryption - a string with `ENC[` prefix, storing base64 encoded encrypted content
- * file attachment - a relative path following a `@:` prefix, requires quoting
+ * **path interpolation** - comma separated multiple paths following a dollar sign, e.g. `$ctx.this,ctx.that,ctx.default`, cannot be mixed in strings. can specify a default value using either single, double or tilde quotes if none of the keys are defined in the context, e.g. `$ctx.this,ctx.that,"this value is the default"`. Also, can use `?` following the `$` to indicate that nil value is allowed.
+ * **inline go template** - strings with go templates that get rendered at time of the workflow execution, requires quoting if template is at the start of the string
+ * **yaml parser** - a string following a `:yaml:` prefix, will be parsed at the time of the execution, can be combined with go template
+ * **e-yaml encryption** - a string with `ENC[` prefix, storing base64 encoded encrypted content
+ * **file attachment** - a relative path following a `@:` prefix, requires quoting
 
 See [interpolation guide](http://honeydipper.io/interpolation.html) for detail on how to use interpolation.
 
@@ -603,3 +604,79 @@ contexts:
 ```
 
 See [Defining steps](#basic-of-run_kubernetes) on how to define a step
+
+### Using `run_kubernetes` in GKE
+
+GKE is a google managed kubernetes cluster service. You can use `run_kubernetes` to run jobs in GKE as you would any kubernetes cluster. There are a few more helper workflows, predefined steps specifically for GKE.
+
+ * **`use_google_credentials` workflow**
+
+If the context variable `google_credentials_secret` is defined, this workflow will add a step in the `steps` list to activate the service account. The service account must exist in the kubernetes cluster as a secret, the service account key can be specified using `google_credentials_secret_key` and defaults to `service-account.json`. This is a great way to run your job with a service account other than the default account defined through the GKE node pool. This step has to be executed before you call `run_kubernetes`, and the following `steps` in the job have to be added through [append modifier](#merging-modifier).
+
+For example:
+```yaml
+---
+workflows:
+  create_cluster:
+    steps:
+      - call_workflow: use_google_credentials
+      - call_workflow: run_kubernetes
+        with:
+          steps+: # using append modifier here
+            - type: gcloud
+              shell: gcloud container clusters create {{ .ctx.new_cluster_name }}
+```
+
+ * **`use_gcloud_kubeconfig` workflow**
+
+This workflow is used for adding a step to run `gcloud container clusters get-credentials` to fetch the kubeconfig data for GKE clusters. This step requires that the `cluster` context variable is defined and describing a GKE cluster with fields like `project`, `cluster`, `zone` or `region`.
+
+For example:
+```yaml
+---
+workflows:
+  delete_job:
+    with:
+      cluster:
+        type: gke # specify the type of the kubernetes cluster
+        project: foo
+        cluster: bar
+        zone: us-central1-a
+    steps:
+      - call_workflow: use_google_credentials
+      - call_workflow: use_gcloud_kubeconfig
+      - call_workflow: run_kubernetes:
+        with:
+          steps+:
+            - type: gcloud
+              shell: kubectl delete jobs {{ .ctx.job_name }}
+```
+
+ * **`use_local_kubeconfig` workflow**
+
+This workflow is used for adding a step to clear the kubeconfig file so `kubectl` can use default in-cluster setting to work on local cluster.
+
+For example:
+```yaml
+---
+workflows:
+  copy_deployment_to_local:
+    steps:
+      - call_workflow: use_google_credentials
+      - call_workflow: use_gcloud_kubeconfig
+        with:
+          cluster:
+            project: foo
+            cluster: bar
+            zone: us-central1-a
+      - export:
+          steps+:
+            - type: gcloud
+              shell: kubectl get -o yaml deployment {{ .ctx.deployment }} > kuberentes.yaml
+      - call_workflow: use_local_kubeconfig
+      - call_workflow: run_kubernetes
+        with:
+          steps+:
+            - type: gcloud
+              shell: kubectl apply -f kubernetes.yaml
+```
