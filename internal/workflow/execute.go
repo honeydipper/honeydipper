@@ -250,55 +250,72 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 
 // executeAction takes actions for a single iteration in a single loop round
 func (w *Session) executeAction(msg *dipper.Message) {
-	if w.loopCount == 0 && int(w.iteration) == 0 && int(w.current) == 0 {
-		w.fireHook("on_first_action", msg)
+	switch {
+	case w.workflow.Workflow != "":
+		fallthrough
+	case w.isFunction():
+		fallthrough
+	case w.workflow.CallDriver != "":
+		fallthrough
+	case w.workflow.Steps != nil:
+		fallthrough
+	case w.workflow.Threads != nil:
+		fallthrough
+	case w.workflow.Wait != "":
+		fallthrough
+	case w.workflow.Switch != "":
+		if w.loopCount == 0 && int(w.iteration) == 0 && int(w.current) == 0 {
+			w.fireHook("on_first_action", msg)
+		}
+		if w.currentHook == "" {
+			w.fireHook("on_action", msg)
+		}
 		if w.currentHook != "" {
 			return
 		}
 	}
-	w.fireHook("on_action", msg)
-	if w.currentHook == "" {
-		switch {
-		case w.workflow.Workflow != "":
-			envData := w.buildEnvData(msg)
-			work := dipper.InterpolateStr(w.workflow.Workflow, envData)
-			w.performing = work
-			if !w.isHook && w.workflow.Name == "" {
-				w.ctx["_meta_name"] = work
-			}
-			child := w.createChildSessionWithName(work, msg)
-			child.execute(msg)
-		case w.isFunction():
-			w.performing = "function"
-			f := w.interpolateFunction(&w.workflow.Function, msg)
-			w.callFunction(f, msg)
-		case w.workflow.CallDriver != "":
-			w.performing = "driver " + w.workflow.CallDriver
-			w.callDriver(w.workflow.CallDriver, msg)
-		case w.workflow.CallFunction != "":
-			w.performing = "function " + w.workflow.CallFunction
-			w.callShorthandFunction(w.workflow.CallFunction, msg)
-		case w.workflow.Steps != nil:
-			w.performing = "steps"
-			w.current = 0
-			w.executeStep(msg)
-		case w.workflow.Threads != nil:
-			w.performing = "threads"
-			w.current = 0
-			w.executeThreads(msg)
-		case w.workflow.Wait != "":
-			w.performing = "suspending"
-			w.startWait()
-		case w.workflow.Switch != "":
-			w.performing = "switch"
-			w.executeSwitch(msg)
-		default:
-			w.continueExec(&dipper.Message{
-				Labels: map[string]string{
-					"status": SessionStatusSuccess,
-				},
-			}, nil)
+	// no action hooks if workflow is noop
+
+	switch {
+	case w.workflow.Workflow != "":
+		envData := w.buildEnvData(msg)
+		work := dipper.InterpolateStr(w.workflow.Workflow, envData)
+		w.performing = work
+		if !w.isHook && w.workflow.Name == "" {
+			w.ctx["_meta_name"] = work
 		}
+		child := w.createChildSessionWithName(work, msg)
+		child.execute(msg)
+	case w.isFunction():
+		w.performing = "function"
+		f := w.interpolateFunction(&w.workflow.Function, msg)
+		w.callFunction(f, msg)
+	case w.workflow.CallDriver != "":
+		w.performing = "driver " + w.workflow.CallDriver
+		w.callDriver(w.workflow.CallDriver, msg)
+	case w.workflow.CallFunction != "":
+		w.performing = "function " + w.workflow.CallFunction
+		w.callShorthandFunction(w.workflow.CallFunction, msg)
+	case w.workflow.Steps != nil:
+		w.performing = "steps"
+		w.current = 0
+		w.executeStep(msg)
+	case w.workflow.Threads != nil:
+		w.performing = "threads"
+		w.current = 0
+		w.executeThreads(msg)
+	case w.workflow.Wait != "":
+		w.performing = "suspending"
+		w.startWait()
+	case w.workflow.Switch != "":
+		w.performing = "switch"
+		w.executeSwitch(msg)
+	default:
+		w.continueExec(&dipper.Message{
+			Labels: map[string]string{
+				"status": SessionStatusSuccess,
+			},
+		}, nil)
 	}
 }
 
