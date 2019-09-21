@@ -87,7 +87,12 @@ func (w *Session) save() string {
 
 // isLoop checks if the workflow uses looping statements while and until
 func (w *Session) isLoop() bool {
-	return len(w.workflow.While) > 0 || len(w.workflow.Until) > 0 || len(w.workflow.WhileAny) > 0 || len(w.workflow.UntilAny) > 0
+	return len(w.workflow.While) > 0 ||
+		len(w.workflow.Until) > 0 ||
+		len(w.workflow.WhileAny) > 0 ||
+		len(w.workflow.UntilAll) > 0 ||
+		w.workflow.WhileMatch != nil ||
+		w.workflow.UntilMatch != nil
 }
 
 // isIteration checks if the workflow needs to iterate through a list
@@ -255,7 +260,7 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.If = dipper.Interpolate(v.If, envData).([]string)
 	ret.IfAny = dipper.Interpolate(v.IfAny, envData).([]string)
 	ret.Unless = dipper.Interpolate(v.Unless, envData).([]string)
-	ret.UnlessAny = dipper.Interpolate(v.UnlessAny, envData).([]string)
+	ret.UnlessAll = dipper.Interpolate(v.UnlessAll, envData).([]string)
 	ret.Match = dipper.Interpolate(v.Match, envData)
 	ret.UnlessMatch = dipper.Interpolate(v.UnlessMatch, envData)
 	ret.Iterate = dipper.Interpolate(v.Iterate, envData)
@@ -268,8 +273,10 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 
 	ret.While = v.While                     // repeatedly interpolated later
 	ret.WhileAny = v.WhileAny               // repeatedly interpolated later
+	ret.WhileMatch = v.WhileMatch           // repeatedly interpolated later
 	ret.Until = v.Until                     // repeatedly interpolated later
-	ret.UntilAny = v.UntilAny               // repeatedly interpolated later
+	ret.UntilAll = v.UntilAll               // repeatedly interpolated later
+	ret.UntilMatch = v.UntilMatch           // repeatedly interpolated later
 	ret.Else = v.Else                       // delayed
 	ret.Workflow = v.Workflow               // delayed
 	ret.Function = v.Function               // delayed

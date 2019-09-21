@@ -59,14 +59,16 @@ type Workflow struct {
 
 	Match       interface{} `json:"if_match" mapstructure:"if_match"`
 	UnlessMatch interface{} `json:"unless_match" mapstructure:"unelss_match"`
+	WhileMatch  interface{} `json:"while_match" mapstructure:"while_match"`
+	UntilMatch  interface{} `json:"until_match" mapstructure:"until_match"`
 	If          []string
 	IfAny       []string `json:"if_any" mapstructure:"if_any"`
 	Unless      []string
-	UnlessAny   []string `json:"unless_any" mapstructure:"unless_any"`
+	UnlessAll   []string `json:"unless_any" mapstructure:"unless_all"`
 	While       []string
 	WhileAny    []string `json:"while_any" mapstructure:"while_any"`
 	Until       []string
-	UntilAny    []string `json:"until_any" mapstructure:"until_any"`
+	UntilAll    []string `json:"until_any" mapstructure:"until_all"`
 
 	Else interface{} `json:"else,omitempty"`
 

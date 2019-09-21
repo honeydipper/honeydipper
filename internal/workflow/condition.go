@@ -7,7 +7,7 @@
 package workflow
 
 import (
-	"errors"
+	"reflect"
 	"strings"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
@@ -43,43 +43,20 @@ func (w *Session) checkCondition() bool {
 			}
 		}
 		return true
-	case len(w.workflow.UnlessAny) > 0:
-		for _, c := range w.workflow.UnlessAny {
+	case len(w.workflow.UnlessAll) > 0:
+		for _, c := range w.workflow.UnlessAll {
 			if !isTruey(c) {
 				return true
 			}
 		}
 		return false
 	case w.workflow.Match != nil:
-		switch scenario := w.workflow.Match.(type) {
-		case map[string]interface{}:
-			if len(scenario) > 0 {
-				return dipper.CompareAll(w.ctx, scenario)
-			}
-			return true
-		case []interface{}:
-			if len(scenario) > 0 {
-				return dipper.CompareAll(w.ctx, scenario)
-			}
-			return true
-		default:
-			panic(errors.New("unsupported match condition"))
-		}
+		return dipper.CompareAll(w.ctx, w.workflow.Match)
 	case w.workflow.UnlessMatch != nil:
-		switch scenario := w.workflow.UnlessMatch.(type) {
-		case map[string]interface{}:
-			if len(scenario) > 0 {
-				return !dipper.CompareAll(w.ctx, scenario)
-			}
-			return true
-		case []interface{}:
-			if len(scenario) > 0 {
-				return !dipper.CompareAll(w.ctx, scenario)
-			}
-			return true
-		default:
-			panic(errors.New("unsupported unless_match condition"))
+		if reflect.ValueOf(w.workflow.UnlessMatch).Len() > 0 {
+			return !dipper.CompareAll(w.ctx, w.workflow.UnlessMatch)
 		}
+		return true
 	}
 	return true
 }
@@ -87,6 +64,17 @@ func (w *Session) checkCondition() bool {
 // checkLoopCondition check the looping conditions to see if we should continue the loop
 func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 	switch {
+	case w.workflow.WhileMatch != nil:
+		envData := w.buildEnvData(msg)
+		scenario := dipper.Interpolate(w.workflow.WhileMatch, envData)
+		return dipper.CompareAll(w.ctx, scenario)
+	case w.workflow.UntilMatch != nil:
+		envData := w.buildEnvData(msg)
+		scenario := dipper.Interpolate(w.workflow.UntilMatch, envData)
+		if scenario != nil && reflect.ValueOf(scenario).Len() > 0 {
+			return !dipper.CompareAll(w.ctx, scenario)
+		}
+		return true
 	case len(w.workflow.While) > 0:
 		envData := w.buildEnvData(msg)
 		for _, c := range w.workflow.While {
@@ -114,9 +102,9 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 			}
 		}
 		return true
-	case len(w.workflow.UntilAny) > 0:
+	case len(w.workflow.UntilAll) > 0:
 		envData := w.buildEnvData(msg)
-		for _, c := range w.workflow.UntilAny {
+		for _, c := range w.workflow.UntilAll {
 			c = dipper.InterpolateStr(c, envData)
 			if !isTruey(c) {
 				return true
