@@ -15,6 +15,7 @@ import (
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/logrusorgru/aurora"
+	"github.com/mitchellh/mapstructure"
 )
 
 const (
@@ -22,7 +23,16 @@ const (
 	ErrorFieldCollision = "cannot define both `%s` and `%s`"
 	// ErrorNotDefined is the error message when an required asset is not defined
 	ErrorNotDefined = "%s `%s` not defined"
+	// ErrorNotAllowed is the message when a field is not allowed due to missing pairing field
+	ErrorNotAllowed = "field `%s` not allowed without pairing field"
+	// ErrorNotAList is the message when a field is supposed to be a list
+	ErrorNotAList = "field `%s` must be a list or something interpolated into a list"
 )
+
+type dipperCLError struct {
+	location string
+	msg      string
+}
 
 func runConfigCheck(cfg *config.Config) bool {
 	hasError := false
@@ -80,7 +90,12 @@ func runConfigCheck(cfg *config.Config) bool {
 func checkWorkflow(w config.Workflow, cfg *config.Config) (location string, msg string) {
 	defer func() {
 		if r := recover(); r != nil {
-			msg = r.(error).Error()
+			if e, ok := r.(dipperCLError); ok {
+				location = e.location
+				msg = e.msg
+			} else {
+				msg = r.(error).Error()
+			}
 		}
 	}()
 
@@ -92,20 +107,40 @@ func checkWorkflow(w config.Workflow, cfg *config.Config) (location string, msg 
 	checkWorkflowFunction(w, cfg)
 	checkWorkflowDriver(w, cfg)
 
-	for i, step := range w.Steps {
-		l, msg := checkWorkflow(step, cfg)
-		if msg != "" {
-			return fmt.Sprintf("step/%d%s", i, l), msg
+	checkIsList("contexts", w.Contexts)
+	checkIsList("iterate", w.Iterate)
+	checkIsList("iterate_parallel", w.IterateParallel)
+
+	checkChildWorkflow("else/", w.Else, cfg)
+
+	for i, item := range w.Steps {
+		checkChildWorkflow(fmt.Sprintf("step/%d/", i), item, cfg)
+	}
+
+	for i, item := range w.Threads {
+		checkChildWorkflow(fmt.Sprintf("thread/%d/", i), item, cfg)
+	}
+
+	return location, msg
+}
+
+func checkChildWorkflow(prefix string, child interface{}, cfg *config.Config) {
+	if child == nil {
+		return
+	}
+
+	w, ok := child.(config.Workflow)
+	if !ok {
+		err := mapstructure.Decode(child, &w)
+		if err != nil {
+			panic(dipperCLError{location: prefix, msg: err.Error()})
 		}
 	}
 
-	for i, thread := range w.Threads {
-		l, msg := checkWorkflow(thread, cfg)
-		if msg != "" {
-			return fmt.Sprintf("thread/%d%s", i, l), msg
-		}
+	l, msg := checkWorkflow(w, cfg)
+	if msg != "" {
+		panic(dipperCLError{location: prefix + l, msg: msg})
 	}
-	return location, msg
 }
 
 func checkWorkflowFunction(w config.Workflow, cfg *config.Config) {
@@ -132,14 +167,6 @@ func checkWorkflowDriver(w config.Workflow, cfg *config.Config) {
 	}
 }
 
-func checkObjectExists(t, name string, m interface{}) {
-	if name != "" && !hasInterpolation(name) {
-		if !reflect.ValueOf(m).MapIndex(reflect.ValueOf(name)).IsValid() {
-			panic(fmt.Errorf(ErrorNotDefined, t, name))
-		}
-	}
-}
-
 func checkWorkflowActions(w config.Workflow) {
 	f := &fieldChecker{}
 
@@ -157,22 +184,53 @@ func checkWorkflowConditions(w config.Workflow) {
 
 	f.setField("if_match", w.Match != nil)
 	f.setField("unless_match", w.UnlessMatch != nil)
+	f.setField("while_match", w.WhileMatch != nil)
+	f.setField("until_match", w.UntilMatch != nil)
+
 	f.setField("if", len(w.If) > 0)
 	f.setField("unless", len(w.Unless) > 0)
+	f.setField("if_any", len(w.IfAny) > 0)
+	f.setField("unless_all", len(w.UnlessAll) > 0)
 	f.setField("while", len(w.While) > 0)
-	f.setField("until", len(w.Until) > 0)
+	f.setField("while_any", len(w.WhileAny) > 0)
+	f.setField("until_all", len(w.UntilAll) > 0)
+
+	f.allowFieldWhenSet("else", w.Else != nil)
 }
 
 // helper functions below
 
+func checkIsList(name string, f interface{}) {
+	if f != nil {
+		if s, ok := f.(string); ok {
+			if s != "" && hasLiteral(s) {
+				panic(fmt.Errorf(ErrorNotAList, name))
+			}
+		} else {
+			v := reflect.ValueOf(f)
+			if v.Kind() != reflect.Array && v.Kind() != reflect.Slice {
+				panic(fmt.Errorf(ErrorNotAList, name))
+			}
+		}
+	}
+}
+
+func checkObjectExists(t, name string, m interface{}) {
+	if name != "" && !hasInterpolation(name) {
+		if !reflect.ValueOf(m).MapIndex(reflect.ValueOf(name)).IsValid() {
+			panic(fmt.Errorf(ErrorNotDefined, t, name))
+		}
+	}
+}
+
 func hasLiteral(param string) bool {
 	s := strings.TrimSpace(param)
-	return s != "" && s[0] != '$' && !(strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}"))
+	return s != "" && s[0] != '$' && !(strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}")) && !strings.HasPrefix(s, ":yaml:")
 }
 
 func hasInterpolation(param string) bool {
 	s := strings.TrimSpace(param)
-	return s != "" && (s[0] == '$' || strings.Contains(s, "{{"))
+	return s != "" && (s[0] == '$' || strings.Contains(s, "{{")) || strings.HasPrefix(s, ":yaml:")
 }
 
 type fieldChecker struct {
@@ -185,5 +243,11 @@ func (f *fieldChecker) setField(name string, condition bool) {
 			panic(fmt.Errorf(ErrorFieldCollision, f.field, name))
 		}
 		f.field = name
+	}
+}
+
+func (f *fieldChecker) allowFieldWhenSet(name string, condition bool) {
+	if condition && f.field == "" {
+		panic(fmt.Errorf(ErrorNotAllowed, name))
 	}
 }
