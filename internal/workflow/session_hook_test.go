@@ -51,7 +51,7 @@ func TestSessionHooks(t *testing.T) {
 
 	hookTestCases := []map[string]interface{}{
 		{ // test #1 -- triggering on_first_action
-			"workflow": &config.Workflow{},
+			"workflow": &config.Workflow{Steps: []config.Workflow{}},
 			"msg":      &dipper.Message{},
 			"ctx": map[string]interface{}{
 				"hooks": map[string]interface{}{
@@ -396,7 +396,7 @@ func TestSessionHooks(t *testing.T) {
 		},
 
 		{ // test #7 -- testing with failed hook
-			"workflow": &config.Workflow{},
+			"workflow": &config.Workflow{Steps: []config.Workflow{}},
 			"msg":      &dipper.Message{},
 			"ctx": map[string]interface{}{
 				"hooks": map[string]interface{}{
