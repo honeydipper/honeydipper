@@ -68,12 +68,8 @@ func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ct
 func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, exports []map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when continuing workflow session %s", sessionID)
 	w := dipper.IDMapGet(&s.sessions, sessionID).(SessionHandler)
-	if w != nil {
-		defer w.onError()
-		w.continueExec(msg, exports)
-		return
-	}
-	dipper.Logger.Warningf("waiting session is cleared or missing %s", sessionID)
+	defer w.onError()
+	w.continueExec(msg, exports)
 }
 
 // ResumeSession resume a session that is in waiting state
@@ -87,7 +83,9 @@ func (s *SessionStore) ResumeSession(key string, msg *dipper.Message) {
 		if labels, ok := dipper.GetMapData(msg.Payload, "labels"); ok {
 			err := mapstructure.Decode(labels, &sessionLabels)
 			if err != nil {
-				panic(err)
+				// if we panic here, the session wont be cleared from memory
+				// so leave an empty labels map to cause later panic
+				dipper.Logger.Warningf("[workflow] error when parsing resuming labels for %s: %+v", key, labels)
 			}
 		}
 		daemon.Children.Add(1)
