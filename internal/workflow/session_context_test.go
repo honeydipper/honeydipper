@@ -86,4 +86,223 @@ contexts:
 	child = s.newSession("", &config.Workflow{Name: "workflow2", Local: map[string]interface{}{}}).(*Session)
 	child.prepare(&dipper.Message{}, w, nil)
 	assert.NotContains(t, w.ctx["foo"], "hooks", "not inheriting hooks from parent context")
+
+	w = s.newSession("", &config.Workflow{Name: "workflow1", NoExport: []string{"data1"}}).(*Session)
+	exported := map[string]interface{}{"data1": "testdata", "data2": "shouldstay"}
+	w.processNoExport(exported)
+	assert.NotContains(t, exported, "data1", "remove no_export items from exported data")
+
+	w = s.newSession("", &config.Workflow{Name: "workflow1", NoExport: []string{"*"}}).(*Session)
+	exported = map[string]interface{}{"data1": "testdata"}
+	w.processNoExport(exported)
+	assert.Empty(t, exported, "remove all items from exported data")
+}
+
+var configStrWithEventContexts = `
+---
+systems:
+  foo_sys:
+    functions:
+      bar_func:
+        driver: foo1
+        rawAction: bar1
+workflows:
+  noop: {}
+  test_steps:
+    steps:
+      - call_function: foo_sys.bar_func
+      - call_driver: foo.bar
+      - call_workflow: noop
+contexts:
+  _events:
+    "*":
+      is_event: yes
+`
+
+func TestWorkflowWithEventContext(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{CallDriver: "foo.bar"},
+		"msg":      &dipper.Message{},
+		"ctx":      map[string]interface{}{},
+		"asserts": func() {
+			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels: map[string]string{
+					"sessionID": "0",
+				},
+				Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc":   "",
+						"_meta_name":   "foo.bar",
+						"resume_token": "//0",
+						"is_event":     true,
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Driver:    "foo",
+						RawAction: "bar",
+					},
+					"labels": emptyLabels,
+				},
+			})).Times(1)
+		},
+		"steps": []map[string]interface{}{
+			{
+				"sessionID": "0",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "0",
+						"status":    "success",
+					},
+				},
+				"ctx": []map[string]interface{}{},
+			},
+		},
+	}
+	syntheticTest(t, configStrWithEventContexts, testcase)
+}
+
+var configStrWithEventSectionInContext = `
+---
+systems:
+  foo_sys:
+    functions:
+      bar_func:
+        driver: foo1
+        rawAction: bar1
+workflows:
+  noop: {}
+  test_steps:
+    steps:
+      - call_function: foo_sys.bar_func
+      - call_driver: foo.bar
+      - call_workflow: noop
+contexts:
+  _default:
+    _events:
+      is_event: yes
+`
+
+func TestWorkflowWithEventSectionInContext(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{CallDriver: "foo.bar"},
+		"msg":      &dipper.Message{},
+		"ctx":      map[string]interface{}{},
+		"asserts": func() {
+			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels: map[string]string{
+					"sessionID": "0",
+				},
+				Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc":   "",
+						"_meta_name":   "foo.bar",
+						"resume_token": "//0",
+						"is_event":     true,
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Driver:    "foo",
+						RawAction: "bar",
+					},
+					"labels": emptyLabels,
+				},
+			})).Times(1)
+		},
+		"steps": []map[string]interface{}{
+			{
+				"sessionID": "0",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "0",
+						"status":    "success",
+					},
+				},
+				"ctx": []map[string]interface{}{},
+			},
+		},
+	}
+	syntheticTest(t, configStrWithEventSectionInContext, testcase)
+}
+
+var configStrWithNamedContext = `
+---
+systems:
+  foo_sys:
+    functions:
+      bar_func:
+        driver: foo1
+        rawAction: bar1
+workflows:
+  noop: {}
+  test_steps:
+    steps:
+      - call_function: foo_sys.bar_func
+      - call_driver: foo.bar
+      - call_workflow: noop
+contexts:
+  test_context:
+    "*":
+      is_test: yes
+`
+
+func TestWorkflowWithNamedContext(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{
+			CallDriver: "foo.bar",
+			Contexts: []interface{}{
+				"test_context",
+			},
+		},
+		"msg": &dipper.Message{},
+		"ctx": map[string]interface{}{},
+		"asserts": func() {
+			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels: map[string]string{
+					"sessionID": "0",
+				},
+				Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc":   "",
+						"_meta_name":   "foo.bar",
+						"resume_token": "//0",
+						"is_test":      true,
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Driver:    "foo",
+						RawAction: "bar",
+					},
+					"labels": emptyLabels,
+				},
+			})).Times(1)
+		},
+		"steps": []map[string]interface{}{
+			{
+				"sessionID": "0",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "0",
+						"status":    "success",
+					},
+				},
+				"ctx": []map[string]interface{}{},
+			},
+		},
+	}
+	syntheticTest(t, configStrWithNamedContext, testcase)
 }
