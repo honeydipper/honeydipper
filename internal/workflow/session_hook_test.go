@@ -201,7 +201,9 @@ func TestOnFailureHook(t *testing.T) {
 		"msg":      &dipper.Message{},
 		"ctx": map[string]interface{}{
 			"hooks": map[string]interface{}{
-				"on_failure": "send_chat",
+				"on_failure": []interface{}{
+					"send_chat",
+				},
 			},
 		},
 		"asserts": func() {
@@ -217,7 +219,9 @@ func TestOnFailureHook(t *testing.T) {
 						"_meta_name":   "foo.failure",
 						"resume_token": "//0",
 						"hooks": map[string]interface{}{
-							"on_failure": "send_chat",
+							"on_failure": []interface{}{
+								"send_chat",
+							},
 						},
 					},
 					"data":  map[string]interface{}{},
@@ -248,13 +252,14 @@ func TestOnFailureHook(t *testing.T) {
 						Channel: "eventbus",
 						Subject: "command",
 						Labels: map[string]string{
-							"sessionID": "2",
+							"sessionID": "3",
 						},
 						Payload: map[string]interface{}{
 							"ctx": map[string]interface{}{
 								"_meta_desc":   "",
 								"_meta_name":   "foo.failure",
 								"resume_token": "//0",
+								"step_number":  int32(0),
 							},
 							"data":  map[string]interface{}{},
 							"event": map[string]interface{}{},
@@ -273,12 +278,12 @@ func TestOnFailureHook(t *testing.T) {
 				},
 			},
 			{
-				"sessionID": "2",
+				"sessionID": "3",
 				"msg": &dipper.Message{
 					Channel: "eventbus",
 					Subject: "return",
 					Labels: map[string]string{
-						"sessionID": "2",
+						"sessionID": "3",
 						"status":    "success",
 					},
 				},
@@ -297,7 +302,9 @@ func TestOnErrorHook(t *testing.T) {
 			"hooks": map[string]interface{}{
 				"on_failure": "send_chat_failure",
 				"on_error":   "send_chat",
-				"on_success": "send_chat_success",
+				"on_success": []interface{}{
+					"send_chat_success",
+				},
 			},
 		},
 		"asserts": func() {
@@ -315,7 +322,9 @@ func TestOnErrorHook(t *testing.T) {
 						"hooks": map[string]interface{}{
 							"on_failure": "send_chat_failure",
 							"on_error":   "send_chat",
-							"on_success": "send_chat_success",
+							"on_success": []interface{}{
+								"send_chat_success",
+							},
 						},
 					},
 					"data":  map[string]interface{}{},
