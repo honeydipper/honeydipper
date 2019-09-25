@@ -99,6 +99,10 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 
 	testContinueFunc := func() {
 		signal := make(chan int, 1)
+		var timeout = time.Duration(1)
+		if num, ok := teststep["timeout"]; ok {
+			timeout = num.(time.Duration)
+		}
 		go func() {
 			store.ContinueSession(teststep["sessionID"].(string), teststep["msg"].(*dipper.Message), teststep["ctx"].([]map[string]interface{}))
 			daemon.Children.Wait()
@@ -106,13 +110,17 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 		}()
 		select {
 		case <-signal:
-		case <-time.After(1 * time.Second):
+		case <-time.After(timeout * time.Second):
 			panic("timeout due to go routine leak")
 		}
 	}
 
 	testResumeFunc := func() {
 		signal := make(chan int, 1)
+		var timeout = time.Duration(1)
+		if num, ok := teststep["timeout"]; ok {
+			timeout = num.(time.Duration)
+		}
 		go func() {
 			store.ResumeSession(teststep["key"].(string), teststep["msg"].(*dipper.Message))
 			daemon.Children.Wait()
@@ -120,7 +128,24 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 		}()
 		select {
 		case <-signal:
-		case <-time.After(1 * time.Second):
+		case <-time.After(timeout * time.Second):
+			panic("timeout due to go routine leak")
+		}
+	}
+
+	testNoopFunc := func() {
+		signal := make(chan int, 1)
+		var timeout = time.Duration(1)
+		if num, ok := teststep["timeout"]; ok {
+			timeout = num.(time.Duration)
+		}
+		go func() {
+			daemon.Children.Wait()
+			signal <- 1
+		}()
+		select {
+		case <-signal:
+		case <-time.After(timeout * time.Second):
 			panic("timeout due to go routine leak")
 		}
 	}
@@ -145,9 +170,11 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 		if assertFunc, ok := teststep["asserts"]; ok {
 			assertFunc.(func())()
 		}
-		nextFunc := testContinueFunc
+		nextFunc := testNoopFunc
 		if resuming, ok := teststep["resuming"]; ok && resuming.(bool) {
 			nextFunc = testResumeFunc
+		} else if _, ok := teststep["msg"]; ok {
+			nextFunc = testContinueFunc
 		}
 		if shouldPanic, ok := teststep["panic"]; ok && shouldPanic.(bool) {
 			assert.Panics(t, nextFunc, "expecting panic at step %d", step)

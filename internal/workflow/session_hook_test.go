@@ -23,6 +23,57 @@ workflows:
     call_driver: foo.bar
 `
 
+func TestOnSessionHook(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{},
+		"msg":      &dipper.Message{},
+		"ctx": map[string]interface{}{
+			"hooks": map[string]interface{}{
+				"on_session": "send_chat",
+			},
+		},
+		"asserts": func() {
+			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels: map[string]string{
+					"sessionID": "2",
+				},
+				Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc":   "",
+						"_meta_name":   "",
+						"resume_token": "//1",
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Driver:    "foo",
+						RawAction: "bar",
+					},
+					"labels": emptyLabels,
+				},
+			})).Times(1)
+		},
+		"steps": []map[string]interface{}{
+			{
+				"sessionID": "2",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "2",
+						"status":    "success",
+					},
+				},
+				"ctx": []map[string]interface{}{},
+			},
+		},
+	}
+
+	syntheticTest(t, configStrHook, testcase)
+}
+
 func TestOnFirstActionHook(t *testing.T) {
 	testcase := map[string]interface{}{
 		"workflow": &config.Workflow{Steps: []config.Workflow{}},

@@ -10,6 +10,7 @@ package workflow
 
 import (
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/honeydipper/honeydipper/internal/config"
@@ -34,12 +35,37 @@ workflows:
       - call_workflow: noop
 `
 
+func TestWorkflowNoopAsChild(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{Steps: []config.Workflow{{}}},
+		"msg": &dipper.Message{
+			Payload: map[string]interface{}{
+				"data": map[string]interface{}{
+					"foo": "bar",
+				},
+			},
+		},
+		"ctx":   map[string]interface{}{},
+		"steps": []map[string]interface{}{},
+		"asserts": func() {
+			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
+		},
+	}
+	syntheticTest(t, configStr, testcase)
+}
+
 func TestWorkflowNoop(t *testing.T) {
 	testcase := map[string]interface{}{
 		"workflow": &config.Workflow{},
-		"msg":      &dipper.Message{},
-		"ctx":      map[string]interface{}{},
-		"steps":    []map[string]interface{}{},
+		"msg": &dipper.Message{
+			Payload: map[string]interface{}{
+				"data": map[string]interface{}{
+					"foo": "bar",
+				},
+			},
+		},
+		"ctx":   map[string]interface{}{},
+		"steps": []map[string]interface{}{},
 		"asserts": func() {
 			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 		},
@@ -62,7 +88,7 @@ func TestCallWorkflow(t *testing.T) {
 
 func TestCallDriver(t *testing.T) {
 	testcase := map[string]interface{}{
-		"workflow": &config.Workflow{CallDriver: "foo.bar"},
+		"workflow": &config.Workflow{CallDriver: "foo.bar", Local: map[string]interface{}{"data": "driver test"}},
 		"msg":      &dipper.Message{},
 		"ctx":      map[string]interface{}{},
 		"asserts": func() {
@@ -83,6 +109,9 @@ func TestCallDriver(t *testing.T) {
 					"function": config.Function{
 						Driver:    "foo",
 						RawAction: "bar",
+						Parameters: map[string]interface{}{
+							"data": "driver test",
+						},
 					},
 					"labels": emptyLabels,
 				},
@@ -248,6 +277,71 @@ func TestWorkflowSteps(t *testing.T) {
 					},
 				},
 				"ctx": []map[string]interface{}{},
+			},
+		},
+	}
+	syntheticTest(t, configStr, testcase)
+}
+
+func TestWorkflowResumeWithTimeout(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{
+			Steps: []config.Workflow{
+				{
+					CallFunction: "foo_sys.bar_func",
+				},
+				{
+					Wait: "1s",
+				},
+				{
+					Workflow: "noop",
+				},
+			},
+		},
+		"msg": &dipper.Message{},
+		"ctx": map[string]interface{}{},
+		"asserts": func() {
+			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels: map[string]string{
+					"sessionID": "1",
+				},
+				Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc":   "",
+						"_meta_name":   "foo_sys.bar_func",
+						"resume_token": "//0",
+						"step_number":  int32(0),
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Target: config.Action{
+							System:   "foo_sys",
+							Function: "bar_func",
+						},
+					},
+					"labels": emptyLabels,
+				},
+			})).Times(1)
+		},
+		"steps": []map[string]interface{}{
+			{
+				"sessionID": "1",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "1",
+						"status":    "success",
+					},
+				},
+				"ctx": []map[string]interface{}{},
+				"asserts": func() {
+					mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
+				},
+				"timeout": time.Duration(3),
 			},
 		},
 	}
@@ -444,6 +538,144 @@ func TestWorkflowResumeCrash(t *testing.T) {
 					assert.Equal(t, 2, len(store.sessions), "suspended sessions are still kept in memory")
 					assert.Equal(t, 1, len(store.suspendedSessions), "mapping of key to suspended session exists")
 				},
+			},
+		},
+	}
+	syntheticTest(t, configStr, testcase)
+}
+
+func TestWorkflowIterate(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{
+			CallFunction: "foo_sys.bar_func",
+			Iterate: []string{
+				"item1",
+				"item2",
+				"item3",
+			},
+		},
+		"msg": &dipper.Message{},
+		"ctx": map[string]interface{}{},
+		"asserts": func() {
+			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels: map[string]string{
+					"sessionID": "0",
+				},
+				Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc":   "",
+						"_meta_name":   "foo_sys.bar_func",
+						"resume_token": "//0",
+						"current":      "item1",
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Target: config.Action{
+							System:   "foo_sys",
+							Function: "bar_func",
+						},
+					},
+					"labels": emptyLabels,
+				},
+			})).Times(1)
+		},
+		"steps": []map[string]interface{}{
+			{
+				"sessionID": "0",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "0",
+						"status":    "success",
+					},
+				},
+				"ctx": []map[string]interface{}{},
+				"asserts": func() {
+					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+						Channel: "eventbus",
+						Subject: "command",
+						Labels: map[string]string{
+							"sessionID": "0",
+						},
+						Payload: map[string]interface{}{
+							"ctx": map[string]interface{}{
+								"_meta_desc":   "",
+								"_meta_name":   "foo_sys.bar_func",
+								"resume_token": "//0",
+								"current":      "item2",
+							},
+							"data":  map[string]interface{}{},
+							"event": map[string]interface{}{},
+							"function": config.Function{
+								Target: config.Action{
+									System:   "foo_sys",
+									Function: "bar_func",
+								},
+							},
+							"labels": map[string]string{
+								"sessionID": "0",
+								"status":    "success",
+							},
+						},
+					})).Times(1)
+				},
+			},
+			{
+				"sessionID": "0",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "0",
+						"status":    "success",
+					},
+				},
+				"ctx": []map[string]interface{}{},
+				"asserts": func() {
+					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+						Channel: "eventbus",
+						Subject: "command",
+						Labels: map[string]string{
+							"sessionID": "0",
+						},
+						Payload: map[string]interface{}{
+							"ctx": map[string]interface{}{
+								"_meta_desc":   "",
+								"_meta_name":   "foo_sys.bar_func",
+								"resume_token": "//0",
+								"current":      "item3",
+							},
+							"data":  map[string]interface{}{},
+							"event": map[string]interface{}{},
+							"function": config.Function{
+								Target: config.Action{
+									System:   "foo_sys",
+									Function: "bar_func",
+								},
+							},
+							"labels": map[string]string{
+								"sessionID": "0",
+								"status":    "success",
+							},
+						},
+					})).Times(1)
+				},
+			},
+			{
+				"sessionID": "0",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "0",
+						"status":    "success",
+					},
+				},
+				"ctx": []map[string]interface{}{},
 			},
 		},
 	}
