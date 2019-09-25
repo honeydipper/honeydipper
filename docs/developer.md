@@ -1,4 +1,4 @@
-# Honeydipper Driver Developer's Guide
+# Driver Developer's Guide
 
 This document is intended for Honeydipper driver developers. Some programming experience is expected. Theoretically, we can use any
 programing language, even bash, to develop a driver for honeydipper. For now, there is a go library named honeydipper/dipper that makes it
@@ -83,7 +83,7 @@ In this example, the dummy driver just manifest a fake event with json data as
 {"data": ["line 1", "line 2"]}
 ```
 
-The driver also sets its status to "cold", meaning cold restart needed, and uses the *Ping* command to send its own state to the daemon, so
+The method also sets its status to "cold", meaning cold restart needed, and uses the *Ping* command to send its own state to the daemon, so
 it can be restarted.
 
 ## Driver lifecycle and states
@@ -310,9 +310,6 @@ load some predefined configurations to jumpstart the integration.  The configura
  * `driver` definition and `fearture` loading under the `daemon` section;
  * some wrapper `system` to define some `trigger`, `function` that can be used in rules;
  * some `workflow` to help users use the `function`s, see [Workflow composing guide](./workflow.md) for detail
-
-It is recommended to comment the configuration thoroughly with examples and use [Natural Docs](https://www.naturaldocs.org/) to
-generate reference documents so the users can learn how to use your integration.
 
 For example, I created a hypothetical integration for a z-wave switch, the configuration might look like:
 ```yaml

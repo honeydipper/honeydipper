@@ -13,7 +13,7 @@ After following this guide, the Honeydipper daemon should not pull from config r
 
 ## Github Integration in Honeydipper
 
-Create a yaml file in your config repo to store the settings for github integration, and make sure it is loaded through `includes` in `init.yaml`. See the [github integration reference](https://honeydipper.github.io/honeydipper-config-essentials/#HoneydipperConfigClass:Essentials.Systems.github) for detail on how to config. 
+Create a yaml file in your config repo to store the settings for github integration, and make sure it is loaded through `includes` in `init.yaml`. See the [github integration reference](https://honeydipper-sphinx.readthedocs.io/en/latest/essentials.html#github) for detail on how to config. 
 
 For example:
 
@@ -52,14 +52,15 @@ rules:
         system: github
         trigger: push
     do:
-      type: if
-      condition: '{{ and (eq .event.json.repository.name "honeydipper-config") (eq .event.json.ref "refs/heads/master") }}'
-      content:
-        - content: reload
+      if_match:
+        - git_repo: myorg/myconfig
+          git_ref: refs/heads/master
+      call_workflow: reload
 ```
 Your repository name and branch name may differ.
 
-After the rule is loaded into the Honeydipper daemon, you should be able to see from the logs that the daemon reloads configuration when there is new push to your repo.
+After the rule is loaded into the Honeydipper daemon, you should be able to see from the logs, or the slack channel where the daemon is configured to set the status, that the daemon reloads configuration when there is new push to your repo. The `if_match` in the `do` section
+takes a list, so if you want to watch for more than one repo, just add them into the list.
 
 ## Reduce the polling interval
 

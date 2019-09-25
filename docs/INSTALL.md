@@ -5,7 +5,7 @@
 - [Prerequisites](#prerequisites)
 - [Step 1: Prepare your bootstrap repo](#step-1-prepare-your-bootstrap-repo)
 - [Step 2: Bootstrap your daemon](#step-2-bootstrap-your-daemon)
-  * [Running in Honeydipper in Kubernetes](#running-in-honeydipper-in-kubernetes)
+  * [Running in Kubernetes](#running-in-kubernetes)
     + [Using helm charts](#using-helm-charts)
     + [Create your own manifest file](#create-your-own-manifest-file)
   * [Running as docker container](#running-as-docker-container)
@@ -44,21 +44,23 @@ drivers:
 
 ## Step 2: Bootstrap your daemon
 
-### Running in Honeydipper in Kubernetes
+### Running in Kubernetes
 
 This is the recommended way of using Honeydipper. Not only this is the easiest way to get Honeydipper started, it also enables Honeydipper to take advantage of the power of Kubernetes.
 
 #### Using helm charts
 
-To pass the information about the bootstrap config repo to Honeydipper daemon, the recommended way is to put all the information in a yaml file then use `--values` option during `helm install`. For example:
+To pass the information about the bootstrap config repo to Honeydipper daemon, the recommended way is to put all the information in a yaml file rather than use `--values` option during `helm install`. For example:
 
 ```yaml
 # values.yaml
 ---
 daemon:
   env:
-    REPO: git@github.com/example/honeydipper-config.git
-    DIPPER_SSH_KEY:
+    - name: REPO
+      value: git@github.com/example/honeydipper-config.git
+    - name: DIPPER_SSH_KEY
+      valueFrom:
         secretKeyRef:
           name: example-secret
           key: id_rsa
@@ -69,19 +71,17 @@ Note that, we need to provide a ssh key for Honeydipper daemon to be able to fet
 Once the values file is prepared, you can run the `helm install` command like below.
 
 ```bash
-helm install --values values.yaml orchestrator stable/honeydipper
+helm install --values values.yaml orchestrator incubator/honeydipper
 ```
 
-If you want to use an older version of the chart, (as of now, the latest one is 0.1.2), use `--version` to specify the chart version. By default, the chart uses the latest stable version of the Honeydipper daemon docker image, (latest is 0.1.6 as of now).  You can change the version by specifying `--set daemon.image.tag=x.x.x` in your `helm install` command.
+If you want to use an older version of the chart, (as of now, the latest one is 0.1.3), use `--version` to specify the chart version. By default, the chart uses the latest stable version of the Honeydipper daemon docker image, (latest is `DipperCL-rc5` as of now).  You can change the version by specifying `--set daemon.image.tag=x.x.x` in your `helm install` command.
 
 ---
-We are still working on putting the Honeydipper helm chart into the official helm chart repo. For now, you can package the chart yourself using the source code as decribed below.
-
-Download the source code using `git` or `go get` command. Run the commands below. Your path may vary.
+Currently, the chart is available from incubator repo, and the [honeydipper repo](https://hub.helm.sh/charts/honeydipper/honeydipper) from helm hub as well. You may also choose to customize and build the chart by yourself following below steps.
 
 ```bash
-cd  ~/go/src/github.com/honeydipper/honeydipper # your repo root
-cd deployments/helm/
+git clone git@github.com:honeydipper/honeydipper-charts.git
+cd honeydipper
 helm package honeydipper
 ```
 You should see the chart file `honeydipper-x.y.z.tgz` in your current directory.
@@ -107,7 +107,7 @@ spec:
     spec:
       containers:
         - name: honeydipper-daemon
-          image: us.gcs.io/.../honeydipper:latest
+          image: honeydipper/honeydipper:DipperCL-rc5
           imagePullPolicy: Always
           env:
             - name: REPO
@@ -139,14 +139,14 @@ selector:
 ### Running as docker container
 
 ```bash
-docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "DIPPER_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper/honeydipper:latest
+docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "DIPPER_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper/honeydipper:DipperCL-rc5
 ```
 
-Replace the repo url with your own, and speicify the private key path for accessing the private repo remotely.
+Replace the repo url with your own, and speicify the private key path for accessing the private repo remotely. You may replace the value of `DIPPER_SSH_KEY` with a deploy key for your config repo.
 
 ### Building from source
 
-Assuming you have go 1.11 or up installed, you can use `go get` to download and build the binary.
+Assuming you have go 1.12.9 or up installed, you can use `go get` to download and build the binary.
 
 ```bash
 go get -u github.com/honeydipper/honeydipper.git

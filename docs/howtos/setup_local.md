@@ -24,7 +24,7 @@ cd ~/go/src/github.com/honeydipper/honeydipper
 dep ensure
 ```
 
-## Build and run
+## Build and test
 
  * Build
 
@@ -53,22 +53,9 @@ brew install pre-commit
 pre-commit install --install-hooks
 ```
 
- * Start your local dipper daemon
-
-```bash
-REPO=/path/to/your/local/config/repo honeydipper
-```
-
 ## Create local config REPO
 
-Honeydipper is designed to pull config directly from a git repo. Before you can bootstrap your honeydipper daemon, you will need to make sure two things.
-
- 1. Have a redis server running locally
- 2. If you want to use encrypted configuration, make sure your are authenticated with google and having "Cloud KMS Crypto Encryptor/Decryptor" role. See [encryption guide](./enable_encryption.md) for detail
-
-Follow below steps to create your local repo.
-
- * Creat your local root repo
+Run below command to create your local config repo.
 
 ```bash
 git init mytest
@@ -97,13 +84,22 @@ git add init.yaml
 git commit -m 'init' -a
 ```
 
- * Start your daemon with the local root repo
+## Start honeydipper daemon
+
+Before you start your Honeydipper daemon, you need:
+
+ 1. Have a redis server running locally
+ 2. If you want to use encrypted configuration, make sure your are authenticated with google and having "Cloud KMS Crypto Encryptor/Decryptor" role. See [encryption guide](./enable_encryption.md) for detail
 
 ```bash
-REPO=/path/to/mytest honeydipper
+REPO=/path/to/mytest LOCALREDIS=1 honeydipper
 ```
 
- * Access the healthcheck url
+When you use `LOCALREDIS=1` environment vairable, Honeydipper daemon will ignore the connection settings from your repo and use localhost instead.
+
+You can also set envrionment `DEBUG="*"` to enable verbose debug logging for all parts of daemon  and drivers.
+
+Once the daemon is running, you can access the healthcheck url like below
 
 ```
 curl -D- http://127.0.0.1:8080/health
