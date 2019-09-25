@@ -204,9 +204,11 @@ func (w *Session) initCTX(msg *dipper.Message) {
 					panic(fmt.Errorf("contexts must be a list of strings in workflow [%s]", w.workflow.Name))
 				}
 				if name != "" {
-					if name == SessionContextHooks {
-						w.isHook = true
-					}
+					// at this stage the hooks flag is added only through `context` not `contexts`
+					// this part of the code is unreachable
+					// if name == SessionContextHooks {
+					//	 w.isHook = true
+					// }
 					w.injectNamedCTX(name, msg)
 					w.loadedContexts = append(w.loadedContexts, name)
 				}
@@ -263,13 +265,20 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.UnlessAll = dipper.Interpolate(v.UnlessAll, envData).([]string)
 	ret.Match = dipper.Interpolate(v.Match, envData)
 	ret.UnlessMatch = dipper.Interpolate(v.UnlessMatch, envData)
-	ret.Iterate = dipper.Interpolate(v.Iterate, envData)
-	ret.IterateParallel = dipper.Interpolate(v.IterateParallel, envData)
 	ret.Retry = dipper.InterpolateStr(v.Retry, envData)
 	ret.Backoff = dipper.InterpolateStr(v.Backoff, envData)
 	ret.Wait = dipper.InterpolateStr(v.Wait, envData)
 	ret.CallFunction = dipper.InterpolateStr(v.CallFunction, envData)
 	ret.CallDriver = dipper.InterpolateStr(v.CallDriver, envData)
+
+	ret.Iterate = dipper.Interpolate(v.Iterate, envData)
+	if ret.Iterate == nil && v.Iterate != nil {
+		ret.Iterate = []interface{}{}
+	}
+	ret.IterateParallel = dipper.Interpolate(v.IterateParallel, envData)
+	if ret.IterateParallel == nil && v.IterateParallel != nil {
+		ret.IterateParallel = []interface{}{}
+	}
 
 	ret.While = v.While                     // repeatedly interpolated later
 	ret.WhileAny = v.WhileAny               // repeatedly interpolated later
