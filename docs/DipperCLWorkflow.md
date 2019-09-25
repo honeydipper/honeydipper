@@ -25,6 +25,12 @@
   * [Predefined Step](#predefined-step)
   * [Expanding `run_kubernetes`](#expanding-run_kubernetes)
   * [Using `run_kubernetes` in GKE](#using-run_kubernetes-in-gke)
+- [Slash Commands](#slash-commands)
+  * [Predefined Commands](#predefined-commands)
+  * [Adding New Commands](#adding-new-commands)
+  * [Mapping Parameters](#mapping-parameters)
+  * [Messages and notifications](#messages-and-notifications)
+  * [Secure the commands](#secure-the-commands)
 
 <!-- tocstop -->
 
@@ -679,4 +685,110 @@ workflows:
           steps+:
             - type: gcloud
               shell: kubectl apply -f kubernetes.yaml
+```
+
+## Slash Commands
+
+The new version of `DipperCL` comes with integration with `Slack`, including **slash commands**, right out of the box. Once the integration is setup, we can easily add/customize the slash commands. See integration guide (coming soon) for detailed instruction. There are a few predefined commands that you can try out without need of any further customization.
+
+### Predefined Commands
+
+ * **`help`** - print the list of the supported command and a brief usage info
+ * **`reload`** - force honeydipper daemon to check and reload the configuration
+
+### Adding New Commands
+
+Let's say that you have a new workflow that you want to trigger through slash command. Define or extend a `_slashcommands` context to have something like below.
+
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        <command>:
+          workflow: <workflow>
+          usage: just some brief intro to your workflow
+          contexts: # optionally you can run your workflow with these contexts
+            - my_context
+```
+Replace the content in `<>` with your own content.
+
+### Mapping Parameters
+
+Most workflows expect certain context variables to be available in order to function, for example, you may need to specify which DB to backup or restore using a `DB` context variable when invoking a backup/restore workflow. When a slash command is defined, a `parameters` context variable is made available as a string that can be accessed through `$ctx.parameters` using path interpolation or `{{ .ctx.parameters }}` in go templates. We can use the `_slashcommands` context to transform the `parameters` context variable into the actual variables the workflow requires.
+
+For an simple example,
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        my_greeting:
+          workflow: greeting
+          usage: respond with greet, take a single word as greeter
+
+    greeting: # here is the context applied to the greeting workflow
+      greeter: $ctx.parameters # the parameters is transformed into the variable required
+```
+
+In case you want a list of words,
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        my_greeting:
+          workflow: greeting
+          usage: respond with greet, take a list of greeters
+
+    greeting: # here is the context applied to the greeting workflow
+      greeters: :yaml:{{ splitList " " .ctx.parameters }} # this generates a list
+```
+
+Some complex example, command with subcommands
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        jobs:
+          workflow: jobHandler
+          usage: handling internal jobs
+
+    jobHandler:
+      command: '{{ splitList " " .ctx.parameters | first }}'
+      name: '{{ splitList " " .ctx.parameters | rest | first }}'
+      jobParams: ':yaml:{{ splitList " " .ctx.parameters | slice 2 | toJson }}'
+```
+
+### Messages and notifications
+
+By default, a slashcommand will send acknowledgement and return status message to the channel where the command is launched. The messages will only be visible to the sender, in other words, is `ephemeral`. We can define a list of channels to receive the acknowledgement and return status in addition to the sender. This increases the visibility and auditability. This is simply done by adding a `slash_notify` context variable to the `slashcommand` workflow in the `_slashcommands` context.
+
+For example,
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slash_notify:
+        - "#my_team_channel"
+        - "#security"
+        - "#dont_tell_the_ceo"
+      slashcommands:
+        ...
+```
+
+### Secure the commands
+
+When defining each command, we can use `allowed_channels` field to define a whitelist of channels from where the command can be launched. For example, it is recommended to override the `reload` command to be launched only from the whitelist channels like below.
+
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        reload: # predefined
+          allowed_channels:
+            - "#sre"
+            - "#ceo"
 ```
