@@ -98,7 +98,9 @@ func (w *Session) mergeContext(exports []map[string]interface{}) {
 func (w *Session) processNoExport(exported map[string]interface{}) {
 	for _, key := range w.workflow.NoExport {
 		if key == "*" {
-			w.exported = nil
+			for k := range exported {
+				delete(exported, k)
+			}
 			break
 		}
 		delete(exported, key)
