@@ -21,6 +21,7 @@ func (w *Session) fireHook(name string, msg *dipper.Message) {
 			w.currentHook = ""
 			return
 		}
+		// this line might be unreachable but leave it here for safety
 		dipper.Logger.Panicf("[workflow] hooks overlapping: %s vs %s for session %s", name, w.currentHook, w.ID)
 	}
 

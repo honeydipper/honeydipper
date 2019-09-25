@@ -14,7 +14,7 @@ systems:
     triggers:
       exceeded:
         driver: webhook
-        match:
+        if_match:
           method: GET
           form:
             token: 283hiwejsamcsjfoiw8833a
@@ -28,7 +28,7 @@ systems:
         source:
           system: honey_queue
           trigger: exceeded
-        match:
+        if_match:
           url: "/test29"
     functions:
       recycleDeployment:
@@ -43,7 +43,7 @@ systems:
         source:
           system: honey_queue
           trigger: exceeded
-        match:
+        if_match:
           url: "/test21"
     functions:
       recycleDeployment:
