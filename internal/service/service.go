@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -601,9 +602,17 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 			}
 		}
 		if from.Service <= min {
-			time.Sleep(time.Second)
-			dipper.Logger.Infof("[%s] reload config on broadcast reload message", min)
-			Services[min].config.Refresh()
+			m := dipper.DeserializePayload(m)
+			go func() {
+				time.Sleep(time.Second)
+				if force, ok := dipper.GetMapDataStr(m.Payload, "force"); ok && (force == "yes" || force == "true") {
+					daemon.ShutDown()
+					os.Exit(0)
+				} else {
+					dipper.Logger.Infof("[%s] reload config on broadcast reload message", min)
+					Services[min].config.Refresh()
+				}
+			}()
 		}
 	}
 }
