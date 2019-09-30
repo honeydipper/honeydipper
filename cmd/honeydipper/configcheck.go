@@ -34,11 +34,11 @@ type dipperCLError struct {
 	msg      string
 }
 
-func runConfigCheck(cfg *config.Config) bool {
-	hasError := false
+func runConfigCheck(cfg *config.Config) int {
+	ret := 0
 	for spec, repo := range cfg.Loaded {
 		if len(repo.Errors) > 0 {
-			hasError = true
+			ret = 1
 			fmt.Printf("\nRepo [%s] Branch [%s] Path [%s]\n", aurora.Cyan(spec.Repo), aurora.Cyan(spec.Branch), aurora.Cyan(spec.Path))
 			fmt.Println("─────────────────────────────────────────────────────────────")
 			for _, err := range repo.Errors {
@@ -66,7 +66,7 @@ func runConfigCheck(cfg *config.Config) bool {
 				ruleErrors = true
 			}
 			fmt.Printf("rule(%+v, `%s`): %s\n", rule.When, aurora.Cyan(location), aurora.Red(errMsg))
-			hasError = true
+			ret = 1
 		}
 	}
 
@@ -80,11 +80,11 @@ func runConfigCheck(cfg *config.Config) bool {
 				workflowErrors = true
 			}
 			fmt.Printf("workflow(%s, `%s`): %s\n", name, aurora.Cyan(location), aurora.Red(errMsg))
-			hasError = true
+			ret = 1
 		}
 	}
 
-	return hasError
+	return ret
 }
 
 func checkWorkflow(w config.Workflow, cfg *config.Config) (location string, msg string) {
