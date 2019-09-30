@@ -23,6 +23,13 @@ var FuncMap = template.FuncMap{
 	"now":      time.Now,
 	"duration": time.ParseDuration,
 	"ISO8601":  func(t time.Time) string { return t.Format(time.RFC3339) },
+	"toYaml": func(v interface{}) string {
+		s, err := yaml.Marshal(v)
+		if err != nil {
+			panic(err)
+		}
+		return string(s)
+	},
 }
 
 // InterpolateStr : interpolate a string and return a string

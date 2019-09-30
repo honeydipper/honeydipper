@@ -40,6 +40,9 @@ type Config struct {
 	OnChange      func()
 	IsConfigCheck bool
 	CheckRemote   bool
+	IsDocGen      bool
+	DocSrc        string
+	DocDst        string
 }
 
 // Bootstrap loads the configuration during daemon bootstrap.

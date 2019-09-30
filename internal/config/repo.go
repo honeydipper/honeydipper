@@ -77,7 +77,7 @@ func (c *Repo) loadFile(filename string) {
 		}
 
 		if content.Repos != nil {
-			if c.parent.IsConfigCheck && c.parent.CheckRemote || !c.parent.IsConfigCheck {
+			if !c.parent.IsDocGen && (c.parent.CheckRemote || !c.parent.IsConfigCheck) {
 				for _, referredRepo := range content.Repos {
 					if !c.parent.isRepoLoaded(referredRepo) {
 						c.parent.loadRepo(referredRepo)

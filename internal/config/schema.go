@@ -107,9 +107,11 @@ type Rule struct {
 
 // RepoInfo points to a git repo where config data can be read from.
 type RepoInfo struct {
-	Repo   string
-	Branch string
-	Path   string
+	Repo        string
+	Branch      string
+	Path        string
+	Name        string
+	Description string
 }
 
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.
