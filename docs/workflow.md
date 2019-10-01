@@ -315,7 +315,7 @@ See [interpolation guide](http://honeydipper.io/interpolation.html) for detail o
 ### Merging Modifier
 When data from different data source is merged, by default, map structure is deeply merged, while all other type of data with the same name is replaced by the newer source. One exception is that if the data in the new source is not the same type of the existing data, the old data stays in that case.
 
-For example;
+For example, undesired merge behavior:
 ```yaml
 ---
 workflows
@@ -353,8 +353,11 @@ data: # final
   foo_param: "a string"
 ```
 
-We can change the behavior by using merging modifiers in the names of overriding data
+We can change the behavior by using merging modifiers at the end of the overriding data names.
 
+Usage:
+
+`var` is an example name of the overriding data, the following character indicates what type of merge modifier to use.
  * `var-`: only use the new value if the `var` is not already defined and not nil
  * `var+`: if the `var` is a list or string, the new value will be appended to the existing values
  * `var*`: forcefully override the value
