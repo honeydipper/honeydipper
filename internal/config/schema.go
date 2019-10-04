@@ -25,8 +25,10 @@ type Trigger struct {
 	Match      map[string]interface{} `json:"if_match" mapstructure:"if_match"`
 	Parameters map[string]interface{}
 	// A trigger should have only one of source event a raw event.
-	Source Event
-	Export map[string]interface{}
+	Source      Event
+	Export      map[string]interface{}
+	Description string
+	Meta        interface{}
 }
 
 // Function is the datastructure hold the information to run actions.
@@ -39,20 +41,25 @@ type Function struct {
 	Export          map[string]interface{}
 	ExportOnSuccess map[string]interface{} `json:"export_on_success" mapstructure:"export_on_success"`
 	ExportOnFailure map[string]interface{} `json:"export_on_failure" mapstructure:"export_on_failure"`
+	Description     string
+	Meta            interface{}
 }
 
 // System is an abstract construct to group data, trigger and function definitions.
 type System struct {
-	Data      map[string](interface{})
-	Triggers  map[string]Trigger
-	Functions map[string]Function
-	Extends   []string
+	Data        map[string](interface{})
+	Triggers    map[string]Trigger
+	Functions   map[string]Function
+	Extends     []string
+	Description string
+	Meta        interface{}
 }
 
 // Workflow defines one or more actions needed to complete certain task and how they are orchestrated.
 type Workflow struct {
 	Name        string
 	Description string
+	Meta        interface{}
 	Context     string
 	Contexts    interface{}
 	Local       map[string]interface{} `json:"with" mapstructure:"with"`

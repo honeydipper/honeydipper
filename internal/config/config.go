@@ -287,6 +287,12 @@ func mergeSystem(d *System, s System, key string) error {
 				if err != nil {
 					return err
 				}
+				if exist.Description == "" {
+					exist.Description = trigger.Description
+				}
+				if exist.Meta == nil {
+					exist.Meta = trigger.Meta
+				}
 			} else {
 				exist = trigger
 			}
@@ -328,6 +334,13 @@ func mergeSystem(d *System, s System, key string) error {
 			d.Data = map[string]interface{}{}
 		}
 		d.Data[key] = s.Data
+	}
+
+	if s.Description != "" {
+		d.Description = s.Description
+	}
+	if s.Meta != nil {
+		d.Meta = s.Meta
 	}
 
 	return nil

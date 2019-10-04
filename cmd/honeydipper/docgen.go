@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/ghodss/yaml"
@@ -38,6 +39,10 @@ type DocGenConfig struct {
 	Items    []DocItem
 	Sections []DocGenConfig
 }
+
+// IncludePattern is used for find all include statements
+var IncludePattern = regexp.MustCompile(`\{\{\s*include\s+"([\w\.\/-]+)"\s+\}\}`)
+var tmplCache = map[string]string{}
 
 func runDocGen(cfg *config.Config) {
 	var dgCfg DocGenConfig
@@ -124,12 +129,35 @@ func ensureDirExists(file string) {
 	}
 }
 
+func readFile(root string, file string) string {
+	cwd := path.Dir(file)
+	tmpl, err := ioutil.ReadFile(path.Join(root, file))
+	if err != nil {
+		panic(err)
+	}
+
+	includes := IncludePattern.FindAllSubmatchIndex(tmpl, -1)
+
+	sections := make([]string, len(includes)*2+1)
+	pos := 0
+	for i, match := range includes {
+		sections[i*2] = string(tmpl[pos:match[0]])
+		filename := path.Clean(path.Join(cwd, string(tmpl[match[2]:match[3]])))
+		sections[i*2+1] = readFile(root, filename)
+		pos = match[1]
+	}
+	sections[2*len(includes)] = string(tmpl[pos:])
+
+	return strings.Join(sections, "")
+}
+
 func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config) {
 	name := dipper.InterpolateStr(item.Name, envData)
 	dipper.Logger.Infof("Generating file %s from template %s", name, item.Template)
-	tmpl, err := ioutil.ReadFile(path.Join(cfg.DocSrc, item.Template))
-	if err != nil {
-		panic(err)
+	tmpl, ok := tmplCache[item.Template]
+	if !ok {
+		tmpl = readFile(cfg.DocSrc, item.Template)
+		tmplCache[item.Template] = tmpl
 	}
 
 	if current, ok := envData["current"]; ok {
@@ -143,11 +171,11 @@ func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config
 		}
 	}
 
-	doc := dipper.InterpolateStr(string(tmpl), envData)
+	doc := dipper.InterpolateStr(tmpl, envData)
 
 	file := path.Join(cfg.DocDst, name)
 	ensureDirExists(file)
-	err = ioutil.WriteFile(file, []byte(doc), 0644)
+	err := ioutil.WriteFile(file, []byte(doc), 0644)
 	if err != nil {
 		panic(err)
 	}
