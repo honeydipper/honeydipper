@@ -10,6 +10,7 @@
 package main
 
 import (
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -74,14 +75,14 @@ func runDocGen(cfg *config.Config) {
 		case item.Template != "":
 			createItem(item, envData, cfg)
 		case len(item.Children) > 0:
-			downloadChildren(item, cfg)
+			fetchChildren(item, cfg)
 		case item.Source != "":
-			downloadItem(item, cfg)
+			fetchItem(item, cfg)
 		}
 	}
 }
 
-func downloadChildren(item DocItem, cfg *config.Config) {
+func fetchChildren(item DocItem, cfg *config.Config) {
 	for _, child := range item.Children {
 		parts := strings.Split(child, "=>")
 		sourceSuffix := strings.TrimSpace(parts[0])
@@ -89,32 +90,54 @@ func downloadChildren(item DocItem, cfg *config.Config) {
 		if len(parts) > 1 {
 			nameSuffix = strings.TrimSpace(parts[1])
 		}
-		downloadItem(DocItem{
+		fetchItem(DocItem{
 			Name:   path.Join(item.Name, nameSuffix),
 			Source: item.Source + "/" + sourceSuffix,
 		}, cfg)
 	}
 }
 
-func downloadItem(item DocItem, cfg *config.Config) {
-	dipper.Logger.Infof("Downloading source %s", item.Source)
-	resp, err := http.Get(item.Source)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode > 299 {
-		dipper.Logger.Warningf("Received status code %d when fetching file %s", resp.StatusCode, item.Source)
-	} else {
-		content, err := ioutil.ReadAll(resp.Body)
+func fetchItem(item DocItem, cfg *config.Config) {
+	dipper.Logger.Infof("Fetching source %s", item.Source)
+	switch {
+	case strings.HasPrefix(item.Source, "http://"):
+		fallthrough
+	case strings.HasPrefix(item.Source, "https://"):
+		resp, err := http.Get(item.Source)
 		if err != nil {
 			panic(err)
 		}
+		defer resp.Body.Close()
 
+		if resp.StatusCode > 299 {
+			dipper.Logger.Warningf("Received status code %d when fetching file %s", resp.StatusCode, item.Source)
+		} else {
+			content, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				panic(err)
+			}
+
+			file := path.Join(cfg.DocDst, item.Name)
+			ensureDirExists(file)
+			err = ioutil.WriteFile(file, content, 0644)
+			if err != nil {
+				panic(err)
+			}
+		}
+	default:
+		in, err := os.Open(item.Source)
+		if err != nil {
+			panic(err)
+		}
+		defer in.Close()
 		file := path.Join(cfg.DocDst, item.Name)
 		ensureDirExists(file)
-		err = ioutil.WriteFile(file, content, 0644)
+		out, err := os.Create(file)
+		if err != nil {
+			panic(err)
+		}
+		defer out.Close()
+		_, err = io.Copy(out, in)
 		if err != nil {
 			panic(err)
 		}
