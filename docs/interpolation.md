@@ -9,16 +9,20 @@ your configuration repo with CI to run config check upon every push or PR.
   * [*`ENC[driver,ciphertext/base64==]`* Encrypted content](#encdriverciphertextbase64-encrypted-content)
   * [*:regex:* Regular expression pattern](#regex-regular-expression-pattern)
   * [*:yaml:* Building data structure with yaml](#yaml-building-data-structure-with-yaml)
-  * [*:path:* Referencing context data with given path](#path-referencing-context-data-with-given-path)
+  * [*$* Referencing context data with given path](#-referencing-context-data-with-given-path)
 - [Inline go template](#inline-go-template)
   * [Caveat: What does "inline" mean?](#caveat-what-does-inline-mean)
   * [go template](#go-template)
   * [Functions offerred by Honeydipper](#functions-offerred-by-honeydipper)
-  * [fromPath](#frompath)
-- [Escaping function parameter interpolation](#escaping-function-parameter-interpolation)
+    + [fromPath](#frompath)
+    + [now](#now)
+    + [duration](#duration)
+    + [ISO8601](#iso8601)
+    + [toYaml](#toyaml)
 - [Workflow contextual data](#workflow-contextual-data)
   * [Workflow Interpolation](#workflow-interpolation)
   * [Function Parameters Interpolation](#function-parameters-interpolation)
+  * [Trigger Condition Interpolation](#trigger-condition-interpolation)
 
 <!-- tocstop -->
 
@@ -57,7 +61,7 @@ For example:
 rules:
   - when:
       driver: webhook
-      conditions:
+      if_match:
         url: :regex:/test_.*$
   - do:
     ...
@@ -74,28 +78,21 @@ For example:
 <!-- {% raw %} -->
 ```yaml
 workflows:
-  foreach_parallel:
-    type: if
-    condition: '{{ gt (len .wfdata.items) 0 }}'
-    content:
-      - |
-          :yaml:---
-          type: parallel
-          content:
-            {{- range .wfdata.items }}
-            - type: pipe
-              content:
-                - :path:wfdata.work
-              data:
-                current: "{{ . }}"
-            {{- end }}
+  create_list:
+    export:
+      items: |
+        :yaml:---
+        {{- range .ctx.results }}
+        - name: {{ .name }}
+          value: {{ .value }}
+        {{- end }}
 ```
 <!-- {% endraw %} -->
 
-### *:path:* Referencing context data with given path
+### *$* Referencing context data with given path
 
-When Honeydipper executes a `workflow`, some data is kept in the context. We can use either the `:path:` prefix or the inline go template to
-fetch the context data. The benefit of using `:path:` prefix is that we can get the data as a structure such as map or list instead of a
+When Honeydipper executes a `workflow`, some data is kept in the context. We can use either the `$` prefix or the inline go template to
+fetch the context data. The benefit of using `$` prefix is that we can get the data as a structure such as map or list instead of a
 string representation.
 
 Can be used in workflow definitions(data, content), workflow condition, function parameters.
@@ -105,15 +102,55 @@ For example:
 ```yaml
 workflows:
   next_if_success:
-    type: if
-    condition: '{{ eq .labels.status "success" }}'
-    content: :path:wfdata.work
+    if:
+      - $ctx.result
+    call_workflow: $ctx.work
 ```
 <!-- {% endraw %} -->
 
+The data available for `$` referencing includes
+
+ * `ctx` - context data
+ * `data` - the latest received dipper message payload
+ * `event` - the original dipper message payload from the event
+ * `labels` - the latest receive dipper message labels
+
+The `$` reference can be used with multiple data entry separated by `,`. The first non empty result will be used. For example,
+
+```yaml
+workflows:
+  find_first:
+    call_workflow: show_name
+    with:
+      name: $ctx.name,ctx.full_name,ctx.nick_name # choose the first non empty value from the listed varialbes
+```
+
+We can also specify a default value with quotes either single quote, double quote or back tick, if all the listed variables
+are empty or nil. For example
+
+```yaml
+workflows:
+  do_something:
+    call_workflow: something
+    with:
+      timeout: $ctx.timeout,ctx.default_timeout,"1800"
+```
+
+We can also allow nil or empty value using a `?` mark. For example
+
+```yaml
+workflows:
+  do_something:
+    call_workflow: something
+    with:
+      timeout: $ctx.timeout,ctx.default_timeout,"1800"
+      previous: $?ctx.previous
+```
+
+
 ## Inline go template
 
-Besides the `:path:` prefix, we can also use inline go template to access the workflow context data. The inline go template can be used in
+Besides the `$` prefix, we can also use inline go template to access the workflow context data. The inline go template can be used in
 workflow definitions(data, content), workflow conidtion, and function parameters.
 
 ### Caveat: What does "inline" mean?
@@ -127,12 +164,12 @@ begining of a string without quoting, because the yaml renderer may treat it as 
 ### go template
 
 Here are some available resources for go template:
- * How to use go template? [https://golang.org/pkg/text/template/]
+ * How to use go template? [https://golang.org/pkg/text/template/](https://golang.org/pkg/text/template/)
  * [sprig functions](http://masterminds.github.io/sprig/)
 
 ### Functions offerred by Honeydipper
 
-### fromPath
+#### fromPath
 
 Like the `:path:` prefix interpolation, the `fromPath` function takes a parameter as path and return the data the path points to. It is
 similar to the `index` built in function, but uses a more condensed path expression.
@@ -167,40 +204,59 @@ rules:
 ```
 <!-- {% endraw %} -->
 
-## Escaping function parameter interpolation
-Honeydipper executes the inline go templates and run `:path:`, `:yaml:` interpolations at two places:
- 1. When a workflow starts
- 2. When a driver function is invoked
+#### now
 
-When a workflow starts, Honeydipper workflow engine needs all information to determine how the workflow should be executed, so the `data`, `content` and `condition` fields are interpolated. It will not interpolate/execute the function parameters, because the contextual data for the function call has not been finalized yet, and it may very well be overridden by the children workflows. So, we want to leave the function parameters to the `operator` service to interpolate when all the data is available and finalized. Sometimes, we want to define some abstract workflows, such as `repeat` `foreach`, where the actual workflow content including the parameters is passed as workflow data, we will need to escape the parameters interpolation, if used, so workflow engine won't interpolate them too early.
+This function returns current timestamp.
 
-For example:
-<!-- {% raw %} -->
 ```yaml
-rules:
-  - when:
-      source:
-        system: something
-        event: happened
-  - do:
-      content: foreach_parallel
-      data:
-        items:
-          - '@user1'
-          - '#a_channel'
-        work:
-          type: function
-          content:
-            target:
-              system: slack
-              function: say
-            parameters:
-              content:
-                text: something happened
-              # see below how to escape the interpolation
-              channel: '{{ "{{ .wfdata.current }}" }}'
+---
+workflows:
+  do_something:
+    call_workflow: something
+    with:
+      time: '{{ now | toString }}'
 ```
-<!-- {% endraw %} -->
+
+#### duration
+
+This function parse the duration string and can be used for date time calculation.
+
+```yaml
+---
+workflows:
+  do_something:
+    steps:
+      - wait: '{{ duration "1m" }}'
+      - call_workflow: something
+```
+
+#### ISO8601
+
+This function format the timestamp into the ISO8601 format.
+
+```yaml
+---
+workflows:
+  do_something:
+    steps:
+      - call_workflow: something
+        with:
+          time_str: '{{ now | ISO8601 }}'
+```
+
+#### toYaml
+
+This function converts the given data structure into a yaml string
+
+```yaml
+---
+workflows:
+  do_something:
+    steps:
+      - call_workflow: something
+        with:
+          yaml_str: '{{ .ctx.parameters | toYaml }}'
+```
 
 ## Workflow contextual data
 Depending on where the interpolation is executed, 1) workflow engine, 2) operator (function parameters), the available contextual data is slightly different.
@@ -213,7 +269,7 @@ This happens when workflow `engine` is parsing and executing the workflows, but 
     * **status**: the status of the previous workflow, "success", "failure" (driver failure), "blocked" (failed in daemon)
     * **reason**: a string describe why the previous workflow is not successful
     * **sessionID**
-  * **wfdata**: the data passed to the workflow when it is invoked
+  * **ctx**: the data passed to the workflow when it is invoked
   * **event**: the event payload that triggered the original workflow
 
 ### Function Parameters Interpolation
@@ -224,7 +280,7 @@ This happens at `operator` side, before the final `parameters` are passed to the
     * **status**: the status of the previous workflow, "success", "failure" (driver failure), "blocked" (failed in daemon)
     * **reason**: a string describe why the previous workflow is not successful
     * **sessionID**
-  * **wfdata**: the data passed to the workflow when it is invoked
+  * **ctx**: the data passed to the workflow when it is invoked
   * **event**: the event payload that triggered the original workflow
   * **sysData**: the data defined in the system the function belongs to
   * **params**: the parameter that is passed to the function

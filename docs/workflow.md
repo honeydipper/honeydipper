@@ -1,4 +1,4 @@
-# DipperCL Workflow Composing Guide
+# Workflow Composing Guide
 
 <!-- toc -->
 
@@ -310,7 +310,7 @@ It is recommended to avoid using `event` and `data` in workflows, and stick to `
  * **e-yaml encryption** - a string with `ENC[` prefix, storing base64 encoded encrypted content
  * **file attachment** - a relative path following a `@:` prefix, requires quoting
 
-See [interpolation guide](http://honeydipper.io/interpolation.html) for detail on how to use interpolation.
+See [interpolation guide](./interpolation.html) for detail on how to use interpolation.
 
 ### Merging Modifier
 When data from different data source is merged, by default, map structure is deeply merged, while all other type of data with the same name is replaced by the newer source. One exception is that if the data in the new source is not the same type of the existing data, the old data stays in that case.

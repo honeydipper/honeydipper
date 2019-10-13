@@ -17,7 +17,7 @@
 
 ## Topology and loading order
 
-As mentioned in the [Architecture/Design](../README.md), Honeydipper requires almost no local configuration to bootstrap; it only requires a
+As mentioned in the [Architecture/Design](../README.md), Honeydipper requires very little local configuration to bootstrap; it only requires a
 few environment variables to point it towards the git repo from which the bootstrap configurations are loaded. The bootstrap repo can load
 other repos using the `repos` section in any of the loaded yaml files. Inside every repo, Honeydipper will first load the `init.yaml`, and
 then load all the yaml files under `includes` section. Any of the files can also use a `includes` section to load even more files, and so
@@ -31,12 +31,12 @@ One of the key selling point of Honeydipper is the ability to reuse and share. T
 into repos then shared among projects, teams and organizations. Over time, we are expecting to see a number of reusable public config repos
 contributed and maintained by communities. The seed of the repos is the
 [honeydipper-config-essentials](https://github.com/honeydipper/honeydipper-config-essentials) repo, and the reference document can be found
-[here](https://honeydipper.github.io/honeydipper-config-essentials/).
+[here](https://honeydipper-sphinx.readthedocs.io/en/latest/essentials.html).
 
 ## Data Set
 
-Every file contains a `DataSet`. In the end, all the files in all the repos will be merged into a final `DataSet`. A `DataSet` should
-contain some of the below-mentioned sections. See [a sample config file](../configs/sample-init.yaml) for examples.
+`DataSet` is the building block of Honeydipper config. Every configuration file contains a `DataSet`. Once all files are loaded, all the
+`DataSet` will be merged a final `DataSet`. A `DataSet` is made up with one or more sections listed below.
 
 ```go
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.
@@ -47,6 +47,7 @@ type DataSet struct {
 	Includes  []string               `json:"includes,omitempty"`
 	Repos     []RepoInfo             `json:"repos,omitempty"`
 	Workflows map[string]Workflow    `json:"workflows,omitempty"`
+  Contexts  map[string]interface{} `json:"contexts,omitempty"`
 }
 ```
 
@@ -152,7 +153,53 @@ definition.  We can create some abstract systems that contains part of the data 
 can either be defined using `driver` and `rawAction` or inherit definition from another `Function` by specifying a `target`. Similarly, a
 `Trigger` can be defined using `driver` and `rawEvent` or inherit definition from another `Trigger` using `source`.
 
-See the [sample file](../configs/sample-init.yaml) for examples.
+For example, inheriting the `kubernetes` system to create an instance of `kubernetes` cluster.
+
+```yaml
+---
+systems:
+  my-k8s-cluster:
+    extends:
+      - kubernetes
+    data:
+      source:
+        type: gcloud-gke
+        project: myproject
+        location: us-west1-a
+        cluster: mycluster
+        service_account: ENC[gcloud-kms,...masked...]
+```
+
+You can then use `my-k8s-cluster.recycleDeployment` function in workflows or rules to recycle dployments in the cluster. Or, you can pass
+`my-k8s-cluster` to `run_kubernetes` workflow as `system` context variable to run jobs in that cluster.
+
+Another example would be to extend the `slack_bot` system, to create another instance of slack integration.
+
+```yaml
+---
+systems:
+  slack_bot: # first slack bot integration
+    data:
+      token: ...
+      slash_token: ...
+      interact_token: ...
+
+  my_team_slack_bot: # second slack bot integration
+    extends:
+      - slack_bot
+    data:
+      token: ...
+      slash_token: ...
+      interact_token: ...
+
+rules:
+  - when:
+      source:
+        system: my_team_slack_bot
+        trigger: slashcommand
+    do:
+      call_workflow: my_team_slashcommands
+```
 
 ## Workflows
 
@@ -208,5 +255,5 @@ You can also use `-h` option to see a full list of supported environment variabl
 
 For a list of available drivers, systems, and workflows that you can take advantage of immediately, see the reference here.
 
- * [Honeydipper config essentials](https://honeydipper.github.io/honeydipper-config-essentials/)
+ * [Honeydipper config essentials](../essentials.html)
 
