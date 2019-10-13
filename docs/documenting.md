@@ -250,7 +250,7 @@ In order to build the document for local viewing, follow below steps.
  5. generating the source document for sphinx
     ```bash
     cd honeydipper-sphinx
-    docker run -it -v docgen:/docgen -v source:/source -e DOCSRC=/docgen -e DOCDST=/source honeydipper/honeydipper:DipperCL-rc4 docgen
+    docker run -it -v docgen:/docgen -v source:/source -e DOCSRC=/docgen -e DOCDST=/source honeydipper/honeydipper:DipperCL-rc5 docgen
     ```
  6. build the documents
     ```bash
