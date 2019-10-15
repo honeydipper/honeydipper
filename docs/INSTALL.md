@@ -146,7 +146,7 @@ Replace the repo url with your own, and speicify the private key path for access
 
 ### Building from source
 
-Assuming you have go 1.12.9 or up installed, you can use `go get` to download and build the binary.
+Assuming you have go 1.13.1 or up installed, you can use `go get` to download and build the binary.
 
 ```bash
 go get -u github.com/honeydipper/honeydipper.git
