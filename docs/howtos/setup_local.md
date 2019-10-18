@@ -84,7 +84,7 @@ git add init.yaml
 git commit -m 'init' -a
 ```
 
-## Start honeydipper daemon
+## Start Honeydipper daemon
 
 Before you start your Honeydipper daemon, you need:
 

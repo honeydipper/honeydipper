@@ -53,7 +53,7 @@ type DataSet struct {
 
 While it is possible to fit everything into a single file, it is recommended to organize your configurations into smaller chunks in a way
 that each chunk contains only relevant settings. For example, a file can define just a system and all its functions and triggers. Or, a file
-can define all the infomation about a driver. Another example would be to define a workflow in a file separately.
+can define all the information about a driver. Another example would be to define a workflow in a file separately.
 
 ## Repos
 
@@ -170,7 +170,7 @@ systems:
         service_account: ENC[gcloud-kms,...masked...]
 ```
 
-You can then use `my-k8s-cluster.recycleDeployment` function in workflows or rules to recycle dployments in the cluster. Or, you can pass
+You can then use `my-k8s-cluster.recycleDeployment` function in workflows or rules to recycle deployments in the cluster. Or, you can pass
 `my-k8s-cluster` to `run_kubernetes` workflow as `system` context variable to run jobs in that cluster.
 
 Another example would be to extend the `slack_bot` system, to create another instance of slack integration.

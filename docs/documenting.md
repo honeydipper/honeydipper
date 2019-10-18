@@ -1,4 +1,4 @@
-# DipperCL Document Generating
+# DipperCL Document Automatic Generation
 
 <!-- toc -->
 
@@ -27,7 +27,7 @@ The `description` field is usually a simple string that will be a paragraph in t
 The `meta` field is a map of different items based on what entry the meta is for.
 
 Since the `description` field does not support formatting, and the it could be used for log generating at runtime, it is recommended to
-not use the `description` field, and intead use a `description` field under the `meta` field.
+not use the `description` field, and instead use a `description` field under the `meta` field.
 
 ## Documenting a Driver
 
@@ -43,14 +43,14 @@ Following fields are allowed under the `meta` field for a driver,
 For each of the `rawActions`,
 
    * `description` - A list of items to be rendered as paragraphs following the name of the action
-   * `parameters` - A list of `name`, `description` pairs describing the context varialbes needed for this action
-   * `returns` - A list of `name`, `description` pares describing the context varaibles exported by this action
+   * `parameters` - A list of `name`, `description` pairs describing the context variables needed for this action
+   * `returns` - A list of `name`, `description` pairs describing the context variables exported by this action
    * `notes` - A list of items to be rendered as paragraphs following the above items
 
 For each of the `rawEvents`,
 
    * `description` - A list of items to be rendered as paragraphs following the name of the event
-   * `returns` - A list of `name`, `description` pares describing the context varaibles exported by this event
+   * `returns` - A list of `name`, `description` pairs describing the context variables exported by this event
    * `notes` - A list of items to be rendered as paragraphs following the above items
 
 For each of the `RPCs`,
@@ -109,14 +109,14 @@ Following fields are allowed under the `meta` field for a `system`,
 For each of the `functions`,
 
    * `description` - A list of items to be rendered as paragraphs following the name of the function
-   * `inputs` - A list of `name`, `description` pairs describing the context varialbes needed for this function
-   * `exports` - A list of `name`, `description` pares describing the context varaibles exported by this function
+   * `inputs` - A list of `name`, `description` pairs describing the context variables needed for this function
+   * `exports` - A list of `name`, `description` pares describing the context variables exported by this function
    * `notes` - A list of items to be rendered as paragraphs following the above items
 
 For each of the `triggers`,
 
    * `description` - A list of items to be rendered as paragraphs following the name of the trigger
-   * `exports` - A list of `name`, `description` pares describing the context varaibles exported by this trigger
+   * `exports` - A list of `name`, `description` pares describing the context variables exported by this trigger
    * `notes` - A list of items to be rendered as paragraphs following the above items
 
 For example, to define the mata information for a system,
@@ -168,8 +168,8 @@ systems:
 Following fields are allowed under the `meta` field for a `workflow`,
 
    * `description` - A list of items to be rendered as paragraphs following the top level description
-   * `inputs` - A list of `name`, `description` pairs describing the context varialbes needed for this workflow
-   * `exports` - A list of `name`, `description` pares describing the context varaibles exported by this workflow
+   * `inputs` - A list of `name`, `description` pairs describing the context variables needed for this workflow
+   * `exports` - A list of `name`, `description` pares describing the context variables exported by this workflow
    * `notes` - A list of items to be rendered as paragraphs following the above items
 
 For example, to define the mata information for a workflow,

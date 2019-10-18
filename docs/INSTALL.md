@@ -1,4 +1,4 @@
-# Instailling Honeydipper
+# Installing Honeydipper
 
 <!-- toc -->
 
@@ -142,7 +142,7 @@ selector:
 docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "DIPPER_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper/honeydipper:DipperCL-rc5
 ```
 
-Replace the repo url with your own, and speicify the private key path for accessing the private repo remotely. You may replace the value of `DIPPER_SSH_KEY` with a deploy key for your config repo.
+Replace the repo url with your own, and specify the private key path for accessing the private repo remotely. You may replace the value of `DIPPER_SSH_KEY` with a deploy key for your config repo.
 
 ### Building from source
 

@@ -13,7 +13,7 @@ your configuration repo with CI to run config check upon every push or PR.
 - [Inline go template](#inline-go-template)
   * [Caveat: What does "inline" mean?](#caveat-what-does-inline-mean)
   * [go template](#go-template)
-  * [Functions offerred by Honeydipper](#functions-offerred-by-honeydipper)
+  * [Functions offered by Honeydipper](#functions-offerred-by-honeydipper)
     + [fromPath](#frompath)
     + [now](#now)
     + [duration](#duration)
@@ -52,7 +52,7 @@ systems:
 ### *:regex:* Regular expression pattern
 
 yaml doesn't have native support for regular expressions. When Honeydipper detects a string value starts with this prefix, it will interpret
-the following string as a regular expresstion pattern used for matching the conditions.
+the following string as a regular expression pattern used for matching the conditions.
 
 Can be used in system data, event conditions.
 
@@ -125,7 +125,7 @@ workflows:
       name: $ctx.name,ctx.full_name,ctx.nick_name # choose the first non empty value from the listed varialbes
 ```
 
-We can also specify a default value with quotes either single quote, double quote or back tick, if all the listed variables
+We can also specify a default value with quotes, either single quotes, double quotes or back ticks, if all the listed variables
 are empty or nil. For example
 
 ```yaml
@@ -151,7 +151,7 @@ workflows:
 ## Inline go template
 
 Besides the `$` prefix, we can also use inline go template to access the workflow context data. The inline go template can be used in
-workflow definitions(data, content), workflow conidtion, and function parameters.
+workflow definitions(data, content), workflow condition, and function parameters.
 
 ### Caveat: What does "inline" mean?
 
@@ -159,7 +159,7 @@ Unlike in typical templating languages, where templates were executed before yam
 boot time or when reloading, and only executes the template when the particular content is needed. This allows Honeydipper to provide
 runtime data to the template when it is executed. However, that also means that templates can only be stored in strings. You can't wrap yaml
 tags in templates, unless you store the yaml as text like in the example for `:yaml:` prefix interpolation. Also, you can't use <!-- {% raw %} -->`{{`<!-- {% endraw %} --> at the
-begining of a string without quoting, because the yaml renderer may treat it as the start of a data structure.
+beginning of a string without quoting, because the yaml renderer may treat it as the start of a data structure.
 
 ### go template
 
@@ -167,7 +167,7 @@ Here are some available resources for go template:
  * How to use go template? [https://golang.org/pkg/text/template/](https://golang.org/pkg/text/template/)
  * [sprig functions](http://masterminds.github.io/sprig/)
 
-### Functions offerred by Honeydipper
+### Functions offered by Honeydipper
 
 #### fromPath
 
@@ -206,7 +206,7 @@ rules:
 
 #### now
 
-This function returns current timestamp.
+This function returns current timestamps.
 
 ```yaml
 ---
@@ -232,7 +232,7 @@ workflows:
 
 #### ISO8601
 
-This function format the timestamp into the ISO8601 format.
+This function format the timestamps into the ISO8601 format.
 
 ```yaml
 ---
@@ -286,6 +286,6 @@ This happens at `operator` side, before the final `parameters` are passed to the
   * **params**: the parameter that is passed to the function
 
 ### Trigger Condition Interpolation
-This happens at the startup of the `receiver` service.  All the used events are processed into `collapsed` events. The  `conditions` in the collapsed events are interpolated before being passed to `event driver`.
+This happens at the start up of the `receiver` service.  All the used events are processed into `collapsed` events. The  `conditions` in the collapsed events are interpolated before being passed to `event driver`.
 
   * **sysData**: the data defined in the system the event belongs to

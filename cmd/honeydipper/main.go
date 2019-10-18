@@ -31,10 +31,10 @@ Usage:  %v [ -h ] service1 service2 ...
 
 Supported services include engine, receiver, operator, docgen and configcheck.
 Docgen and configcheck are auxiliary services used for helping users managing their
-honeydipper configurations. They can not be combined, and honeydipper exits after
+Honeydipper configurations. They can not be combined, and Honeydipper exits after
 completing the desired auxiliary tasks instead of running as a daemon.
 
-If services are not specified, honeydipper will load all non-auxiliary services and
+If services are not specified, Honeydipper will load all non-auxiliary services and
 run as a daemon.
 
 Configcheck service is used for validating local uncommitted config files.
