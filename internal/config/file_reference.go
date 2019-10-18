@@ -15,15 +15,15 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-func (r *Repo) normalizeFilePath(cwd string, file string) string {
-	fullpath := path.Clean(path.Join(r.root, cwd, file))
-	if !strings.HasPrefix(fullpath, r.root+"/") {
+func (c *Repo) normalizeFilePath(cwd string, file string) string {
+	fullpath := path.Clean(path.Join(c.root, cwd, file))
+	if !strings.HasPrefix(fullpath, c.root+"/") {
 		panic(fmt.Errorf("path is invalid: %s", fullpath))
 	}
 	return fullpath
 }
 
-func (r *Repo) normalizeFilePaths(currentFile string, content *DataSet) {
+func (c *Repo) normalizeFilePaths(currentFile string, content *DataSet) {
 	var processor func(key string, val interface{}) (interface{}, bool)
 
 	cwd := path.Dir(currentFile)
@@ -32,7 +32,7 @@ func (r *Repo) normalizeFilePaths(currentFile string, content *DataSet) {
 		switch v := val.(type) {
 		case string:
 			if len(v) > 2 && v[0:2] == "@:" {
-				text, err := ioutil.ReadFile(r.normalizeFilePath(cwd, v[2:]))
+				text, err := ioutil.ReadFile(c.normalizeFilePath(cwd, v[2:]))
 				if err != nil {
 					panic(err)
 				}

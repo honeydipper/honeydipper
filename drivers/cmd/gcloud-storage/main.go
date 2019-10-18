@@ -62,20 +62,13 @@ func getStorageClient(serviceAccountBytes string) *storage.Client {
 	return client
 }
 
-func getCommonParams(params interface{}) (string, string, string) {
+func getCommonParams(params interface{}) (string, string) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
 		panic(errors.New("project required"))
 	}
-	location, ok := dipper.GetMapDataStr(params, "location")
-	if ok {
-		suffix := location[len(location)-2:]
-		if suffix >= "-a" && suffix <= "-z" {
-			location = location[:len(location)-2]
-		}
-	}
-	return serviceAccountBytes, project, location
+	return serviceAccountBytes, project
 }
 
 // BucketIterator is an interface for iterate BucketAttrs
@@ -91,7 +84,7 @@ type ObjectIterator interface {
 func listBuckets(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, project, _ := getCommonParams(params)
+	serviceAccountBytes, project := getCommonParams(params)
 
 	var client = getStorageClient(serviceAccountBytes)
 
@@ -123,7 +116,7 @@ func listBucketsHelper(msg *dipper.Message, it BucketIterator) {
 func listFiles(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _, _ := getCommonParams(params)
+	serviceAccountBytes, _ := getCommonParams(params)
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
@@ -173,7 +166,7 @@ func listFilesHelper(msg *dipper.Message, it ObjectIterator) {
 func fetchFile(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _, _ := getCommonParams(params)
+	serviceAccountBytes, _ := getCommonParams(params)
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {

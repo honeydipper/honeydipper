@@ -77,12 +77,11 @@ func (w *Session) buildEnvData(msg *dipper.Message) map[string]interface{} {
 }
 
 // save will store the session in the memory
-func (w *Session) save() string {
+func (w *Session) save() {
 	if w.ID == "" {
 		w.ID = dipper.IDMapPut(&w.store.sessions, w)
 		dipper.Logger.Infof("[workflow] session with parent [%s] saved as [%s]", w.parent, w.ID)
 	}
-	return w.ID
 }
 
 // isLoop checks if the workflow uses looping statements while and until

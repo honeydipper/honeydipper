@@ -43,7 +43,6 @@ func CollapseFunction(s *System, f *Function, cfg *Config) *CollapsedFunction {
 			ret.SysData = parent[subsystem].(map[string]interface{})
 			ret.SysData["parent"] = parent
 		}
-
 	} else {
 		if len(f.Target.System) > 0 {
 			dipper.Logger.Panicf("[operator] function cannot have both driver and target %s.%s %s", f.Target.System, f.Target.Function, f.Driver)

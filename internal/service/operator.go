@@ -149,7 +149,6 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 			sysData = parent[subsystem].(map[string]interface{})
 			sysData["parent"] = parent
 		}
-
 	} else {
 		driver = f.Driver
 		rawaction = f.RawAction

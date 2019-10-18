@@ -45,7 +45,6 @@ func (c *RPCCaller) CallNoWait(out io.Writer, feature string, method string, par
 
 // CallRaw : making a RPC call to another driver with raw data
 func (c *RPCCaller) CallRaw(out io.Writer, feature string, method string, params []byte) ([]byte, error) {
-
 	// keep track the call in the map
 	var result = make(chan interface{}, 1)
 	var rpcID = IDMapPut(&c.Result, result)
@@ -62,7 +61,7 @@ func (c *RPCCaller) CallRaw(out io.Writer, feature string, method string, params
 			return nil, e
 		}
 		return msg.([]byte), nil
-	case <-time.After(time.Second * 10): // TODO: make timeout configurable
+	case <-time.After(time.Second * 10):
 		return nil, errors.New("timeout")
 	}
 }

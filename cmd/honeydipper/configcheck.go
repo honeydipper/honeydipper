@@ -155,7 +155,6 @@ func checkWorkflowFunction(w config.Workflow, cfg *config.Config) {
 			checkObjectExists(f.System+" function", f.Function, cfg.DataSet.Systems[f.System].Functions)
 		}
 	}
-
 }
 
 func checkWorkflowDriver(w config.Workflow, cfg *config.Config) {

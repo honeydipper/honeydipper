@@ -196,6 +196,7 @@ func findJobByName(msg *dipper.Message) {
 		err    error
 		job    *dataflow.Job
 	)
+
 	for job == nil {
 		execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		func() {

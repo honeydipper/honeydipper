@@ -32,6 +32,7 @@ func GetGitSSHAuth() transport.AuthMethod {
 		if len(keybytes) > 0 || len(keyfile) > 0 || len(keysock) == 0 {
 			if len(keybytes) > 0 {
 				if auth, e := ssh.NewPublicKeys("git", []byte(keybytes), keypass); e == nil {
+					// #nosec
 					auth.HostKeyCallback = crypto_ssh.InsecureIgnoreHostKey()
 					currentSSHAuth = auth
 				} else {
@@ -42,6 +43,7 @@ func GetGitSSHAuth() transport.AuthMethod {
 					keyfile = path.Join(os.Getenv("HOME"), ".ssh", "id_rsa")
 				}
 				if auth, e := ssh.NewPublicKeysFromFile("git", keyfile, keypass); e == nil {
+					// #nosec
 					auth.HostKeyCallback = crypto_ssh.InsecureIgnoreHostKey()
 					currentSSHAuth = auth
 				} else {

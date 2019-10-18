@@ -158,7 +158,6 @@ func (w *Session) executeIteration(msg *dipper.Message) {
 					defer w.onError()
 					child.execute(msg)
 				}(child)
-
 			}
 		}
 	} else {

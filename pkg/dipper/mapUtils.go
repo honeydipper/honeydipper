@@ -22,9 +22,11 @@ func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 	if !current.IsValid() {
 		return nil, false
 	}
+
 	components := strings.Split(path, ".")
 	for _, component := range components {
 		var nextValue reflect.Value
+
 		switch current.Kind() {
 		case reflect.Map:
 			nextValue = current.MapIndex(reflect.ValueOf(component))
@@ -36,11 +38,14 @@ func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 				nextValue = current.Index(i)
 			}
 		}
+
 		if !nextValue.IsValid() {
 			return nil, false
 		}
+
 		current = reflect.ValueOf(nextValue.Interface())
 	}
+
 	if !current.IsValid() {
 		return nil, false
 	}
@@ -159,6 +164,7 @@ func RecursiveWithPrefix(
 		if newval, ok := process(newPrefixes, from); ok {
 			vparent := reflect.ValueOf(parent)
 			vval := reflect.ValueOf(newval)
+
 			switch vparent.Kind() {
 			case reflect.Map:
 				vparent.SetMapIndex(reflect.ValueOf(key), vval)

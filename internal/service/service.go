@@ -549,13 +549,8 @@ func (s *Service) setDriverRuntime(feature string, runtime *driver.Runtime) *dri
 	return nil
 }
 
-func (s *Service) checkDeleteDriverRuntime(feature string, check *driver.Runtime) *driver.Runtime {
-	oldone := dipper.LockCheckDeleteMap(&s.driverLock, s.driverRuntimes, feature, check)
-	if oldone != nil {
-		oldruntime := oldone.(*driver.Runtime)
-		return oldruntime
-	}
-	return nil
+func (s *Service) checkDeleteDriverRuntime(feature string, check *driver.Runtime) {
+	dipper.LockCheckDeleteMap(&s.driverLock, s.driverRuntimes, feature, check)
 }
 
 // RPCCallRaw is used for making a PRC call with raw bytes from driver to another driver.
