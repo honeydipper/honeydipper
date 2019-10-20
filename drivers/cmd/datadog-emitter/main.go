@@ -46,8 +46,8 @@ func main() {
 
 	daemonID = dipper.GetIP()
 	driver = dipper.NewDriver(os.Args[1], "datadog-emitter")
-	driver.RPC.Provider.RPCHandlers["counter_increment"] = counterIncr
-	driver.RPC.Provider.RPCHandlers["gauge_set"] = gaugeSet
+	driver.RPCHandlers["counter_increment"] = counterIncr
+	driver.RPCHandlers["gauge_set"] = gaugeSet
 	driver.Reload = loadOptions
 	driver.Start = loadOptions
 	driver.Run()

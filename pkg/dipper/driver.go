@@ -17,9 +17,7 @@ import (
 // Driver : the helper stuct for creating a honey-dipper driver in golang
 type Driver struct {
 	RPCCaller
-	RPC struct {
-		Provider RPCProvider
-	}
+	RPCProvider
 	Name            string
 	Service         string
 	State           string
@@ -44,7 +42,7 @@ func NewDriver(service string, name string) *Driver {
 		Out:     os.Stdout,
 	}
 
-	driver.RPC.Provider.Init("rpc", "return", driver.Out)
+	driver.RPCProvider.Init("rpc", "return", driver.Out)
 	driver.RPCCaller.Init(&driver, "rpc", "call")
 	driver.CommandProvider.Init("eventbus", "return", driver.Out)
 
@@ -53,7 +51,7 @@ func NewDriver(service string, name string) *Driver {
 		"command:ping":     driver.Ping,
 		"command:start":    driver.start,
 		"command:stop":     driver.stop,
-		"rpc:call":         driver.RPC.Provider.Router,
+		"rpc:call":         driver.RPCProvider.Router,
 		"rpc:return":       driver.HandleReturn,
 		"eventbus:command": driver.CommandProvider.Router,
 	}
