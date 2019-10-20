@@ -342,7 +342,7 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 }
 
 func getGKEConfig(cfg map[string]interface{}) *rest.Config {
-	retbytes, err := driver.RPCCall("driver:gcloud-gke", "getKubeCfg", cfg)
+	retbytes, err := driver.Call("driver:gcloud-gke", "getKubeCfg", cfg)
 	if err != nil {
 		log.Panicf("[%s] failed call gcloud to get kubeconfig %+v", driver.Service, err)
 	}

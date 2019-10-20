@@ -107,7 +107,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 				auth, ok := dipper.GetMapData(condition, ":auth:")
 				if ok {
 					authDriver := dipper.MustGetMapDataStr(auth, "driver")
-					authResult, err := driver.RPCCall("driver:"+authDriver, "webhookAuth", map[string]interface{}{
+					authResult, err := driver.Call("driver:"+authDriver, "webhookAuth", map[string]interface{}{
 						"event":     eventData,
 						"condition": auth,
 					})

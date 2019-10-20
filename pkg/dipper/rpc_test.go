@@ -16,16 +16,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/honeydipper/honeydipper/pkg/dipper/mock_dipper"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRPCCallRaw(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStub := mock_dipper.NewMockRPCCallerStub(ctrl)
+
 	var b bytes.Buffer
 	c := RPCCaller{}
-	c.Init("rpc", "call")
-	go func() {
-		PanicError(c.CallRaw(&b, "target", "testmethod", []byte("hello world")))
-	}()
+
+	mockStub.EXPECT().GetName().AnyTimes().Return("mockCaller")
+	mockStub.EXPECT().GetStream(gomock.Any()).Return(&b)
+	c.Init(mockStub, "rpc", "call")
+	assert.NotPanicsf(t, func() { c.CallRaw("target", "testmethod", []byte("hello world")) }, "CallRaw should not panic")
 	time.Sleep(time.Second / 10)
 	var channel, subject string
 	var size, numlabels int
