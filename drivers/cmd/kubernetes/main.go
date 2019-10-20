@@ -56,10 +56,10 @@ func main() {
 
 	driver = dipper.NewDriver(os.Args[1], "kubernetes")
 	log = driver.GetLogger()
-	driver.CommandProvider.Commands["recycleDeployment"] = recycleDeployment
-	driver.CommandProvider.Commands["createJob"] = createJob
-	driver.CommandProvider.Commands["waitForJob"] = waitForJob
-	driver.CommandProvider.Commands["getJobLog"] = getJobLog
+	driver.Commands["recycleDeployment"] = recycleDeployment
+	driver.Commands["createJob"] = createJob
+	driver.Commands["waitForJob"] = waitForJob
+	driver.Commands["getJobLog"] = getJobLog
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }

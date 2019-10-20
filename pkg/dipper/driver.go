@@ -18,6 +18,7 @@ import (
 type Driver struct {
 	RPCCaller
 	RPCProvider
+	CommandProvider
 	Name            string
 	Service         string
 	State           string
@@ -29,7 +30,6 @@ type Driver struct {
 	Stop            MessageHandler
 	Reload          MessageHandler
 	ReadySignal     chan bool
-	CommandProvider CommandProvider
 }
 
 // NewDriver : create a blank driver object

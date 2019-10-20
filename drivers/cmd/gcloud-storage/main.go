@@ -37,9 +37,9 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "gcloud-storage")
-	driver.CommandProvider.Commands["listBuckets"] = listBuckets
-	driver.CommandProvider.Commands["listFiles"] = listFiles
-	driver.CommandProvider.Commands["fetchFile"] = fetchFile
+	driver.Commands["listBuckets"] = listBuckets
+	driver.Commands["listFiles"] = listFiles
+	driver.Commands["fetchFile"] = fetchFile
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }

@@ -38,11 +38,11 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "gcloud-dataflow")
-	driver.CommandProvider.Commands["createJob"] = createJob
-	driver.CommandProvider.Commands["waitForJob"] = waitForJob
-	driver.CommandProvider.Commands["getJob"] = getJob
-	driver.CommandProvider.Commands["findJobByName"] = findJobByName
-	driver.CommandProvider.Commands["updateJob"] = updateJob
+	driver.Commands["createJob"] = createJob
+	driver.Commands["waitForJob"] = waitForJob
+	driver.Commands["getJob"] = getJob
+	driver.Commands["findJobByName"] = findJobByName
+	driver.Commands["updateJob"] = updateJob
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
