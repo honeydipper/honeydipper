@@ -74,7 +74,7 @@ Once the values file is prepared, you can run the `helm install` command like be
 helm install --values values.yaml orchestrator incubator/honeydipper
 ```
 
-If you want to use an older version of the chart, (as of now, the latest one is 0.1.3), use `--version` to specify the chart version. By default, the chart uses the latest stable version of the Honeydipper daemon docker image, (latest is `DipperCL-rc5` as of now).  You can change the version by specifying `--set daemon.image.tag=x.x.x` in your `helm install` command.
+If you want to use an older version of the chart, (as of now, the latest one is 0.1.3), use `--version` to specify the chart version. By default, the chart uses the latest stable version of the Honeydipper daemon docker image, (latest is `1.0.0` as of now).  You can change the version by specifying `--set daemon.image.tag=x.x.x` in your `helm install` command.
 
 ---
 Currently, the chart is available from incubator repo, and the [honeydipper repo](https://hub.helm.sh/charts/honeydipper/honeydipper) from helm hub as well. You may also choose to customize and build the chart by yourself following below steps.
@@ -107,7 +107,7 @@ spec:
     spec:
       containers:
         - name: honeydipper-daemon
-          image: honeydipper/honeydipper:DipperCL-rc5
+          image: honeydipper/honeydipper:1.0.0
           imagePullPolicy: Always
           env:
             - name: REPO
@@ -139,7 +139,7 @@ selector:
 ### Running as docker container
 
 ```bash
-docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "DIPPER_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper/honeydipper:DipperCL-rc5
+docker run -it -e 'REPO=git@github.com/example/honeydipper-config.git' -e "DIPPER_SSH_KEY=$(cat ~/.ssh/id_rsa)"  honeydipper/honeydipper:1.0.0
 ```
 
 Replace the repo url with your own, and specify the private key path for accessing the private repo remotely. You may replace the value of `DIPPER_SSH_KEY` with a deploy key for your config repo.
