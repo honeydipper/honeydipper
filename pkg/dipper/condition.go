@@ -42,6 +42,49 @@ func Compare(actual string, criteria interface{}) bool {
 	return false
 }
 
+// CompareMap : compare a map to a map
+func CompareMap(actual interface{}, criteria interface{}) bool {
+	switch scenario := criteria.(type) {
+	case []interface{}:
+		if len(scenario) == 0 {
+			return true
+		}
+		for _, sc := range scenario {
+			if CompareMap(actual, sc) {
+				return true
+			}
+		}
+		return false
+	case map[string]interface{}:
+		value := reflect.ValueOf(actual)
+		for key, subCriteria := range scenario {
+			if key == ":auth:" {
+				// offload to another driver using RPC
+				// pass
+			} else if key == ":absent:" {
+				keys := []interface{}{}
+				for _, k := range value.MapKeys() {
+					keys = append(keys, k.Interface())
+				}
+				if CompareAll(keys, subCriteria) {
+					// key not absent
+					return false
+				}
+			} else if subVal := value.MapIndex(reflect.ValueOf(key)); subVal.IsValid() {
+				if !CompareAll(subVal.Interface(), subCriteria) {
+					return false
+				}
+			} else {
+				// value not present for this criteria
+				return false
+			}
+		}
+		return true
+	}
+	// map value with an unsupported criteria
+	return false
+}
+
 // CompareAll : compare all conditions against an event data structure
 func CompareAll(actual interface{}, criteria interface{}) bool {
 	if criteria == nil {
@@ -74,33 +117,7 @@ func CompareAll(actual interface{}, criteria interface{}) bool {
 		return false
 
 	case reflect.Map:
-		if mapCriteria, ok := criteria.(map[string]interface{}); ok {
-			for key, subCriteria := range mapCriteria {
-				if key == ":auth:" {
-					// offload to another driver using RPC
-					// pass
-				} else if key == ":absent:" {
-					keys := []interface{}{}
-					for _, k := range value.MapKeys() {
-						keys = append(keys, k.Interface())
-					}
-					if CompareAll(keys, subCriteria) {
-						// key not absent
-						return false
-					}
-				} else if subVal := value.MapIndex(reflect.ValueOf(key)); subVal.IsValid() {
-					if !CompareAll(subVal.Interface(), subCriteria) {
-						return false
-					}
-				} else {
-					// value not present for this criteria
-					return false
-				}
-			}
-			return true
-		}
-		// map value with a non-map criteria
-		return false
+		return CompareMap(actual, criteria)
 	}
 
 	// unable to handle a nil value or unknown criteria

@@ -36,6 +36,7 @@ var OnStart func()
 // ShutDown the daemon gracefully.
 func ShutDown() {
 	ShuttingDown = true
+
 	Children.Wait()
 }
 

@@ -98,9 +98,12 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	eventData := extractEventData(w, r)
 
 	if eventData["url"] != "/hz/alive" {
+		log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
+
 		matched := false
 		for _, hook := range hooks {
-			for _, condition := range hook.([]interface{}) {
+			for _, collapsed := range hook.([]interface{}) {
+				condition, _ := dipper.GetMapData(collapsed, "match")
 				auth, ok := dipper.GetMapData(condition, ":auth:")
 				if ok {
 					authDriver := dipper.MustGetMapDataStr(auth, "driver")
@@ -160,7 +163,6 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 		"remoteAddr": r.RemoteAddr,
 	}
 
-	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
 	if r.Method == http.MethodPost {
 		bodyBytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {

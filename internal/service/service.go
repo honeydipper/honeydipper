@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -470,7 +471,7 @@ func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
 			}
 		}
 
-		if msg != nil {
+		if msg != nil && s.Route != nil {
 			// router
 			routedMsgs := s.Route(msg)
 
@@ -481,6 +482,10 @@ func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
 			}
 		}
 	}(&msg)
+}
+
+func (s *Service) addResponder(channelSubject string, f MessageResponder) {
+	s.responders[channelSubject] = append(s.responders[channelSubject], f)
 }
 
 func (s *Service) addExpect(expectKey string, processor ExpectHandler, timeout time.Duration, except func()) {
@@ -544,13 +549,8 @@ func (s *Service) setDriverRuntime(feature string, runtime *driver.Runtime) *dri
 	return nil
 }
 
-func (s *Service) checkDeleteDriverRuntime(feature string, check *driver.Runtime) *driver.Runtime {
-	oldone := dipper.LockCheckDeleteMap(&s.driverLock, s.driverRuntimes, feature, check)
-	if oldone != nil {
-		oldruntime := oldone.(*driver.Runtime)
-		return oldruntime
-	}
-	return nil
+func (s *Service) checkDeleteDriverRuntime(feature string, check *driver.Runtime) {
+	dipper.LockCheckDeleteMap(&s.driverLock, s.driverRuntimes, feature, check)
 }
 
 // RPCCallRaw is used for making a PRC call with raw bytes from driver to another driver.
@@ -597,9 +597,17 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 			}
 		}
 		if from.Service <= min {
-			time.Sleep(time.Second)
-			dipper.Logger.Infof("[%s] reload config on broadcast reload message", min)
-			Services[min].config.Refresh()
+			m := dipper.DeserializePayload(m)
+			go func() {
+				time.Sleep(time.Second)
+				if force, ok := dipper.GetMapDataStr(m.Payload, "force"); ok && (force == "yes" || force == "true") {
+					daemon.ShutDown()
+					os.Exit(0)
+				} else {
+					dipper.Logger.Infof("[%s] reload config on broadcast reload message", min)
+					Services[min].config.Refresh()
+				}
+			}()
 		}
 	}
 }

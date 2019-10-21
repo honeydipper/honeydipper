@@ -4,6 +4,6 @@ drivers:
     connection:
       Addr: localhost:6379
   webhook:
-    Addr: ":8081"
+    Addr: "127.0.0.1:8081"
   gcloud-kms:
     keyname: projects/test-project/locations/us-central1/keyRings/secure_config/cryptoKeys/kube_secrets

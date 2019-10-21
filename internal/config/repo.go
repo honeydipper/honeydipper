@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/ghodss/yaml"
@@ -76,7 +77,7 @@ func (c *Repo) loadFile(filename string) {
 		}
 
 		if content.Repos != nil {
-			if c.parent.IsConfigCheck && c.parent.CheckRemote || !c.parent.IsConfigCheck {
+			if !c.parent.IsDocGen && (c.parent.CheckRemote || !c.parent.IsConfigCheck) {
 				for _, referredRepo := range content.Repos {
 					if !c.parent.isRepoLoaded(referredRepo) {
 						c.parent.loadRepo(referredRepo)
@@ -95,6 +96,7 @@ func (c *Repo) loadFile(filename string) {
 			}
 		}
 
+		c.normalizeFilePaths(filename, &content)
 		dipper.PanicError(mergeDataSet(&(c.DataSet), content))
 		c.files[filename] = true
 		dipper.Logger.Infof("config file [%v] loaded", filename)
@@ -117,7 +119,10 @@ func (c *Repo) loadRepo() {
 
 	var err error
 	if c.parent.IsConfigCheck && *c.repo == c.parent.InitRepo {
-		c.root = c.repo.Repo
+		c.root, err = filepath.Abs(c.repo.Repo)
+		if err != nil {
+			panic(err)
+		}
 		dipper.Logger.Infof("using working copy of repo [%v]", c.root)
 		// uncomment below to ensure the working copy is a repo
 		// if _, err = git.PlainOpen(c.root); err != nil {

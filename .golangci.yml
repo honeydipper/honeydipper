@@ -1,7 +1,7 @@
 # golangci.com configuration
 # https://github.com/golangci/golangci/wiki/Configuration
 service:
-  golangci-lint-version: 1.15.x # use fixed version to not introduce new linters unexpectedly
+  golangci-lint-version: 1.21.x # use fixed version to not introduce new linters unexpectedly
 
 linters:
   enable-all: true
@@ -9,10 +9,16 @@ linters:
     # code to be refactored at some point
     # but seems necessary to have global variables
     - gochecknoglobals
+    - wsl
 
 linters-settings:
   lll:
     line-length: 142
+  funlen:
+    lines: 120
+    statements: 80
+  gocognit:
+    min-complexity: 60
 
 run:
   tests: false

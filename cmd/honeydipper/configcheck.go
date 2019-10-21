@@ -10,7 +10,7 @@ package main
 
 import (
 	"fmt"
-	"strconv"
+	"reflect"
 	"strings"
 
 	"github.com/honeydipper/honeydipper/internal/config"
@@ -19,23 +19,34 @@ import (
 )
 
 const (
-	// InterpolationPrefixPath the path interpolation prefix
-	InterpolationPrefixPath = ":path:"
-	// InterpolationPrefixYaml the yaml interpolation prefix
-	InterpolationPrefixYaml = ":yaml:"
+	// ErrorFieldCollision is the error message when two conflicting fields are set
+	ErrorFieldCollision = "cannot define both `%s` and `%s`"
+	// ErrorNotDefined is the error message when an required asset is not defined
+	ErrorNotDefined = "%s `%s` not defined"
+	// ErrorNotAllowed is the message when a field is not allowed due to missing pairing field
+	ErrorNotAllowed = "field `%s` not allowed without pairing field"
+	// ErrorNotAList is the message when a field is supposed to be a list
+	ErrorNotAList = "field `%s` must be a list or something interpolated into a list"
 )
 
-func runConfigCheck(cfg *config.Config) bool {
-	hasError := false
+type dipperCLError struct {
+	location string
+	msg      string
+}
+
+func runConfigCheck(cfg *config.Config) int {
+	ret := 0
 	for spec, repo := range cfg.Loaded {
 		if len(repo.Errors) > 0 {
-			hasError = true
+			ret = 1
 			fmt.Printf("\nRepo [%s] Branch [%s] Path [%s]\n", aurora.Cyan(spec.Repo), aurora.Cyan(spec.Branch), aurora.Cyan(spec.Path))
 			fmt.Println("─────────────────────────────────────────────────────────────")
 			for _, err := range repo.Errors {
 				msg := err.Error.Error()
 				// transforming error message
 				msg = strings.Replace(msg, "error converting YAML to JSON: yaml: ", "", 1)
+				msg = strings.Replace(msg, "error unmarshaling JSON:", "", 1)
+				msg = strings.Replace(msg, "unmarshal errors:\n  ", "", 1)
 
 				fmt.Printf("%s: %s\n", err.File[1:], aurora.Red(msg))
 			}
@@ -44,9 +55,9 @@ func runConfigCheck(cfg *config.Config) bool {
 
 	ruleErrors := false
 	for _, rule := range cfg.DataSet.Rules {
-		location, errMsg := checkWorkflow(rule.Do)
+		location, errMsg := checkWorkflow(rule.Do, cfg)
 		if len(errMsg) > 0 {
-			rule.When.Conditions = map[string]interface{}{
+			rule.When.Match = map[string]interface{}{
 				"_": aurora.Cyan("truncated ..."),
 			}
 			if !ruleErrors {
@@ -54,197 +65,188 @@ func runConfigCheck(cfg *config.Config) bool {
 				fmt.Println("─────────────────────────────────────────────────────────────")
 				ruleErrors = true
 			}
-			fmt.Printf("rule(%+v, %s): %s\n", rule.When, aurora.Cyan(location), aurora.Red(errMsg))
-			hasError = true
+			fmt.Printf("rule(%+v, `%s`): %s\n", rule.When, aurora.Cyan(location), aurora.Red(errMsg))
+			ret = 1
 		}
 	}
 
 	workflowErrors := false
 	for name, workflow := range cfg.DataSet.Workflows {
-		location, errMsg := checkWorkflow(workflow)
+		location, errMsg := checkWorkflow(workflow, cfg)
 		if len(errMsg) > 0 {
 			if !workflowErrors {
 				fmt.Printf("\nFound error in Workflows\n")
 				fmt.Println("─────────────────────────────────────────────────────────────")
 				workflowErrors = true
 			}
-			fmt.Printf("workflow(%s, %s): %s\n", name, aurora.Cyan(location), aurora.Red(errMsg))
-			hasError = true
+			fmt.Printf("workflow(%s, `%s`): %s\n", name, aurora.Cyan(location), aurora.Red(errMsg))
+			ret = 1
 		}
 	}
 
-	return hasError
+	return ret
 }
 
-// to be refactored to simpler function or functions
-//nolint:gocyclo
-func checkWorkflow(w config.Workflow) (string, string) {
-	var location string
-
-	// check content based on type of workflow
-	switch w.Type {
-	case "":
-		fallthrough
-	case "name":
-		if _, ok := w.Content.(string); !ok {
-			return location, "name of workflow missing for named workflow"
-		}
-	case "suspend":
-		if _, ok := w.Content.(string); !ok {
-			return location, "suspend ID missing (content) for suspend workflow"
-		}
-	case "pipe":
-		fallthrough
-	case "if":
-		fallthrough
-	case "parallel":
-		switch v := w.Content.(type) {
-		case string:
-			v = strings.TrimSpace(v)
-			if v[:6] == InterpolationPrefixPath || v[:6] == InterpolationPrefixYaml {
-				// skip interpolation
+func checkWorkflow(w config.Workflow, cfg *config.Config) (location string, msg string) {
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(dipperCLError); ok {
+				location = e.location
+				msg = e.msg
 			} else {
-				return location, "workflow content should not be a string for pipe, parallel, if"
-			}
-		case []interface{}:
-			if len(v) == 0 {
-				return location, "workflow content should have more than one child for pipe, parallel, if"
-			}
-			if w.Type == "if" {
-				if len(v) > 2 {
-					return location, "`if` type workflow should at most 2 branches in content"
-				}
-			}
-		default:
-			return location, "workflow content should be a slice of children for pipe, parallel, if"
-		}
-		// check children
-		for i, child := range w.Content.([]interface{}) {
-			location = w.Type + "/" + strconv.Itoa(i)
-			switch c := child.(type) {
-			case string:
-				c = strings.TrimSpace(c)
-				if c[:6] == InterpolationPrefixPath || c[:6] == InterpolationPrefixYaml {
-					// skip interpolation
-				} else {
-					return location, "workflow should not be a string"
-				}
-			case map[string]interface{}:
-				var cw config.Workflow
-				err := mapstructure.Decode(c, &cw)
-				if err != nil {
-					return location, err.Error()
-				}
-				childLocation, errMsg := checkWorkflow(cw)
-				if len(errMsg) > 0 {
-					return location + "/" + childLocation, errMsg
-				}
-			default:
-				return location, "workflow should be a structure with some required/optional fields"
+				msg = r.(error).Error()
 			}
 		}
-	case "switch":
-		switch v := w.Content.(type) {
-		case string:
-			v = strings.TrimSpace(v)
-			if v[:6] == InterpolationPrefixPath || v[:6] == InterpolationPrefixYaml || v[:2] == "{{" {
-				// skip interpolation
-			} else {
-				return location, "workflow should not be a string for switch"
-			}
-		case map[string]interface{}:
-			// check children
-			for i, child := range v {
-				location = w.Type + "/" + i
-				switch c := child.(type) {
-				case string:
-					c = strings.TrimSpace(c)
-					if c[:6] == InterpolationPrefixPath || c[:6] == InterpolationPrefixYaml {
-						// skip interpolation
-					} else {
-						return location, "workflow should not be a string"
-					}
-				case map[string]interface{}:
-					var cw config.Workflow
-					err := mapstructure.Decode(c, &cw)
-					if err != nil {
-						return location, err.Error()
-					}
-					childLocation, errMsg := checkWorkflow(cw)
-					if len(errMsg) > 0 {
-						return location + "/" + childLocation, errMsg
-					}
-				default:
-					return location, "workflow should be a structure with some required/optional fields"
-				}
-			}
-		default:
-			return location, "workflow content should be a map of child workflows for switch"
-		}
+	}()
+
+	location = "/"
+
+	checkWorkflowActions(w)
+	checkWorkflowConditions(w)
+	checkObjectExists("workflow", w.Workflow, cfg.DataSet.Workflows)
+	checkWorkflowFunction(w, cfg)
+	checkWorkflowDriver(w, cfg)
+
+	checkIsList("contexts", w.Contexts)
+	checkIsList("iterate", w.Iterate)
+	checkIsList("iterate_parallel", w.IterateParallel)
+
+	checkChildWorkflow("else/", w.Else, cfg)
+
+	for i, item := range w.Steps {
+		checkChildWorkflow(fmt.Sprintf("step/%d/", i), item, cfg)
 	}
 
-	// check condition
-	if w.Type == "if" || w.Type == "switch" {
-		if len(w.Condition) == 0 {
-			return location, "condition missing for if or switch workflow"
-		}
-	} else {
-		if len(w.Condition) > 0 {
-			return location, "condition not allowed for workflows other than if or switch"
-		}
+	for i, item := range w.Threads {
+		checkChildWorkflow(fmt.Sprintf("thread/%d/", i), item, cfg)
 	}
 
-	// check wfdata
-	if childLocation, dataErr := checkWfdata(w.Data); dataErr != "" {
-		return location + "/" + childLocation, dataErr
-	}
-
-	return "", ""
+	return location, msg
 }
 
-func checkWfdata(data interface{}) (string, string) {
-	var location = "data"
-	switch v := data.(type) {
-	case string:
-		return location, ""
-	case []interface{}:
-		for index, value := range v {
-			location = strconv.Itoa(index)
-			if childLocation, errMsg := checkWfdata(value); errMsg != "" {
-				return location + "/" + childLocation, errMsg
-			}
+func checkChildWorkflow(prefix string, child interface{}, cfg *config.Config) {
+	if child == nil {
+		return
+	}
+
+	w, ok := child.(config.Workflow)
+	if !ok {
+		err := mapstructure.Decode(child, &w)
+		if err != nil {
+			panic(dipperCLError{location: prefix, msg: err.Error()})
 		}
-	case map[string]interface{}:
-		for name, value := range v {
-			location = "data/" + name
-			if name == "steps" {
-				return location, "use `*steps` to avoid merging of the steps from outer workflows"
-			} else if name == "work" {
-				if wfstr, ok := value.(string); ok {
-					if len(wfstr) == 0 {
-						return location, "empty `work`"
-					} else if wfstr[0] != ':' {
-						return location, "`work` should be a workflow object or something interpolated into a workflow object"
-					}
-				} else if dict, ok := value.(map[string]interface{}); ok {
-					var cw config.Workflow
-					err := mapstructure.Decode(dict, &cw)
-					if err != nil {
-						return location, "`work` should be a workflow object: " + err.Error()
-					}
-					childLocation, errMsg := checkWorkflow(cw)
-					if len(errMsg) > 0 {
-						return location + "/" + childLocation, errMsg
-					}
-				} else {
-					return location, "`work` should be a workflow object or something interpolated into a workflow object"
-				}
+	}
+
+	l, msg := checkWorkflow(w, cfg)
+	if msg != "" {
+		panic(dipperCLError{location: prefix + l, msg: msg})
+	}
+}
+
+func checkWorkflowFunction(w config.Workflow, cfg *config.Config) {
+	if w.CallFunction != "" && !hasInterpolation(w.CallFunction) {
+		parts := strings.Split(w.CallFunction, ".")
+		checkObjectExists("system", parts[0], cfg.DataSet.Systems)
+		checkObjectExists(parts[0]+" function", parts[1], cfg.DataSet.Systems[parts[0]].Functions)
+	} else if w.Function.Target.System != "" && !hasInterpolation(w.Function.Target.System) {
+		f := w.Function.Target
+		checkObjectExists("system", f.System, cfg.DataSet.Systems)
+		if !hasInterpolation(f.Function) {
+			checkObjectExists(f.System+" function", f.Function, cfg.DataSet.Systems[f.System].Functions)
+		}
+	}
+}
+
+func checkWorkflowDriver(w config.Workflow, cfg *config.Config) {
+	if w.CallDriver != "" && !hasInterpolation(w.CallDriver) {
+		parts := strings.Split(w.CallDriver, ".")
+		checkObjectExists("driver", parts[0], cfg.DataSet.Drivers)
+	} else if w.Function.Driver != "" && !hasInterpolation(w.Function.Driver) {
+		checkObjectExists("driver", w.Function.Driver, cfg.DataSet.Drivers)
+	}
+}
+
+func checkWorkflowActions(w config.Workflow) {
+	f := &fieldChecker{}
+
+	f.setField("call_workflow", hasLiteral(w.Workflow))
+	f.setField("call_function", hasLiteral(w.CallFunction))
+	f.setField("call_driver", hasLiteral(w.CallDriver))
+	f.setField("wait", w.Wait != "")
+	f.setField("steps", len(w.Steps) > 0)
+	f.setField("threads", len(w.Threads) > 0)
+	f.setField("switch", w.Switch != "")
+}
+
+func checkWorkflowConditions(w config.Workflow) {
+	f := &fieldChecker{}
+
+	f.setField("if_match", w.Match != nil)
+	f.setField("unless_match", w.UnlessMatch != nil)
+	f.setField("while_match", w.WhileMatch != nil)
+	f.setField("until_match", w.UntilMatch != nil)
+
+	f.setField("if", len(w.If) > 0)
+	f.setField("unless", len(w.Unless) > 0)
+	f.setField("if_any", len(w.IfAny) > 0)
+	f.setField("unless_all", len(w.UnlessAll) > 0)
+	f.setField("while", len(w.While) > 0)
+	f.setField("while_any", len(w.WhileAny) > 0)
+	f.setField("until_all", len(w.UntilAll) > 0)
+
+	f.allowFieldWhenSet("else", w.Else != nil)
+}
+
+// helper functions below
+
+func checkIsList(name string, f interface{}) {
+	if f != nil {
+		if s, ok := f.(string); ok {
+			if s != "" && hasLiteral(s) {
+				panic(fmt.Errorf(ErrorNotAList, name))
 			}
-			childLocation, errMsg := checkWfdata(value)
-			if errMsg != "" {
-				return location + "/" + childLocation, errMsg
+		} else {
+			v := reflect.ValueOf(f)
+			if v.Kind() != reflect.Array && v.Kind() != reflect.Slice {
+				panic(fmt.Errorf(ErrorNotAList, name))
 			}
 		}
 	}
-	return "", ""
+}
+
+func checkObjectExists(t, name string, m interface{}) {
+	if name != "" && !hasInterpolation(name) {
+		if !reflect.ValueOf(m).MapIndex(reflect.ValueOf(name)).IsValid() {
+			panic(fmt.Errorf(ErrorNotDefined, t, name))
+		}
+	}
+}
+
+func hasLiteral(param string) bool {
+	s := strings.TrimSpace(param)
+	return s != "" && s[0] != '$' && !(strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}")) && !strings.HasPrefix(s, ":yaml:")
+}
+
+func hasInterpolation(param string) bool {
+	s := strings.TrimSpace(param)
+	return s != "" && (s[0] == '$' || strings.Contains(s, "{{")) || strings.HasPrefix(s, ":yaml:")
+}
+
+type fieldChecker struct {
+	field string
+}
+
+func (f *fieldChecker) setField(name string, condition bool) {
+	if condition {
+		if f.field != "" {
+			panic(fmt.Errorf(ErrorFieldCollision, f.field, name))
+		}
+		f.field = name
+	}
+}
+
+func (f *fieldChecker) allowFieldWhenSet(name string, condition bool) {
+	if condition && f.field == "" {
+		panic(fmt.Errorf(ErrorNotAllowed, name))
+	}
 }

@@ -7,40 +7,47 @@
 package dipper
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
-)
 
-//nolint:gochecknoinits
-func init() {
-	gob.Register(map[string]interface{}{})
-	gob.Register([]interface{}{})
-}
+	"github.com/imdario/mergo"
+)
 
 // GetMapData : get the data from the deep map following a KV path
 func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 	var current = reflect.ValueOf(from)
 	if !current.IsValid() {
-		return nil, ok
+		return nil, false
 	}
+
 	components := strings.Split(path, ".")
 	for _, component := range components {
-		if current.Kind() != reflect.Map {
-			return nil, ok
+		var nextValue reflect.Value
+
+		switch current.Kind() {
+		case reflect.Map:
+			nextValue = current.MapIndex(reflect.ValueOf(component))
+		case reflect.Slice:
+			fallthrough
+		case reflect.Array:
+			i, err := strconv.Atoi(component)
+			if err == nil && i >= 0 && i < current.Len() {
+				nextValue = current.Index(i)
+			}
 		}
-		nextValue := current.MapIndex(reflect.ValueOf(component))
+
 		if !nextValue.IsValid() {
-			return nil, ok
+			return nil, false
 		}
+
 		current = reflect.ValueOf(nextValue.Interface())
 	}
+
 	if !current.IsValid() {
-		return nil, ok
+		return nil, false
 	}
 	return current.Interface(), true
 }
@@ -137,6 +144,19 @@ func RecursiveWithPrefix(
 		for i := 0; i < vfrom.Len(); i++ {
 			RecursiveWithPrefix(from, newPrefixes, i, vfrom.Index(i).Interface(), process)
 		}
+	case reflect.Ptr:
+		vfrom = vfrom.Elem()
+		switch vfrom.Kind() {
+		case reflect.Struct:
+			for i := 0; i < vfrom.NumField(); i++ {
+				field := vfrom.Field(i)
+				if field.IsValid() && field.CanSet() {
+					RecursiveWithPrefix(from, newPrefixes, i, field.Interface(), process)
+				}
+			}
+		case reflect.Map, reflect.Slice, reflect.Array:
+			Recursive(vfrom.Interface(), process)
+		}
 	default:
 		if parent == nil {
 			return
@@ -144,11 +164,17 @@ func RecursiveWithPrefix(
 		if newval, ok := process(newPrefixes, from); ok {
 			vparent := reflect.ValueOf(parent)
 			vval := reflect.ValueOf(newval)
+
 			switch vparent.Kind() {
 			case reflect.Map:
 				vparent.SetMapIndex(reflect.ValueOf(key), vval)
 			case reflect.Slice, reflect.Array:
 				vparent.Index(key.(int)).Set(vval)
+			case reflect.Ptr:
+				vparent = vparent.Elem()
+				if vparent.Kind() == reflect.Struct {
+					vparent.Field(key.(int)).Set(vval)
+				}
 			default:
 				panic(fmt.Errorf("unable to change value in parent"))
 			}
@@ -217,22 +243,127 @@ func LockCheckDeleteMap(lock *sync.Mutex, resource interface{}, key interface{},
 	return nil
 }
 
-// DeepCopy : performs a deep copy of the given map m.
-func DeepCopy(m map[string]interface{}) (map[string]interface{}, error) {
-	var buf bytes.Buffer
-	if m == nil {
-		return nil, nil
-	}
-	enc := gob.NewEncoder(&buf)
-	dec := gob.NewDecoder(&buf)
-	err := enc.Encode(m)
+// DeepCopyMap : performs a deep copy of the given map m.
+func DeepCopyMap(m map[string]interface{}) (map[string]interface{}, error) {
+	ret, err := DeepCopy(m)
 	if err != nil {
 		return nil, err
 	}
-	var copy map[string]interface{}
-	err = dec.Decode(&copy)
-	if err != nil {
-		return nil, err
+	retMap, ok := ret.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("not a map")
 	}
-	return copy, nil
+	return retMap, nil
+}
+
+// DeepCopy : performs a deep copy of the map or slice.
+func DeepCopy(m interface{}) (interface{}, error) {
+	switch v := m.(type) {
+	case map[string]interface{}:
+		ret := map[string]interface{}{}
+		for k, val := range v {
+			vcopy, err := DeepCopy(val)
+			if err != nil {
+				return nil, err
+			}
+			ret[k] = vcopy
+		}
+		return ret, nil
+	case []interface{}:
+		ret := make([]interface{}, len(v))
+		for i, val := range v {
+			vcopy, err := DeepCopy(val)
+			if err != nil {
+				return nil, err
+			}
+			ret[i] = vcopy
+		}
+		return ret, nil
+	}
+	return m, nil
+}
+
+// MustDeepCopyMap : performs a deep copy of the given map m, panic if run into errors
+func MustDeepCopyMap(m map[string]interface{}) map[string]interface{} {
+	ret, err := DeepCopyMap(m)
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+// MustDeepCopy : performs a deep copy of the given map or slice, panic if run into errors
+func MustDeepCopy(m interface{}) interface{} {
+	ret, err := DeepCopy(m)
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+// CombineMap : combine the data form two maps without merging them
+func CombineMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
+	if src == nil {
+		return dst
+	}
+	if dst == nil {
+		dst = map[string]interface{}{}
+	}
+	err := mergo.Merge(&dst, src, mergo.WithOverride)
+	if err != nil {
+		panic(err)
+	}
+	return dst
+}
+
+func mergeModifier(dst map[string]interface{}) {
+	for k, v := range dst {
+		if k[len(k)-1] == '-' { // set default
+			if ev, ok := dst[k[:len(k)-1]]; !ok || ev == nil {
+				dst[k[:len(k)-1]] = v
+			}
+			delete(dst, k)
+		}
+	}
+
+	for k, v := range dst {
+		vmap, ok := v.(map[string]interface{})
+
+		switch {
+		case k[len(k)-1] == '+': // append
+			ev, ok := dst[k[:len(k)-1]]
+			if !ok {
+				dst[k[:len(k)-1]] = v
+			} else {
+				if vstr, ok := v.(string); ok {
+					dst[k[:len(k)-1]] = ev.(string) + vstr
+				} else {
+					dst[k[:len(k)-1]] = reflect.AppendSlice(reflect.ValueOf(ev), reflect.ValueOf(v)).Interface()
+				}
+			}
+			delete(dst, k)
+		case k[len(k)-1] == '*': // override
+			dst[k[:len(k)-1]] = v
+			delete(dst, k)
+		case ok:
+			mergeModifier(vmap)
+		}
+	}
+}
+
+// MergeMap : merge the data from source to destination with some overriding rule
+func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
+	dst = CombineMap(dst, src)
+	for k, v := range dst {
+		if k[len(k)-1] == '-' {
+			if ev, ok := dst[k[:len(k)-1]]; !ok || ev == nil {
+				dst[k[:len(k)-1]] = v
+			}
+			delete(dst, k)
+		}
+	}
+
+	mergeModifier(dst)
+
+	return dst
 }

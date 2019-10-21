@@ -29,17 +29,28 @@ Usage:  %v [ -h ] service1 service2 ...
 
   -h            print this help message and quit
 
-Supported services include engine, receiver, operator and configcheck.
-If not specified, the daemon will load all services except configcheck.
-Configcheck service is used for validating local uncommitted config files, and
-other services will be ignored when using configcheck service.
+Supported services include engine, receiver, operator, docgen and configcheck.
+Docgen and configcheck are auxiliary services used for helping users managing their
+Honeydipper configurations. They can not be combined, and Honeydipper exits after
+completing the desired auxiliary tasks instead of running as a daemon.
+
+If services are not specified, Honeydipper will load all non-auxiliary services and
+run as a daemon.
+
+Configcheck service is used for validating local uncommitted config files.
+
+Docgen service is used for generating documents input for sphinx.
 
 See below for a listed environment variables that can be used.
 
 REPO:           required, the bootstrap config repo or directory
 BRANCH:         defaults to master, the branch to use in the bootstrap repo
 BOOTSTRAP_PATH: defaults to /, the path from where to load init.yaml
+
 CHECK_REMOTE:   defaults to false, when running config check specify if load and check remote repos
+
+DOCSRC:         defaults to docs/src, specify the source files for docgen
+DOCDST:         defaults to docs/dst, specify the directory to store generated files for docgen
 
 `
 		fmt.Printf(msg, os.Args[0])
@@ -51,27 +62,45 @@ func initEnv() {
 	flag.Parse()
 	cfg = config.Config{InitRepo: config.RepoInfo{}, Services: flag.Args()}
 
+loop:
 	for _, s := range cfg.Services {
-		if s == "configcheck" {
+		switch s {
+		case "configcheck":
 			cfg.Services = []string{s}
 			cfg.IsConfigCheck = true
 			if _, ok := os.LookupEnv("CHECK_REMOTE"); ok {
 				cfg.CheckRemote = true
 			}
-			break
+			break loop
+		case "docgen":
+			cfg.Services = []string{s}
+			cfg.IsDocGen = true
+			if val, ok := os.LookupEnv("DOCSRC"); ok {
+				cfg.DocSrc = val
+			} else {
+				cfg.DocSrc = "docs/src"
+			}
+			if val, ok := os.LookupEnv("DOCDST"); ok {
+				cfg.DocDst = val
+			} else {
+				cfg.DocDst = "docs/dst"
+			}
+			break loop
 		}
 	}
 	getLogger()
 
-	var ok bool
-	if cfg.InitRepo.Repo, ok = os.LookupEnv("REPO"); !ok {
-		log.Fatal("REPO environment variable is required to bootstrap honeydipper")
-	}
-	if cfg.InitRepo.Branch, ok = os.LookupEnv("BRANCH"); !ok {
-		cfg.InitRepo.Branch = "master"
-	}
-	if cfg.InitRepo.Path, ok = os.LookupEnv("BOOTSTRAP_PATH"); !ok {
-		cfg.InitRepo.Path = "/"
+	if !cfg.IsDocGen {
+		var ok bool
+		if cfg.InitRepo.Repo, ok = os.LookupEnv("REPO"); !ok {
+			log.Fatal("REPO environment variable is required to bootstrap honeydipper")
+		}
+		if cfg.InitRepo.Branch, ok = os.LookupEnv("BRANCH"); !ok {
+			cfg.InitRepo.Branch = "master"
+		}
+		if cfg.InitRepo.Path, ok = os.LookupEnv("BOOTSTRAP_PATH"); !ok {
+			cfg.InitRepo.Path = "/"
+		}
 	}
 }
 
@@ -123,17 +152,17 @@ func getLogger() {
 
 func main() {
 	initEnv()
-	if cfg.IsConfigCheck {
-		exitCode := 0
+	switch {
+	case cfg.IsConfigCheck:
+		exitCode := 1
 		defer func() {
 			os.Exit(exitCode)
 		}()
 		cfg.Bootstrap("/tmp")
-		if runConfigCheck(&cfg) {
-			// has error
-			exitCode = 1
-		}
-	} else {
+		exitCode = runConfigCheck(&cfg)
+	case cfg.IsDocGen:
+		runDocGen(&cfg)
+	default:
 		cfg.OnChange = reload
 		daemon.OnStart = start
 		daemon.Run(&cfg)

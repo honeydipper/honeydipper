@@ -89,7 +89,6 @@ func loadOptions() {
 				continue
 			}
 
-			// TODO: should I also differ subscriber based on rawEvent?
 			subscriberName := project + ":" + subscriptionName
 			subscriberConfig, ok := subscriberConfigs[subscriberName]
 			if !ok {

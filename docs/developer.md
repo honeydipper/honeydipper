@@ -1,7 +1,7 @@
-# Honeydipper Driver Developer's Guide
+# Driver Developer's Guide
 
 This document is intended for Honeydipper driver developers. Some programming experience is expected. Theoretically, we can use any
-programing language, even bash, to develop a driver for honeydipper. For now, there is a go library named honeydipper/dipper that makes it
+programming language, even bash, to develop a driver for honeydipper. For now, there is a go library named honeydipper/dipper that makes it
 easier to do this in golang.
 
 <!-- toc -->
@@ -75,7 +75,7 @@ There are 4 types of hooks offered by the driver helper objects.
  * Command handler
 
 Note that the *waitAndSendDummyEvent* method is assigned to *Start hook*. The *Start hook* needs to return immediately, so the method
-luanches another event loop in a go routine and return the control to the helper object. The second event loop is where the driver actually
+launches another event loop in a go routine and return the control to the helper object. The second event loop is where the driver actually
 receives events externally and use *driver.SendMessage* to relay to the service.
 
 In this example, the dummy driver just manifest a fake event with json data as 
@@ -83,17 +83,17 @@ In this example, the dummy driver just manifest a fake event with json data as
 {"data": ["line 1", "line 2"]}
 ```
 
-The driver also sets its status to "cold", meaning cold restart needed, and uses the *Ping* command to send its own state to the daemon, so
+The method also sets its status to "cold", meaning cold restart needed, and uses the *Ping* command to send its own state to the daemon, so
 it can be restarted.
 
 ## Driver lifecycle and states
 
 The driver will be in "loaded" state initially. When the *Run()* method is invoked, it will start fetching messages from the daemon. The
 first message is always "command:options" which carries the data and configuration required by the driver to perform its job. The helper
-object has a builtin handler for this and will dump the data into a structure which can later be queried using *driver.GetOption* or
+object has a built-in handler for this and will dump the data into a structure which can later be queried using *driver.GetOption* or
 *driver.GetOptionStr* method.
 
-Following the "command:options" is the "command:start" message. The helper object also has a builtin handler for the "command:start"
+Following the "command:options" is the "command:start" message. The helper object also has a built-in handler for the "command:start"
 message. It will first call the *Start hook* function, if defined, then change the driver state to "alive" then report the state back to
 daemon with *Ping* method. One important thing here is that if the daemon doesn't receive the "alive" state within 10 seconds, it will
 consider the driver failed to start and kill the process by closing the stdin/stdout channels. You can see why the Start hook has to return
@@ -140,14 +140,14 @@ In case you need to encode the message yourself, there are two methods, *dipper.
 accepts a \*dipper.Message and put the encoded content back into the message, or *dipper.SerializeContent* which
 accepts bytes array and return the data structure as map.
 
-When a messge is received through the *Run()* event loop, it will be passed to various handlers as a \*dipper.Message
+When a message is received through the *Run()* event loop, it will be passed to various handlers as a \*dipper.Message
 struct with raw bytes as payload. You can call *dipper.DeserializeContent* which accepts a byte array to decode
 the byte array, and you can also use *dipper.DeserializePayload* which accepts a \*dipper.Message and place the
-decoded paylod right back into the message.
+decoded payload right back into the message.
 
 Currently, we are categorizing the messages into 3 different channels:
  * eventbus: messages that are used by *engine* service for workflow processing, subject could be `message`, `command` or `return`
- * rpc: messages that invoke another driver to run some function, subject could be `call` or `return`
+ * RPC: messages that invoke another driver to run some function, subject could be `call` or `return`
  * state: the local messages between driver and daemon to manage the lifecycle of drivers
 
 ## RPC
@@ -194,8 +194,8 @@ func MyFunc(m *dipper.Message) {
 
 As mentioned earlier, the driver receives the options / configurations from the daemon automatically through the
 helper object. As the data is stored in hashmap, the helper method *driver.GetOption* will accept a path and return an
-*Interface()* ojbect. The path consists of the dot-delimited key names. If the returned data is
-also a map, you can use *dipper.GetMapData* or *dipper.GetMapDataStr* to retrive information from them as well.
+*Interface()* object. The path consists of the dot-delimited key names. If the returned data is
+also a map, you can use *dipper.GetMapData* or *dipper.GetMapDataStr* to retrieve information from them as well.
 If you are sure the data is a *string*, you can use *driver.GetOptionStr* to directly receive it as *string*.
 
 The helper functions follow the golang convention of returning the value along with a bool to indicate if it is
@@ -227,9 +227,9 @@ drivers:
 Usually an event receiver driver just fires raw events to the daemon; it doesn't have to know what the daemon is expecting. There are some
 exceptions, for example, the webhook driver needs to know if the daemon is expecting some kind of webhook so it can decide what response to
 send to the web request sender, 200, 404 etc. A collapsed event is an event definition that has all the conditions, including the conditions
-from events that the current event is inheritting from. Dipper sends the collapsed events to the driver in the options with key name
+from events that the current event is inheriting from. Dipper sends the collapsed events to the driver in the options with key name
 "dynamicData.collapsedEvents". Drivers can use the collapsed events to setup the filtering of the events before sending them to daemon. Not
-only does this allow the driver to generate meaningful feedback to the external requesters, but it also serves as the first line of defense
+only does this allow the driver to generate meaningful feedback to the external requesters, but it also serves as the first line of defence
 against DDoS attacks on the daemon.
 
 Below is an example of using the collapsed events data in webhook driver:
@@ -272,7 +272,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 ```
 
 The helper function *dipper.CompareAll* will try to match your event data to the conditions. Daemon uses the same
-function to determine if a rawevent is triggering events defined in systems.
+function to determine if a `rawEvent` is triggering events defined in systems.
 
 ## Provide Commands
 
@@ -305,14 +305,11 @@ Note that the reply is sent in a go routine; it is useful if you want to make yo
 ## Publishing and packaging
 
 To make it easier for users to adopt your driver, and use it efficiently, you can create a public git repo and let users
-load some predefined configurations to jumpstart the integration.  The configuration in the repo should usually include:
+load some predefined configurations to jump start the integration.  The configuration in the repo should usually include:
 
  * `driver` definition and `fearture` loading under the `daemon` section;
  * some wrapper `system` to define some `trigger`, `function` that can be used in rules;
  * some `workflow` to help users use the `function`s, see [Workflow composing guide](./workflow.md) for detail
-
-It is recommended to comment the configuration thoroughly with examples and use [Natural Docs](https://www.naturaldocs.org/) to
-generate reference documents so the users can learn how to use your integration.
 
 For example, I created a hypothetical integration for a z-wave switch, the configuration might look like:
 ```yaml

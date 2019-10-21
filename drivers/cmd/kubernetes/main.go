@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ghodss/yaml"
@@ -29,6 +30,12 @@ import (
 
 // DefaultNamespace is the name of the default space in kubernetes cluster
 const DefaultNamespace string = "default"
+
+// StatusSuccess is the status when the job finished successfully
+const StatusSuccess = "success"
+
+// StatusFailure is the status when the job finished with error or not finished within time limit
+const StatusFailure = "failure"
 
 var log *logging.Logger
 var err error
@@ -77,22 +84,43 @@ func getJobLog(m *dipper.Message) {
 	}
 
 	alllogs := map[string]map[string]string{}
+	returnStatus := StatusSuccess
+	messages := []string{}
+
 	for _, pod := range pods.Items {
+		if returnStatus == StatusSuccess {
+			cStatuses := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
+			for _, c := range cStatuses {
+				if c.State.Terminated == nil {
+					returnStatus = StatusFailure
+					messages = append(messages, fmt.Sprintf("container %s.%s not terminated", pod.Name, c.Name))
+				} else if c.State.Terminated.ExitCode != 0 {
+					returnStatus = StatusFailure
+					messages = append(messages, fmt.Sprintf("container %s.%s exit with code %+v", pod.Name, c.Name, c.State.Terminated.ExitCode))
+				}
+			}
+		}
+
 		podlogs := map[string]string{}
-		for _, container := range append(pod.Spec.Containers, pod.Spec.InitContainers...) {
+		for _, container := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
 			stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream()
 			if err != nil {
-				podlogs[container.Name] = "Error: unable to fetch the logs from the container"
+				podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
+				messages = append(messages, podlogs[container.Name])
 				log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+				returnStatus = StatusFailure
 			} else {
 				func(stream io.ReadCloser) {
 					defer stream.Close()
 					containerlog, err := ioutil.ReadAll(stream)
 					if err != nil {
-						podlogs[container.Name] = "Error: unable to read the logs from the stream"
+						podlogs[container.Name] = fmt.Sprintf("Error: unable to read the logs from the stream %s.%s", pod.Name, container.Name)
+						messages = append(messages, podlogs[container.Name])
 						log.Warningf("[%s] unable to read logs from stream for pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+						returnStatus = StatusFailure
 					} else {
 						podlogs[container.Name] = string(containerlog)
+						messages = append(messages, podlogs[container.Name])
 					}
 				}(stream)
 			}
@@ -100,12 +128,20 @@ func getJobLog(m *dipper.Message) {
 		alllogs[pod.Name] = podlogs
 	}
 
-	m.Reply <- dipper.Message{
+	output := strings.Join(messages, "\n")
+	returnMsg := dipper.Message{
 		Payload: map[string]interface{}{
-			"log": alllogs,
+			"log":    alllogs,
+			"output": output,
 		},
 	}
-
+	if returnStatus != "success" {
+		returnMsg.Labels = map[string]string{
+			"status": returnStatus,
+			"reason": output,
+		}
+	}
+	m.Reply <- returnMsg
 }
 
 func waitForJob(m *dipper.Message) {
@@ -135,13 +171,26 @@ func waitForJob(m *dipper.Message) {
 
 	finalStatus := make(chan dipper.Message, 1)
 	go func() {
+		jobStatus := StatusSuccess
+		reason := []string{}
+
 		for evt := range jobstatus.ResultChan() {
 			if evt.Type == "ADDED" || evt.Type == "MODIFIED" {
 				job := evt.Object.(*batchv1.Job)
 				if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
+					if job.Status.Failed > 0 {
+						jobStatus = StatusFailure
+						for _, condition := range job.Status.Conditions {
+							reason = append(reason, condition.Reason)
+						}
+					}
 					finalStatus <- dipper.Message{
 						Payload: map[string]interface{}{
 							"status": job.Status,
+						},
+						Labels: map[string]string{
+							"status": jobStatus,
+							"reason": strings.Join(reason, "\n"),
 						},
 					}
 					break

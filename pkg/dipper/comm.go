@@ -59,8 +59,10 @@ func SerializeContent(content interface{}) (ret []byte) {
 		if err != nil {
 			panic(err)
 		}
+
 		return ret
 	}
+
 	return []byte{}
 }
 
@@ -70,20 +72,25 @@ func SerializePayload(msg *Message) *Message {
 		if msg.Payload != nil {
 			msg.Payload = SerializeContent(msg.Payload.([]byte))
 		}
+
 		msg.IsRaw = true
 	}
+
 	return msg
 }
 
 // DeserializeContent : decode the content into interface
 func DeserializeContent(content []byte) (ret interface{}) {
 	ret = map[string]interface{}{}
+
 	if len(content) > 0 {
 		if err := json.Unmarshal(content, &ret); err != nil {
 			panic(err)
 		}
+
 		return ret
 	}
+
 	return nil
 }
 
@@ -93,8 +100,10 @@ func DeserializePayload(msg *Message) *Message {
 		if msg.Payload != nil {
 			msg.Payload = DeserializeContent(msg.Payload.([]byte))
 		}
+
 		msg.IsRaw = false
 	}
+
 	return msg
 }
 
@@ -107,10 +116,12 @@ func FetchMessage(in io.Reader) (msg *Message) {
 // FetchRawMessage : fetch encoded message from input from daemon service
 //   may block or throw io.EOF based on the fcntl setting
 func FetchRawMessage(in io.Reader) (msg *Message) {
-	var channel string
-	var subject string
-	var size int
-	var numLabels int
+	var (
+		channel   string
+		subject   string
+		size      int
+		numLabels int
+	)
 
 	_, err := fmt.Fscanln(in, &channel, &subject, &numLabels, &size)
 	if err == io.EOF {
@@ -133,18 +144,21 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 	if numLabels > 0 {
 		msg.Labels = map[string]string{}
 		for ; numLabels > 0; numLabels-- {
-			var lname string
-			var vl int
+			var (
+				lname string
+				vl    int
+			)
+
 			_, err := fmt.Fscanln(in, &lname, &vl)
 			if err != nil {
 				panic(fmt.Errorf("unable to fetch message label name: %+v", err))
 			}
 			if vl > 0 {
 				lvalue := make([]byte, vl)
-				_, err = io.ReadFull(in, lvalue)
-				if err != nil {
+				if _, err = io.ReadFull(in, lvalue); err != nil {
 					panic(fmt.Errorf("unable to fetch value for label %s: %+v", lname, err))
 				}
+
 				msg.Labels[lname] = string(lvalue)
 			} else {
 				msg.Labels[lname] = ""

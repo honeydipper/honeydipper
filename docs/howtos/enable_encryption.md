@@ -38,9 +38,9 @@ drivers:
       ...
       gcloud-kms:
         name: gcloud-kms
-        data:
-          Type: go
-          Package: github.com/honeydipper/honeydipper/drivers/cmd/gcloud-kms
+        type: builtin
+        handlerData:
+          shortName: gcloud-kms
 ```
 
 Note that the above configuration snippet is for your information purpose, you don't have to manually type them in if you include the `gcloud` bundle from the `honeydipper-config-essential` repo.

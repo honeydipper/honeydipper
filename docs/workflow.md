@@ -1,403 +1,797 @@
 # Workflow Composing Guide
 
-Tips: use [Honeydipper config check](./configuration.md#config-check) feature to quickly identify errors and issues before committing your configuration changes, or setup
-your configuration repo with CI to run config check upon every push or PR.
-
 <!-- toc -->
 
-- [Basics of workflow](#basics-of-workflow)
-- [Types of workflows](#types-of-workflows)
-  * [Named workflow](#named-workflow)
-  * [Conditional workflow](#conditional-workflow)
-  * [Pipe workflow](#pipe-workflow)
-  * [Parallel workflow](#parallel-workflow)
-  * [Switch workflow](#switch-workflow)
-  * [Suspend workflow](#suspend-workflow)
-  * [Data workflow](#data-workflow)
-- [Workflow helper](#workflow-helper)
-  * [Repeat](#repeat)
-  * [For each (pipe)](#for-each-pipe)
-  * [For each (parallel)](#for-each-parallel)
-  * [Pipe](#pipe)
-  * [Wanted](#wanted)
+- [Composing Workflows](#composing-workflows)
+  * [Simple Actions](#simple-actions)
+  * [Complex Actions](#complex-actions)
+  * [Iterations](#iterations)
+  * [Conditions](#conditions)
+  * [Looping](#looping)
+  * [Hooks](#hooks)
+- [Contextual Data](#contextual-data)
+  * [Sources](#sources)
+  * [Interpolation](#interpolation)
+  * [Merging Modifier](#merging-modifier)
+- [Essential Workflows](#essential-workflows)
+  * [`notify`](#notify)
+  * [`workflow_announcement`](#workflow_announcement)
+  * [`workflow_status`](#workflow_status)
+  * [`send_heartbeat`](#send_heartbeat)
+  * [`snooze_alert`](#snooze_alert)
+- [Running a Kubernetes Job](#running-a-kubernetes-job)
+  * [Basic of `run_kubernetes`](#basic-of-run_kubernetes)
+  * [Environment Variables and Volumes](#environment-variables-and-volumes)
+  * [Predefined Step](#predefined-step)
+  * [Expanding `run_kubernetes`](#expanding-run_kubernetes)
+  * [Using `run_kubernetes` in GKE](#using-run_kubernetes-in-gke)
+- [Slash Commands](#slash-commands)
+  * [Predefined Commands](#predefined-commands)
+  * [Adding New Commands](#adding-new-commands)
+  * [Mapping Parameters](#mapping-parameters)
+  * [Messages and notifications](#messages-and-notifications)
+  * [Secure the commands](#secure-the-commands)
 
 <!-- tocstop -->
 
-## Basics of workflow
-`workflow` defines what to do and how to do when an event is triggered. A simplest workflow is to call a `function`. A `function` can be a `rawAction` that a driver provides or a `function` defined in a system, which is just a wrapper around a `rawAction` with some contextual data. `workflow` can be defined in rules directly in the `do` section, or it can be defined independently with a name so it can be re-used/shared among multiple rules. An example of a workflow defined in a rule calling a raw action:
+*DipperCL* is the control language that `Honeydipper` uses to configure data, assets and logic for its operation. It is basically a YAML with a `Honeydipper` specific schema.
+
+## Composing Workflows
+`workflow` defines what to do and how to perform when an event is triggered. `workflow` can be defined in rules directly in the `do` section, or it can be defined independently with a name so it can be re-used/shared among multiple rules and workflows. A `workflow` can be as simple as invoking a single driver `rawAction`. It can also contains complicate logics, procedures dealing with various scenarios. All `workflows` are built with the same building blocks, follow the same process, and they can be stacked/combined with each other to achieve more complicated goals.
+
+An example of a workflow defined in a rule calling an `rawAction`:
 
 ```yaml
+---
 rules:
   - when:
       driver: webhook
       conditions:
         url: /test1
     do:
-      type: function
-      content:
-        driver: web
-        rawAction: request
-        parameters:
-          URL: http://example.com
+      call_driver: redispubsub.broadcast
+      with:
+        subject: internal
+        channel: foo
+        key: bar
 ```
 
-An example of a workflow defined in a rule calling a system function:
+An example of named workflow that can be invoked from other workflows.
 
 ```yaml
-systems:
-  slack:
-    functions:
-      say:
-        driver: web
-        rawAction: request
-        parameters:
-          URL: https://example.net/sdfa/sdaffasd
-          header:
-            Content-Type: application/json
-          method: POST
-rules:
-  - when:
-      driver: webhook
-      conditions:
-        url: /test2
-    do:
-      type: function
-      content:
-        target:
-          system: slack
-          function: say
-        parameters:
-          content:
-            text: something happend!
-```
-
-## Types of workflows
-To be able to do fun stuff such as reusing, combining multiple tasks, conditional executing etc., we need a flexible construct to define workflows. Different types of workflows are introduced. Every `workflow` has a `content` field and a `type` field. Depending on the value of `type` field, the `content` field means different things.
-
- * **named workflow**
- * **conditional workflow**
- * **pipe workflow**
- * **parallel workflow**
- * **switch workflow**
- * **suspend workflow**
-
-### Named workflow
-When the `type` is not defined or empty, the `content` will be interpreted as a name pointing to a `workflow` defined in the `workflows` section of the config. This enables re-using of the workflow among rules. See below for example:
-
-```yaml
+---
 workflows:
-  announce:
-    type: function
-    content:
-      target:
-        system: slack
-        function: say
-      parameters:
-        content:
-          text: I am doing something
-rules:
-  - when:
-      driver: webhook
-      conditions:
-        url: /test1
-    do:
-      content: announce
-  - when:
-      source:
-        system: some_other_system
-        event: something
-    do:
-      content: announce
-```
+  foo:
+    call_function: example.execute
+    with:
+      key1: val2
+      key2: val2
 
-### Conditional workflow
-When the `type` is 'if', an additional `condition` field is required. The `content` should be a list of at most two child workflows. If the value of `condition` field is "truy", such as 1, "true", "True" etc., the first child workflow will be executed, otherwise, the second child workflow will be executed if present. To use interpolation in the `condition` field see the [Interpoation Guide](./interpolation.md) for detail.
-
-For example:
-<!-- {% raw %} -->
-```yaml
 rules:
   - when:
       source:
-        system: server_room
-        event: temperature_reading
-  - do:
-      type: if
-      condition: '{{ gt .event.json.temp.value 80 }}'
-      content:
-        - type: function
-          content:
-            target:
-              system: server_room_ac
-              function: turn_on
+        system: example
+        trigger: happened
+    do:
+      call_workflow: foo
 ```
-<!-- {% endraw %} -->
 
-### Pipe workflow
-When the `type` is set to 'pipe', the `content` will be interpreted as a list of child workflows. The child workflows will be executed one by one in the order listed. The return information of the previous child workflow will be available to the next children through interpolation. See [Interpoation Guide](./interpolation.md) for detail.
+### Simple Actions
+There are 4 types of simple actions that a workflow can perform.
+
+ - `call_workflow`: calling out to another named workflow, taking a string specifying the name of the workflow
+ - `call_function`: calling a predefined system function, taking a string in the form of `system.function`
+ - `call_driver`: calling a `rawAction` offered by a driver, taking a string in the form of `driver.rawAction`
+ - `wait`: wait for the specified amount of time or receive a wake-up request with a matching token. The time should be formatted according to the requirement for function [ParseDuration](https://golang.org/pkg/time/#ParseDuration). A unit suffix is required.
+
+They can not be combined.
+
+A function can also have no action at all. `{}` is a perfectly legit no-op workflow.
+
+### Complex Actions
+Complex actions are groups of multiple `workflows` organized together to do some complex work.
+
+ - `steps`: an array of child workflows that are executed in sequence
+ - `threads`: an array of child workflows that are executed in parallel
+ - `switch/cases/default`: taking a piece of contextual data specified in `switch`, chose and execute from a map of child workflows defined in `cases` or execute the child workflow defined in `default` if no branch matches
+
+These can not be combined with each other or with any of the simple actions.
+
+When using `steps` or `threads`, you can control the behaviour of the workflow upon `failure` or `error` status through fields `on_failure` or `on_error`.  The allowed values are `continue` and `exit`. By default, `on_failure` is set to `continue` while `on_error` is set to `exit`. When using `threads`, `exit` means that when one thread returns error, the workflow returns without waiting for other threads to return.
+
+### Iterations
+Any of the actions can be combined with an `iterate` or `iterate_parallel` field to be executed multiple times with different values from a list. The current element of the list will be stored in a local contextual data item named `current`. Optionally, you can also customize the name of contextual data item using `iterate_as`. The elements of the lists to be iterated don't have to be simple strings, it can be a map or other complex data structures.
 
 For example:
 
-<!-- {% raw %} -->
 ```yaml
+---
+workflows:
+  foo:
+    iterate:
+      - name: Peter
+        role: hero
+      - name: Paul
+        role: villain
+    call_workflow: announce
+    with:
+      message: '{{ .ctx.current.name }} is playing the role of `{{ .ctx.current.role }}`.'
+```
+
+### Conditions
+We can also specify the conditions that the workflow checks before taking any action.
+
+ - `if_match/unless_match`: specify the skeleton data to match the contextual data
+ - `if/unless/if_any/unless/unless_all`: specify the list of strings that interpolate to truy/falsy values
+
+Some examples for using skeleton data matching:
+```yaml
+---
+workflows:
+  do_foo:
+    if_match:
+      foo: bar
+    call_workflow: do_something
+
+  do_bar:
+    unless_match:
+      team: :regex:engineering-.*
+    call_workflow: complaint
+    with:
+      message: Only engineers are allowed here.
+
+  do_something:
+    if_match:
+      user:
+        - privileged_user1
+        - privileged_user2
+    call_workflow: assert
+    with:
+      message: you are either privileged_user1 or priviledged_user2
+
+  do_some_other-stuff:
+    if_match:
+      user:
+        age: 13
+    call_workflow: assert
+    with:
+      message: .ctx.user matchs a data strucure with age field equal to 13
+```
+
+Please note how we use regular expression, list of options to match the contextual data, and how to match a field deep into the data structure.
+
+Below are some examples of using list of conditions:
+```yaml
+---
+workflows:
+  run_if_all_meets:
+    if:
+      - $ctx.exits # ctx.exits must not be empty and not one of such strings `false`, `nil`, `{}`, `[]`, `0`. 
+      - $ctx.also  # ctx.also must also be truy
+    call_workflow: assert
+    with:
+      message: `exits` and `also` are both truy
+
+  run_if_either_meets:
+    if_any:
+      - '{{ empty .ctx.exists | not }}'
+      - '{{ empty .ctx.also | not }}'
+    call_workflow: assert
+    with:
+      message: at least one of `exits` or `also` is not empty
+```
+
+### Looping
+We can also repeat the actions in the workflow through looping fields
+
+ - `while`: specify a list of strings that interpolate into truy/falsy values
+ - `until`: specify a list of strings that interpolate into truy/falsy values
+    
+For example:
+
+```yaml
+---
+workflows:
+  retry_func: # a simple forever retry
+    on_error: continue
+    on_failure: exit
+    with:
+      success: false
+    until:
+      - $ctx.success
+    steps:
+      - call_function: $ctx.func
+      - export:
+          success: '{{ eq .labels.status "success" }}'
+    no_export:
+      - success
+
+  retry_func_count_with_exp_backoff:
+    on_error: continue
+    on_failure: exit
+    with:
+      success: false
+      backoff: 0
+      count-: 2
+    until:
+      - $ctx.success
+      - $ctx.count
+    steps:
+      - if:
+          - $ctx.backoff
+        wait: '{{ .ctx.backoff }}s'
+      - call_function: $ctx.func
+      - export:
+          count: '{{ sub (int .ctx.count) 1 }}'
+          success: '{{ eq .labels.status "success" }}'
+          backoff: '{{ .ctx.backoff | default 10 | int | mul 2 }}'
+    no_export:
+      - success
+      - count
+      - backoff
+```
+
+### Hooks
+Hooks are child workflows executed at a specified moments in the parent workflow's lifecycle. It is a great way to separate auxiliary work, such as sending heartbeat, sending slack messages, making an announcement, clean up, data preparation etc., from the actual work. Hooks are defined through context data, so it can be pulled in through predefined contexts, which makes the actual workflow seems less cluttered.
+
+For example,
+```yaml
+contexts:
+  _events:
+    '*':
+      hooks:
+        - on_first_action: workflow_announcement
+  opsgenie:
+    '*':
+      hooks:
+        - on_success:
+            - snooze_alert
+
 rules:
   - when:
       source:
-        system: code_repo
-        event: new_commit
-  - do:
-      type: pipe
-      content:
-        - content: run_test
-        - type: if
-          condition: '{{ eq .labels.status "success" }}'
-          content:
-            - content: run_build
-        - type: if
-          condition: '{{ eq .labels.status "success" }}'
-          content:
-            - content: run_deploy
-```         
-<!-- {% endraw %} -->
+        system: foo
+        trigger: bar
+    do:
+      call_workflow: do_something
 
-### Parallel workflow
-Similiar to `pipe` workflow, the `content` of `parallel` workflow is also a list of child workflows. The child workflows will be executed in parallel.
+  - when:
+      source:
+        system: opsgenie
+        trigger: alert
+    do:
+      context: opsgenie
+      call_workflow: do_something
+```
+In the above example, although not specifically spelled out in the rules, both events will trigger the execution of `workflow_announcement` workflow before executing the first action. And if the workflow responding to the `opsgenie.alert` event is successful, `snooze_alert` workflow will be executed.
 
-For example:
+The supported hooks:
 
+ * on_session: when a workflow session is created, even `{}` no-op session will trigger this hook
+ * on_first_action: before a workflow performs first simple action
+ * on_action: before performs each simple action in `steps`
+ * on_item: before execute each iteration
+ * on_success: before workflow exit, and when the workflow is successful
+ * on_failure: before workflow exit, and when the workflow is failed
+ * on_error: before workflow exit, and when the workflow ran into error
+ * on_exit: before workflow exit
+
+## Contextual Data
+Contextual data is the key to stitch different events, functions, drivers and workflows together.
+
+### Sources
+Every workflow receives contextual data from a few sources:
+
+ * Exported from the event
+ * Inherit context from parent workflow
+ * Injected from predefined context, `_default`, `_event` and contexts listed through `context` or `contexts`
+ * Local context data defined in `with` field
+ * Exported from previous steps of the workflow
+
+Since the data are received in that particular order listed above, the later source can override data from previous sources. Child workflow context data is independent from parent workflow, anything defined in `with` or inherited will only be in effect during the life cycle of current workflow, except the exported data. Once a field is exported, it will be available to all outer workflows. You can override this by specifying the list of fields that you don't want to export.
+
+Pay attention to the example `retry_func_count_with_exp_backoff` in the previous section. In order to not contaminate parent context with temporary fields, we use `no_export` to block the exporting of certain fields.
+
+### Interpolation
+We can use interpolation in workflows to make the workflow flexible and versatile. You can use interpolation in most of the fields of a workflow. Besides contextual data, other data available for interpolation includes:
+
+ * `labels` - string values attached to latest received dipper Message indicating session status, IDs, etc.,
+ * `ctx` - contextual data,
+ * `event` - raw unexposed event data from the original event that triggered the workflow
+ * `data` - raw unexposed payload from the latest received dipper message
+
+It is recommended to avoid using `event` and `data` in workflows, and stick to `ctx` as much as possible. The raw unexposed data might eventually be deprecated and hidden. They may still be available in `system` definition.
+
+*DipperCL* provides following ways of interpolation:
+
+ * **path interpolation** - comma separated multiple paths following a dollar sign, e.g. `$ctx.this,ctx.that,ctx.default`, cannot be mixed in strings. can specify a default value using either single, double or tilde quotes if none of the keys are defined in the context, e.g. `$ctx.this,ctx.that,"this value is the default"`. Also, can use `?` following the `$` to indicate that nil value is allowed.
+ * **inline go template** - strings with go templates that get rendered at time of the workflow execution, requires quoting if template is at the start of the string
+ * **yaml parser** - a string following a `:yaml:` prefix, will be parsed at the time of the execution, can be combined with go template
+ * **e-yaml encryption** - a string with `ENC[` prefix, storing base64 encoded encrypted content
+ * **file attachment** - a relative path following a `@:` prefix, requires quoting
+
+See [interpolation guide](./interpolation.html) for detail on how to use interpolation.
+
+### Merging Modifier
+When data from different data source is merged, by default, map structure is deeply merged, while all other type of data with the same name is replaced by the newer source. One exception is that if the data in the new source is not the same type of the existing data, the old data stays in that case.
+
+For example, undesired merge behaviour:
 ```yaml
-workflows:
-  notify_all:
-    type: parallel
-    content:
-      - content: notify_sre
-      - content: notify_dev
-      - content: notify_security
+---
+workflows
+  merge:
+    - export:
+        data: # original
+          foo: bar
+          foo_map:
+            key1: val1
+          foo_list:
+            - item1
+            - item2
+          foo_param: "a string"
+    - export:
+        data: # overriding
+          foo: foo
+          foo_map:
+            key2: val2
+          foo_list:
+            - item3
+            - item4
+          foo_param: # type inconsistent
+            key: val
+```
+After merging with the second step, the final exported data will be like below. Notice the fields that are replaced.
+```yaml
+data: # final
+  foo: foo
+  foo_map:
+    key1: val1
+    key2: val2
+  foo_list:
+    - item3
+    - item4
+  foo_param: "a string"
 ```
 
-### Switch workflow
-`switch` workflow is similar to `switch` statement in some programing languages. It choose one workflow from the branches of child workflows based on `condition` field. The value of `content` should be a  map from strings to child workflows.
+We can change the behaviour by using merging modifiers at the end of the overriding data names.
 
-For example:
+Usage:
 
-<!-- {% raw %} -->
+`var` is an example name of the overriding data, the following character indicates what type of merge modifier to use.
+ * `var-`: only use the new value if the `var` is not already defined and not nil
+ * `var+`: if the `var` is a list or string, the new value will be appended to the existing values
+ * `var*`: forcefully override the value
+
+## Essential Workflows
+
+We have made a few helper workflows available in the `honeydipper-config-essentials` repo. Hopefully, they will make it easier for you to write your own workflows.
+
+### `notify`
+
+Sending a chat message using configured system. The chat system can be anything that provides a `say` and a `reply` function.
+
+*Required context fields*
+ * `chat_system`: system used for sending the message, by default `slack_bot`
+ * `message`: the text to be sent, do your own formatting
+ * `message_type`: used for formatting/coloring and select recipients
+ * `notify`: a list of recipients, slack channel names if using `slack_bot`
+ * `notify_on_error`: a list of additional recipients if `message_type` is `error` or `failure`
+
+### `workflow_announcement`
+
+This workflow is intended to be invoked through `on_first_action` hook to send a chat message to announce what will happen.
+
+*Required context fields*
+ * `chat_system`: system used for sending the message, by default `slack_bot`
+ * `notify`: a list of recipients, slack channel names if using `slack_bot`
+ * `_meta_event`: every events export a `_meta_event` showing the driver name and the trigger name, can be overridden in trigger definition
+ * `_event_id`: if you export a `_event_id` in your trigger definition, it will be used for display, by default it will be `unspecified`
+ * `_event_url`: the display of the `_event_id` will be a link to this url, by default `http://honeydipper.io`
+ * `_event_detail`: if specified, will be displayed after the brief announcement
+ 
+Besides the fields above, this workflow also uses a few context fields that are set internally from host workflow(not the hook itself) definition.
+ * `_meta_desc`: the `description` from the workflow definition
+ * `_meta_name`: the `name` from the workflow definition
+ * `performing`: what the workflow is currently performing
+
+### `workflow_status`
+
+This workflow is intended to be invoked through `on_exit`, `on_error`, `on_success` or `on_failure`.
+*Required context fields*
+ * `chat_system`: system used for sending the message, by default `slack_bot`
+ * `notify`: a list of recipients, slack channel names if using `slack_bot`
+ * `notify_on_error`: a list of additional recipients if `message_type` is `error` or `failure`
+ * `status_detail`: if available, the detail will be attached to the status notification message
+
+Besides the fields above, this workflow also uses a few context fields and `labels` that are set internally from host workflow(not the hook itself).
+ * `_meta_desc`: the `description` from the workflow definition
+ * `_meta_name`: the `name` from the workflow definition
+ * `performing`: what the workflow is currently performing
+ * `.labels.status`: the latest function return status
+ * `.labels.reason`: the reason for latest failure or error
+ 
+### `send_heartbeat`
+
+This workflow can be used in `on_success` hooks or as a stand-alone step. It sends a heartbeat to the alerting system
+
+*Required context fields*
+ * `alert_system`: system used for sending the heartbeat, can be any system that implements a `heartbeat` function, by default `opsgenie`
+ * `heatbeat`: the name of the heartbeat
+
+### `snooze_alert`
+
+This workflow can be used in `on_success` hooks or as a stand-alone step. It snooze the alert that triggered the workflow.
+ * `alert_system`: system used for sending the heartbeat, can be any system that implements a `snooze` function, by default `opsgenie`
+ * `alert_Id`: the ID of the alert
+
+## Running a Kubernetes Job
+
+We can use a predefined `run_kubernetes` workflow from `honeydipper-config-essentials` repo to run kubernetes jobs. A simple example is below
+
 ```yaml
+---
 workflows:
-  slashcommands:
-    type: switch
-    condition: '{{ .wfdata.command }}'
-    content:
-      help:
-        content: show_help
-      reload:
-        content: reload_config
-      "*":
-        content: show_unknown_command_err
+  kubejob:
+    run_kubernetes:
+      system: samplecluster
+      steps:
+        - type: python
+          command: |
+            ...python script here...
+        - type: bash
+          shell: |
+            ...shell script here...
 ```
-<!-- {% endraw %} -->
 
-### Suspend workflow
-A workflow can be suspended to wait for manual approval or manual intervention. It is useful in conjunction with slack (or other chat system) interactive components, web dashboards, etc. to inject manual interaction into the automation. The `content` should be a globally unique string serving as an identifer for the workflow.  The workflow will continue when a message with "resume_session" subject carries the identifier in `key` field of the payload.
+### Basic of `run_kubernetes`
 
-Suspended workflow can also be automatically resumed with a timeout (See [time.ParseDuration](https://golang.org/pkg/time/#ParseDuration) for allowed time format). The timeout value, returned data payload and labels can be specified in `data` section. The optional `payload` data maybe used by the next step in the pipe through intepolation using `.data`.  The `status` label is required as each step of the workflow requires a `status`.
+`run_kubernetes` workflow requires a `system` context field that points to a predefined system. The system must be extended from `kubernetes` system so that it has `createJob`, `waitForJob` and `getJobLog` function defined. The predefined system should also have the information required to connect to the kubernetes cluster, the namespace to use etc.
+
+The required `steps` context field should tell the workflow what containers to define in the kubernetes job.  If there are more that one step, the steps before the last step are all defined in `initContainters` section of the pod, and the last step is defined in `containers`.
+
+Each step of the job has its type, which defines what docker image to use. The workflow comes with a few types predefined.
+ * python
+ * python2
+ * python3
+ * node
+ * bash
+ * gcloud
+ * tf
+ * helm
+ * git
+
+A `step` can be defined using a `command` or a `shell`. A `command` is a string or a list of strings that are passed to the default entrypoint using `args` in the container spec. A `shell` is a string or a list of strings that passed to a customized shell script entrypoint.
 
 For example
 
-<!-- {% raw %} -->
 ```yaml
+---
 workflows:
-  confirm_then_apply:
-    type: pipe
-    data:
-      interactive_id: '{{ randAlphaNum 16 }}'
-    content:
-      - content: tf_plan
-      - content: slack_result_with_interactive
-        data:
-          callback_id: '{{ .wfdata.interactive_id }}'
-      - type: suspend
-        content: '{{ .wfdata.interactive_id }}'
-        data:
-          timeout: "1800"
-          payload:
-            reply: "no"
-          labels:
-            status: "success"
-      - type: if
-        condition: '{{ eq .data.reply "yes" }}'
-        content:
-          - content: tf_apply
-```
-<!-- {% endraw %} -->
-
-The above example will suspend the workflow waiting an answer from slack for 30 minutes before canceling the next step.
-
-### Data workflow
-Most cases, we use `wfdata` to handle data manipulation such as extracting data from previous step, mutating data then feeding into `.wfdata` for the following steps. However, in some rear cases, we want to be able to construct and return data from our workflow that may be consumed outside of our workflow.
-
-For example:
-<!-- {% raw %} -->
-```yaml
-workflows:
-  test:
-    type: pipe
-    data:
-      "success": work done
-      "failure": work failed
-    content:
-      - content: step1
-      - content: step2
-      - content: step3
-      - type: data
-        content:
-          result: '{{ index .wfdata .labels.status }}'
-```
-<!-- {% endraw %} -->
-
-In the above example, we constructed the return data with the last step status and the data then can be consumed outside of current workflow, e.g. using as `.data` block in the invoking workflow's next step.
-
-You can see another example of using data type workflow in the `pipe` named workflow.
-
-## Workflow helper
-With the combination of the various type of workflows, it is possible to create a lot of complex workflows. To keep our rules and workflows simple and DRY, we have created a few helper workflows that can be used in some common cases. They are implemented using the same building blocks introduced in the above chapters. Feel free to check them out in the `workflow_helper.yaml`. They also serve as a showcase on how we can use the building blocks.
-
-### Repeat
-Repeat the same `work` for the specified number of times, the `work` should be a workflow. The remaining times can be accessed through wfdata using interpolation. Please note that, the interpolation in the `work` should be escaped. See [Interpoation Guide](./interpolation.md) for detail.
-
-For example:
-
-<!-- {% raw %} -->
-```yaml
-rules:
-  - when:
-      source:
-        system: accounting
-        event: revenue_yoy_growth
-  - do:
-      type: if
-      condition: '{{ gt .event.growth_percent 100 }}'
-      content:
-        - content: repeat
-          data:
-            times: 3
-            work:
-              type: function
-              content:
-                target:
-                  system: slack
-                  function: say
-                parameters:
-                  content:
-                    text: hooray! {{ "{{ .wfdata.times }}" }}
-                  channel: '#corp'
-```
-<!-- {% endraw %} -->
-
-### For each (pipe)
-Repeat the same workflow in `work` for each of the item listed in the `items`. While the loop is running, the remaining items can be accessed through `wfdata` using interpolation. Again, the interpolation in `work` should be escaped.  See [Interpoation Guide](./interpolation.md)  for detail.
-
-For example:
-
-<!-- {% raw %} -->
-```yaml
-workflows:
-  tell_my_favorite:
-    content: foreach
-    data:
-      items:
-        - apple
-        - orange
-        - strawberry
-      work:
-        type: function
-        content:
-          target:
-            system: slack
-            function: say
-          parameters:
-            content:
-              text: I like {{ "{{ first .wfdata.items }}" }}
-```
-<!-- {% endraw %} -->
-
-### For each (parallel)
-Same as the `pipe` version of the `foreach`, `foreach_parallel` will repeat the `work` for each item listed.  The difference is that the parallel version will run the child workflow with all the items in parallel.  There is no guanrantee of order, there is no "remaing items".  The current item can still be accessed through `.wfdata.current`.
-
-For example:
-
-<!-- {% raw %} -->
-```yaml
-workflows:
-  notify_all:
-    content: foreach
-    data:
-      items:
-        - '#sre'
-        - '#core'
-        - '@tom'
-      work:
-        type: function
-        content:
-          target:
-            system: slack
-            function: say
-          parameters:
-            content:
-              text: Notifying something
-            channel: '{{ "{{ .wfdata.current }}" }}'
-```
-<!-- {% endraw %} -->
-
-### Pipe
-We already have a native `pipe` type workflow, why do we need another `pipe` named workflow? Well, the native `pipe` workflow is too simple, and lacking some of the features. Below is what the `pipe` named workflow offers:
-
- * error handling option `on_error`: `exit`, `continue` to next step or jump to `final` step
- * advanced data handling when combined with `data` workflow
- * steps can be named
-
-For example:
-
-<!-- {% raw %} -->
-```yaml
-workflows:
-  mywork:
-    content: pipe
-    data:
+  samplejob:
+    run_kubernetes:
+      system: samplecluster
       steps:
-        - name: step1
-          work:
-            content: workflow1
-        - name: preserve step1 data
-          work:
-            type: data
-            content:
-              work_data:
-                step1_data: '{{ `{{ .data.result }}` }}'
-        - name: step2
-          work:
-            content: workflow2
-        - name: preserve step2 data
-          work:
-            type: data
-            content:
-              work_data:
-                step2_data: '{{ `{{ .data.result }}` }}'
-        - name: final announcement
-          work:
-            content: notify
-            data:
-              is_error: '{{ `{{ eq .data.work_status "success" }}` }}'
-              message:
-                text: '{{ `{{ eq .data.work_status "success" | ternary "all good" (list "failed at" .data.step | join " ") }}` }}'
+        - type: python3
+          command: 'print("hello world")'
+        - type: python3
+          shell: |
+            cd /opt/app
+            pip install -r requirements.txt
+            python main.py
 ```
-<!-- {% endraw %} -->
 
-The above workflow will return both step data in `.data.work_data`. And when complete, it will send a chat message to announce all good or the failed step.
+The first step uses the `command` to directly passing a python command or script to the container, while the second step uses `shell` to run a script using the same container image.
 
-### Wanted
-More helpers wanted
+There is a shared `emptyDir` volumes mounted at `/honeydipper` to every step, so that the steps can use the shared storage to pass on information. One thing to be noted is that the steps don't honour the default `WORKDIR` defined in the image, instead all the steps are using `/honeydipper` as `workingDir` in the container `spec`. This can be customized using `workingDir` in the step definition itself.
 
- * repeat_when_fail
- * foreach_when_success
- * when
+The workflow will return `success` in `.labels.status` when the job finishes successfully. If it fails to create a job or fails to get the status or job output, the status will be `error`. If the job is created, but failed to complete or return non-zero status code, the `.labels.status` will be set to `failure`. The workflow will export a `log` context field that contains a map from pod name to a map of container name to log output. A simple string version of the output that contains all the concatenated logs are exported as `output` context field.
 
+### Environment Variables and Volumes
+
+You can define environments and volumes to be used in each step or as a global context field to share them across steps. For example,
+
+```yaml
+---
+workflows:
+  samplejob:
+    run_kubernetes:
+      system: samplecluster
+      env:
+        - name: CLOUDSDK_CONFIG
+          value: /honeydipper/.config/gcloud
+      steps:
+        - git-clone
+        - type: gcloud
+          shell: |
+            gcloud auth activate-service-account $GOOGLE_APPLICATION_ACCOUNT --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+          env:
+            - name: GOOGLE_APPLICATIION_ACCOUNT
+              value: sample-service-account@foo.iam.gserviceaccount.com
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/gcloud/service-account.json
+          volumes:
+            - mountPath: /etc/gcloud
+              volume:
+                name: credentials-volume
+                secret:
+                  defaultMode: 420
+                  secretName: secret-gcloud-service-account
+                
+        - type: tf
+          shell: |
+            terraform plan -no-color
+```
+
+Please note that, the `CLOUDSDK_CONFIG` environment is shared among all the steps. This ensures that all steps use the same gcloud configuration directory. The volume definition here is a combining of `volumes` and `volumeMounts` definition from pod `spec`.
+
+### Predefined Step
+
+To make writing kubernetes job workflows easier, we have created a few `predefined_steps` that you can use instead of writing your own from scratch. To use the `predefined_step`, just replace the step definition with the name of the step. See the example from the previous section, where the first step of the job is `git-clone`.
+
+ * `git-clone`
+
+This step clones the given repo into the shared volume `/honeydipper/repo` folder. It requires that the `system` contains a few field to identify the repo to be cloned. That includes:
+
+ * `git_url` - the url of the repo
+ * `git_key_secret` - if a key is required, it should be present in the kubernetes cluster as a secret
+ * `git_ref` - branch
+
+We can also use the predefined step as a skeleton to create our steps by overriding the settings. For example,
+
+```yaml
+---
+workflows:
+  samplejob:
+    run_kubernetes:
+      system: samplecluster
+      steps:
+        - use: git-clone
+          volumes: [] # no need for secret volumes when cloning a public repo
+          env:
+            - name: REPO
+              value: https://github.com/honeydipper/honeydipper
+            - name: BRANCH
+              value: DipperCL
+        - ...
+```
+
+Pay attention to `use` field of the step.
+
+### Expanding `run_kubernetes`
+
+If `run_kubernetes` only supports built-in types or predefined steps, it won't be too useful in a lot of places. Luckily, it is very easy to expand the workflow to support more things.
+
+To add a new step type, just extend the `_default` context under `start_kube_job` in the `script_types` field.
+
+For example, to add a type with the `rclone` image,
+
+```yaml
+---
+contexts:
+  _default:
+    start_kube_job:
+      script_types:
+        rclone:
+          image: kovacsguido/rclone:latest
+          command_prefix: []
+          shell_entry: [ "/bin/ash", "-c" ]
+```
+Supported fields in a type:
+
+ * `image` - the image to use for this type
+ * `shell_entry` - the customized entrypoint if you want to run shell script with this image
+ * `shell_prefix` - a list of strings to be placed in `args` of the container `spec` before the actual `shell` script
+ * `command_entry` - in case you want to customize the entrypoint for using `command`
+ * `command_prefix` - a list of strings to be placed in `args` before `command`
+
+Similarly, to add a new predefined step, extend the `predefined_steps` field in the same place.
+
+For example, to add a rclone step
+
+```yaml
+---
+contexts:
+  _default:
+    start_kube_jobs:
+      predefined_steps:
+        rclone:
+          name: backup-replicate
+          type: rclone
+          command:
+            - copy
+            - --include
+            - '{{ coalesce .ctx.pattern (index (default (dict) .ctx.patterns) (default "" .ctx.from)) "*" }}'
+            - '{{ coalesce .ctx.source (index (default (dict) .ctx.sources) (default "" .ctx.from)) }}'
+            - '{{ coalesce .ctx.destination (index (default (dict) .ctx.destinations) (default "" .ctx.to)) }}'
+          volumes:
+            - mountPath: /root/.config/rclone
+              volume:
+                name: rcloneconf
+                secret:
+                  defaultMode: 420
+                  secretName: rclone-conf-with-ca
+```
+
+See [Defining steps](#basic-of-run_kubernetes) on how to define a step
+
+### Using `run_kubernetes` in GKE
+
+GKE is a google managed kubernetes cluster service. You can use `run_kubernetes` to run jobs in GKE as you would any kubernetes cluster. There are a few more helper workflows, predefined steps specifically for GKE.
+
+ * **`use_google_credentials` workflow**
+
+If the context variable `google_credentials_secret` is defined, this workflow will add a step in the `steps` list to activate the service account. The service account must exist in the kubernetes cluster as a secret, the service account key can be specified using `google_credentials_secret_key` and defaults to `service-account.json`. This is a great way to run your job with a service account other than the default account defined through the GKE node pool. This step has to be executed before you call `run_kubernetes`, and the following `steps` in the job have to be added through [append modifier](#merging-modifier).
+
+For example:
+```yaml
+---
+workflows:
+  create_cluster:
+    steps:
+      - call_workflow: use_google_credentials
+      - call_workflow: run_kubernetes
+        with:
+          steps+: # using append modifier here
+            - type: gcloud
+              shell: gcloud container clusters create {{ .ctx.new_cluster_name }}
+```
+
+ * **`use_gcloud_kubeconfig` workflow**
+
+This workflow is used for adding a step to run `gcloud container clusters get-credentials` to fetch the kubeconfig data for GKE clusters. This step requires that the `cluster` context variable is defined and describing a GKE cluster with fields like `project`, `cluster`, `zone` or `region`.
+
+For example:
+```yaml
+---
+workflows:
+  delete_job:
+    with:
+      cluster:
+        type: gke # specify the type of the kubernetes cluster
+        project: foo
+        cluster: bar
+        zone: us-central1-a
+    steps:
+      - call_workflow: use_google_credentials
+      - call_workflow: use_gcloud_kubeconfig
+      - call_workflow: run_kubernetes:
+        with:
+          steps+:
+            - type: gcloud
+              shell: kubectl delete jobs {{ .ctx.job_name }}
+```
+
+ * **`use_local_kubeconfig` workflow**
+
+This workflow is used for adding a step to clear the kubeconfig file so `kubectl` can use default in-cluster setting to work on local cluster.
+
+For example:
+```yaml
+---
+workflows:
+  copy_deployment_to_local:
+    steps:
+      - call_workflow: use_google_credentials
+      - call_workflow: use_gcloud_kubeconfig
+        with:
+          cluster:
+            project: foo
+            cluster: bar
+            zone: us-central1-a
+      - export:
+          steps+:
+            - type: gcloud
+              shell: kubectl get -o yaml deployment {{ .ctx.deployment }} > kuberentes.yaml
+      - call_workflow: use_local_kubeconfig
+      - call_workflow: run_kubernetes
+        with:
+          steps+:
+            - type: gcloud
+              shell: kubectl apply -f kubernetes.yaml
+```
+
+## Slash Commands
+
+The new version of `DipperCL` comes with integration with `Slack`, including **slash commands**, right out of the box. Once the integration is setup, we can easily add/customize the slash commands. See integration guide (coming soon) for detailed instruction. There are a few predefined commands that you can try out without need of any further customization.
+
+### Predefined Commands
+
+ * **`help`** - print the list of the supported command and a brief usage info
+ * **`reload`** - force honeydipper daemon to check and reload the configuration
+
+### Adding New Commands
+
+Let's say that you have a new workflow that you want to trigger through slash command. Define or extend a `_slashcommands` context to have something like below.
+
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        <command>:
+          workflow: <workflow>
+          usage: just some brief intro to your workflow
+          contexts: # optionally you can run your workflow with these contexts
+            - my_context
+```
+Replace the content in `<>` with your own content.
+
+### Mapping Parameters
+
+Most workflows expect certain context variables to be available in order to function, for example, you may need to specify which DB to backup or restore using a `DB` context variable when invoking a backup/restore workflow. When a slash command is defined, a `parameters` context variable is made available as a string that can be accessed through `$ctx.parameters` using path interpolation or `{{ .ctx.parameters }}` in go templates. We can use the `_slashcommands` context to transform the `parameters` context variable into the actual variables the workflow requires.
+
+For an simple example,
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        my_greeting:
+          workflow: greeting
+          usage: respond with greet, take a single word as greeter
+
+    greeting: # here is the context applied to the greeting workflow
+      greeter: $ctx.parameters # the parameters is transformed into the variable required
+```
+
+In case you want a list of words,
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        my_greeting:
+          workflow: greeting
+          usage: respond with greet, take a list of greeters
+
+    greeting: # here is the context applied to the greeting workflow
+      greeters: :yaml:{{ splitList " " .ctx.parameters }} # this generates a list
+```
+
+Some complex example, command with subcommands
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        jobs:
+          workflow: jobHandler
+          usage: handling internal jobs
+
+    jobHandler:
+      command: '{{ splitList " " .ctx.parameters | first }}'
+      name: '{{ splitList " " .ctx.parameters | rest | first }}'
+      jobParams: ':yaml:{{ splitList " " .ctx.parameters | slice 2 | toJson }}'
+```
+
+### Messages and notifications
+
+By default, a slashcommand will send acknowledgement and return status message to the channel where the command is launched. The messages will only be visible to the sender, in other words, is `ephemeral`. We can define a list of channels to receive the acknowledgement and return status in addition to the sender. This increases the visibility and auditability. This is simply done by adding a `slash_notify` context variable to the `slashcommand` workflow in the `_slashcommands` context.
+
+For example,
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slash_notify:
+        - "#my_team_channel"
+        - "#security"
+        - "#dont_tell_the_ceo"
+      slashcommands:
+        ...
+```
+
+### Secure the commands
+
+When defining each command, we can use `allowed_channels` field to define a whitelist of channels from where the command can be launched. For example, it is recommended to override the `reload` command to be launched only from the whitelist channels like below.
+
+```yaml
+contexts:
+  _slashcommands:
+    slashcommand:
+      slashcommands:
+        reload: # predefined
+          allowed_channels:
+            - "#sre"
+            - "#ceo"
+```

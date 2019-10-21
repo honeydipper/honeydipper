@@ -23,17 +23,36 @@ var FuncMap = template.FuncMap{
 	"now":      time.Now,
 	"duration": time.ParseDuration,
 	"ISO8601":  func(t time.Time) string { return t.Format(time.RFC3339) },
+	"toYaml": func(v interface{}) string {
+		s, err := yaml.Marshal(v)
+		if err != nil {
+			panic(err)
+		}
+		return string(s)
+	},
 }
 
-// InterpolateStr : parse the string as go template
+// InterpolateStr : interpolate a string and return a string
 func InterpolateStr(pattern string, data interface{}) string {
-	tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
-	buf := new(bytes.Buffer)
-	if err := tmpl.Execute(buf, data); err != nil {
-		Logger.Warningf("interpolation pattern failed: %+v", pattern)
-		Logger.Panicf("failed to interpolate: %+v", err)
+	ret := Interpolate(pattern, data)
+	if ret != nil {
+		return fmt.Sprintf("%+v", ret)
 	}
-	return buf.String()
+	return ""
+}
+
+// InterpolateGoTemplate : parse the string as go template
+func InterpolateGoTemplate(pattern string, data interface{}) string {
+	if strings.Contains(pattern, "{{") {
+		tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
+		buf := new(bytes.Buffer)
+		if err := tmpl.Execute(buf, data); err != nil {
+			Logger.Warningf("interpolation pattern failed: %+v", pattern)
+			Logger.Panicf("failed to interpolate: %+v", err)
+		}
+		return buf.String()
+	}
+	return pattern
 }
 
 // ParseYaml : load the data in the string as yaml
@@ -51,26 +70,48 @@ func ParseYaml(pattern string) interface{} {
 func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:
-		if strings.HasPrefix(v, ":path:") {
+		if strings.HasPrefix(v, "$") {
 			var keys []string
-			allowNull := (v[6] == '?')
+			allowNull := (v[1] == '?')
 			if allowNull {
-				keys = strings.Split(v[7:], ",")
+				keys = strings.Split(v[2:], ",")
 			} else {
-				keys = strings.Split(v[6:], ",")
+				keys = strings.Split(v[1:], ",")
 			}
+
+			var quote byte
+			defaultVal := ""
+
 			for _, key := range keys {
-				ret, _ := GetMapData(data, key)
-				if ret != nil {
-					return ret
+				if quote == 0 && strings.ContainsRune("\"'`", rune(key[0])) {
+					quote = key[0]
+					key = key[1:]
+				}
+
+				if quote != 0 {
+					if key[len(key)-1] == quote {
+						defaultVal += key[:len(key)-1]
+						return defaultVal
+					}
+					defaultVal += key
+				} else {
+					ret, _ := GetMapData(data, key)
+					if ret != nil {
+						if strings.HasPrefix(key, "sysData.") {
+							return Interpolate(ret, data)
+						}
+						return ret
+					}
 				}
 			}
 			if allowNull {
 				return nil
 			}
-			panic(fmt.Errorf("invalid path %s", v[6:]))
+			panic(fmt.Errorf("invalid path %s", v[1:]))
 		}
-		ret := InterpolateStr(v, data)
+
+		ret := InterpolateGoTemplate(v, data)
+
 		if strings.HasPrefix(ret, ":yaml:") {
 			defer func() {
 				if r := recover(); r != nil {
@@ -80,11 +121,19 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			}()
 			return ParseYaml(ret[6:])
 		}
+
+		ret = strings.TrimPrefix(ret, "\\")
 		return ret
 	case map[string]interface{}:
 		ret := map[string]interface{}{}
 		for k, val := range v {
 			ret[k] = Interpolate(val, data)
+		}
+		return ret
+	case []string:
+		ret := []string{}
+		for _, val := range v {
+			ret = append(ret, InterpolateStr(val, data))
 		}
 		return ret
 	case []interface{}:

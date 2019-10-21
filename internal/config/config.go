@@ -11,12 +11,19 @@ package config
 import (
 	"bytes"
 	"encoding/gob"
+	"strings"
 	"time"
 
 	"github.com/go-errors/errors"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/imdario/mergo"
 )
+
+//nolint:gochecknoinits
+func init() {
+	gob.Register(map[string]interface{}{})
+	gob.Register([]interface{}{})
+}
 
 // Config is a wrapper around the final complete configration of the daemon
 // including history and the runtime information
@@ -33,6 +40,9 @@ type Config struct {
 	OnChange      func()
 	IsConfigCheck bool
 	CheckRemote   bool
+	IsDocGen      bool
+	DocSrc        string
+	DocDst        string
 }
 
 // Bootstrap loads the configuration during daemon bootstrap.
@@ -113,6 +123,31 @@ func (c *Config) RollBack() {
 func (c *Config) assemble() {
 	c.DataSet, c.Loaded = c.Loaded[c.InitRepo].assemble(&(DataSet{}), map[RepoInfo]*Repo{})
 	c.extendAllSystems()
+	c.parseWorkflowRegex()
+}
+
+func (c *Config) parseWorkflowRegex() {
+	var processor func(key string, val interface{}) (interface{}, bool)
+
+	processor = func(name string, val interface{}) (interface{}, bool) {
+		switch v := val.(type) {
+		case string:
+			return dipper.RegexParser(name, val)
+		case Rule:
+			dipper.Recursive(&v.Do, processor)
+		case Workflow:
+			dipper.Recursive(v.Match, processor)
+			dipper.Recursive(v.Steps, processor)
+			dipper.Recursive(v.Threads, processor)
+			dipper.Recursive(v.Else, processor)
+			dipper.Recursive(v.Cases, processor)
+		}
+		return nil, false
+	}
+
+	dipper.Recursive(c.DataSet.Workflows, processor)
+	dipper.Recursive(c.DataSet.Rules, processor)
+	dipper.Recursive(c.DataSet.Contexts, dipper.RegexParser)
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
@@ -155,23 +190,31 @@ func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {
 func (c *Config) extendSystem(processed map[string]bool, system string) {
 	var merged System
 	var current = c.DataSet.Systems[system]
-	for _, parent := range current.Extends {
-		if _, ok := processed[parent]; !ok {
-			c.extendSystem(processed, parent)
+	for _, extend := range current.Extends {
+		parts := strings.Split(extend, "=")
+		var base, subKey string
+		base = strings.TrimSpace(parts[0])
+		if len(parts) >= 2 {
+			subKey = base
+			base = strings.TrimSpace(parts[1])
 		}
 
-		parentSys := c.DataSet.Systems[parent]
-		parentCopy, err := SystemCopy(&parentSys)
+		if _, ok := processed[base]; !ok {
+			c.extendSystem(processed, base)
+		}
+
+		baseSys := c.DataSet.Systems[base]
+		baseCopy, err := SystemCopy(&baseSys)
 		if err != nil {
 			panic(err)
 		}
 
-		err = mergeSystem(&merged, *parentCopy)
+		err = mergeSystem(&merged, *baseCopy, subKey)
 		if err != nil {
 			panic(err)
 		}
 	}
-	err := mergeSystem(&merged, current)
+	err := mergeSystem(&merged, current, "")
 	if err != nil {
 		panic(err)
 	}
@@ -212,7 +255,7 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 	for name, system := range s.Systems {
 		exist, ok := d.Systems[name]
 		if ok {
-			err := mergeSystem(&exist, system)
+			err := mergeSystem(&exist, system, "")
 			if err != nil {
 				return err
 			}
@@ -226,48 +269,79 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 	}
 
 	s.Systems = map[string]System{}
+	s.Contexts = dipper.MustDeepCopyMap(s.Contexts)
+	s.Drivers = dipper.MustDeepCopyMap(s.Drivers)
 	err := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
 	return err
 }
 
-func mergeSystem(d *System, s System) error {
+func mergeSystem(d *System, s System, key string) error {
 	for name, trigger := range s.Triggers {
-		exist, ok := d.Triggers[name]
-		if ok {
-			err := mergo.Merge(&exist, trigger, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				return err
-			}
-		} else {
-			exist = trigger
-		}
 		if d.Triggers == nil {
 			d.Triggers = map[string]Trigger{}
 		}
-		d.Triggers[name] = exist
+		if key == "" {
+			exist, ok := d.Triggers[name]
+			if ok {
+				err := mergo.Merge(&exist, trigger, mergo.WithOverride, mergo.WithAppendSlice)
+				if err != nil {
+					return err
+				}
+				if exist.Description == "" {
+					exist.Description = trigger.Description
+				}
+				if exist.Meta == nil {
+					exist.Meta = trigger.Meta
+				}
+			} else {
+				exist = trigger
+			}
+			d.Triggers[name] = exist
+		} else {
+			d.Triggers[key+"."+name] = trigger
+		}
 	}
 
 	for name, function := range s.Functions {
-		exist, ok := d.Functions[name]
-		if ok {
-			err := mergo.Merge(&exist, function, mergo.WithOverride, mergo.WithAppendSlice)
-			if err != nil {
-				return err
-			}
-		} else {
-			exist = function
-		}
 		if d.Functions == nil {
 			d.Functions = map[string]Function{}
 		}
-		d.Functions[name] = exist
+		if key == "" {
+			exist, ok := d.Functions[name]
+			if ok {
+				err := mergo.Merge(&exist, function, mergo.WithOverride, mergo.WithAppendSlice)
+				if err != nil {
+					return err
+				}
+			} else {
+				exist = function
+			}
+			d.Functions[name] = exist
+		} else {
+			d.Functions[key+"."+name] = function
+		}
 	}
 
-	err := mergo.Merge(&d.Data, s.Data, mergo.WithOverride, mergo.WithAppendSlice)
-	if err != nil {
-		return err
+	if key == "" {
+		err := mergo.Merge(&d.Data, s.Data, mergo.WithOverride, mergo.WithAppendSlice)
+		if err != nil {
+			return err
+		}
+
+		d.Extends = append(d.Extends, s.Extends...)
+	} else {
+		if d.Data == nil {
+			d.Data = map[string]interface{}{}
+		}
+		d.Data[key] = s.Data
 	}
 
-	d.Extends = append(d.Extends, s.Extends...)
+	if s.Description != "" {
+		d.Description = s.Description
+	}
+	if s.Meta != nil {
+		d.Meta = s.Meta
+	}
+
 	return nil
 }
