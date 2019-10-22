@@ -312,6 +312,7 @@ load some predefined configurations to jump start the integration.  The configur
  * some `workflow` to help users use the `function`s, see [Workflow composing guide](./workflow.md) for detail
 
 For example, I created a hypothetical integration for a z-wave switch, the configuration might look like:
+<!-- {% raw %} -->
 ```yaml
 ---
 daemon:
@@ -362,6 +363,7 @@ workflows:
               parameters:
                 device_id: '{{ `{{ .wfdata.current }}` }}'
 ```
+<!-- {% endraw %} -->
 
 Assuming the configuration is in github.com/example/myzwave-config/init.yaml, the users only need to load the below snippet into
 their bootstrap repo to load your driver and configurations, and start to customizing.

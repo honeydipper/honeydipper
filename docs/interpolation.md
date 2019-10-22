@@ -208,6 +208,7 @@ rules:
 
 This function returns current timestamps.
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -216,11 +217,13 @@ workflows:
     with:
       time: '{{ now | toString }}'
 ```
+<!-- {% endraw %} -->
 
 #### duration
 
 This function parse the duration string and can be used for date time calculation.
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -229,11 +232,13 @@ workflows:
       - wait: '{{ duration "1m" }}'
       - call_workflow: something
 ```
+<!-- {% endraw %} -->
 
 #### ISO8601
 
 This function format the timestamps into the ISO8601 format.
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -243,11 +248,13 @@ workflows:
         with:
           time_str: '{{ now | ISO8601 }}'
 ```
+<!-- {% endraw %} -->
 
 #### toYaml
 
 This function converts the given data structure into a yaml string
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -257,6 +264,7 @@ workflows:
         with:
           yaml_str: '{{ .ctx.parameters | toYaml }}'
 ```
+<!-- {% endraw %} -->
 
 ## Workflow contextual data
 Depending on where the interpolation is executed, 1) workflow engine, 2) operator (function parameters), the available contextual data is slightly different.
