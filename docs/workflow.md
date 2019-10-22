@@ -104,6 +104,7 @@ Any of the actions can be combined with an `iterate` or `iterate_parallel` field
 
 For example:
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -117,6 +118,7 @@ workflows:
     with:
       message: '{{ .ctx.current.name }} is playing the role of `{{ .ctx.current.role }}`.'
 ```
+<!-- {% endraw %} -->
 
 ### Conditions
 We can also specify the conditions that the workflow checks before taking any action.
@@ -161,6 +163,7 @@ workflows:
 Please note how we use regular expression, list of options to match the contextual data, and how to match a field deep into the data structure.
 
 Below are some examples of using list of conditions:
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -180,6 +183,7 @@ workflows:
     with:
       message: at least one of `exits` or `also` is not empty
 ```
+<!-- {% endraw %} -->
 
 ### Looping
 We can also repeat the actions in the workflow through looping fields
@@ -189,6 +193,7 @@ We can also repeat the actions in the workflow through looping fields
     
 For example:
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -230,6 +235,7 @@ workflows:
       - count
       - backoff
 ```
+<!-- {% endraw %} -->
 
 ### Hooks
 Hooks are child workflows executed at a specified moments in the parent workflow's lifecycle. It is a great way to separate auxiliary work, such as sending heartbeat, sending slack messages, making an announcement, clean up, data preparation etc., from the actual work. Hooks are defined through context data, so it can be pulled in through predefined contexts, which makes the actual workflow seems less cluttered.
@@ -588,6 +594,7 @@ Similarly, to add a new predefined step, extend the `predefined_steps` field in 
 
 For example, to add a rclone step
 
+<!-- {% raw %} -->
 ```yaml
 ---
 contexts:
@@ -611,6 +618,7 @@ contexts:
                   defaultMode: 420
                   secretName: rclone-conf-with-ca
 ```
+<!-- {% endraw %} -->
 
 See [Defining steps](#basic-of-run_kubernetes) on how to define a step
 
@@ -623,6 +631,7 @@ GKE is a google managed kubernetes cluster service. You can use `run_kubernetes`
 If the context variable `google_credentials_secret` is defined, this workflow will add a step in the `steps` list to activate the service account. The service account must exist in the kubernetes cluster as a secret, the service account key can be specified using `google_credentials_secret_key` and defaults to `service-account.json`. This is a great way to run your job with a service account other than the default account defined through the GKE node pool. This step has to be executed before you call `run_kubernetes`, and the following `steps` in the job have to be added through [append modifier](#merging-modifier).
 
 For example:
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -635,12 +644,14 @@ workflows:
             - type: gcloud
               shell: gcloud container clusters create {{ .ctx.new_cluster_name }}
 ```
+<!-- {% endraw %} -->
 
  * **`use_gcloud_kubeconfig` workflow**
 
 This workflow is used for adding a step to run `gcloud container clusters get-credentials` to fetch the kubeconfig data for GKE clusters. This step requires that the `cluster` context variable is defined and describing a GKE cluster with fields like `project`, `cluster`, `zone` or `region`.
 
 For example:
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -660,12 +671,14 @@ workflows:
             - type: gcloud
               shell: kubectl delete jobs {{ .ctx.job_name }}
 ```
+<!-- {% endraw %} -->
 
  * **`use_local_kubeconfig` workflow**
 
 This workflow is used for adding a step to clear the kubeconfig file so `kubectl` can use default in-cluster setting to work on local cluster.
 
 For example:
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -689,6 +702,7 @@ workflows:
             - type: gcloud
               shell: kubectl apply -f kubernetes.yaml
 ```
+<!-- {% endraw %} -->
 
 ## Slash Commands
 
@@ -718,7 +732,7 @@ Replace the content in `<>` with your own content.
 
 ### Mapping Parameters
 
-Most workflows expect certain context variables to be available in order to function, for example, you may need to specify which DB to backup or restore using a `DB` context variable when invoking a backup/restore workflow. When a slash command is defined, a `parameters` context variable is made available as a string that can be accessed through `$ctx.parameters` using path interpolation or `{{ .ctx.parameters }}` in go templates. We can use the `_slashcommands` context to transform the `parameters` context variable into the actual variables the workflow requires.
+Most workflows expect certain context variables to be available in order to function, for example, you may need to specify which DB to backup or restore using a `DB` context variable when invoking a backup/restore workflow. When a slash command is defined, a `parameters` context variable is made available as a string that can be accessed through `$ctx.parameters` using path interpolation or <!-- {% raw %} -->`{{ .ctx.parameters }}`<!-- {% endraw %} --> in go templates. We can use the `_slashcommands` context to transform the `parameters` context variable into the actual variables the workflow requires.
 
 For an simple example,
 ```yaml
@@ -735,6 +749,7 @@ contexts:
 ```
 
 In case you want a list of words,
+<!-- {% raw %} -->
 ```yaml
 contexts:
   _slashcommands:
@@ -747,8 +762,10 @@ contexts:
     greeting: # here is the context applied to the greeting workflow
       greeters: :yaml:{{ splitList " " .ctx.parameters }} # this generates a list
 ```
+<!-- {% endraw %} -->
 
 Some complex example, command with subcommands
+<!-- {% raw %} -->
 ```yaml
 contexts:
   _slashcommands:
@@ -763,6 +780,7 @@ contexts:
       name: '{{ splitList " " .ctx.parameters | rest | first }}'
       jobParams: ':yaml:{{ splitList " " .ctx.parameters | slice 2 | toJson }}'
 ```
+<!-- {% endraw %} -->
 
 ### Messages and notifications
 
