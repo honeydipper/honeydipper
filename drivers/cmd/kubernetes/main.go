@@ -213,7 +213,7 @@ func waitForJob(m *dipper.Message) {
 		jobstatus.Stop()
 		m.Reply <- dipper.Message{
 			Labels: map[string]string{
-				"error": "time out",
+				"error": "timeout",
 			},
 		}
 	}
