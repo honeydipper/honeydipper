@@ -319,7 +319,7 @@ func waitForJob(msg *dipper.Message) {
 		msg.Reply <- m
 	case <-time.After(time.Duration(timeout) * time.Second):
 		expired = true
-		panic(errors.New("time out"))
+		panic(errors.New("timeout"))
 	}
 }
 

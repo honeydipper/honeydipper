@@ -188,7 +188,7 @@ func (w *Session) startWait() {
 			defer dipper.SafeExitOnError("[workflow] resuming session on timeout failed %+v", resumeToken)
 
 			timeoutStatus, _ := dipper.GetMapDataStr(w.ctx, "timeout_status")
-			reason := "time out"
+			reason := "timeout"
 			if timeoutStatus == "" {
 				timeoutStatus = SessionStatusSuccess
 				reason = ""
