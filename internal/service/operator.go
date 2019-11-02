@@ -108,6 +108,20 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			msg.Labels = map[string]string{}
 		}
 		msg.Labels["method"] = rawaction
+		retry := dipper.InterpolateStr("$?ctx.retry,params.retry", map[string]interface{}{
+			"ctx":    ctx,
+			"params": params,
+		})
+		if retry != "" {
+			msg.Labels["retry"] = retry
+		}
+		backoff := dipper.InterpolateStr("$?ctx.backoff_ms,params.backoff_ms", map[string]interface{}{
+			"ctx":    ctx,
+			"params": params,
+		})
+		if backoff != "" {
+			msg.Labels["backoff_ms"] = backoff
+		}
 
 		ret = []RoutedMessage{
 			{
