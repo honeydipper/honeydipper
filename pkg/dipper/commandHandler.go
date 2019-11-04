@@ -7,9 +7,17 @@
 package dipper
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
+)
+
+const (
+	SUCCESS = "success"
+	FAILURE = "failure"
+	ERROR   = "error"
 )
 
 // CommandProvider : an interface for providing Command handling feature
@@ -28,36 +36,44 @@ func (p *CommandProvider) Init(channel string, subject string, defaultWriter io.
 	p.Subject = subject
 }
 
-// ReturnError : return error to rpc caller
-func (p *CommandProvider) ReturnError(call *Message, reason string) {
-	retMsg := &Message{
-		Channel: p.Channel,
-		Subject: p.Subject,
-		Labels:  call.Labels,
-	}
-	retMsg.Labels["status"] = "error"
-	retMsg.Labels["reason"] = reason
-	SendMessage(p.ReturnWriter, retMsg)
+// ReturnError: send an error message return to caller and create an error
+func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...interface{}) error {
+	errText := fmt.Sprintf(pattern, args...)
+	p.Return(call, &Message{
+		Labels: map[string]string{
+			"error": errText,
+		},
+	})
+	Logger.Warningf("[operator] %s", errText)
+	return errors.New(errText)
 }
 
 // Return : return a value to rpc caller
 func (p *CommandProvider) Return(call *Message, retval *Message) {
-	retMsg := &Message{
-		Channel: p.Channel,
-		Subject: p.Subject,
-		Labels:  call.Labels,
-	}
-	if status, ok := retval.Labels["status"]; ok {
-		retMsg.Labels["status"] = status
-		if status != "success" {
-			retMsg.Labels["reason"] = retval.Labels["reason"]
+	if _, ok := call.Labels["sessionID"]; ok {
+		retMsg := &Message{
+			Channel: p.Channel,
+			Subject: p.Subject,
+			Labels:  call.Labels,
 		}
-	} else {
-		retMsg.Labels["status"] = "success"
+		if status, ok := retval.Labels["status"]; ok {
+			retMsg.Labels["status"] = status
+			if status != SUCCESS {
+				retMsg.Labels["reason"] = retval.Labels["reason"]
+			}
+		} else {
+			if reason, ok := retval.Labels["error"]; ok {
+				retMsg.Labels["status"] = "error"
+				retMsg.Labels["reason"] = reason
+			} else {
+				retMsg.Labels["status"] = SUCCESS
+			}
+		}
+		retMsg.Payload = retval.Payload
+		retMsg.IsRaw = retval.IsRaw
+		SendMessage(p.ReturnWriter, retMsg)
 	}
-	retMsg.Payload = retval.Payload
-	retMsg.IsRaw = retval.IsRaw
-	SendMessage(p.ReturnWriter, retMsg)
+	call.Reply = nil
 }
 
 // Router : route the message to rpc handlers
@@ -65,41 +81,70 @@ func (p *CommandProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
 	f, ok := p.Commands[method]
 	if !ok {
-		Logger.Panicf("[operator] cmd not defined %s", method)
+		panic(p.ReturnError(msg, "[operator] cmd not defined: %s", method))
 	}
-	msg.Reply = make(chan Message, 1)
 
-	go func() {
-		defer close(msg.Reply)
-		select {
-		case reply := <-msg.Reply:
-			if _, ok := reply.Labels["no-timeout"]; ok {
-				reply = <-msg.Reply
-			}
-			if _, ok := msg.Labels["sessionID"]; ok {
-				if reason, ok := reply.Labels["error"]; ok {
-					p.ReturnError(msg, reason)
+	retry := 0
+	backoff := 10
+	var err error
+
+	retryStr := msg.Labels["retry"]
+	if retryStr != "" {
+		retry, err = strconv.Atoi(retryStr)
+		if err != nil {
+			panic(p.ReturnError(msg, "[operator] invalid retry: %s", retryStr))
+		}
+	}
+
+	backoffStr := msg.Labels["backoff_ms"]
+	if backoffStr != "" {
+		backoff, err = strconv.Atoi(backoffStr)
+		if err != nil {
+			panic(p.ReturnError(msg, "[operator] invalid backoff_ms: %s", backoffStr))
+		}
+	}
+
+	var attempt func(chan Message)
+	attempt = func(rchan chan Message) {
+		msg.Reply = rchan
+
+		go func() {
+			defer close(rchan)
+
+			Logger.Debugf("[operaotr] cmd labels %+v", msg.Labels)
+
+			select {
+			case reply := <-msg.Reply:
+				if _, ok := reply.Labels["no-timeout"]; ok {
+					reply = <-msg.Reply
+				}
+
+				_, hasError := reply.Labels["error"]
+				if status, ok := reply.Labels["status"]; (hasError || (ok && status != SUCCESS)) && retry > 0 {
+					Logger.Debugf("[operaotr] %d retry left for method %s", retry, method)
+					retry--
+					time.Sleep(time.Duration(backoff) * time.Millisecond)
+					backoff *= 2
+					go attempt(make(chan Message, 1))
 				} else {
 					p.Return(msg, &reply)
 				}
+			case <-time.After(time.Second * 10):
+				_ = p.ReturnError(msg, "timeout")
 			}
-		case <-time.After(time.Second * 10):
-			if _, ok := msg.Labels["sessionID"]; ok {
-				p.ReturnError(msg, "timeout")
-			}
-		}
-		Logger.Debugf("[operaotr] cmd labels %+v", msg.Labels)
-	}()
+		}()
 
-	defer func() {
-		if r := recover(); r != nil {
-			msg.Reply <- Message{
-				Labels: map[string]string{
-					"error": fmt.Sprintf("%+v", r),
-				},
+		defer func() {
+			if r := recover(); r != nil {
+				msg.Reply <- Message{
+					Labels: map[string]string{
+						"error": fmt.Sprintf("%+v", r),
+					},
+				}
 			}
-			panic(r)
-		}
-	}()
-	f(msg)
+		}()
+		f(msg)
+	}
+
+	attempt(make(chan Message, 1))
 }
