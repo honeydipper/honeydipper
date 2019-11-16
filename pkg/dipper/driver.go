@@ -14,15 +14,11 @@ import (
 	"github.com/op/go-logging"
 )
 
-// RPCHandler : a type of functions that handle RPC calls between drivers
-type RPCHandler func(string, string, []byte)
-
 // Driver : the helper stuct for creating a honey-dipper driver in golang
 type Driver struct {
-	RPC struct {
-		Caller   RPCCaller
-		Provider RPCProvider
-	}
+	RPCCaller
+	RPCProvider
+	CommandProvider
 	Name            string
 	Service         string
 	State           string
@@ -34,7 +30,6 @@ type Driver struct {
 	Stop            MessageHandler
 	Reload          MessageHandler
 	ReadySignal     chan bool
-	CommandProvider CommandProvider
 }
 
 // NewDriver : create a blank driver object
@@ -47,8 +42,8 @@ func NewDriver(service string, name string) *Driver {
 		Out:     os.Stdout,
 	}
 
-	driver.RPC.Provider.Init("rpc", "return", driver.Out)
-	driver.RPC.Caller.Init("rpc", "call")
+	driver.RPCProvider.Init("rpc", "return", driver.Out)
+	driver.RPCCaller.Init(&driver, "rpc", "call")
 	driver.CommandProvider.Init("eventbus", "return", driver.Out)
 
 	driver.MessageHandlers = map[string]MessageHandler{
@@ -56,8 +51,8 @@ func NewDriver(service string, name string) *Driver {
 		"command:ping":     driver.Ping,
 		"command:start":    driver.start,
 		"command:stop":     driver.stop,
-		"rpc:call":         driver.RPC.Provider.Router,
-		"rpc:return":       driver.RPC.Caller.HandleReturn,
+		"rpc:call":         driver.RPCProvider.Router,
+		"rpc:return":       driver.HandleReturn,
 		"eventbus:command": driver.CommandProvider.Router,
 	}
 
@@ -153,16 +148,6 @@ func (d *Driver) GetOptionStr(path string) (string, bool) {
 	return GetMapDataStr(d.Options, path)
 }
 
-// RPCCallRaw : making a PRC call with raw bytes from driver to another driver
-func (d *Driver) RPCCallRaw(feature string, method string, params []byte) ([]byte, error) {
-	return d.RPC.Caller.CallRaw(d.Out, feature, method, params)
-}
-
-// RPCCall : making a PRC call from driver to another driver
-func (d *Driver) RPCCall(feature string, method string, params interface{}) ([]byte, error) {
-	return d.RPC.Caller.Call(d.Out, feature, method, params)
-}
-
 // we have to keep hold of the os.File object to
 // avoid being closed by garbage collector (runtime.setFinalizer)
 var logFile *os.File
@@ -180,4 +165,14 @@ func (d *Driver) GetLogger() *logging.Logger {
 		return GetLogger(d.Name, levelstr, logFile)
 	}
 	return Logger
+}
+
+// GetStream getting a output stream for a feature
+func (d *Driver) GetStream(feature string) io.Writer {
+	return d.Out
+}
+
+// GetName returns the name of the driver
+func (d *Driver) GetName() string {
+	return d.Name
 }

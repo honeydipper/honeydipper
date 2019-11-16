@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -43,6 +44,7 @@ type RoutedMessage struct {
 
 // Service is a collection of daemon's feature.
 type Service struct {
+	dipper.RPCCaller
 	name               string
 	config             *config.Config
 	driverRuntimes     map[string]*driver.Runtime
@@ -56,10 +58,7 @@ type Service struct {
 	Route              func(*dipper.Message) []RoutedMessage
 	DiscoverFeatures   func(*config.DataSet) map[string]interface{}
 	ServiceReload      func(*config.Config)
-	RPC                struct {
-		Caller dipper.RPCCaller
-	}
-	EmitMetrics func()
+	EmitMetrics        func()
 }
 
 // Services holds a catalog of running services in this daemon process.
@@ -74,7 +73,7 @@ func NewService(cfg *config.Config, name string) *Service {
 		expects:        map[string][]ExpectHandler{},
 		responders:     map[string][]MessageResponder{},
 	}
-	svc.RPC.Caller.Init("rpc", "call")
+	svc.RPCCaller.Init(svc, "rpc", "call")
 
 	svc.responders["state:cold"] = []MessageResponder{coldReloadDriverRuntime}
 	svc.responders["rpc:call"] = []MessageResponder{handleRPCCall}
@@ -82,6 +81,28 @@ func NewService(cfg *config.Config, name string) *Service {
 	svc.responders["broadcast:reload"] = []MessageResponder{handleReload}
 
 	return svc
+}
+
+func (s *Service) GetName() string {
+	return s.name
+}
+
+func (s *Service) GetStream(feature string) io.Writer {
+	if runtime := s.getDriverRuntime(feature); runtime != nil {
+		seconds := 0
+		for seconds < 9 && (runtime.State == driver.DriverLoading || runtime.State == driver.DriverReloading) {
+			dipper.Logger.Warningf("[%s] waiting for feature %s to load/reload ...", s.name, feature)
+			time.Sleep(time.Second)
+			seconds++
+		}
+
+		if runtime.State != driver.DriverAlive {
+			panic(fmt.Errorf("feature failed or loading timeout: %s", feature))
+		}
+
+		return runtime.Output
+	}
+	panic(fmt.Errorf("feature not loaded: %s", feature))
 }
 
 func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{}, replace bool) {
@@ -95,7 +116,7 @@ func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{
 			if err != nil {
 				dipper.Logger.Panicf("encrypted data shoud be base64 encoded")
 			}
-			decrypted, _ := s.RPCCallRaw("driver:"+encDriver, "decrypt", decoded)
+			decrypted, _ := s.CallRaw("driver:"+encDriver, "decrypt", decoded)
 			return string(decrypted), true
 		}
 	}
@@ -553,16 +574,6 @@ func (s *Service) checkDeleteDriverRuntime(feature string, check *driver.Runtime
 	dipper.LockCheckDeleteMap(&s.driverLock, s.driverRuntimes, feature, check)
 }
 
-// RPCCallRaw is used for making a PRC call with raw bytes from driver to another driver.
-func (s *Service) RPCCallRaw(feature string, method string, params []byte) ([]byte, error) {
-	return s.RPC.Caller.CallRaw(s.getDriverRuntime(feature).Output, feature, method, params)
-}
-
-// RPCCall is used for making a PRC call from driver to another driver.
-func (s *Service) RPCCall(feature string, method string, params interface{}) ([]byte, error) {
-	return s.RPC.Caller.Call(s.getDriverRuntime(feature).Output, feature, method, params)
-}
-
 func coldReloadDriverRuntime(d *driver.Runtime, m *dipper.Message) {
 	s := Services[d.Service]
 	s.checkDeleteDriverRuntime(d.Feature, d)
@@ -581,7 +592,7 @@ func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
 	caller := m.Labels["caller"]
 	s := Services[from.Service]
 	if caller == "-" {
-		s.RPC.Caller.HandleReturn(m)
+		s.HandleReturn(m)
 	} else {
 		dipper.SendMessage(s.getDriverRuntime(caller).Output, m)
 	}
@@ -614,29 +625,23 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 
 // CounterIncr increases a counter metric.
 func (s *Service) CounterIncr(name string, tags []string) {
-	if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
-		go func() {
-			defer dipper.SafeExitOnError("[%s] emitter crashed")
-			s.RPC.Caller.CallNoWait(emitter.Output, FeatureEmitter, "counter_increment", map[string]interface{}{
-				"name": name,
-				"tags": tags,
-			})
-		}()
-	}
+	go func() {
+		_ = s.CallNoWait(FeatureEmitter, "counter_increment", map[string]interface{}{
+			"name": name,
+			"tags": tags,
+		})
+	}()
 }
 
 // GaugeSet sets the value for a gauge metric.
 func (s *Service) GaugeSet(name string, value string, tags []string) {
-	if emitter, ok := s.driverRuntimes[FeatureEmitter]; ok && emitter.State == driver.DriverAlive {
-		go func() {
-			defer dipper.SafeExitOnError("[%s] emitter crashed")
-			s.RPC.Caller.CallNoWait(emitter.Output, FeatureEmitter, "gauge_set", map[string]interface{}{
-				"name":  name,
-				"value": value,
-				"tags":  tags,
-			})
-		}()
-	}
+	go func() {
+		_ = s.CallNoWait(FeatureEmitter, "gauge_set", map[string]interface{}{
+			"name":  name,
+			"value": value,
+			"tags":  tags,
+		})
+	}()
 }
 
 func (s *Service) metricsLoop() {

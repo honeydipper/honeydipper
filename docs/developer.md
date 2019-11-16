@@ -152,23 +152,44 @@ Currently, we are categorizing the messages into 3 different channels:
 
 ## RPC
 
-Within the driver helper object, there are two helper objects that are meant for helping with RPC related activities.
- * *dipper.Driver.RPC.Caller*
- * *dipper.Driver.RPC.Provider*
+Drivers can make and offer RPC calls to each other. Daemon can also make RPC calls to the drivers. This greatly extends Honeydipper
+ability to conduct complicated operations. Each driver only need to handle the portion of the work it intends to solve, and outsourcing
+auxiliary work to other drivers which have the corresponding capabilities.
 
-To make a RPC Call, you don't have to use the `Caller` object directly, just use `RPCCall` or `RPCCallRaw` method,
-Both method block for return with 10 seconds timeout. The timeout is not tunable at this time. For example,
-calling the `gcloud-kms` driver for decryption
+For example, `kubernetes` driver interacts with kubernetes clusters, but the task of obtaining the credentials and endpoints is
+outsourced to the vendor drivers, such as `gcloud-gke`, through a RPC call `getKubeCfg`. Another example is how Honeydipper handles
+encrypted content. Honeydipper supports `eyaml` style of encrypted content in configurations, and the cipher text is prefixed with a
+driver name. The decryption driver, `gcloud-kms` as an example, must offer a RPC call `decrypt`.
+
+To make a RPC Call, use `Call` or `CallRaw` method, Both method block for return with 10 seconds timeout. The timeout is not
+tunable at this time. Each of them take three parameters:
+ * feature name - an abstract feature name, or a driver name with `driver:` prefix
+ * method name - the name of the RPC method
+ * parameters - payload of the dipper message constructed for the RPC call, a map or raw bytes
+
+For example, calling the `gcloud-kms` driver for decryption
 
 ```go
-decrypted, err := driver.RPCCallRaw("driver:gcloud-kms", "decrypt", encrypted)
+decrypted, err := driver.CallRaw("driver:gcloud-kms", "decrypt", encrypted)
+```
+
+There are also two non-blocking methods in the driver, `CallNoWait` or `CallRawNoWait`, to make RPC calls without waiting for any
+return. For example, making a call to emit a metric to a metrics collecting system, e.g. datadog.
+
+```go
+err := driver.CallNoWait("emitter", "counter_increment", map[string]interface{}{
+  name: "honeydipper.driver.invoked",
+  tags: []string{
+    "driver:mydriver",
+  },
+})
 ```
 
 To offer a RPC method for the system to call, create the function that accept a single parameter `*dipper.Message`. Add the method
-to `Provider.RPCHandlers` map, for example
+to `RPCHandlers` map, for example
 
 ```go
-driver.RPC.Provider.RPCHandler["mymethod"] = MyFunc
+driver.RPCHandler["mymethod"] = MyFunc
 
 func MyFunc(m *dipper.Message) {
   ...
@@ -288,7 +309,7 @@ it times out. If you don't have any data to return, just send a blank message ba
 ```go
 func main() {
   ...
-  driver.CommandProvider.Commands["wait10min"] = wait10min
+  driver.Commands["wait10min"] = wait10min
   ...
 }
 

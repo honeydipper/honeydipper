@@ -35,7 +35,7 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "kms")
-	driver.RPC.Provider.RPCHandlers["decrypt"] = decrypt
+	driver.RPCHandlers["decrypt"] = decrypt
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }

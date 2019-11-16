@@ -44,7 +44,7 @@ func main() {
 		driver.Reload = func(*dipper.Message) {
 			log = nil
 		} // allow hot reload
-		driver.CommandProvider.Commands["request"] = sendRequest
+		driver.Commands["request"] = sendRequest
 		driver.Run()
 	}
 }

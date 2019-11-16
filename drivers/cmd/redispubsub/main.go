@@ -40,7 +40,7 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "redispubsub")
 	driver.Start = start
 	if driver.Service == "operator" {
-		driver.CommandProvider.Commands["send"] = broadcastToRedis
+		driver.Commands["send"] = broadcastToRedis
 	}
 	driver.Run()
 }
