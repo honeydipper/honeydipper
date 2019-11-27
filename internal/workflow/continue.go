@@ -157,19 +157,30 @@ func (w *Session) processExport(msg *dipper.Message) {
 // fireCompleteHooks fires all the hooks at completion time asychronously
 func (w *Session) fireCompleteHooks(msg *dipper.Message) {
 	defer dipper.SafeExitOnError("session [%s] error on running completion hooks", w.ID)
-	var hookName string
-	switch msg.Labels["status"] {
-	case SessionStatusError:
-		hookName = WorkflowHookError
-	case SessionStatusFailure:
-		hookName = WorkflowHookFailure
-	default:
-		hookName = WorkflowHookSuccess
+
+	// clear other lifecycle hooks
+	if w.currentHook != "" && !w.isInCompleteHooks() {
+		w.fireHook(w.currentHook, msg)
 	}
 
-	if w.currentHook == "" || w.currentHook == hookName {
+	if w.currentHook == "" {
+		// call conditional completion hook
+		var hookName string
+		switch msg.Labels["status"] {
+		case SessionStatusError:
+			hookName = WorkflowHookError
+		case SessionStatusFailure:
+			hookName = WorkflowHookFailure
+		default:
+			hookName = WorkflowHookSuccess
+		}
 		w.fireHook(hookName, msg)
+	} else if w.currentHook != WorkflowHookExit {
+		// clear conditional completion hook
+		w.fireHook(w.currentHook, msg)
 	}
+
+	// fire or clear exit hook
 	if w.currentHook == "" || w.currentHook == WorkflowHookExit {
 		w.fireHook(WorkflowHookExit, msg)
 	}
@@ -198,7 +209,7 @@ func (w *Session) complete(msg *dipper.Message) {
 	if msg.Labels["status"] != SessionStatusSuccess && msg.Labels["performing"] == "" {
 		msg.Labels["performing"] = w.performing
 	}
-	dipper.Logger.Debugf("[workflow] session [%s] completing with msg labels %+v", w.ID, msg.Labels)
+	dipper.Logger.Infof("[workflow] session [%s] completing with msg labels %+v", w.ID, msg.Labels)
 	if w.ID != "" {
 		if _, ok := w.store.sessions[w.ID]; ok {
 			if w.currentHook == "" {
