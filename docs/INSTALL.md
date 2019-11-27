@@ -146,16 +146,27 @@ Replace the repo url with your own, and specify the private key path for accessi
 
 ### Building from source
 
-Assuming you have go 1.13.1 or up installed, you can use `go get` to download and build the binary.
+#### Prerequisites:
 
-```bash
-go get -u github.com/honeydipper/honeydipper.git
-pushd $GOPATH/src/github.com/honeydipper/honeydipper
-dep ensure
-go install ./...
+- Golang >= 1.11.xx
+    - Honeydipper uses [go modules](https://blog.golang.org/using-go-modules)
+- Git
+- Instructions assume POSIX compliant shell
+
+
+#### Instructions
+
+```sh
+export GO111MODULE=on
+git clone https://github.com/honeydipper/honeydipper.git
+pushd honeydipper
+go install -v ./...
 popd
 REPO=git@github.com/example/honeydipper-config.git DIPPER_SSH_KEY="$(cat ~/.ssh/id_rsa)" honeydipper
 ```
+
+*NOTE*: Specifying `GO111MODULE` is not necessary in golang >= 1.13.x
+
 You don't have to specify `DIPPER_SSH_KEY` if the key is used by your ssh client by default.
 
 Alternatively, you can follow the [developer setup guide](./howtos/setup_local.md) the download and build.

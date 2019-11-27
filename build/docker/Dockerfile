@@ -1,16 +1,18 @@
 FROM golang:1.13.4-alpine AS build
 
-ARG GOINSTALLOPTS=
-ARG GOGC=
+ARG GOINSTALLOPTS
+ARG GOGC
 
 ENV GOGC=$GOGC
 
-WORKDIR /go/src/github.com/honeydipper/honeydipper
+# Enable module mode (see https://github.com/golang/go/wiki/Modules)
+ENV GO111MODULE=auto
+
+WORKDIR /build
 
 RUN apk add --no-cache git gcc libc-dev
 COPY ./ ./
-RUN go get -u github.com/golang/dep/cmd/dep && dep ensure
-RUN go install $GOINSTALLOPTS ./...
+RUN go install -v ./...
 
 FROM alpine:3.10
 

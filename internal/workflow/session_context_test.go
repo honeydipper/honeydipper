@@ -9,13 +9,14 @@
 package workflow
 
 import (
+	"testing"
+
 	"github.com/ghodss/yaml"
 	"github.com/golang/mock/gomock"
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/workflow/mock_workflow"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestSessionContexts(t *testing.T) {
@@ -47,7 +48,7 @@ contexts:
 `
 
 	testDataSet := &config.DataSet{}
-	err := yaml.UnmarshalStrict([]byte(configStr), testDataSet, yaml.DisallowUnknownFields)
+	err := yaml.Unmarshal([]byte(configStr), testDataSet)
 	assert.Nil(t, err, "test config")
 	testConfig := &config.Config{DataSet: testDataSet}
 

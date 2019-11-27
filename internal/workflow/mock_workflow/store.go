@@ -12,10 +12,11 @@
 package mock_workflow
 
 import (
+	reflect "reflect"
+
 	gomock "github.com/golang/mock/gomock"
 	config "github.com/honeydipper/honeydipper/internal/config"
 	dipper "github.com/honeydipper/honeydipper/pkg/dipper"
-	reflect "reflect"
 )
 
 // MockSessionStoreHelper is a mock of SessionStoreHelper interface

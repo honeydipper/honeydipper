@@ -53,7 +53,7 @@ func runDocGen(cfg *config.Config) {
 		panic(err)
 	}
 
-	err = yaml.UnmarshalStrict(yamlStr, &dgCfg, yaml.DisallowUnknownFields)
+	err = yaml.Unmarshal(yamlStr, &dgCfg)
 	if err != nil {
 		panic(err)
 	}
