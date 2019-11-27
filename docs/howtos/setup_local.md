@@ -75,10 +75,9 @@ drivers:
 rules:
   - when:
       driver: webhook
-      conditions:
+      if_match:
         url: /health
-    do:
-      content: noop
+    do: {}
 EOF
 git add init.yaml
 git commit -m 'init' -a
