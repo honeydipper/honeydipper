@@ -496,3 +496,56 @@ func TestFailureInHook(t *testing.T) {
 	}
 	syntheticTest(t, configStrHook, testcase)
 }
+
+func TestErrorInCompletionHook(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{},
+		"msg":      &dipper.Message{},
+		"ctx": map[string]interface{}{
+			"hooks": map[string]interface{}{
+				"on_success": "send_chat",
+			},
+		},
+		"asserts": func() {
+			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels: map[string]string{
+					"sessionID": "2",
+				},
+				Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc":   "",
+						"_meta_name":   "",
+						"resume_token": "//0",
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Driver:    "foo",
+						RawAction: "bar",
+					},
+					"labels": map[string]string{
+						"status": "success",
+					},
+				},
+			})).Times(1)
+		},
+		"steps": []map[string]interface{}{
+			{
+				"sessionID": "2",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "2",
+						"status":    "error",
+					},
+				},
+				"ctx": []map[string]interface{}{},
+			},
+		},
+	}
+
+	syntheticTest(t, configStrHook, testcase)
+}
