@@ -5,9 +5,10 @@
 package mock_main
 
 import (
+	reflect "reflect"
+
 	storage "cloud.google.com/go/storage"
 	gomock "github.com/golang/mock/gomock"
-	reflect "reflect"
 )
 
 // MockBucketIterator is a mock of BucketIterator interface

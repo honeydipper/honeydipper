@@ -75,7 +75,7 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 	defer delete(dipper.IDMapMetadata, &store.sessions)
 
 	testDataSet := &config.DataSet{}
-	err := yaml.UnmarshalStrict([]byte(configStr), testDataSet, yaml.DisallowUnknownFields)
+	err := yaml.Unmarshal([]byte(configStr), testDataSet)
 	assert.Nil(t, err, "test config")
 	testConfig := &config.Config{DataSet: testDataSet}
 

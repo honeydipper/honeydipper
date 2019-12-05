@@ -11,18 +11,19 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/internal/daemon"
-	"github.com/honeydipper/honeydipper/internal/service"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/stretchr/testify/assert"
-	"gopkg.in/src-d/go-git.v4"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/internal/daemon"
+	"github.com/honeydipper/honeydipper/internal/service"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/stretchr/testify/assert"
+	"gopkg.in/src-d/go-git.v4"
 )
 
 var bootstrapPath string

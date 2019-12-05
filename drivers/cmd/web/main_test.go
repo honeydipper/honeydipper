@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/h2non/gock"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
+	"gopkg.in/h2non/gock.v1"
 )
 
 func TestMain(m *testing.M) {

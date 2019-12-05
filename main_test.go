@@ -7,9 +7,10 @@
 package main
 
 import (
-	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"os"
 	"testing"
+
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
 func TestMain(m *testing.M) {
