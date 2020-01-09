@@ -135,7 +135,7 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 
 	namedCTXs, ok := contexts[name]
 	if name[0] != '_' && !ok {
-		dipper.Logger.Panicf("[workflow] named workflow %s not defined", name)
+		dipper.Logger.Panicf("[workflow] named context %s not defined", name)
 	}
 	if namedCTXs != nil {
 		envData := w.buildEnvData(msg)
