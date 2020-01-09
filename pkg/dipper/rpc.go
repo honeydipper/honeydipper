@@ -114,7 +114,7 @@ func (c *RPCCaller) CallRawNoWait(feature string, method string, params []byte, 
 // HandleReturn : receiving return of a RPC call
 func (c *RPCCaller) HandleReturn(m *Message) {
 	rpcID := m.Labels["rpcID"]
-	result := c.Result[rpcID]
+	result := IDMapGet(&c.Result, rpcID).(chan interface{})
 
 	reason, ok := m.Labels["error"]
 
