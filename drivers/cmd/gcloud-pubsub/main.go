@@ -62,6 +62,7 @@ func getPubsubClient(serviceAccountBytes, project string) *pubsub.Client {
 
 func loadOptions() {
 	events, ok := driver.GetOption("dynamicData.collapsedEvents")
+	dipper.Logger.Debugf("[%s] pubsub events %+v", driver.Service, events)
 	if !ok {
 		dipper.Logger.Panicf("[%s] no pubsub subscription defined for pubsub driver", driver.Service)
 	}
@@ -77,7 +78,8 @@ func loadOptions() {
 
 	subscriberConfigs = map[string]*SubscriberConfig{}
 	for _, pubsubEvent := range pubsubEvents {
-		for _, condition := range pubsubEvent.([]interface{}) {
+		for _, branch := range pubsubEvent.([]interface{}) {
+			condition := branch.(map[string]interface{})["match"]
 			project, ok := dipper.GetMapDataStr(condition, "project")
 			if !ok {
 				dipper.Logger.Warningf("[%s] failed to get pubsub project in condition", driver.Service)
@@ -134,6 +136,8 @@ func msgHandlerBuilder(config *SubscriberConfig) msgHandler {
 			actual["json"] = data
 		}
 
+		dipper.Logger.Debugf("[%s] pubsub payload: %+v", driver.Service, actual)
+
 		matched := false
 		for _, subCond := range conditions {
 			if dipper.CompareAll(actual, subCond) {
@@ -160,6 +164,8 @@ func msgHandlerBuilder(config *SubscriberConfig) msgHandler {
 }
 
 func subscribeAll() {
+	dipper.Logger.Debugf("[%s] subscribing: %+v", driver.Service, subscriberConfigs)
+
 	for _, subscriberConfig := range subscriberConfigs {
 		go func(config *SubscriberConfig) {
 			for {
