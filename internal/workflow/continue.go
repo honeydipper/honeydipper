@@ -211,7 +211,7 @@ func (w *Session) complete(msg *dipper.Message) {
 	}
 	dipper.Logger.Infof("[workflow] session [%s] completing with msg labels %+v", w.ID, msg.Labels)
 	if w.ID != "" {
-		if _, ok := w.store.sessions[w.ID]; ok {
+		if dipper.IDMapGet(&w.store.sessions, w.ID) != nil {
 			if w.currentHook == "" {
 				w.processExport(msg)
 			}
