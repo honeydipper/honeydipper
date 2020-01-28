@@ -14,7 +14,7 @@ RUN apk add --no-cache git gcc libc-dev
 COPY ./ ./
 RUN go install -v ./...
 
-FROM alpine:3.10
+FROM alpine:3.11
 
 LABEL description="Honeydipper - an event-driven orchestration framework" \
       org.label-schema.vcs-url=https://github.com/honeydipper/honeydipper \
