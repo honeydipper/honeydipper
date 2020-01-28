@@ -5,7 +5,7 @@
   "packageRules": [
     {
       "depTypeList": [
-        "dependencies"
+        "require"
       ],
       "semanticCommitType": "fix"
     }
