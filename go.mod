@@ -40,7 +40,7 @@ require (
 	golang.org/x/tools v0.0.0-20191205012623-e84277c2c008 // indirect
 	google.golang.org/api v0.14.0
 	google.golang.org/appengine v1.6.5 // indirect
-	google.golang.org/genproto v0.0.0-20191203220235-3fa9dbf08042
+	google.golang.org/genproto v0.0.0-20200128133413-58ce757ed39b
 	google.golang.org/grpc v1.25.1 // indirect
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
