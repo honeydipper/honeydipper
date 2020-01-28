@@ -85,6 +85,7 @@ workflows:
   release:
     jobs:
       - semantic-release:
+          context: honeydipper
           filters:
             branches:
               only: master
