@@ -4,19 +4,8 @@
         "@semantic-release/commit-analyzer",
         "@semantic-release/release-notes-generator",
         "@semantic-release/changelog",
-        [
-            "@semantic-release/git",
-            {
-                "assets": ["**"]
-            },
-        ],
-        [
-            "@semantic-release/github",
-            {
-                "assets": [
-                    {"path": "**"},
-                ]
-            }
+        "@semantic-release/git",
+        "@semantic-release/github",
         ],
     ]
 }
