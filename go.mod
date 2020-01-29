@@ -32,8 +32,8 @@ require (
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.8
-	k8s.io/api v0.0.0-20191121015604-11707872ac1c
-	k8s.io/apimachinery v0.0.0-20191203211716-adc6f4cd9e7d
-	k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
+	k8s.io/api v0.17.2
+	k8s.io/apimachinery v0.17.2
+	k8s.io/client-go v0.17.2
 	k8s.io/utils v0.0.0-20191114200735-6ca3b61696b6 // indirect
 )
