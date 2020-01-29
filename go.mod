@@ -7,9 +7,9 @@ require (
 	cloud.google.com/go/pubsub v1.1.0
 	cloud.google.com/go/storage v1.4.0
 	github.com/DataDog/datadog-go v3.4.0+incompatible
-	github.com/Masterminds/goutils v1.1.0 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
+	github.com/Masterminds/sprig/v3 v3.0.2
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-errors/errors v1.0.1
 	github.com/go-redis/redis v6.15.6+incompatible
@@ -20,7 +20,6 @@ require (
 	github.com/huandu/xstrings v1.2.1 // indirect
 	github.com/imdario/mergo v0.3.8
 	github.com/logrusorgru/aurora v0.0.0-20200102142835-e9ef32dff381
-	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
