@@ -1,3 +1,15 @@
+## [1.0.6](https://github.com/honeydipper/honeydipper/compare/v1.0.5...v1.0.6) (2020-01-31)
+
+
+### Bug Fixes
+
+* **deps:** update golang docker tag to v1.13.7 ([#153](https://github.com/honeydipper/honeydipper/issues/153)) ([14e2e57](https://github.com/honeydipper/honeydipper/commit/14e2e57bd5a81cac9fc6d0e22dad2eb7f3e45fdd))
+* **deps:** update module cloud.google.com/go to v0.52.0 ([#160](https://github.com/honeydipper/honeydipper/issues/160)) ([94bd945](https://github.com/honeydipper/honeydipper/commit/94bd945e2f9761e33523a3d5a2b061eede7888d4))
+* **deps:** update module datadog/datadog-go to v3.4.0 ([#161](https://github.com/honeydipper/honeydipper/issues/161)) ([4d98a8e](https://github.com/honeydipper/honeydipper/commit/4d98a8e31e3037371708fcddcc735bebe0b8a2cc))
+* **deps:** update module k8s.io/client-go to v0.17.2 ([99fd2cd](https://github.com/honeydipper/honeydipper/commit/99fd2cd4acb54c61356ccce68091ed442e8809cd))
+* **deps:** update module masterminds/sprig to v3 ([5170197](https://github.com/honeydipper/honeydipper/commit/51701979127d44bf08aa9e1fd5fc106db7712278))
+* **deps:** update module yaml to v2.2.8 ([627ecc7](https://github.com/honeydipper/honeydipper/commit/627ecc716e6461788d637a1a1e59bbfa20045349))
+
 ## [1.0.5](https://github.com/honeydipper/honeydipper/compare/v1.0.4...v1.0.5) (2020-01-29)
 
 
