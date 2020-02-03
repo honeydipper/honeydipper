@@ -28,7 +28,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	google.golang.org/api v0.15.0
-	google.golang.org/genproto v0.0.0-20200128133413-58ce757ed39b
+	google.golang.org/genproto v0.0.0-20200203184458-f68cdc7a7897
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.8
