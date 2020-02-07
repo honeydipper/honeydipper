@@ -101,7 +101,6 @@ func newRepo(c *Config, repo RepoInfo) *Repo {
 }
 
 func (c *Repo) loadRepo() {
-
 	defer c.recovering("", c.repo.Repo)
 
 	var err error

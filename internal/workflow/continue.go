@@ -125,32 +125,24 @@ func (w *Session) processExport(msg *dipper.Message) {
 			}
 		}
 		if status != SessionStatusError {
-			delta := dipper.Interpolate(w.workflow.Export, envData).(map[string]interface{})
-			w.ctx = dipper.MergeMap(w.ctx, delta)
-			envData["ctx"] = w.ctx
-			w.processNoExport(delta)
-			if len(delta) > 0 {
-				w.exported = append(w.exported, delta)
-			}
+			w.postWorkflowExport(w.workflow.Export, envData)
 		}
 		if status == SessionStatusSuccess {
-			delta := dipper.Interpolate(w.workflow.ExportOnSuccess, envData).(map[string]interface{})
-			w.ctx = dipper.MergeMap(w.ctx, delta)
-			envData["ctx"] = w.ctx
-			w.processNoExport(delta)
-			if len(delta) > 0 {
-				w.exported = append(w.exported, delta)
-			}
+			w.postWorkflowExport(w.workflow.ExportOnSuccess, envData)
 		}
 		if status == SessionStatusFailure {
-			delta := dipper.Interpolate(w.workflow.ExportOnFailure, envData).(map[string]interface{})
-			w.ctx = dipper.MergeMap(w.ctx, delta)
-			envData["ctx"] = w.ctx
-			w.processNoExport(delta)
-			if len(delta) > 0 {
-				w.exported = append(w.exported, delta)
-			}
+			w.postWorkflowExport(w.workflow.ExportOnFailure, envData)
 		}
+	}
+}
+
+func (w *Session) postWorkflowExport(exportMap map[string]interface{}, envData map[string]interface{}) {
+	delta := dipper.Interpolate(exportMap, envData).(map[string]interface{})
+	w.ctx = dipper.MergeMap(w.ctx, delta)
+	envData["ctx"] = w.ctx
+	w.processNoExport(delta)
+	if len(delta) > 0 {
+		w.exported = append(w.exported, delta)
 	}
 }
 
