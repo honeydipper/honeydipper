@@ -56,14 +56,7 @@ func (c *Repo) isFileLoaded(filename string) bool {
 }
 
 func (c *Repo) loadFile(filename string) {
-	defer func() {
-		if r := recover(); r != nil {
-			dipper.Logger.Warningf("Resuming after error: %v", r)
-			dipper.Logger.Warning(errors.Wrap(r, 1).ErrorStack())
-			dipper.Logger.Warningf("config file [%v] skipped", filename)
-			c.Errors = append(c.Errors, Error{Error: r.(error), File: filename})
-		}
-	}()
+	defer c.recovering(filename, "")
 
 	if !c.isFileLoaded(filename) {
 		yamlFile, err := ioutil.ReadFile(path.Join(c.root, filename[1:]))
@@ -108,14 +101,7 @@ func newRepo(c *Config, repo RepoInfo) *Repo {
 }
 
 func (c *Repo) loadRepo() {
-	defer func() {
-		if r := recover(); r != nil {
-			dipper.Logger.Warningf("Resuming after error: %v", r)
-			dipper.Logger.Warning(errors.Wrap(r, 1).ErrorStack())
-			dipper.Logger.Warningf("repo [%v] skipped", c.repo.Repo)
-			c.Errors = append(c.Errors, Error{Error: r.(error), File: "_"})
-		}
-	}()
+	defer c.recovering("", c.repo.Repo)
 
 	var err error
 	if c.parent.IsConfigCheck && *c.repo == c.parent.InitRepo {
@@ -186,14 +172,7 @@ func (c *Repo) loadRepo() {
 func (c *Repo) refreshRepo() bool {
 	c.Errors = []Error{}
 
-	defer func() {
-		if r := recover(); r != nil {
-			dipper.Logger.Warningf("Resuming after error: %v", r)
-			dipper.Logger.Warning(errors.Wrap(r, 1).ErrorStack())
-			dipper.Logger.Warningf("repo [%v] skipped", c.repo.Repo)
-			c.Errors = append(c.Errors, Error{Error: r.(error), File: "_"})
-		}
-	}()
+	defer c.recovering("", c.repo.Repo)
 
 	var repoObj *git.Repository
 	var err error
@@ -238,4 +217,19 @@ func (c *Repo) refreshRepo() bool {
 	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
 	dipper.Logger.Warningf("repo [%v] reloaded", c.repo.Repo)
 	return true
+}
+
+func (c *Repo) recovering(filename string, repo string) {
+	if r := recover(); r != nil {
+		dipper.Logger.Warningf("Resuming after error: %v", r)
+		dipper.Logger.Warning(errors.Wrap(r, 1).ErrorStack())
+		if filename != "" {
+			dipper.Logger.Warningf("config file [%v] skipped", filename)
+			c.Errors = append(c.Errors, Error{Error: r.(error), File: filename})
+		}
+		if repo != "" {
+			dipper.Logger.Warningf("repo [%v] skipped", repo)
+			c.Errors = append(c.Errors, Error{Error: r.(error), File: "_"})
+		}
+	}
 }

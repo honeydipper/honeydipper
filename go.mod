@@ -12,7 +12,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.0.2
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-errors/errors v1.0.1
-	github.com/go-redis/redis v6.15.6+incompatible
+	github.com/go-redis/redis v6.15.7+incompatible
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/mock v1.4.0
 	github.com/googleapis/gnostic v0.3.1 // indirect
@@ -24,11 +24,11 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/stretchr/testify v1.4.0
-	golang.org/x/crypto v0.0.0-20200128174031-69ecbb4d6d5d
+	golang.org/x/crypto v0.0.0-20200206161412-a0c6ece9d31a
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
-	google.golang.org/api v0.15.0
-	google.golang.org/genproto v0.0.0-20200128133413-58ce757ed39b
+	google.golang.org/api v0.17.0
+	google.golang.org/genproto v0.0.0-20200205142000-a86caf926a67
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.8
