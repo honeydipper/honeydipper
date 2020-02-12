@@ -1,3 +1,15 @@
+## [1.0.7](https://github.com/honeydipper/honeydipper/compare/v1.0.6...v1.0.7) (2020-02-12)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to a0c6ece ([4bb817e](https://github.com/honeydipper/honeydipper/commit/4bb817e3af48978ea23b3e125d181a877d6bb591))
+* **deps:** update google.golang.org/genproto commit hash to a86caf9 ([#176](https://github.com/honeydipper/honeydipper/issues/176)) ([d40f737](https://github.com/honeydipper/honeydipper/commit/d40f7372b42281890d09b8bd35ea489dbd262b8a))
+* **deps:** update google.golang.org/genproto commit hash to f68cdc7 ([#172](https://github.com/honeydipper/honeydipper/issues/172)) ([b77b9ad](https://github.com/honeydipper/honeydipper/commit/b77b9ad0835ed02bbbb32012bfacfaccf526806d))
+* **deps:** update google.golang.org/genproto commit hash to fa8e72b ([#173](https://github.com/honeydipper/honeydipper/issues/173)) ([5ba8465](https://github.com/honeydipper/honeydipper/commit/5ba84650cc384664646b91c15d8fbfadc9b3301e))
+* **deps:** update module go-redis/redis to v6.15.7 ([#171](https://github.com/honeydipper/honeydipper/issues/171)) ([a26c9bf](https://github.com/honeydipper/honeydipper/commit/a26c9bf67f6de68f5ea2d9d4b1862aa2144f60bd))
+* **deps:** update module google.golang.org/api to v0.17.0 ([#175](https://github.com/honeydipper/honeydipper/issues/175)) ([dd0599d](https://github.com/honeydipper/honeydipper/commit/dd0599d07af6849e1eceda508389101b6f24df6c))
+
 ## [1.0.6](https://github.com/honeydipper/honeydipper/compare/v1.0.5...v1.0.6) (2020-01-31)
 
 
