@@ -13,6 +13,7 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-errors/errors v1.0.1
 	github.com/go-redis/redis v6.15.7+incompatible
+	github.com/go-redis/redis/v7 v7.0.1
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/mock v1.4.0
 	github.com/googleapis/gnostic v0.3.1 // indirect
