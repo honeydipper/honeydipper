@@ -137,6 +137,7 @@ func (c *Config) parseWorkflowRegex() {
 			dipper.Recursive(&v.Do, processor)
 		case Workflow:
 			dipper.Recursive(v.Match, processor)
+			dipper.Recursive(v.UnlessMatch, processor)
 			dipper.Recursive(v.Steps, processor)
 			dipper.Recursive(v.Threads, processor)
 			dipper.Recursive(v.Else, processor)

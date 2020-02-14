@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRecusive(t *testing.T) {
+func TestRecursive(t *testing.T) {
 	type testStruct struct {
 		Field1 string
 		Field2 []int
