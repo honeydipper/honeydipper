@@ -71,39 +71,43 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:
 		if strings.HasPrefix(v, "$") {
-			var keys []string
 			allowNull := (v[1] == '?')
+			quoteAt := strings.IndexAny(v, "\"'`")
+
+			var keys []string
 			if allowNull {
+				if quoteAt > 0 {
+					panic(fmt.Errorf("no need to allow null with default value %s", v))
+				}
 				keys = strings.Split(v[2:], ",")
 			} else {
-				keys = strings.Split(v[1:], ",")
+				if quoteAt > 0 {
+					if v[quoteAt-1] != ',' {
+						panic(fmt.Errorf("default value should be separated from the key with comma %s", v))
+					}
+					keys = strings.Split(v[1:quoteAt-1], ",")
+				} else {
+					keys = strings.Split(v[1:], ",")
+				}
 			}
-
-			var quote byte
-			defaultVal := ""
 
 			for _, key := range keys {
-				if quote == 0 && strings.ContainsRune("\"'`", rune(key[0])) {
-					quote = key[0]
-					key = key[1:]
-				}
-
-				if quote != 0 {
-					if key[len(key)-1] == quote {
-						defaultVal += key[:len(key)-1]
-						return defaultVal
+				ret, _ := GetMapData(data, key)
+				if ret != nil {
+					if strings.HasPrefix(key, "sysData.") {
+						return Interpolate(ret, data)
 					}
-					defaultVal += key
-				} else {
-					ret, _ := GetMapData(data, key)
-					if ret != nil {
-						if strings.HasPrefix(key, "sysData.") {
-							return Interpolate(ret, data)
-						}
-						return ret
-					}
+					return ret
 				}
 			}
+
+			if quoteAt > 0 {
+				if v[quoteAt] != v[len(v)-1] {
+					panic(fmt.Errorf("quotes not matching for default value %s", v))
+				}
+				return v[quoteAt+1 : len(v)-1]
+			}
+
 			if allowNull {
 				return nil
 			}
