@@ -9,6 +9,7 @@
 package config
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,4 +43,41 @@ func TestConfigGetDriverData(t *testing.T) {
 	nonexist, ok := config.GetDriverData("test3")
 	assert.False(t, ok, "GetDriverData should set ok to false when 'test3' is not found")
 	assert.Nil(t, nonexist, "GetDriverData should return nil when 'test3' is not found")
+}
+
+func TestRegexParsing(t *testing.T) {
+	config := &Config{
+		DataSet: &DataSet{
+			Workflows: map[string]Workflow{
+				"test-workflow": Workflow{
+					Match: map[string]interface{}{
+						"key1": ":regex:test1",
+						"key2": "non regex",
+					},
+					UnlessMatch: map[string]interface{}{
+						"key3": ":regex:test2",
+						"key4": "non regex",
+					},
+				},
+			},
+			Rules: []Rule{
+				Rule{
+					When: Trigger{
+						Match: map[string]interface{}{
+							"key5": ":regex:test3",
+							"key6": "non regex",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	assert.NotPanics(t, func() { config.parseWorkflowRegex() }, "parsing regex in config should not panic")
+	assert.IsType(t, &regexp.Regexp{}, config.DataSet.Workflows["test-workflow"].Match.(map[string]interface{})["key1"], "workflow match regex should be parsed")
+	assert.Equal(t, "non regex", config.DataSet.Workflows["test-workflow"].Match.(map[string]interface{})["key2"], "workflow match non-regex should remain")
+	assert.IsType(t, &regexp.Regexp{}, config.DataSet.Workflows["test-workflow"].UnlessMatch.(map[string]interface{})["key3"], "workflow unless_match regex should be parsed")
+	assert.Equal(t, "non regex", config.DataSet.Workflows["test-workflow"].UnlessMatch.(map[string]interface{})["key4"], "workflow unless_match non-regex should remain")
+	assert.Equal(t, ":regex:test3", config.DataSet.Rules[0].When.Match["key5"], "rule match regex should remain for later driver parsing")
+	assert.Equal(t, "non regex", config.DataSet.Rules[0].When.Match["key6"], "rule match non-regex should remain")
 }
