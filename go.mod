@@ -3,9 +3,9 @@ module github.com/honeydipper/honeydipper
 go 1.13
 
 require (
-	cloud.google.com/go v0.52.0
+	cloud.google.com/go v0.53.0
 	cloud.google.com/go/pubsub v1.1.0
-	cloud.google.com/go/storage v1.4.0
+	cloud.google.com/go/storage v1.5.0
 	github.com/DataDog/datadog-go v3.4.0+incompatible
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
