@@ -26,17 +26,20 @@ func TestInterpolateStr(t *testing.T) {
 }
 
 func TestInterpolate(t *testing.T) {
-	parsed := Interpolate(map[string]interface{}{
-		"notmpl":    "raw",
-		"templated": " this is used by {{ index . \"user\" }}",
-		"map_with_template": map[string]interface{}{
-			"deep": " another {{ index . \"type\" }}",
-		},
-		"yaml_with_template": `:yaml:
+	parsed := Interpolate(
+		map[string]interface{}{
+			"notmpl":    "raw",
+			"templated": " this is used by {{ index . \"user\" }}",
+			"map_with_template": map[string]interface{}{
+				"deep": " another {{ index . \"type\" }}",
+			},
+			"default_user": "$ctx.v1,ctx.v2,'default, value with comma'",
+			"yaml_with_template": `:yaml:
 ---
 test:
   - 1 {{ index (index . "list") "one" }}
-  - 2 {{ index (index . "list") "two" }}`},
+  - 2 {{ index (index . "list") "two" }}`,
+		},
 		map[string]interface{}{
 			"user": "test",
 			"type": "direct",
@@ -58,6 +61,7 @@ test:
 					"2 two",
 				},
 			},
+			"default_user": "default, value with comma",
 		},
 		parsed,
 		"interpolating a map of templates",

@@ -3,9 +3,9 @@ module github.com/honeydipper/honeydipper
 go 1.13
 
 require (
-	cloud.google.com/go v0.52.0
+	cloud.google.com/go v0.53.0
 	cloud.google.com/go/pubsub v1.1.0
-	cloud.google.com/go/storage v1.4.0
+	cloud.google.com/go/storage v1.5.0
 	github.com/DataDog/datadog-go v3.4.0+incompatible
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
@@ -23,12 +23,12 @@ require (
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
-	github.com/stretchr/testify v1.4.0
-	golang.org/x/crypto v0.0.0-20200206161412-a0c6ece9d31a
+	github.com/stretchr/testify v1.5.0
+	golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	google.golang.org/api v0.17.0
-	google.golang.org/genproto v0.0.0-20200205142000-a86caf926a67
+	google.golang.org/genproto v0.0.0-20200212174721-66ed5ce911ce
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.8

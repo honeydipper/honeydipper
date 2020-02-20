@@ -2,6 +2,7 @@
   "extends": [
     "config:base"
   ],
+  "schedule": ["on Monday every 2 weeks"],
   "packageRules": [
     {
       "depTypeList": [
