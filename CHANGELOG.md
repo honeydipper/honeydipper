@@ -1,3 +1,15 @@
+## [1.0.8](https://github.com/honeydipper/honeydipper/compare/v1.0.7...v1.0.8) (2020-02-20)
+
+
+### Bug Fixes
+
+* **config:** regex patterns are not parsed in unless_match ([b6a12d6](https://github.com/honeydipper/honeydipper/commit/b6a12d69f978f7a8d40933373f42202525945d05))
+* **deps:** update golang.org/x/crypto commit hash to 1d94cc7 ([#178](https://github.com/honeydipper/honeydipper/issues/178)) ([1864239](https://github.com/honeydipper/honeydipper/commit/186423956d99d51cf508dceb96de1d17681745c8))
+* **deps:** update google.golang.org/genproto commit hash to 66ed5ce ([#177](https://github.com/honeydipper/honeydipper/issues/177)) ([acc5867](https://github.com/honeydipper/honeydipper/commit/acc58677868c846be7b156440c2e90515c6e5c41))
+* **deps:** update module cloud.google.com/go to v0.53.0 ([#186](https://github.com/honeydipper/honeydipper/issues/186)) ([ddcac5f](https://github.com/honeydipper/honeydipper/commit/ddcac5f2fafa26b9f2f92d76f8117eb21163f21e))
+* **deps:** update module stretchr/testify to v1.5.0 ([#193](https://github.com/honeydipper/honeydipper/issues/193)) ([b23c5e4](https://github.com/honeydipper/honeydipper/commit/b23c5e48d1ead1f2973367b5069a21d2045d36c5))
+* **dipper:** comma lost in default value for dollar interpolation ([36521bb](https://github.com/honeydipper/honeydipper/commit/36521bb8f92f6ddb6a942252873b31901d04fd87))
+
 ## [1.0.7](https://github.com/honeydipper/honeydipper/compare/v1.0.6...v1.0.7) (2020-02-12)
 
 
