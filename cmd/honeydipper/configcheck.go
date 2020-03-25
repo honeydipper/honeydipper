@@ -53,6 +53,29 @@ func runConfigCheck(cfg *config.Config) int {
 		}
 	}
 
+	wildcardContexts := map[string]bool{
+		"*":       true,
+		"_events": true,
+	}
+
+	contextErrors := false
+	for contextName, contextValue := range cfg.DataSet.Contexts {
+		for wfName := range contextValue.(map[string]interface{}) {
+			if !wildcardContexts[wfName] {
+				errMsg := checkContext(cfg, wfName)
+				if len(errMsg) > 0 {
+					if !contextErrors {
+						fmt.Printf("\nFound error in Contexts\n")
+						fmt.Println("─────────────────────────────────────────────────────────────")
+						contextErrors = true
+					}
+					fmt.Printf("context(%s): %s\n", contextName, aurora.Red(errMsg))
+				}
+			}
+		}
+	}
+
+	// flag to print the header
 	ruleErrors := false
 	for _, rule := range cfg.DataSet.Rules {
 		location, errMsg := checkWorkflow(rule.Do, cfg)
@@ -85,6 +108,20 @@ func runConfigCheck(cfg *config.Config) int {
 	}
 
 	return ret
+}
+
+func checkContext(cfg *config.Config, ctxWorkflowName string) (msg string) {
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(dipperCLError); ok {
+				msg = e.msg
+			} else {
+				msg = r.(error).Error()
+			}
+		}
+	}()
+	checkObjectExists("workflow", ctxWorkflowName, cfg.DataSet.Workflows)
+	return msg
 }
 
 func checkWorkflow(w config.Workflow, cfg *config.Config) (location string, msg string) {
@@ -166,6 +203,7 @@ func checkWorkflowDriver(w config.Workflow, cfg *config.Config) {
 	}
 }
 
+// make sure there aint multiple actions declared
 func checkWorkflowActions(w config.Workflow) {
 	f := &fieldChecker{}
 
@@ -178,6 +216,7 @@ func checkWorkflowActions(w config.Workflow) {
 	f.setField("switch", w.Switch != "")
 }
 
+// check to make sure only one conditional field and one else field
 func checkWorkflowConditions(w config.Workflow) {
 	f := &fieldChecker{}
 
