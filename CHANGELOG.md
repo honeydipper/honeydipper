@@ -1,3 +1,23 @@
+# [1.1.0](https://github.com/honeydipper/honeydipper/compare/v1.0.8...v1.1.0) (2020-04-01)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to f7b0055 ([#196](https://github.com/honeydipper/honeydipper/issues/196)) ([9657ae1](https://github.com/honeydipper/honeydipper/commit/9657ae1077afb1d80312c99e7661fa38310ae80b))
+* **deps:** update google.golang.org/genproto commit hash to 303a050 ([#192](https://github.com/honeydipper/honeydipper/issues/192)) ([1cdc375](https://github.com/honeydipper/honeydipper/commit/1cdc3750f2747f5e2cc613cba73dded33021b564))
+* **deps:** update module cloud.google.com/go to v0.54.0 ([#200](https://github.com/honeydipper/honeydipper/issues/200)) ([b596509](https://github.com/honeydipper/honeydipper/commit/b5965091d39b459b7dde6deb33cf45356ed47836))
+* **deps:** update module golang/mock to v1.4.3 ([#201](https://github.com/honeydipper/honeydipper/issues/201)) ([a4b3827](https://github.com/honeydipper/honeydipper/commit/a4b3827d1502227af596fc38bb3d61da1c07754a))
+* **deps:** update module google.golang.org/api to v0.20.0 ([#198](https://github.com/honeydipper/honeydipper/issues/198)) ([2690a75](https://github.com/honeydipper/honeydipper/commit/2690a753e3b4ed3343de4701a4f8657bce7e46a9))
+* **deps:** update module k8s.io/api to v0.17.4 ([#182](https://github.com/honeydipper/honeydipper/issues/182)) ([52d3c2e](https://github.com/honeydipper/honeydipper/commit/52d3c2e9ed3120bf7852ae45a0b49851b1136f81))
+* stop passing backoff_ms, retry labels ([#202](https://github.com/honeydipper/honeydipper/issues/202)) ([f0fd933](https://github.com/honeydipper/honeydipper/commit/f0fd933379fb5215f01792b04b61f87e4b68102d))
+* **deps:** update module mitchellh/mapstructure to v1.2.2 ([#210](https://github.com/honeydipper/honeydipper/issues/210)) ([9b2e9f9](https://github.com/honeydipper/honeydipper/commit/9b2e9f9729ca31ccf9728549466fbca18eb07619))
+* **deps:** update module stretchr/testify to v1.5.1 ([#195](https://github.com/honeydipper/honeydipper/issues/195)) ([4de822a](https://github.com/honeydipper/honeydipper/commit/4de822acebed77d8d9b5962ba9d70fd18b89b1e3))
+
+
+### Features
+
+* add contexts configcheck ([#212](https://github.com/honeydipper/honeydipper/issues/212)) ([f920916](https://github.com/honeydipper/honeydipper/commit/f920916169956f27a068e6902946fb09a653bef2))
+
 ## [1.0.8](https://github.com/honeydipper/honeydipper/compare/v1.0.7...v1.0.8) (2020-02-20)
 
 
