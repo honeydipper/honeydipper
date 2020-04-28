@@ -3,7 +3,7 @@ module github.com/honeydipper/honeydipper
 go 1.13
 
 require (
-	cloud.google.com/go v0.54.0
+	cloud.google.com/go v0.56.0
 	cloud.google.com/go/pubsub v1.2.0
 	cloud.google.com/go/storage v1.6.0
 	github.com/DataDog/datadog-go v3.4.0+incompatible
@@ -27,7 +27,7 @@ require (
 	golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	google.golang.org/api v0.20.0
-	google.golang.org/genproto v0.0.0-20200316142031-303a05041dad
+	google.golang.org/genproto v0.0.0-20200331122359-1ee6d9798940
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.8
