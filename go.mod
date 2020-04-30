@@ -9,7 +9,7 @@ require (
 	github.com/DataDog/datadog-go v3.6.0+incompatible
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
-	github.com/Masterminds/sprig/v3 v3.0.2
+	github.com/Masterminds/sprig/v3 v3.1.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-errors/errors v1.0.1
 	github.com/go-redis/redis v6.15.7+incompatible
@@ -17,14 +17,13 @@ require (
 	github.com/golang/mock v1.4.3
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
-	github.com/huandu/xstrings v1.2.1 // indirect
 	github.com/imdario/mergo v0.3.8
 	github.com/logrusorgru/aurora v0.0.0-20200102142835-e9ef32dff381
 	github.com/mitchellh/mapstructure v1.2.2
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/stretchr/testify v1.5.1
-	golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4
+	golang.org/x/crypto v0.0.0-20200414173820-0848c9571904
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	google.golang.org/api v0.20.0
 	google.golang.org/genproto v0.0.0-20200331122359-1ee6d9798940
