@@ -21,6 +21,7 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -261,24 +262,46 @@ func recycleDeployment(m *dipper.Message) {
 	if !ok {
 		log.Panicf("[%s] deployment is missing in parameters", driver.Service)
 	}
+	useLabelSelector := strings.Contains(deploymentName, "=")
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
 	if !ok {
 		nameSpace = DefaultNamespace
 	}
 
+	var deployment *appsv1.Deployment
+	var labels string
+
 	// to accurately identify the replicaset, we have to retrieve the revision
 	// from the deployment
 	deploymentclient := k8client.AppsV1().Deployments(nameSpace)
-	deployments, err := deploymentclient.List(metav1.ListOptions{LabelSelector: deploymentName})
-	if err != nil || len(deployments.Items) == 0 {
-		log.Panicf("[%s] unable to find the deployment %+v", driver.Service, err)
+	if useLabelSelector {
+		deployments, err := deploymentclient.List(metav1.ListOptions{LabelSelector: deploymentName})
+		if err != nil || len(deployments.Items) == 0 {
+			log.Panicf("[%s] unable to find the deployment %s: %+v", driver.Service, deploymentName, err)
+		}
+		deployment = &deployments.Items[0]
+		labels = deploymentName
+	} else {
+		var err error
+		deployment, err = deploymentclient.Get(deploymentName, metav1.GetOptions{})
+		if err != nil {
+			log.Panicf("[%s] unable to find the deployment %s: %+v", driver.Service, deploymentName, err)
+		}
+
+		for k, v := range deployment.Spec.Selector.MatchLabels {
+			if len(labels) > 0 {
+				labels = labels + ","
+			}
+			labels = labels + k + "=" + v
+		}
 	}
-	revision := deployments.Items[0].Annotations["deployment.kubernetes.io/revision"]
+
+	revision := deployment.Annotations["deployment.kubernetes.io/revision"]
 
 	rsclient := k8client.AppsV1().ReplicaSets(nameSpace)
-	rs, err := rsclient.List(metav1.ListOptions{LabelSelector: deploymentName})
+	rs, err := rsclient.List(metav1.ListOptions{LabelSelector: labels})
 	if err != nil || len(rs.Items) == 0 {
-		log.Panicf("[%s] unable to find the replicaset for the deployment %+v", driver.Service, err)
+		log.Panicf("[%s] unable to find the replicaset for the deployment %s: %+v", driver.Service, deploymentName, err)
 	}
 
 	var rsName string
@@ -292,12 +315,12 @@ func recycleDeployment(m *dipper.Message) {
 		}
 	}
 	if len(rsName) == 0 {
-		log.Panicf("[%s] unable to figure out which is current replicaset", driver.Service)
+		log.Panicf("[%s] unable to figure out which is current replicaset for %s", driver.Service, deploymentName)
 	}
 
 	err = rsclient.Delete(rsName, &metav1.DeleteOptions{})
 	if err != nil {
-		log.Panicf("[%s] failed to recycle replicaset %+v", driver.Service, err)
+		log.Panicf("[%s] failed to recycle replicaset %s: %+v", driver.Service, rsName, err)
 	}
 	log.Infof("[%s] deployment recycled %s.%s", driver.Service, nameSpace, rsName)
 	m.Reply <- dipper.Message{}
