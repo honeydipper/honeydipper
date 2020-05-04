@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go v0.56.0
 	cloud.google.com/go/pubsub v1.2.0
 	cloud.google.com/go/storage v1.6.0
-	github.com/DataDog/datadog-go v3.6.0+incompatible
+	github.com/DataDog/datadog-go v3.7.1+incompatible
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/Masterminds/sprig/v3 v3.1.0
