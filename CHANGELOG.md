@@ -1,3 +1,20 @@
+# [1.2.0](https://github.com/honeydipper/honeydipper/compare/v1.1.0...v1.2.0) (2020-05-04)
+
+
+### Bug Fixes
+
+* **deps:** update module cloud.google.com/go to v0.56.0 ([#207](https://github.com/honeydipper/honeydipper/issues/207)) ([ffd1819](https://github.com/honeydipper/honeydipper/commit/ffd181998860ff070387a326d59fd28cad254d48))
+* **deps:** update module datadog/datadog-go to v3.6.0 ([#208](https://github.com/honeydipper/honeydipper/issues/208)) ([9290ca8](https://github.com/honeydipper/honeydipper/commit/9290ca8adbd3e4a84060bbe7648e36622ead4e5e))
+* **deps:** update module datadog/datadog-go to v3.7.1 ([#230](https://github.com/honeydipper/honeydipper/issues/230)) ([7921b95](https://github.com/honeydipper/honeydipper/commit/7921b957c14b0c34b2698c2f29a86ccfea07c1fb))
+* **deps:** update module go-errors/errors to v1.0.2 ([#220](https://github.com/honeydipper/honeydipper/issues/220)) ([46ef3f3](https://github.com/honeydipper/honeydipper/commit/46ef3f3d35ff3e37459f0b005206fdcf19d947fb))
+* **deps:** update module google.golang.org/api to v0.22.0 ([#215](https://github.com/honeydipper/honeydipper/issues/215)) ([ac027e4](https://github.com/honeydipper/honeydipper/commit/ac027e4dfe30a7ff442a24b695e5c3822fde01a3))
+* **deps:** update module masterminds/sprig/v3 to v3.1.0 ([#221](https://github.com/honeydipper/honeydipper/issues/221)) ([175ccf3](https://github.com/honeydipper/honeydipper/commit/175ccf354cf1f809e48d469f00053a205ac63241))
+
+
+### Features
+
+* **drivers:** recycle k8s deployment by name ([#228](https://github.com/honeydipper/honeydipper/issues/228)) ([04d2836](https://github.com/honeydipper/honeydipper/commit/04d2836c418110586aed910b54d377d8b50963d8))
+
 # [1.1.0](https://github.com/honeydipper/honeydipper/compare/v1.0.8...v1.1.0) (2020-04-01)
 
 
