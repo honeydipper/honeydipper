@@ -1,0 +1,47 @@
+version: '1.0'
+
+stages:
+  - init
+  - build
+  - push
+
+steps:
+  main_clone:
+    title: Cloning sphinx repository...
+    type: git-clone
+    repo: honeydipper/honeydipper
+    git: github
+    revision: master
+    stage: init
+
+  strip_tag:
+    title: Formatting Github tag...
+    type: freestyle
+    arguments:
+      image: 'alpine:3.8'
+      commands:
+        - export CF_RELEASE_TAG_NORMALIZED=${CF_RELEASE_TAG#v}
+        - cf_export CF_RELEASE_TAG_NORMALIZED
+
+  # release triggered build
+  dockerBuildRelease:
+    title: Building Docker Image (Release)
+    type: build
+    stage: build
+    arguments:
+      image_name: honeydipper/honeydipper
+      working_directory: ./
+      tag: '${{CF_RELEASE_TAG_NORMALIZED}}'
+      dockerfile: build/docker/Dockerfile
+      build_arguments:
+        - GOINSTALLOPTS=${{GOINSTALLOPTS}}
+        - GOGC=${{GOGC}}
+
+  # push images created with release trigger
+  dockerPushRelease:
+    type: push
+    stage: push
+    title: Pushing To Registry (Release)
+    candidate: '${{dockerBuildRelease}}'
+    registry: dockerhub  # Connect registries in account integrations
+    tag: '${{CF_RELEASE_TAG_NORMALIZED}}'

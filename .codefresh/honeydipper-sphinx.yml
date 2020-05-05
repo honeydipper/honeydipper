@@ -1,0 +1,32 @@
+version: '1.0'
+
+steps:
+  main_clone:
+    title: Cloning honeydipper-sphinx repository...
+    type: git-clone
+    repo: honeydipper/honeydipper-sphinx
+    git: github
+    revision: master
+  generate_doc:
+    title: 'generate docs'
+    image: honeydipper/honeydipper:1.0.2
+    environment:
+      - DOCSRC=docgen
+      - DOCDST=source
+    commands:
+      - '/opt/honeydipper/drivers/builtin/honeydipper docgen'
+  git_commit:
+    title: 'git commit'
+    image: alpine/git:latest
+    commands:
+      - mkdir -p ~/.ssh
+      - echo -n "${SSH_KEY}" | base64 -d > ~/.ssh/id_rsa
+      - chmod 600 ~/.ssh/id_rsa
+      - echo $'Host github.com\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n' > ~/.ssh/config
+      - git remote add update "git@github.com:honeydipper/honeydipper-sphinx.git"
+      - git config --global user.email "codefresh@honeydipper.io"
+      - git config --global user.name "codefresh bot"
+      - 'git diff --exit-code && git commit -am "docs: update version ${{CF_RELEASE_TAG}} from ${{CF_SHORT_REVISION}}"'
+      - git push -u update master
+      - 'git checkout -b ${{CF_RELEASE_TAG}}'
+      - 'git push -u --force update ${{CF_RELEASE_TAG}}'

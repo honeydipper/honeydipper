@@ -1,0 +1,39 @@
+version: '1.0'
+
+stages:
+  - init
+  - build
+  - push
+
+steps:
+
+  main_clone:
+    title: Cloning main repository...
+    type: git-clone
+    stage: init
+    repo: '${{CF_REPO_OWNER}}/${{CF_REPO_NAME}}'
+    git: github
+    revision: '${{CF_BRANCH}}'
+
+  # nightly triggered beta build
+  dockerBuildNightly:
+    title: Building Docker Image (Nightly)
+    type: build
+    stage: build
+    arguments:
+      image_name: honeydipper/honeydipper
+      working_directory: ./
+      tag: 'nightly'
+      dockerfile: build/docker/Dockerfile
+      build_arguments:
+        - GOINSTALLOPTS=${{GOINSTALLOPTS}}
+        - GOGC=${{GOGC}}
+
+  # pushing image built with manual trigger
+  dockerPushNightly:
+    type: push
+    stage: push
+    title: Pushing To Registry (Nightly)
+    candidate: '${{dockerBuildNightly}}'
+    registry: dockerhub  # Connect registries in account integrations
+    tag: 'nightly'
