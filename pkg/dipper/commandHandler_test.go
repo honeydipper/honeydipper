@@ -39,9 +39,10 @@ func TestCommandRetry(t *testing.T) {
 
 	m := &Message{
 		Labels: map[string]string{
-			"method":    "test",
-			"retry":     "2",
-			"sessionID": "1",
+			"method":     "test",
+			"retry":      "2",
+			"sessionID":  "1",
+			"backoff_ms": "10",
 		},
 	}
 
@@ -65,9 +66,10 @@ func TestCommandRetry(t *testing.T) {
 	counter = 0
 	m = &Message{
 		Labels: map[string]string{
-			"method":    "test",
-			"retry":     "1",
-			"sessionID": "2",
+			"method":     "test",
+			"retry":      "1",
+			"sessionID":  "2",
+			"backoff_ms": "10",
 		},
 	}
 
