@@ -97,7 +97,7 @@ func createJob(msg *dipper.Message) {
 
 	var dataflowService = getDataflowService(serviceAccountBytes)
 
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	var result *dataflow.Job
 	func() {
 		defer cancel()
@@ -140,7 +140,7 @@ func getJob(msg *dipper.Message) {
 		result *dataflow.Job
 		err    error
 	)
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	func() {
 		defer cancel()
 		if len(location) == 0 {
@@ -198,7 +198,7 @@ func findJobByName(msg *dipper.Message) {
 	)
 
 	for job == nil {
-		execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 		func() {
 			defer cancel()
 			result, err = listJobCall.Context(execContext).Do()
@@ -278,7 +278,7 @@ func waitForJob(msg *dipper.Message) {
 			break
 		default:
 			func() {
-				execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+				execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 				defer cancel()
 				if len(location) == 0 {
 					result, err = dataflowService.Projects.Jobs.Get(project, jobID).Context(execContext).Do()
@@ -331,7 +331,7 @@ func updateJob(msg *dipper.Message) {
 
 	var dataflowService = getDataflowService(serviceAccountBytes)
 
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	var result *dataflow.Job
 	func() {
 		defer cancel()

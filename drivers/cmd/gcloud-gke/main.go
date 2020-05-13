@@ -107,7 +107,7 @@ func getKubeCfg(msg *dipper.Message) {
 
 	containerService, token := getGKEService(serviceAccountBytes)
 
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	var (
 		clusterObj *container.Cluster
 		err        error
