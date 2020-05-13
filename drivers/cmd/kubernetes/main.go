@@ -182,10 +182,11 @@ func waitForJob(m *dipper.Message) {
 	}
 
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
-	timeout := 10
-	timeoutStr, ok := dipper.GetMapDataStr(m.Payload, "timeout")
+	timeout := time.Duration(10)
+	timeoutStr, ok := m.Labels["timeout"]
 	if ok {
-		timeout, _ = strconv.Atoi(timeoutStr)
+		timeoutInt, _ := strconv.Atoi(timeoutStr)
+		timeout = time.Duration(timeoutInt)
 	}
 
 	jobclient := k8client.BatchV1().Jobs(nameSpace)
@@ -193,59 +194,40 @@ func waitForJob(m *dipper.Message) {
 		FieldSelector: "metadata.name==" + jobName,
 	}
 	watchOption.Kind = "Job"
-	ctxWatch, cancelWatch := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	ctxWatch, cancelWatch := context.WithTimeout(context.Background(), timeout*time.Second)
 	defer cancelWatch()
 	jobstatus, err := jobclient.Watch(ctxWatch, watchOption)
 	if err != nil {
 		log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
 	}
+	defer jobstatus.Stop()
 
-	finalStatus := make(chan dipper.Message, 1)
-	go func() {
-		jobStatus := StatusSuccess
-		reason := []string{}
-
-		for evt := range jobstatus.ResultChan() {
-			if evt.Type == "ADDED" || evt.Type == "MODIFIED" {
-				job := evt.Object.(*batchv1.Job)
-				if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
-					if job.Status.Failed > 0 {
-						jobStatus = StatusFailure
-						for _, condition := range job.Status.Conditions {
-							reason = append(reason, condition.Reason)
-						}
+	jobStatus := StatusSuccess
+	reason := []string{}
+	for {
+		select {
+		case <-ctxWatch.Done():
+			break
+		case evt := <-jobstatus.ResultChan():
+			job := evt.Object.(*batchv1.Job)
+			if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
+				if job.Status.Failed > 0 {
+					jobStatus = StatusFailure
+					for _, condition := range job.Status.Conditions {
+						reason = append(reason, condition.Reason)
 					}
-					finalStatus <- dipper.Message{
-						Payload: map[string]interface{}{
-							"status": job.Status,
-						},
-						Labels: map[string]string{
-							"status": jobStatus,
-							"reason": strings.Join(reason, "\n"),
-						},
-					}
-					break
 				}
+				m.Reply <- dipper.Message{
+					Payload: map[string]interface{}{
+						"status": job.Status,
+					},
+					Labels: map[string]string{
+						"status": jobStatus,
+						"reason": strings.Join(reason, "\n"),
+					},
+				}
+				break
 			}
-		}
-	}()
-
-	m.Reply <- dipper.Message{
-		Labels: map[string]string{
-			"no-timeout": "yes",
-		},
-	} // suppress timeout control
-
-	select {
-	case msg := <-finalStatus:
-		m.Reply <- msg
-		jobstatus.Stop()
-	case <-time.After(time.Duration(timeout) * time.Second):
-		jobstatus.Stop()
-		m.Reply <- dipper.Message{
-			Labels: map[string]string{
-				"error": "timeout",
-			},
 		}
 	}
 }
