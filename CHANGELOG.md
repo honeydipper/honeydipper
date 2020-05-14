@@ -1,3 +1,22 @@
+# [1.3.0](https://github.com/honeydipper/honeydipper/compare/v1.2.0...v1.3.0) (2020-05-14)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 4b2356b ([#203](https://github.com/honeydipper/honeydipper/issues/203)) ([d60d37b](https://github.com/honeydipper/honeydipper/commit/d60d37bdf5cb8391d26b75b6c84fe742a8babc6f))
+* **deps:** update google.golang.org/genproto commit hash to b979b6f ([#204](https://github.com/honeydipper/honeydipper/issues/204)) ([3104fd5](https://github.com/honeydipper/honeydipper/commit/3104fd577d2b9b324abb36d6d9abb733175bea69))
+* **deps:** update module google.golang.org/api to v0.23.0 ([#233](https://github.com/honeydipper/honeydipper/issues/233)) ([c58af2d](https://github.com/honeydipper/honeydipper/commit/c58af2d0591733a09ee941b2a9e31728c674040b))
+* **deps:** update module k8s.io/api to v0.18.2 ([#217](https://github.com/honeydipper/honeydipper/issues/217)) ([49649bc](https://github.com/honeydipper/honeydipper/commit/49649bccb3dbcc700fd6448669744cdba35d5170))
+* **deps:** update module k8s.io/apimachinery to v0.18.2 ([#218](https://github.com/honeydipper/honeydipper/issues/218)) ([d9fee30](https://github.com/honeydipper/honeydipper/commit/d9fee303d44e2929185a125c9fb6db2392ce334f))
+* **deps:** update module k8s.io/client-go to v0.18.2 ([3afec34](https://github.com/honeydipper/honeydipper/commit/3afec346e510c195bbb334fcd1a80ddc262e75f2))
+* **deps:** update module mitchellh/mapstructure to v1.3.0 ([#231](https://github.com/honeydipper/honeydipper/issues/231)) ([be20a60](https://github.com/honeydipper/honeydipper/commit/be20a60f7b60fc3dcca5e33119f0a455b19a6bf4))
+* **k8s:** support client-go 0.18.2 with contexts supporting timeout ([d74bcc9](https://github.com/honeydipper/honeydipper/commit/d74bcc9712d49db4b360879c91f4150fd33911aa))
+
+
+### Features
+
+* **cmd:** enforcing variable timeout for functions ([#237](https://github.com/honeydipper/honeydipper/issues/237)) ([89bb23a](https://github.com/honeydipper/honeydipper/commit/89bb23a0e2419f59029efe9df0f1a5288286aae3))
+
 # [1.2.0](https://github.com/honeydipper/honeydipper/compare/v1.1.0...v1.2.0) (2020-05-04)
 
 
