@@ -26,6 +26,10 @@
 ## Overview
 A IFTTT style event-driven, policy-based orchestration system that, is tailored towards SREs and DevOps workflows, and has a pluggable open architecture. The purpose is to fill the gap between the various components used in DevOps operations, to act as an orchestration hub, and to replace the ad-hoc integrations between the components so that the all the integrations can also be composed as code.
 
+The official web site is https://honeydipper.io
+
+The documents and community repo references are also live at https://honeydipper.readthedocs.io/en/latest/
+
 ## Design
 
 ### Vision
@@ -72,7 +76,7 @@ As mentioned in the concepts, one of Honeydipper's main selling points is abstra
 
 ## More information
 
-Please find the main document index at [docs/README.md](./docs/README.md).
+Please find the main document index at https://honeydipper.readthedocs.io/en/latest/
 
 To install, See [Installation Guide](./docs/INSTALL.md).
 

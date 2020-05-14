@@ -97,7 +97,7 @@ func createJob(msg *dipper.Message) {
 
 	var dataflowService = getDataflowService(serviceAccountBytes)
 
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	var result *dataflow.Job
 	func() {
 		defer cancel()
@@ -140,7 +140,7 @@ func getJob(msg *dipper.Message) {
 		result *dataflow.Job
 		err    error
 	)
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	func() {
 		defer cancel()
 		if len(location) == 0 {
@@ -198,7 +198,7 @@ func findJobByName(msg *dipper.Message) {
 	)
 
 	for job == nil {
-		execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 		func() {
 			defer cancel()
 			result, err = listJobCall.Context(execContext).Do()
@@ -244,37 +244,41 @@ func waitForJob(msg *dipper.Message) {
 	if !ok {
 		panic(errors.New("jobID required"))
 	}
-	timeout := 1800
-	timeoutStr, ok := dipper.GetMapDataStr(msg.Payload, "timeout")
-	if ok {
-		timeout, _ = strconv.Atoi(timeoutStr)
-	}
 	interval := 10
 	intervalStr, ok := dipper.GetMapDataStr(msg.Payload, "interval")
 	if ok {
 		interval, _ = strconv.Atoi(intervalStr)
 	}
+	timeout := time.Duration(1800)
+	timeoutStr, ok := msg.Labels["timeout"]
+	if ok {
+		timeoutInt, _ := strconv.Atoi(timeoutStr)
+		timeout = time.Duration(timeoutInt)
+	}
 
 	var dataflowService = getDataflowService(serviceAccountBytes)
 
-	finalStatus := make(chan dipper.Message, 1)
-	expired := false
-	go func() {
-		terminatedStates := map[string]string{
-			"JOB_STATE_DONE":      "success",
-			"JOB_STATE_FAILED":    "failure",
-			"JOB_STATE_CANCELLED": "failure",
-			"JOB_STATE_UPDATED":   "success",
-			"JOB_STATE_DRAINED":   "success",
-		}
+	terminatedStates := map[string]string{
+		"JOB_STATE_DONE":      "success",
+		"JOB_STATE_FAILED":    "failure",
+		"JOB_STATE_CANCELLED": "failure",
+		"JOB_STATE_UPDATED":   "success",
+		"JOB_STATE_DRAINED":   "success",
+	}
 
-		for !expired {
-			var (
-				result *dataflow.Job
-				err    error
-			)
-			execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	expired := time.After(timeout * time.Second)
+
+	var (
+		result *dataflow.Job
+		err    error
+	)
+	for {
+		select {
+		case <-expired:
+			break
+		default:
 			func() {
+				execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 				defer cancel()
 				if len(location) == 0 {
 					result, err = dataflowService.Projects.Jobs.Get(project, jobID).Context(execContext).Do()
@@ -282,8 +286,9 @@ func waitForJob(msg *dipper.Message) {
 					result, err = dataflowService.Projects.Locations.Jobs.Get(project, location, jobID).Context(execContext).Do()
 				}
 			}()
+
 			if err != nil {
-				finalStatus <- dipper.Message{
+				msg.Reply <- dipper.Message{
 					Labels: map[string]string{
 						"error": fmt.Sprintf("failed to call polling method: %+v", err),
 					},
@@ -292,7 +297,7 @@ func waitForJob(msg *dipper.Message) {
 			}
 
 			if status, ok := terminatedStates[result.CurrentState]; ok {
-				finalStatus <- dipper.Message{
+				msg.Reply <- dipper.Message{
 					Payload: map[string]interface{}{
 						"job": *result,
 					},
@@ -303,23 +308,8 @@ func waitForJob(msg *dipper.Message) {
 				}
 				break
 			}
-
 			time.Sleep(time.Duration(interval) * time.Second)
 		}
-	}()
-
-	msg.Reply <- dipper.Message{
-		Labels: map[string]string{
-			"no-timeout": "yes",
-		},
-	} // suppress timeout control
-
-	select {
-	case m := <-finalStatus:
-		msg.Reply <- m
-	case <-time.After(time.Duration(timeout) * time.Second):
-		expired = true
-		panic(errors.New("timeout"))
 	}
 }
 
@@ -341,7 +331,7 @@ func updateJob(msg *dipper.Message) {
 
 	var dataflowService = getDataflowService(serviceAccountBytes)
 
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	var result *dataflow.Job
 	func() {
 		defer cancel()

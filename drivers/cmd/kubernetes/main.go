@@ -8,10 +8,10 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -79,7 +79,9 @@ func getJobLog(m *dipper.Message) {
 	search.Kind = "Pod"
 
 	client := k8client.CoreV1().Pods(nameSpace)
-	pods, err := client.List(search)
+	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	defer cancel()
+	pods, err := client.List(ctx, search)
 	if err != nil || len(pods.Items) < 1 {
 		log.Panicf("[%s] unable to find the pod for the job %+v", driver.Service, err)
 	}
@@ -104,15 +106,17 @@ func getJobLog(m *dipper.Message) {
 
 		podlogs := map[string]string{}
 		for _, container := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
-			stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream()
-			if err != nil {
-				podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
-				messages = append(messages, podlogs[container.Name])
-				log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
-				returnStatus = StatusFailure
-			} else {
-				func(stream io.ReadCloser) {
-					defer stream.Close()
+			func() {
+				ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+				defer cancel()
+				stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream(ctx)
+				defer stream.Close()
+				if err != nil {
+					podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
+					messages = append(messages, podlogs[container.Name])
+					log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+					returnStatus = StatusFailure
+				} else {
 					containerlog, err := ioutil.ReadAll(stream)
 					if err != nil {
 						podlogs[container.Name] = fmt.Sprintf("Error: unable to read the logs from the stream %s.%s", pod.Name, container.Name)
@@ -123,8 +127,8 @@ func getJobLog(m *dipper.Message) {
 						podlogs[container.Name] = string(containerlog)
 						messages = append(messages, podlogs[container.Name])
 					}
-				}(stream)
-			}
+				}
+			}()
 		}
 		alllogs[pod.Name] = podlogs
 	}
@@ -154,10 +158,11 @@ func waitForJob(m *dipper.Message) {
 	}
 
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
-	timeout := 10
-	timeoutStr, ok := dipper.GetMapDataStr(m.Payload, "timeout")
+	timeout := time.Duration(10)
+	timeoutStr, ok := m.Labels["timeout"]
 	if ok {
-		timeout, _ = strconv.Atoi(timeoutStr)
+		timeoutInt, _ := strconv.Atoi(timeoutStr)
+		timeout = time.Duration(timeoutInt)
 	}
 
 	jobclient := k8client.BatchV1().Jobs(nameSpace)
@@ -165,57 +170,40 @@ func waitForJob(m *dipper.Message) {
 		FieldSelector: "metadata.name==" + jobName,
 	}
 	watchOption.Kind = "Job"
-	jobstatus, err := jobclient.Watch(watchOption)
+	ctxWatch, cancelWatch := context.WithTimeout(context.Background(), timeout*time.Second)
+	defer cancelWatch()
+	jobstatus, err := jobclient.Watch(ctxWatch, watchOption)
 	if err != nil {
 		log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
 	}
+	defer jobstatus.Stop()
 
-	finalStatus := make(chan dipper.Message, 1)
-	go func() {
-		jobStatus := StatusSuccess
-		reason := []string{}
-
-		for evt := range jobstatus.ResultChan() {
-			if evt.Type == "ADDED" || evt.Type == "MODIFIED" {
-				job := evt.Object.(*batchv1.Job)
-				if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
-					if job.Status.Failed > 0 {
-						jobStatus = StatusFailure
-						for _, condition := range job.Status.Conditions {
-							reason = append(reason, condition.Reason)
-						}
+	jobStatus := StatusSuccess
+	reason := []string{}
+	for {
+		select {
+		case <-ctxWatch.Done():
+			break
+		case evt := <-jobstatus.ResultChan():
+			job := evt.Object.(*batchv1.Job)
+			if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
+				if job.Status.Failed > 0 {
+					jobStatus = StatusFailure
+					for _, condition := range job.Status.Conditions {
+						reason = append(reason, condition.Reason)
 					}
-					finalStatus <- dipper.Message{
-						Payload: map[string]interface{}{
-							"status": job.Status,
-						},
-						Labels: map[string]string{
-							"status": jobStatus,
-							"reason": strings.Join(reason, "\n"),
-						},
-					}
-					break
 				}
+				m.Reply <- dipper.Message{
+					Payload: map[string]interface{}{
+						"status": job.Status,
+					},
+					Labels: map[string]string{
+						"status": jobStatus,
+						"reason": strings.Join(reason, "\n"),
+					},
+				}
+				break
 			}
-		}
-	}()
-
-	m.Reply <- dipper.Message{
-		Labels: map[string]string{
-			"no-timeout": "yes",
-		},
-	} // suppress timeout control
-
-	select {
-	case msg := <-finalStatus:
-		m.Reply <- msg
-		jobstatus.Stop()
-	case <-time.After(time.Duration(timeout) * time.Second):
-		jobstatus.Stop()
-		m.Reply <- dipper.Message{
-			Labels: map[string]string{
-				"error": "timeout",
-			},
 		}
 	}
 }
@@ -241,7 +229,9 @@ func createJob(m *dipper.Message) {
 	log.Debugf("[%s] source %+v job spec %+v", driver.Service, dipper.MustGetMapData(m.Payload, "job"), jobSpec)
 
 	jobclient := k8client.BatchV1().Jobs(nameSpace)
-	jobResult, err := jobclient.Create(&jobSpec)
+	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	defer cancel()
+	jobResult, err := jobclient.Create(ctx, &jobSpec, metav1.CreateOptions{})
 	if err != nil {
 		log.Panicf("[%s] failed to create job %+v", driver.Service, err)
 	}
@@ -274,8 +264,10 @@ func recycleDeployment(m *dipper.Message) {
 	// to accurately identify the replicaset, we have to retrieve the revision
 	// from the deployment
 	deploymentclient := k8client.AppsV1().Deployments(nameSpace)
+	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	defer cancel()
 	if useLabelSelector {
-		deployments, err := deploymentclient.List(metav1.ListOptions{LabelSelector: deploymentName})
+		deployments, err := deploymentclient.List(ctx, metav1.ListOptions{LabelSelector: deploymentName})
 		if err != nil || len(deployments.Items) == 0 {
 			log.Panicf("[%s] unable to find the deployment %s: %+v", driver.Service, deploymentName, err)
 		}
@@ -283,7 +275,7 @@ func recycleDeployment(m *dipper.Message) {
 		labels = deploymentName
 	} else {
 		var err error
-		deployment, err = deploymentclient.Get(deploymentName, metav1.GetOptions{})
+		deployment, err = deploymentclient.Get(ctx, deploymentName, metav1.GetOptions{})
 		if err != nil {
 			log.Panicf("[%s] unable to find the deployment %s: %+v", driver.Service, deploymentName, err)
 		}
@@ -299,7 +291,9 @@ func recycleDeployment(m *dipper.Message) {
 	revision := deployment.Annotations["deployment.kubernetes.io/revision"]
 
 	rsclient := k8client.AppsV1().ReplicaSets(nameSpace)
-	rs, err := rsclient.List(metav1.ListOptions{LabelSelector: labels})
+	ctxRsList, cancelRsList := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	defer cancelRsList()
+	rs, err := rsclient.List(ctxRsList, metav1.ListOptions{LabelSelector: labels})
 	if err != nil || len(rs.Items) == 0 {
 		log.Panicf("[%s] unable to find the replicaset for the deployment %s: %+v", driver.Service, deploymentName, err)
 	}
@@ -318,7 +312,9 @@ func recycleDeployment(m *dipper.Message) {
 		log.Panicf("[%s] unable to figure out which is current replicaset for %s", driver.Service, deploymentName)
 	}
 
-	err = rsclient.Delete(rsName, &metav1.DeleteOptions{})
+	ctxDel, cancelDel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	defer cancelDel()
+	err = rsclient.Delete(ctxDel, rsName, metav1.DeleteOptions{})
 	if err != nil {
 		log.Panicf("[%s] failed to recycle replicaset %s: %+v", driver.Service, rsName, err)
 	}

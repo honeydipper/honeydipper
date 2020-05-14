@@ -6,7 +6,7 @@
 
 ---
 
- * [Architecture/Design](https://github.com/honeydipper/honeydipper)
+ * [Architecture/Design (link to the repo)](https://github.com/honeydipper/honeydipper)
  * Developers
    * [Driver Developer Guide](./developer.md)
  * Administrators
@@ -21,3 +21,7 @@
    * [Enable encrypted configuration](./howtos/enable_encryption.md)
    * [Reload on github push](./howtos/reload_on_push.md)
    * [Logging verbosity](./howtos/logging_verbosity.md)
+
+---
+
+The official documents and community repo references are also live at https://honeydipper.readthedocs.io/en/latest/

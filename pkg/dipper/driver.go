@@ -9,6 +9,7 @@ package dipper
 import (
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/op/go-logging"
@@ -30,6 +31,7 @@ type Driver struct {
 	Stop            MessageHandler
 	Reload          MessageHandler
 	ReadySignal     chan bool
+	APITimeout      time.Duration
 }
 
 // NewDriver : create a blank driver object
@@ -99,6 +101,16 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 	d.Options = msg.Payload
 	Logger = nil
 	d.GetLogger()
+	d.APITimeout = time.Duration(10)
+	apiTimeoutStr, ok := d.GetOptionStr("api_timeout")
+	if ok {
+		apiTimeout, e := strconv.Atoi(apiTimeoutStr)
+		if e != nil {
+			Logger.Warningf("[%s] invalid api timeout, using default", d.Service)
+		} else {
+			d.APITimeout = time.Duration(apiTimeout)
+		}
+	}
 	d.ReadySignal <- true
 }
 

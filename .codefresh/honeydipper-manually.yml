@@ -1,0 +1,39 @@
+version: '1.0'
+
+stages:
+  - init
+  - build
+  - push
+
+steps:
+  main_clone:
+    title: Cloning main repository...
+    type: git-clone
+    repo: '${{CF_REPO_OWNER}}/${{CF_REPO_NAME}}'
+    git: github
+    revision: '${{CF_REVISION}}'
+    stage: init
+
+  # manually triggered build
+  dockerBuild:
+    title: Building Docker Image (Manually)
+    type: build
+    stage: build
+    arguments:
+      image_name: honeydipper/honeydipper
+      working_directory: ./
+      tag: '${{CF_BRANCH_TAG_NORMALIZED}}-${{CF_SHORT_REVISION}}'
+      dockerfile: build/docker/Dockerfile
+      build_arguments:
+        - GOINSTALLOPTS=${{GOINSTALLOPTS}}
+        - GOGC=${{GOGC}}
+
+  # pushing image built with manual trigger
+  dockerPush:
+    type: push
+    stage: push
+    title: Pushing To Registry (Manually)
+    arguments:
+      candidate: '${{dockerBuild}}'
+      registry: dockerhub  # Connect registries in account integrations
+      tag: '${{CF_BRANCH_TAG_NORMALIZED}}-${{CF_SHORT_REVISION}}'
