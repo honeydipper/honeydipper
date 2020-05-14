@@ -45,7 +45,7 @@ func decrypt(msg *dipper.Message) {
 	if !ok {
 		panic(errors.New("key not configured"))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	defer cancel()
 	req := &kmspb.DecryptRequest{
 		Name:       name,

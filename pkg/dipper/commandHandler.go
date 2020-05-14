@@ -56,6 +56,9 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 			Subject: p.Subject,
 			Labels:  call.Labels,
 		}
+		delete(retMsg.Labels, "backoff_ms")
+		delete(retMsg.Labels, "retry")
+		delete(retMsg.Labels, "timeout")
 		if status, ok := retval.Labels["status"]; ok {
 			retMsg.Labels["status"] = status
 			if status != SUCCESS {
@@ -84,25 +87,7 @@ func (p *CommandProvider) Router(msg *Message) {
 		panic(p.ReturnError(msg, "[operator] cmd not defined: %s", method))
 	}
 
-	retry := 0
-	backoff := 10
-	var err error
-
-	retryStr := msg.Labels["retry"]
-	if retryStr != "" {
-		retry, err = strconv.Atoi(retryStr)
-		if err != nil {
-			panic(p.ReturnError(msg, "[operator] invalid retry: %s", retryStr))
-		}
-	}
-
-	backoffStr := msg.Labels["backoff_ms"]
-	if backoffStr != "" {
-		backoff, err = strconv.Atoi(backoffStr)
-		if err != nil {
-			panic(p.ReturnError(msg, "[operator] invalid backoff_ms: %s", backoffStr))
-		}
-	}
+	retry, timeout, backoff := p.UnpackLabels(msg)
 
 	var attempt func(chan Message)
 	attempt = func(rchan chan Message) {
@@ -123,13 +108,13 @@ func (p *CommandProvider) Router(msg *Message) {
 				if status, ok := reply.Labels["status"]; (hasError || (ok && status != SUCCESS)) && retry > 0 {
 					Logger.Debugf("[operaotr] %d retry left for method %s", retry, method)
 					retry--
-					time.Sleep(time.Duration(backoff) * time.Millisecond)
+					time.Sleep(backoff * time.Millisecond)
 					backoff *= 2
 					go attempt(make(chan Message, 1))
 				} else {
 					p.Return(msg, &reply)
 				}
-			case <-time.After(time.Second * 10):
+			case <-time.After(time.Second * timeout):
 				_ = p.ReturnError(msg, "timeout")
 			}
 		}()
@@ -147,4 +132,41 @@ func (p *CommandProvider) Router(msg *Message) {
 	}
 
 	attempt(make(chan Message, 1))
+}
+
+// UnpackLabels loads necessary variables out of the labels
+func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backoff_ms time.Duration) {
+	var err error
+
+	retryStr, _ := msg.Labels["retry"]
+	if retryStr != "" {
+		retry, err = strconv.Atoi(retryStr)
+		if err != nil {
+			panic(p.ReturnError(msg, "[operator] invalid retry: %s", retryStr))
+		}
+	}
+
+	backoffStr, _ := msg.Labels["backoff_ms"]
+	if backoffStr != "" {
+		backoffVal, err := strconv.Atoi(backoffStr)
+		if err != nil {
+			panic(p.ReturnError(msg, "[operator] invalid backoff_ms: %s", backoffStr))
+		}
+		backoff_ms = time.Duration(backoffVal)
+	} else {
+		backoff_ms = 1000
+	}
+
+	timeoutStr, _ := msg.Labels["timeout"]
+	if timeoutStr != "" {
+		timeoutVal, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			panic(p.ReturnError(msg, "[operator] invalid timeout: %s", timeoutStr))
+		}
+		timeout = time.Duration(timeoutVal)
+	} else {
+		timeout = 30
+	}
+
+	return retry, timeout, backoff_ms
 }
