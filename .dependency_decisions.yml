@@ -239,3 +239,9 @@
     :why: DWTFYWTPL
     :versions: []
     :when: 2020-05-18 22:16:03.105598000 Z
+- - :approve
+  - github.com/hashicorp/golang-lru
+  - :who: 
+    :why: Allowing MPL 2.0 for now
+    :versions: []
+    :when: 2020-05-19 18:52:49.045160000 Z
