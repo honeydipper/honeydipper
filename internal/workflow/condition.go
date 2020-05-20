@@ -13,10 +13,10 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-// isTruey is a helper function to check if string represents Truey value
-func isTruey(c string) bool {
+// isTruthy is a helper function to check if string represents Truey value
+func isTruthy(c string) bool {
 	c = strings.ToLower(strings.TrimSpace(c))
-	return len(c) != 0 && c != "false" && c != "nil" && c != "0" && c != "{}" && c != "[]"
+	return len(c) != 0 && c != "false" && c != "nil" && c != "0" && c != "{}" && c != "[]" && c != "<no value>"
 }
 
 // checkCondition check if meet the condition to execute the workflow
@@ -24,28 +24,28 @@ func (w *Session) checkCondition() bool {
 	switch {
 	case len(w.workflow.If) > 0:
 		for _, c := range w.workflow.If {
-			if !isTruey(c) {
+			if !isTruthy(c) {
 				return false
 			}
 		}
 		return true
 	case len(w.workflow.IfAny) > 0:
 		for _, c := range w.workflow.IfAny {
-			if isTruey(c) {
+			if isTruthy(c) {
 				return true
 			}
 		}
 		return false
 	case len(w.workflow.Unless) > 0:
 		for _, c := range w.workflow.Unless {
-			if isTruey(c) {
+			if isTruthy(c) {
 				return false
 			}
 		}
 		return true
 	case len(w.workflow.UnlessAll) > 0:
 		for _, c := range w.workflow.UnlessAll {
-			if !isTruey(c) {
+			if !isTruthy(c) {
 				return true
 			}
 		}
@@ -79,7 +79,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 		envData := w.buildEnvData(msg)
 		for _, c := range w.workflow.While {
 			c = dipper.InterpolateStr(c, envData)
-			if !isTruey(c) {
+			if !isTruthy(c) {
 				return false
 			}
 		}
@@ -88,7 +88,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 		envData := w.buildEnvData(msg)
 		for _, c := range w.workflow.WhileAny {
 			c = dipper.InterpolateStr(c, envData)
-			if isTruey(c) {
+			if isTruthy(c) {
 				return true
 			}
 		}
@@ -97,7 +97,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 		envData := w.buildEnvData(msg)
 		for _, c := range w.workflow.Until {
 			c = dipper.InterpolateStr(c, envData)
-			if isTruey(c) {
+			if isTruthy(c) {
 				return false
 			}
 		}
@@ -106,7 +106,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 		envData := w.buildEnvData(msg)
 		for _, c := range w.workflow.UntilAll {
 			c = dipper.InterpolateStr(c, envData)
-			if !isTruey(c) {
+			if !isTruthy(c) {
 				return true
 			}
 		}
