@@ -1,3 +1,19 @@
+# [1.4.0](https://github.com/honeydipper/honeydipper/compare/v1.3.0...v1.4.0) (2020-05-20)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 06a226f ([#239](https://github.com/honeydipper/honeydipper/issues/239)) ([9184c54](https://github.com/honeydipper/honeydipper/commit/9184c54e25848240b78e57b8f9979c3c0e882833))
+* **deps:** update module cloud.google.com/go to v0.57.0 ([#242](https://github.com/honeydipper/honeydipper/issues/242)) ([a5544f2](https://github.com/honeydipper/honeydipper/commit/a5544f21f7073796fce4007ac69c2b1d8780f3ab))
+* **deps:** update module google.golang.org/api to v0.24.0 ([#243](https://github.com/honeydipper/honeydipper/issues/243)) ([79e0195](https://github.com/honeydipper/honeydipper/commit/79e019507481f777ead31eebbc59d3e2223815ec))
+* **deps:** update module yaml to v2.3.0 ([#244](https://github.com/honeydipper/honeydipper/issues/244)) ([4cfa36f](https://github.com/honeydipper/honeydipper/commit/4cfa36fe4522193fccab3df8922e2b0c354367fa))
+* **workflow:** truthy condition check should recognize <no value> ([#247](https://github.com/honeydipper/honeydipper/issues/247)) ([8fd5465](https://github.com/honeydipper/honeydipper/commit/8fd5465b8a4e20d6831350ad37b6f8651b7aef11))
+
+
+### Features
+
+* **k8s:** add a function for deleting jobs ([#246](https://github.com/honeydipper/honeydipper/issues/246)) ([9f85164](https://github.com/honeydipper/honeydipper/commit/9f851648307a279ecdf03d0cf9d509afe8d6d227))
+
 # [1.3.0](https://github.com/honeydipper/honeydipper/compare/v1.2.0...v1.3.0) (2020-05-14)
 
 
