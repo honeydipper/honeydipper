@@ -61,8 +61,32 @@ func main() {
 	driver.Commands["createJob"] = createJob
 	driver.Commands["waitForJob"] = waitForJob
 	driver.Commands["getJobLog"] = getJobLog
+	driver.Commands["deleteJob"] = deleteJob
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
+}
+
+func deleteJob(m *dipper.Message) {
+	k8client := prepareKubeConfig(m)
+
+	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
+	if !ok {
+		nameSpace = DefaultNamespace
+	}
+	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
+
+	client := k8client.BatchV1().Jobs(nameSpace)
+	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	defer cancel()
+	err := client.Delete(ctx, jobName, metav1.DeleteOptions{})
+	if err != nil {
+		log.Panicf("[%s] unable to delete the job %s: %+v", driver.Service, jobName, err)
+	}
+	m.Reply <- dipper.Message{
+		Labels: map[string]string{
+			"status": "success",
+		},
+	}
 }
 
 func getJobLog(m *dipper.Message) {
