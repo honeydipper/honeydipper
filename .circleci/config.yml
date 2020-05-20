@@ -1,10 +1,17 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.14.2-alpine3.11
+    - image: golang:1.14.3-alpine3.11
       environment:
         - GO111MODULE=auto
   working_directory: /go/src/github.com/honeydipper/honeydipper
+
+license_finder: &license_finder
+  docker:
+    - image: licensefinder/license_finder:6.3.0
+      environment:
+        - GO111MODULE=auto
+  working_directory: /root/src/honeydipper
 
 restore_mod: &restore_mod
   restore_cache:
@@ -26,6 +33,14 @@ jobs:
       - run: go get -u golang.org/x/lint/golint
       - run: go fmt
       - run: golint
+  license_finder:
+    <<: *license_finder
+    steps:
+      - checkout
+      - run: go build -v ./...
+      - run: |
+          source /root/.bash_profile
+          license_finder --decisions_file=./.dependency_decisions.yml
   test:
     <<: *defaults
     steps:
@@ -42,7 +57,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.14.2-alpine3.11
+      - image: golang:1.14.3-alpine3.11
       - image: redis:5.0.9-alpine
     steps:
       - run:
@@ -76,9 +91,11 @@ workflows:
   run_tests:
     jobs:
       - lint
+      - license_finder
       - test:
           requires:
             - lint
+            - license_finder
       - integration:
           requires:
             - test

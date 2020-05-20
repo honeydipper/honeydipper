@@ -1,0 +1,247 @@
+---
+- - :permit
+  - MIT
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:13:14.077490000 Z
+- - :permit
+  - Apache 2.0
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:13:22.783357000 Z
+- - :permit
+  - BSD
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:14:26.033435000 Z
+- - :permit
+  - New BSD
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:18:47.405209000 Z
+- - :permit
+  - BSD-like
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:19:38.030658000 Z
+- - :permit
+  - Simplified BSD
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:21:25.182595000 Z
+- - :permit
+  - 'OSI Approved :: BSD License'
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:21:55.368056000 Z
+- - :permit
+  - BSD or Apache License, Version 2.0
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:22:13.873245000 Z
+- - :permit
+  - 3-Clause BSD License
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:22:30.672497000 Z
+- - :permit
+  - BSD 3-Clause License or Apache License, Version 2.0
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:24:07.759261000 Z
+- - :permit
+  - Expat
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:25:31.479873000 Z
+- - :permit
+  - ASL 2
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-06 20:27:39.901129000 Z
+- - :approve
+  - cloud.google.com/go
+  - :who: 
+    :why: 
+    :versions: []
+    :when: 2020-05-18 21:50:06.227066000 Z
+- - :approve
+  - cloud.google.com/go/pubsub
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 21:51:30.829005000 Z
+- - :approve
+  - cloud.google.com/go/storage
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 21:51:39.020575000 Z
+- - :approve
+  - github.com/DataDog/datadog-go
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 21:51:53.572825000 Z
+- - :approve
+  - github.com/Masterminds/sprig
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 21:52:42.752697000 Z
+- - :approve
+  - github.com/Masterminds/sprig/v3
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 21:52:48.699593000 Z
+- - :approve
+  - github.com/Masterminds/semver
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 21:53:07.976869000 Z
+- - :approve
+  - github.com/ghodss/yaml
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 21:53:23.703943000 Z
+- - :approve
+  - github.com/go-errors/errors
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 21:56:50.852312000 Z
+- - :approve
+  - github.com/go-redis/redis
+  - :who: 
+    :why: BSD-2-Clause
+    :versions: []
+    :when: 2020-05-18 21:57:42.588466000 Z
+- - :approve
+  - github.com/golang/mock
+  - :who: 
+    :why: Apache-2.0
+    :versions: []
+    :when: 2020-05-18 21:58:21.999176000 Z
+- - :approve
+  - github.com/googleapis/gnostic
+  - :who: 
+    :why: Apache-2.0
+    :versions: []
+    :when: 2020-05-18 21:58:54.936806000 Z
+- - :approve
+  - github.com/imdario/mergo
+  - :who: 
+    :why: BSD-3-Clause
+    :versions: []
+    :when: 2020-05-18 21:59:51.814750000 Z
+- - :approve
+  - github.com/mitchellh/mapstructure
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 22:00:27.006411000 Z
+- - :approve
+  - github.com/mitchellh/reflectwalk
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 22:00:51.549336000 Z
+- - :approve
+  - github.com/op/go-logging
+  - :who: 
+    :why: BSD-3-Clause
+    :versions: []
+    :when: 2020-05-18 22:01:22.807298000 Z
+- - :approve
+  - github.com/stretchr/testify
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 22:01:47.667117000 Z
+- - :approve
+  - golang.org/x/crypto
+  - :who: 
+    :why: BSD-3-Clause
+    :versions: []
+    :when: 2020-05-18 22:02:20.097249000 Z
+- - :approve
+  - golang.org/x/oauth2
+  - :who: 
+    :why: BSD-3-Clause
+    :versions: []
+    :when: 2020-05-18 22:02:46.458542000 Z
+- - :approve
+  - google.golang.org/api
+  - :who: 
+    :why: BSD-3-Clause
+    :versions: []
+    :when: 2020-05-18 22:03:20.443048000 Z
+- - :approve
+  - google.golang.org/genproto
+  - :who: 
+    :why: Apache-2.0
+    :versions: []
+    :when: 2020-05-18 22:04:32.937078000 Z
+- - :approve
+  - gopkg.in/h2non/gock.v1
+  - :who: 
+    :why: MIT
+    :versions: []
+    :when: 2020-05-18 22:05:15.887612000 Z
+- - :approve
+  - gopkg.in/src-d/go-git.v4
+  - :who: 
+    :why: Apache-2.0
+    :versions: []
+    :when: 2020-05-18 22:06:10.615852000 Z
+- - :approve
+  - gopkg.in/yaml.v2
+  - :who: 
+    :why: Apache-2.0
+    :versions: []
+    :when: 2020-05-18 22:06:41.946870000 Z
+- - :approve
+  - k8s.io/api
+  - :who: 
+    :why: Apache-2.0
+    :versions: []
+    :when: 2020-05-18 22:07:40.828327000 Z
+- - :approve
+  - k8s.io/apimachinery
+  - :who: 
+    :why: Apache-2.0
+    :versions: []
+    :when: 2020-05-18 22:08:28.944354000 Z
+- - :approve
+  - k8s.io/client-go
+  - :who: 
+    :why: Apache-2.0
+    :versions: []
+    :when: 2020-05-18 22:08:50.941564000 Z
+- - :approve
+  - github.com/logrusorgru/aurora
+  - :who: 
+    :why: DWTFYWTPL
+    :versions: []
+    :when: 2020-05-18 22:16:03.105598000 Z
+- - :approve
+  - github.com/hashicorp/golang-lru
+  - :who: 
+    :why: Allowing MPL 2.0 for now
+    :versions: []
+    :when: 2020-05-19 18:52:49.045160000 Z

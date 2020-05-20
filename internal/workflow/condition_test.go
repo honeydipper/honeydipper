@@ -18,6 +18,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestTruthyCheck(t *testing.T) {
+	assert.Falsef(t, isTruthy(dipper.InterpolateStr("{{ .something_undefined }}", map[string]interface{}{})), "interpolated <no value> should be false")
+}
+
 func TestConditionElse(t *testing.T) {
 	testcase := map[string]interface{}{
 		"workflow": &config.Workflow{If: []string{"false"}, Else: config.Workflow{CallDriver: "foo.bar"}},
