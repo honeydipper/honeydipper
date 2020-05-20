@@ -23,7 +23,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/stretchr/testify v1.5.1
-	golang.org/x/crypto v0.0.0-20200429183012-4b2356b1ed79
+	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	google.golang.org/api v0.24.0
 	google.golang.org/genproto v0.0.0-20200430143042-b979b6f78d84
