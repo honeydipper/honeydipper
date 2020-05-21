@@ -90,18 +90,22 @@ func (p *CommandProvider) Router(msg *Message) {
 	retry, timeout, backoff := p.UnpackLabels(msg)
 
 	var attempt func(chan Message)
-	attempt = func(rchan chan Message) {
-		msg.Reply = rchan
+	attempt = func(replyChannel chan Message) {
+		msg.Reply = replyChannel
+		m := *msg
 
 		go func() {
-			defer close(rchan)
+			defer func() {
+				close(replyChannel)
+				replyChannel = nil
+			}()
 
-			Logger.Debugf("[operaotr] cmd labels %+v", msg.Labels)
+			Logger.Debugf("[operaotr] cmd labels %+v", m.Labels)
 
 			select {
-			case reply := <-msg.Reply:
+			case reply := <-replyChannel:
 				if _, ok := reply.Labels["no-timeout"]; ok {
-					reply = <-msg.Reply
+					reply = <-m.Reply
 				}
 
 				_, hasError := reply.Labels["error"]
@@ -120,15 +124,15 @@ func (p *CommandProvider) Router(msg *Message) {
 		}()
 
 		defer func() {
-			if r := recover(); r != nil {
-				msg.Reply <- Message{
+			if r := recover(); r != nil && replyChannel != nil {
+				replyChannel <- Message{
 					Labels: map[string]string{
 						"error": fmt.Sprintf("%+v", r),
 					},
 				}
 			}
 		}()
-		f(msg)
+		f(&m)
 	}
 
 	attempt(make(chan Message, 1))
