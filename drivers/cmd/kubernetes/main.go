@@ -260,10 +260,13 @@ func createJob(m *dipper.Message) {
 		log.Panicf("[%s] failed to create job %+v", driver.Service, err)
 	}
 
+	links := getJobLinks(m, jobResult.ObjectMeta.Name)
+
 	m.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
 			"metadata": jobResult.ObjectMeta,
 			"status":   jobResult.Status,
+			"links":    links,
 		},
 	}
 }
@@ -405,4 +408,23 @@ func getGKEConfig(cfg map[string]interface{}) *rest.Config {
 	k8cfg.CAData = cadata
 
 	return k8cfg
+}
+
+func getJobLinks(m *dipper.Message, jobName string) map[string]interface{} {
+	m = dipper.DeserializePayload(m)
+	source := dipper.MustGetMapData(m.Payload, "source").(map[string]interface{})
+	source["job"] = jobName
+
+	stype := dipper.MustGetMapDataStr(source, "type")
+	switch stype {
+	case "gcloud-gke":
+		ret, err := driver.Call("driver:gcloud-gke", "getJobLinks", source)
+		if err != nil {
+			log.Panicf("[%s] failed call gcloud to get job links %+v", driver.Service, err)
+		}
+
+		return dipper.DeserializeContent(ret).(map[string]interface{})
+	default:
+		return map[string]interface{}{}
+	}
 }

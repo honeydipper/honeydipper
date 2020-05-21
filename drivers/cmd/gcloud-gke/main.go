@@ -37,6 +37,7 @@ func main() {
 
 	driver = dipper.NewDriver(os.Args[1], "gcloud-gke")
 	driver.RPCHandlers["getKubeCfg"] = getKubeCfg
+	driver.RPCHandlers["getJobLinks"] = getJobLinks
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
@@ -124,6 +125,33 @@ func getKubeCfg(msg *dipper.Message) {
 			"Host":   clusterObj.Endpoint,
 			"Token":  token.AccessToken,
 			"CACert": clusterObj.MasterAuth.ClusterCaCertificate,
+		},
+	}
+}
+
+func getJobLinks(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+	project := dipper.MustGetMapDataStr(params, "project")
+	location := dipper.MustGetMapDataStr(params, "location")
+	cluster := dipper.MustGetMapDataStr(params, "cluster")
+	namespace, ok := dipper.GetMapDataStr(params, "namespace")
+	if !ok {
+		namespace = "default"
+	}
+	job := dipper.MustGetMapDataStr(params, "job")
+
+	msg.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"See job `" + job + "` in console": fmt.Sprintf("https://console.cloud.google.com/kubernetes/workload?"+
+				"project=%s&pageState=(%%22workload_list_table%%22:(%%22f%%22:%%22%%255B%%257B_22k"+
+				"_22_3A_22Is%%2520system%%2520object_22_2C_22t_22_3A11_2C_22v_22_3A_22_5C_22False_~*"+
+				"false_5C_22_22_2C_22i_22_3A_22is_system_22%%257D_2C%%257B_22k_22_3A_22_22_2C_22t_22"+
+				"_3A10_2C_22v_22_3A_22_5C_22%s_5C_22_22%%257D%%255D%%22))", project, job),
+			"See logs in stackdriver": fmt.Sprintf("https://console.cloud.google.com/logs/viewer?advancedFilter=resource.type%%3D%%22"+
+				"k8s_container%%22%%0Aresource.labels.project_id%%3D%%22%s%%22%%0Aresource.labels.location"+
+				"%%3D%%22%s%%22%%0Aresource.labels.cluster_name%%3D%%22%s%%22%%0Aresource.labels.namespace_name"+
+				"%%3D%%22%s%%22%%0Alabels.%%22k8s-pod%%2Fjob-name%%22%%3D%%22%s%%22", project, location, cluster, namespace, job),
 		},
 	}
 }
