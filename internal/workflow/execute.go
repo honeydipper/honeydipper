@@ -362,7 +362,7 @@ func (w *Session) callShorthandFunction(f string, msg *dipper.Message) {
 // callFunction makes a call to a function
 func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 	// stored for doing export context later
-	w.collapsedFunction = config.CollapseFunction(nil, f, w.store.Helper.GetConfig())
+	w.inFlyFunction = f
 
 	payload := w.buildEnvData(msg)
 	payload["function"] = *f

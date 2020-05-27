@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
@@ -115,10 +116,9 @@ func (w *Session) processExport(msg *dipper.Message) {
 		envData := w.buildEnvData(msg)
 		status := msg.Labels["status"]
 
-		if w.collapsedFunction != nil && status != SessionStatusError {
-			var export map[string]interface{}
-			export, w.ctx = w.collapsedFunction.ExportContext(status, envData)
-			envData["ctx"] = w.ctx
+		if w.inFlyFunction != nil && status != SessionStatusError {
+			export := config.ExportFunctionContext(nil, w.inFlyFunction, envData, w.store.Helper.GetConfig())
+			delete(envData, "sysData")
 			w.processNoExport(export)
 			if len(export) > 0 {
 				w.exported = append(w.exported, export)
