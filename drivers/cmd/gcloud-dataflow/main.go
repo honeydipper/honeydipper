@@ -272,10 +272,12 @@ func waitForJob(msg *dipper.Message) {
 		result *dataflow.Job
 		err    error
 	)
+
+loop:
 	for {
 		select {
 		case <-expired:
-			break
+			break loop
 		default:
 			func() {
 				execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
@@ -293,7 +295,7 @@ func waitForJob(msg *dipper.Message) {
 						"error": fmt.Sprintf("failed to call polling method: %+v", err),
 					},
 				}
-				break
+				break loop
 			}
 
 			if status, ok := terminatedStates[result.CurrentState]; ok {
@@ -306,7 +308,7 @@ func waitForJob(msg *dipper.Message) {
 						"reason": result.CurrentState,
 					},
 				}
-				break
+				break loop
 			}
 			time.Sleep(time.Duration(interval) * time.Second)
 		}

@@ -16,23 +16,23 @@ import (
 
 // Session is the data structure about a running workflow and its definition.
 type Session struct {
-	ID                string
-	workflow          *config.Workflow
-	current           int32 // current thread or step
-	iteration         int32 // current item in the iteration list
-	loopCount         int   // counter for looping
-	parent            string
-	ctx               map[string]interface{}
-	event             map[string]interface{}
-	exported          []map[string]interface{}
-	elseBranch        *config.Workflow
-	collapsedFunction *config.CollapsedFunction
-	store             *SessionStore
-	loadedContexts    []string
-	currentHook       string
-	savedMsg          *dipper.Message
-	performing        string
-	isHook            bool
+	ID             string
+	workflow       *config.Workflow
+	current        int32 // current thread or step
+	iteration      int32 // current item in the iteration list
+	loopCount      int   // counter for looping
+	parent         string
+	ctx            map[string]interface{}
+	event          map[string]interface{}
+	exported       []map[string]interface{}
+	elseBranch     *config.Workflow
+	inFlyFunction  *config.Function
+	store          *SessionStore
+	loadedContexts []string
+	currentHook    string
+	savedMsg       *dipper.Message
+	performing     string
+	isHook         bool
 }
 
 // SessionHandler prepare and execute the session provides entry point for SessionStore to invoke and mock for testing

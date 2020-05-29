@@ -204,10 +204,11 @@ func waitForJob(m *dipper.Message) {
 
 	jobStatus := StatusSuccess
 	reason := []string{}
+loop:
 	for {
 		select {
 		case <-ctxWatch.Done():
-			break
+			break loop
 		case evt := <-jobstatus.ResultChan():
 			job := evt.Object.(*batchv1.Job)
 			if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
@@ -226,7 +227,7 @@ func waitForJob(m *dipper.Message) {
 						"reason": strings.Join(reason, "\n"),
 					},
 				}
-				break
+				break loop
 			}
 		}
 	}

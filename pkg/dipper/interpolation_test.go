@@ -34,6 +34,7 @@ func TestInterpolate(t *testing.T) {
 				"deep": " another {{ index . \"type\" }}",
 			},
 			"default_user": "$ctx.v1,ctx.v2,'default, value with comma'",
+			"item_in_list": "$list.{{ .ptr }}",
 			"yaml_with_template": `:yaml:
 ---
 test:
@@ -44,9 +45,11 @@ test:
 			"user": "test",
 			"type": "direct",
 			"list": map[string]interface{}{
-				"one": "one",
-				"two": "two",
+				"one":   "one",
+				"two":   "two",
+				"three": "the last one",
 			},
+			"ptr": "three",
 		})
 	assert.EqualValues(t,
 		map[string]interface{}{
@@ -55,6 +58,7 @@ test:
 			"map_with_template": map[string]interface{}{
 				"deep": " another direct",
 			},
+			"item_in_list": "the last one",
 			"yaml_with_template": map[string]interface{}{
 				"test": []interface{}{
 					"1 one",

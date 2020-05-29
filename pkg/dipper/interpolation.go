@@ -72,23 +72,26 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 	case string:
 		if strings.HasPrefix(v, "$") {
 			allowNull := (v[1] == '?')
-			quoteAt := strings.IndexAny(v, "\"'`")
+			var parsed string
+			if allowNull {
+				parsed = InterpolateStr(v[2:], data)
+			} else {
+				parsed = InterpolateStr(v[1:], data)
+			}
+
+			quote := strings.IndexAny(parsed, "\"'`")
+			if allowNull && quote >= 0 {
+				panic(fmt.Errorf("no need to allow null with default value %s", v))
+			}
 
 			var keys []string
-			if allowNull {
-				if quoteAt > 0 {
-					panic(fmt.Errorf("no need to allow null with default value %s", v))
+			if quote > 0 {
+				if parsed[quote-1] != ',' {
+					panic(fmt.Errorf("default value should be separated from the key with comma %s", v))
 				}
-				keys = strings.Split(v[2:], ",")
-			} else {
-				if quoteAt > 0 {
-					if v[quoteAt-1] != ',' {
-						panic(fmt.Errorf("default value should be separated from the key with comma %s", v))
-					}
-					keys = strings.Split(v[1:quoteAt-1], ",")
-				} else {
-					keys = strings.Split(v[1:], ",")
-				}
+				keys = strings.Split(parsed[:quote-1], ",")
+			} else if quote < 0 {
+				keys = strings.Split(parsed, ",")
 			}
 
 			for _, key := range keys {
@@ -101,11 +104,11 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 				}
 			}
 
-			if quoteAt > 0 {
-				if v[quoteAt] != v[len(v)-1] {
-					panic(fmt.Errorf("quotes not matching for default value %s", v))
+			if quote >= 0 {
+				if parsed[quote] != parsed[len(parsed)-1] {
+					panic(fmt.Errorf("quotes not matching for default value %s", parsed))
 				}
-				return v[quoteAt+1 : len(v)-1]
+				return parsed[quote+1 : len(parsed)-1]
 			}
 
 			if allowNull {
