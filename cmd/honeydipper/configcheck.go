@@ -70,6 +70,7 @@ func runConfigCheck(cfg *config.Config) int {
 						contextErrors = true
 					}
 					fmt.Printf("context(%s): %s\n", contextName, aurora.Red(errMsg))
+					ret = 1
 				}
 			}
 		}

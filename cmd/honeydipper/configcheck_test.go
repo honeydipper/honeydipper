@@ -9,9 +9,70 @@
 package main
 
 import (
+	"fmt"
 	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
+
+func TestRunConfigCheck(t *testing.T) {
+	runConfigTestCases := []interface{}{
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{},
+			},
+			0,
+			"runConfigCheck should return zero for empty config repo",
+		},
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{},
+				Loaded: map[config.RepoInfo]*config.Repo{
+					config.RepoInfo{Repo: "good one"}: &config.Repo{Errors: nil},
+					config.RepoInfo{Repo: "bad one"}:  &config.Repo{Errors: []config.Error{config.Error{Error: fmt.Errorf("error converting YAML to JSON: yaml: %s", "test.yaml"), File: "test"}}},
+				},
+			},
+			1,
+			"runConfigCheck should return non-zero if there is error loading yaml",
+		},
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{
+					Contexts: map[string]interface{}{"_default": map[string]interface{}{"wf-not-exists": map[string]interface{}{"data": "value"}}},
+				},
+			},
+			1,
+			"runConfigCheck should return non-zero if a context is missing matching workflow",
+		},
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{
+					Rules: []config.Rule{
+						{When: config.Trigger{Driver: "non-exist"}, Do: config.Workflow{Workflow: "non-exist"}},
+					},
+				},
+			},
+			1,
+			"runConfigCheck should return non-zero if a rule calls a missing workflow",
+		},
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{
+					Workflows: map[string]config.Workflow{"test-workflow": config.Workflow{Workflow: "dne"}},
+				},
+			},
+			1,
+			"runConfigCheck should return non-zero if a workflow calls a missing workflow",
+		},
+	}
+
+	for _, tcase := range runConfigTestCases {
+		tc := tcase.([]interface{})
+		result := runConfigCheck(tc[0].(*config.Config))
+		assert.Equal(t, tc[1], result, tc[2])
+	}
+
+}
 
 func TestCheckObjectExistsWorkFlowDoesNotExist(t *testing.T) {
 	defer recoverAssertion(`workflow "test-fail" not defined`, t)
