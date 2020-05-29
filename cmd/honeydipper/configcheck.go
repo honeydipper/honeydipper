@@ -20,13 +20,13 @@ import (
 
 const (
 	// ErrorFieldCollision is the error message when two conflicting fields are set
-	ErrorFieldCollision = "cannot define both `%s` and `%s`"
+	ErrorFieldCollision = `cannot define both "%s" and "%s"`
 	// ErrorNotDefined is the error message when an required asset is not defined
-	ErrorNotDefined = "%s `%s` not defined"
+	ErrorNotDefined = `%s "%s" not defined`
 	// ErrorNotAllowed is the message when a field is not allowed due to missing pairing field
-	ErrorNotAllowed = "field `%s` not allowed without pairing field"
+	ErrorNotAllowed = `field "%s" not allowed without pairing field`
 	// ErrorNotAList is the message when a field is supposed to be a list
-	ErrorNotAList = "field `%s` must be a list or something interpolated into a list"
+	ErrorNotAList = `field "%s" must be a list or something interpolated into a list`
 )
 
 type dipperCLError struct {
@@ -65,7 +65,7 @@ func runConfigCheck(cfg *config.Config) int {
 				errMsg := checkContext(cfg, wfName)
 				if len(errMsg) > 0 {
 					if !contextErrors {
-						fmt.Printf("\nFound error in Contexts\n")
+						fmt.Printf("\nFound errors in contexts:\n")
 						fmt.Println("─────────────────────────────────────────────────────────────")
 						contextErrors = true
 					}
@@ -84,7 +84,7 @@ func runConfigCheck(cfg *config.Config) int {
 				"_": aurora.Cyan("truncated ..."),
 			}
 			if !ruleErrors {
-				fmt.Printf("\nFound error in Rules\n")
+				fmt.Printf("\nFound errors in rules:\n")
 				fmt.Println("─────────────────────────────────────────────────────────────")
 				ruleErrors = true
 			}
@@ -98,7 +98,7 @@ func runConfigCheck(cfg *config.Config) int {
 		location, errMsg := checkWorkflow(workflow, cfg)
 		if len(errMsg) > 0 {
 			if !workflowErrors {
-				fmt.Printf("\nFound error in Workflows\n")
+				fmt.Printf("\nFound errors in workflows:\n")
 				fmt.Println("─────────────────────────────────────────────────────────────")
 				workflowErrors = true
 			}
