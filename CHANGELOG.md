@@ -1,3 +1,16 @@
+# [1.5.0](https://github.com/honeydipper/honeydipper/compare/v1.4.0...v1.5.0) (2020-05-29)
+
+
+### Bug Fixes
+
+* **drivers:** driver panic due to closed channel during retry ([#251](https://github.com/honeydipper/honeydipper/issues/251)) ([8814c43](https://github.com/honeydipper/honeydipper/commit/8814c43433389c7f830a44e90b713776a34ce699))
+
+
+### Features
+
+* **config:** allow using params and sysData in function export ([790d8d4](https://github.com/honeydipper/honeydipper/commit/790d8d45db82f22720756a4d6c4b508e377dcc5d))
+* **interpolation:** allow indirect access in dollar interpolation ([b21d091](https://github.com/honeydipper/honeydipper/commit/b21d091805c61e8bbb88890aa1a5e7eb7e150723))
+
 # [1.4.0](https://github.com/honeydipper/honeydipper/compare/v1.3.0...v1.4.0) (2020-05-20)
 
 
