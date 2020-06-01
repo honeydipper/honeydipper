@@ -12,7 +12,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.1.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-errors/errors v1.0.2
-	github.com/go-redis/redis v6.15.7+incompatible
+	github.com/go-redis/redis v6.15.8+incompatible
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/mock v1.4.3
 	github.com/googleapis/gnostic v0.3.1 // indirect
