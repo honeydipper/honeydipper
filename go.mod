@@ -22,7 +22,7 @@ require (
 	github.com/mitchellh/mapstructure v1.3.0
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.6.0
 	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	google.golang.org/api v0.24.0
