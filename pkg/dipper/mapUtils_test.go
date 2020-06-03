@@ -95,3 +95,34 @@ func TestRecursive(t *testing.T) {
 		assert.Equal(t, testExpects[i], testValue, "recursive test case %v failed", i)
 	}
 }
+
+func TestDeepCopyNil(t *testing.T) {
+	var ret interface{}
+	var err error
+	assert.NotPanics(t, func() { ret, err = DeepCopy(nil) })
+	assert.Nil(t, ret)
+	assert.Nil(t, err)
+}
+
+func TestDeepCopyNilMap(t *testing.T) {
+	var ret interface{}
+	var err error
+	assert.NotPanics(t, func() { ret, err = DeepCopyMap(nil) })
+	assert.Nil(t, ret)
+	assert.Nil(t, err)
+}
+
+func TestDeepCopy(t *testing.T) {
+	var ret interface{}
+	var err error
+	src := map[string]interface{}{
+		"key1": "value1",
+		"key2": 2,
+		"key3": true,
+	}
+	assert.NotPanics(t, func() { ret, err = DeepCopy(src) })
+	assert.Equal(t, src, ret)
+	src["key3"] = false
+	assert.NotEqual(t, src, ret)
+	assert.Nil(t, err)
+}
