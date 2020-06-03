@@ -245,6 +245,9 @@ func LockCheckDeleteMap(lock *sync.Mutex, resource interface{}, key interface{},
 
 // DeepCopyMap : performs a deep copy of the given map m.
 func DeepCopyMap(m map[string]interface{}) (map[string]interface{}, error) {
+	if m == nil {
+		return nil, nil
+	}
 	ret, err := DeepCopy(m)
 	if err != nil {
 		return nil, err
