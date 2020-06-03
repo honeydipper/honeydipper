@@ -21,7 +21,7 @@ func TestFunctionExport(t *testing.T) {
 				"test": System{
 					Data: map[string]interface{}{
 						"key1": "value1",
-						"key2": map[string]string{
+						"key2": map[string]interface{}{
 							"key3": "value3",
 						},
 					},
@@ -40,7 +40,6 @@ func TestFunctionExport(t *testing.T) {
 	}
 
 	result := ExportFunctionContext(
-		nil,
 		&Function{Target: Action{System: "test", Function: "testFunc1"}},
 		map[string]interface{}{
 			"ctx": map[string]interface{}{"path": "test/path1"},
@@ -53,15 +52,17 @@ func TestFunctionExport(t *testing.T) {
 	newSys1 := &System{
 		Data: map[string]interface{}{
 			"key1": "value11",
-			"key2": "value22",
+			"key2": map[string]interface{}{
+				"key3": "should_not_be_used",
+			},
 		},
 	}
 
 	result = ExportFunctionContext(
-		newSys1,
 		&Function{Target: Action{System: "test", Function: "testFunc1"}},
 		map[string]interface{}{
-			"ctx": map[string]interface{}{"path": "test/path1"},
+			"ctx":     map[string]interface{}{"path": "test/path1"},
+			"sysData": newSys1.Data,
 		},
 		&cfg,
 	)
@@ -99,7 +100,6 @@ func TestFunctionExportWithParameters(t *testing.T) {
 	}
 
 	result := ExportFunctionContext(
-		nil,
 		&Function{Target: Action{System: "test", Function: "testFunc1"}},
 		map[string]interface{}{
 			"ctx": map[string]interface{}{"path": "test/path1"},
@@ -110,7 +110,6 @@ func TestFunctionExportWithParameters(t *testing.T) {
 	assert.Equal(t, "http://value1.value3/test/path1?q1=param1", result["url"])
 
 	result = ExportFunctionContext(
-		nil,
 		&Function{
 			Target: Action{System: "test", Function: "testFunc1"},
 			Parameters: map[string]interface{}{
@@ -176,7 +175,6 @@ func TestFunctionExportWithSquashedParameters(t *testing.T) {
 	}
 
 	result := ExportFunctionContext(
-		nil,
 		&Function{Target: Action{System: "test2", Function: "testFunc2"}},
 		map[string]interface{}{
 			"ctx": map[string]interface{}{"path": "test/path1"},
@@ -230,7 +228,6 @@ func TestFunctionExportWithSquashedSysData(t *testing.T) {
 	}
 
 	result := ExportFunctionContext(
-		nil,
 		&Function{Target: Action{System: "test2", Function: "testFunc2"}},
 		map[string]interface{}{
 			"ctx": map[string]interface{}{"path": "test/path1"},
@@ -239,4 +236,148 @@ func TestFunctionExportWithSquashedSysData(t *testing.T) {
 	)
 
 	assert.Equal(t, "http://value1.value3/test/path1?q1=value4", result["url"])
+}
+
+func TestFunctionExportWithSubsystem(t *testing.T) {
+	cfg := Config{
+		DataSet: &DataSet{
+			Systems: map[string]System{
+				"outter": System{
+					Extends: []string{
+						"inner=test",
+					},
+					Data: map[string]interface{}{
+						"key1": "should-not-be-used",
+					},
+				},
+				"test": System{
+					Data: map[string]interface{}{
+						"key1": "value1",
+						"key2": map[string]interface{}{
+							"key3": "value3",
+						},
+					},
+					Functions: map[string]Function{
+						"testFunc1": Function{
+							Driver:    "testDriver",
+							RawAction: "action",
+							Export: map[string]interface{}{
+								"url": "http://{{ .sysData.key1 }}.{{ .sysData.key2.key3}}/{{ .ctx.path }}",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	(&cfg).extendAllSystems()
+
+	result := ExportFunctionContext(
+		&Function{Target: Action{System: "outter", Function: "inner.testFunc1"}},
+		map[string]interface{}{
+			"ctx": map[string]interface{}{"path": "test/path1"},
+		},
+		&cfg,
+	)
+
+	assert.Equal(t, "http://value1.value3/test/path1", result["url"])
+}
+
+func TestFunctionExportWithSubsystemParameters(t *testing.T) {
+	cfg := Config{
+		DataSet: &DataSet{
+			Systems: map[string]System{
+				"outter": System{
+					Extends: []string{
+						"inner=test",
+					},
+					Data: map[string]interface{}{
+						"key1": "should-not-be-used",
+					},
+				},
+				"test": System{
+					Data: map[string]interface{}{
+						"key1": "value1",
+						"key2": map[string]interface{}{
+							"key3": "value3",
+						},
+						"key5": "internal-data",
+					},
+					Functions: map[string]Function{
+						"testFunc1": Function{
+							Driver:    "testDriver",
+							RawAction: "action",
+							Parameters: map[string]interface{}{
+								"param1": "$sysData.key5",
+							},
+							Export: map[string]interface{}{
+								"url": "http://{{ .sysData.key1 }}.{{ .sysData.key2.key3}}/{{ .ctx.path }}?{{ .params.param1 }}",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	(&cfg).extendAllSystems()
+
+	result := ExportFunctionContext(
+		&Function{Target: Action{System: "outter", Function: "inner.testFunc1"}},
+		map[string]interface{}{
+			"ctx": map[string]interface{}{"path": "test/path1"},
+		},
+		&cfg,
+	)
+
+	assert.Equal(t, "http://value1.value3/test/path1?internal-data", result["url"])
+}
+
+func TestFunctionExportWithSubsystemParentData(t *testing.T) {
+	cfg := Config{
+		DataSet: &DataSet{
+			Systems: map[string]System{
+				"outter": System{
+					Extends: []string{
+						"inner=test",
+					},
+					Data: map[string]interface{}{
+						"key1": "should-not-be-used",
+						"key2": "belong-to-parent",
+					},
+				},
+				"test": System{
+					Data: map[string]interface{}{
+						"key1": "value1",
+						"key2": map[string]interface{}{
+							"key3": "value3",
+						},
+						"key5": "internal-data",
+					},
+					Functions: map[string]Function{
+						"testFunc1": Function{
+							Driver:    "testDriver",
+							RawAction: "action",
+							Export: map[string]interface{}{
+								"url": "http://{{ .sysData.key1 }}.{{ .sysData.key2.key3}}/{{ .ctx.path }}?{{ .sysData.parent.key2 }}",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	(&cfg).extendAllSystems()
+
+	result := ExportFunctionContext(
+		&Function{Target: Action{System: "outter", Function: "inner.testFunc1"}},
+		map[string]interface{}{
+			"ctx": map[string]interface{}{"path": "test/path1"},
+		},
+		&cfg,
+	)
+
+	assert.Equal(t, "http://value1.value3/test/path1?belong-to-parent", result["url"])
 }
