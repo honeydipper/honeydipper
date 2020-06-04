@@ -117,7 +117,7 @@ func (w *Session) processExport(msg *dipper.Message) {
 		status := msg.Labels["status"]
 
 		if w.inFlyFunction != nil && status != SessionStatusError {
-			export := config.ExportFunctionContext(nil, w.inFlyFunction, envData, w.store.Helper.GetConfig())
+			export := config.ExportFunctionContext(w.inFlyFunction, envData, w.store.Helper.GetConfig())
 			delete(envData, "sysData")
 			w.processNoExport(export)
 			if len(export) > 0 {
