@@ -9,12 +9,73 @@
 package main
 
 import (
+	"fmt"
 	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
+func TestRunConfigCheck(t *testing.T) {
+	runConfigTestCases := []interface{}{
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{},
+			},
+			0,
+			"runConfigCheck should return zero for empty config repo",
+		},
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{},
+				Loaded: map[config.RepoInfo]*config.Repo{
+					config.RepoInfo{Repo: "good one"}: &config.Repo{Errors: nil},
+					config.RepoInfo{Repo: "bad one"}:  &config.Repo{Errors: []config.Error{config.Error{Error: fmt.Errorf("error converting YAML to JSON: yaml: %s", "test.yaml"), File: "test"}}},
+				},
+			},
+			1,
+			"runConfigCheck should return non-zero if there is error loading yaml",
+		},
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{
+					Contexts: map[string]interface{}{"_default": map[string]interface{}{"wf-not-exists": map[string]interface{}{"data": "value"}}},
+				},
+			},
+			1,
+			"runConfigCheck should return non-zero if a context is missing matching workflow",
+		},
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{
+					Rules: []config.Rule{
+						{When: config.Trigger{Driver: "non-exist"}, Do: config.Workflow{Workflow: "non-exist"}},
+					},
+				},
+			},
+			1,
+			"runConfigCheck should return non-zero if a rule calls a missing workflow",
+		},
+		[]interface{}{
+			&config.Config{
+				DataSet: &config.DataSet{
+					Workflows: map[string]config.Workflow{"test-workflow": config.Workflow{Workflow: "dne"}},
+				},
+			},
+			1,
+			"runConfigCheck should return non-zero if a workflow calls a missing workflow",
+		},
+	}
+
+	for _, tcase := range runConfigTestCases {
+		tc := tcase.([]interface{})
+		result := runConfigCheck(tc[0].(*config.Config))
+		assert.Equal(t, tc[1], result, tc[2])
+	}
+
+}
+
 func TestCheckObjectExistsWorkFlowDoesNotExist(t *testing.T) {
-	defer recoverAssertion("workflow `test-fail` not defined", t)
+	defer recoverAssertion(`workflow "test-fail" not defined`, t)
 	workflows := map[string]config.Workflow{
 		"test-wf": config.Workflow{
 			Name: "test",
@@ -34,7 +95,7 @@ func TestCheckObjectExists(t *testing.T) {
 }
 
 func TestCheckWorkflowDriverCallDriver(t *testing.T) {
-	defer recoverAssertion("driver `test-driver` not defined", t)
+	defer recoverAssertion(`driver "test-driver" not defined`, t)
 	cfg := &config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
@@ -47,7 +108,7 @@ func TestCheckWorkflowDriverCallDriver(t *testing.T) {
 }
 
 func TestCheckWorkflowDriverFunctionDriver(t *testing.T) {
-	defer recoverAssertion("driver `test-driver` not defined", t)
+	defer recoverAssertion(`driver "test-driver" not defined`, t)
 	cfg := &config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
@@ -77,14 +138,14 @@ var wfFunctionTestCases = []struct {
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
 			"system_does_not_exist": config.System{Functions: map[string]config.Function{"test_function": config.Function{Driver: "web"}}},
 		}}},
-		"system `test_system` not defined",
+		`system "test_system" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", CallFunction: "test_system.test_function"},
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
 			"test_system": config.System{Functions: map[string]config.Function{"test_function_does_not_exist": config.Function{Driver: "web"}}},
 		}}},
-		"test_system function `test_function` not defined",
+		`test_system function "test_function" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", Function: config.Function{Target: config.Action{System: "test_system", Function: "test_function"}}},
@@ -98,14 +159,14 @@ var wfFunctionTestCases = []struct {
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
 			"not_exist": config.System{Functions: map[string]config.Function{"test_function": config.Function{Driver: "web"}}},
 		}}},
-		"system `test_system` not defined",
+		`system "test_system" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", Function: config.Function{Target: config.Action{System: "test_system", Function: "test_function"}}},
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
 			"test_system": config.System{Functions: map[string]config.Function{"not_exist": config.Function{Driver: "web"}}},
 		}}},
-		"test_system function `test_function` not defined",
+		`test_system function "test_function" not defined`,
 	},
 }
 
@@ -131,19 +192,19 @@ var wfActionTestCases = []struct {
 	},
 	{
 		config.Workflow{Name: "test", Workflow: "test_workflow", CallFunction: "blah"},
-		"cannot define both `call_workflow` and `call_function`",
+		`cannot define both "call_workflow" and "call_function"`,
 	},
 	{
 		config.Workflow{Name: "test", Workflow: "test_workflow", Steps: []config.Workflow{config.Workflow{}}},
-		"cannot define both `call_workflow` and `steps`",
+		`cannot define both "call_workflow" and "steps"`,
 	},
 	{
 		config.Workflow{Name: "test", Workflow: "test_workflow", CallDriver: "blah", Switch: "switch"},
-		"cannot define both `call_workflow` and `call_driver`",
+		`cannot define both "call_workflow" and "call_driver"`,
 	},
 	{
 		config.Workflow{Name: "test", Workflow: "test_workflow", Switch: "switch"},
-		"cannot define both `call_workflow` and `switch`",
+		`cannot define both "call_workflow" and "switch"`,
 	},
 }
 
@@ -164,10 +225,10 @@ var wfConditionsTestCases = []struct {
 	out string
 }{
 	{config.Workflow{Name: "test", Match: "match"}, ""},
-	{config.Workflow{Name: "test", Match: "match", UnlessMatch: "UnlessMatch"}, "cannot define both `if_match` and `unless_match`"},
-	{config.Workflow{Name: "test", Else: "else"}, "field `else` not allowed without pairing field"},
+	{config.Workflow{Name: "test", Match: "match", UnlessMatch: "UnlessMatch"}, `cannot define both "if_match" and "unless_match"`},
+	{config.Workflow{Name: "test", Else: "else"}, `field "else" not allowed without pairing field`},
 	{config.Workflow{Name: "test", If: []string{"1", "2"}, Else: "else"}, ""},
-	{config.Workflow{Name: "test", UntilAll: []string{"1", "2"}, While: []string{"1", "2"}}, "cannot define both `while` and `until_all`"},
+	{config.Workflow{Name: "test", UntilAll: []string{"1", "2"}, While: []string{"1", "2"}}, `cannot define both "while" and "until_all"`},
 }
 
 func TestCheckWorkflowConditions(t *testing.T) {
@@ -182,12 +243,12 @@ func testCheckWorkflowConditionsHelper(t *testing.T, wf config.Workflow, out str
 }
 
 func TestCheckIsListString(t *testing.T) {
-	defer recoverAssertion("field `test` must be a list or something interpolated into a list", t)
+	defer recoverAssertion(`field "test" must be a list or something interpolated into a list`, t)
 	checkIsList("test", "notList")
 }
 
 func TestCheckIsListMap(t *testing.T) {
-	defer recoverAssertion("field `test` must be a list or something interpolated into a list", t)
+	defer recoverAssertion(`field "test" must be a list or something interpolated into a list`, t)
 	checkIsList("test", make(map[string]int))
 }
 

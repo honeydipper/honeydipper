@@ -13,7 +13,7 @@ import (
 )
 
 // ExportFunctionContext create a context data structure based on the collapsed function exports
-func ExportFunctionContext(s *System, f *Function, envData map[string]interface{}, cfg *Config) map[string]interface{} {
+func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Config) map[string]interface{} {
 	var exported map[string]interface{}
 	status := "success"
 	if labelsData, ok := envData["labels"]; ok {
@@ -25,24 +25,21 @@ func ExportFunctionContext(s *System, f *Function, envData map[string]interface{
 	}
 
 	if status != "error" {
-		if len(f.Parameters) > 0 {
-
-			// the parameters need to be squashed before interpolation
-			// we will also need to provide the squashed sysData for interpolation
-			// the outter parameters should override inner parameters, but
-			// the inner sysData should override outter sysData
-			outterParam, _ := envData["params"]
-			envData["params"] = dipper.MergeMap(dipper.MustDeepCopyMap(f.Parameters), outterParam)
-			var outterSysData map[string]interface{}
-			if d, ok := envData["sysData"]; ok && d != nil {
-				outterSysData = d.(map[string]interface{})
-			}
-			if s != nil && s.Data != nil {
-				envData["sysData"] = dipper.MergeMap(outterSysData, dipper.MustDeepCopyMap(s.Data))
+		var sysData map[string]interface{}
+		if d, ok := envData["sysData"]; ok {
+			sysData, ok = d.(map[string]interface{})
+			if !ok {
+				dipper.Logger.Panicf("[operator] sysData is not a map")
 			}
 		}
 
-		var sysData map[string]interface{}
+		// the parameters need to be squashed before interpolation
+		// we will also need to provide the squashed sysData for interpolation
+		// the outer parameters should override inner parameters, but
+		// the inner sysData should override outer sysData
+		outerParam, _ := envData["params"]
+		envData["params"] = dipper.MergeMap(dipper.MustDeepCopyMap(f.Parameters), outerParam)
+
 		if f.Target.System != "" {
 			childSystem, ok := cfg.DataSet.Systems[f.Target.System]
 			if !ok {
@@ -52,25 +49,27 @@ func ExportFunctionContext(s *System, f *Function, envData map[string]interface{
 			if !ok {
 				dipper.Logger.Panicf("[operator] function not defined %s.%s", f.Target.System, f.Target.Function)
 			}
-			exported = ExportFunctionContext(&childSystem, &childFunction, envData, cfg)
+
+			// merging system data
+			mergedSysData := dipper.MergeMap(dipper.MustDeepCopyMap(sysData), dipper.MustDeepCopy(childSystem.Data))
 
 			// split subsystem from system
-			if data, ok := envData["sysData"]; ok {
-				sysData = data.(map[string]interface{})
-			}
 			subsystems := strings.Split(f.Target.Function, ".")
 			for _, subsystem := range subsystems[:len(subsystems)-1] {
-				parent := sysData
-				sysData = parent[subsystem].(map[string]interface{})
-				sysData["parent"] = parent
+				parent := mergedSysData
+				mergedSysData = parent[subsystem].(map[string]interface{})
+				mergedSysData["parent"] = parent
 			}
+
+			envData["sysData"] = mergedSysData
+			exported = ExportFunctionContext(&childFunction, envData, cfg)
 		} else {
 			if len(f.Target.System) > 0 {
 				dipper.Logger.Panicf("[operator] function cannot have both driver and target %s.%s %s", f.Target.System, f.Target.Function, f.Driver)
 			}
 
 			// here comes the interpolation for the squashed parameters. This interpolation only happens
-			// once, in the inner most function. After that, the parameters can be used for export in all outter
+			// once, in the inner most function. After that, the parameters can be used for export in all outer
 			// layers.
 			squashedParams, _ := envData["params"]
 			envData["params"] = dipper.Interpolate(squashedParams, envData)
@@ -78,9 +77,6 @@ func ExportFunctionContext(s *System, f *Function, envData map[string]interface{
 
 		// here we abandon the squashed sysData after it is consumed, and use a clean sysData for
 		// interpolating the exported data.
-		if s != nil && s.Data != nil {
-			sysData = dipper.MergeMap(sysData, dipper.MustDeepCopyMap(s.Data))
-		}
 		envData["sysData"] = sysData
 		var newCtx map[string]interface{}
 
