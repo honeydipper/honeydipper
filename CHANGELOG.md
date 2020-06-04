@@ -1,3 +1,17 @@
+## [1.5.1](https://github.com/honeydipper/honeydipper/compare/v1.5.0...v1.5.1) (2020-06-04)
+
+
+### Bug Fixes
+
+* **config:** function export should arrange parent subsystem data properly ([cced8c8](https://github.com/honeydipper/honeydipper/commit/cced8c86d158ab8f60504cc15d0d2ee9d26fcb2a))
+* **configcheck:** exit non-zero on context errors ([#256](https://github.com/honeydipper/honeydipper/issues/256)) ([ca7cd2b](https://github.com/honeydipper/honeydipper/commit/ca7cd2bbd08ce309d6bf6893cde6b02b79b2b532)), closes [#255](https://github.com/honeydipper/honeydipper/issues/255)
+* **deps:** update google.golang.org/genproto commit hash to 0b04860 ([f1153a7](https://github.com/honeydipper/honeydipper/commit/f1153a71b0585897bfd850bbe6222cc5db6f4a6d))
+* **deps:** update module go-errors/errors to v1.1.1 ([74b5698](https://github.com/honeydipper/honeydipper/commit/74b56986af5eff47cb01f68184b856fad1ba77fd))
+* **deps:** update module go-redis/redis to v6.15.8 ([#261](https://github.com/honeydipper/honeydipper/issues/261)) ([cf8b7e0](https://github.com/honeydipper/honeydipper/commit/cf8b7e096f25b594d391f6e383a9dad53c00418b))
+* **deps:** update module google.golang.org/api to v0.26.0 ([e331e99](https://github.com/honeydipper/honeydipper/commit/e331e99af2cc14323f7ee17059af938ffdad791f))
+* **deps:** update module k8s.io/client-go to v0.18.3 ([56ced48](https://github.com/honeydipper/honeydipper/commit/56ced48623731883c920a038823497548d5dd904))
+* **deps:** update module mitchellh/mapstructure to v1.3.1 ([#266](https://github.com/honeydipper/honeydipper/issues/266)) ([97c4196](https://github.com/honeydipper/honeydipper/commit/97c4196ada9fd586b613ccac0a1cba38a554159a))
+
 # [1.5.0](https://github.com/honeydipper/honeydipper/compare/v1.4.0...v1.5.0) (2020-05-29)
 
 
