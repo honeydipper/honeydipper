@@ -35,6 +35,7 @@ func TestIntegrationStart(t *testing.T) {
 	defer t.Run("shutting down daemon", intTestDaemonShutdown)
 	t.Run("checking services", intTestServices)
 	t.Run("checking processes", intTestProcesses)
+	t.Run("checking crashed driver", intTestDriverCrash)
 }
 
 func intTestDaemonStartup(t *testing.T) {
@@ -93,14 +94,14 @@ func intTestProcesses(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 		pidstr, err := exec.CommandContext(ctx, "pgrep", "test.test").Output()
-		fmt.Printf("pids %+v", pidstr)
-		fmt.Printf("error %+v", err)
+		fmt.Printf("pids %+v", string(pidstr))
+		fmt.Printf("error %+v\n", err)
 		assert.Nil(t, err, "should be able to run pgrep to find honeydipper process")
 		ppid := strings.Split(string(pidstr), "\n")[0]
 		pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid).Output()
 		assert.Nil(t, err, "should be able to run pgrep to find all child processes")
 		pids := strings.Split(string(pidstr), "\n")
-		assert.Lenf(t, pids, 10, "expecting 10 child processes for honeydipper process")
+		assert.Lenf(t, pids, 11, "expecting 10 child processes for honeydipper process")
 	}()
 }
 
@@ -112,7 +113,38 @@ func intTestDaemonShutdown(t *testing.T) {
 	}()
 	select {
 	case <-graceful:
-	case <-time.After(time.Second * 5):
-		t.Errorf("service not shutdown after 5 seconds")
+	case <-time.After(time.Second * 10):
+		t.Errorf("service not shutdown after 10 seconds")
 	}
+}
+
+func intTestDriverCrash(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	pidstr, err := exec.CommandContext(ctx, "pgrep", "test.test").Output()
+	assert.Nil(t, err, "should be able to run pgrep to find honeydipper process")
+	ppid := strings.Split(string(pidstr), "\n")[0]
+	pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid, "gcloud-dataflow").Output()
+	assert.Nil(t, err, "should be able to run pgrep to find gcloud-dataflow driver processes")
+	childpid := strings.Split(string(pidstr), "\n")[0]
+	_, err = exec.CommandContext(ctx, "/bin/kill", childpid).Output()
+	assert.Nil(t, err, "should be able to simulate a driver crash by killing the process")
+
+	pidstr = nil
+	for pidstr == nil {
+		select {
+		case <-ctx.Done():
+			break
+		default:
+			time.Sleep(time.Second)
+			pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid, "gcloud-dataflow").Output()
+			if err != nil {
+				pidstr = nil
+			}
+		}
+	}
+	assert.Nil(t, err, "should be able to run pgrep to find new gcloud-dataflow driver processes")
+	newchildpid := strings.Split(string(pidstr), "\n")[0]
+	assert.NotEqual(t, "", newchildpid, "new driver pid should not be blank")
+	assert.NotEqual(t, childpid, newchildpid, "new driver pid should be different than the old pid")
 }
