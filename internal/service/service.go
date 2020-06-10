@@ -208,11 +208,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		go func(s *Service, feature string, runtime *driver.Runtime) {
 			defer dipper.SafeExitOnError("[%s] driver runtime %s crash", s.name, runtime.Handler.Meta().Name)
 			defer s.checkDeleteDriverRuntime(feature, runtime)
-			defer func() {
-				s.selectLock.Lock()
-				defer s.selectLock.Unlock()
-				close(runtime.Stream)
-			}()
+			defer close(runtime.Stream)
 
 			//nolint:errcheck
 			runtime.Run.Wait()
@@ -418,10 +414,13 @@ func (s *Service) serviceLoop() {
 
 		if !ok {
 			if chosen < len(orderedRuntimes) {
-				orderedRuntimes[chosen].State = driver.DriverFailed
 				if orderedRuntimes[chosen].Feature == FeatureEmitter {
 					// emitter has crashed
 					delete(daemon.Emitters, s.name)
+				}
+				if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive {
+					// only reload drivers that used to be in DriveAlive state
+					go loadFailedDriverRuntime(orderedRuntimes[chosen], 0)
 				}
 			}
 		} else if chosen < len(orderedRuntimes) {
@@ -579,6 +578,47 @@ func coldReloadDriverRuntime(d *driver.Runtime, m *dipper.Message) {
 	s.checkDeleteDriverRuntime(d.Feature, d)
 	d.Output.Close()
 	dipper.PanicError(s.loadFeature(d.Feature))
+}
+
+func loadFailedDriverRuntime(d *driver.Runtime, count int) {
+	s := Services[d.Service]
+	d.State = driver.DriverFailed
+	driverName := d.Handler.Meta().Name
+	if emitter, ok := daemon.Emitters[s.name]; ok {
+		emitter.CounterIncr("honey.honeydipper.driver.recovery_attempt", []string{
+			"service:" + s.name,
+			"driver:" + driverName,
+		})
+	}
+	_, _, err := s.loadFeature(d.Feature)
+	if err != nil {
+		if count < 3 {
+			time.Sleep(30 * time.Second)
+			go loadFailedDriverRuntime(d, count+1)
+		} else {
+			dipper.Logger.Fatalf("[%s] quiting after failed to reload crashed driver %s", s.name, driverName)
+		}
+	} else {
+		s.addExpect(
+			"state:alive:"+driverName,
+			func(*dipper.Message) {
+				s.driverRuntimes[d.Feature].State = driver.DriverAlive
+				if d.Feature == FeatureEmitter {
+					// emitter is loaded
+					daemon.Emitters[s.name] = s
+				}
+			},
+			10*time.Second,
+			func() {
+				dipper.Logger.Warningf("[%s] failed to reload driver %s", s.name, driverName)
+				if count < 3 {
+					go loadFailedDriverRuntime(d, count+1)
+				} else {
+					dipper.Logger.Fatalf("[%s] quiting after failed to reload crashed driver %s", s.name, driverName)
+				}
+			},
+		)
+	}
 }
 
 func handleRPCCall(from *driver.Runtime, m *dipper.Message) {

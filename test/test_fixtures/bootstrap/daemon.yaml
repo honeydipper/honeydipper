@@ -13,6 +13,7 @@ drivers:
           required: true
       operator:
         - name: "driver:gcloud-gke"
+        - name: "driver:gcloud-dataflow"
         - name: "driver:kubernetes"
     drivers:
       redisqueue:
@@ -35,6 +36,11 @@ drivers:
         type: builtin
         handlerData:
           shortName: gcloud-kms
+      gcloud-dataflow:
+        name: gcloud-dataflow
+        type: builtin
+        handlerData:
+          shortName: gcloud-dataflow
       kubernetes:
         name: kubernetes
         type: builtin

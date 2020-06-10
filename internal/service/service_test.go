@@ -314,6 +314,8 @@ func TestServiceEmitterCrashing(t *testing.T) {
 		}, "sending message to service should not panic when emitter crashes")
 	}()
 	time.Sleep(100 * time.Millisecond)
+	// mark it as failed to avoid restarting the driver
+	svc.driverRuntimes["emitter"].State = driver.DriverFailed
 	// crash emitter
 	svc.driverRuntimes["emitter"].Output.Close()
 	close(svc.driverRuntimes["emitter"].Stream)
