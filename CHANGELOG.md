@@ -1,3 +1,16 @@
+## [1.5.2](https://github.com/honeydipper/honeydipper/compare/v1.5.1...v1.5.2) (2020-06-25)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 70a84ac ([#273](https://github.com/honeydipper/honeydipper/issues/273)) ([3e033d2](https://github.com/honeydipper/honeydipper/commit/3e033d2256d0c690843d9a6d47a75b02cb89defe))
+* **deps:** update google.golang.org/genproto commit hash to d0ee0c3 ([#274](https://github.com/honeydipper/honeydipper/issues/274)) ([cff10ec](https://github.com/honeydipper/honeydipper/commit/cff10ec242f98a2c8c07c8777bd75cfa580f3645))
+* **deps:** update module cloud.google.com/go to v0.58.0 ([#276](https://github.com/honeydipper/honeydipper/issues/276)) ([8df54ba](https://github.com/honeydipper/honeydipper/commit/8df54ba7f9a5944ffd14b40a8e824b2dd9a7dc7d))
+* **deps:** update module mitchellh/mapstructure to v1.3.2 ([#277](https://github.com/honeydipper/honeydipper/issues/277)) ([7c6cf05](https://github.com/honeydipper/honeydipper/commit/7c6cf057cde5887a7bb729e05e4a9fcdc5c0c3c9))
+* **deps:** update module stretchr/testify to v1.6.1 ([#278](https://github.com/honeydipper/honeydipper/issues/278)) ([89cc46b](https://github.com/honeydipper/honeydipper/commit/89cc46b01e521c43d92cd74b8f5715ee5ca48988))
+* **k8s:** cascading deletion of pods when deleting jobs ([#281](https://github.com/honeydipper/honeydipper/issues/281)) ([b3d3609](https://github.com/honeydipper/honeydipper/commit/b3d3609c285a99e8e4505c4e79a20c6800369325))
+* **service:** reload driver after driver crashing ([#272](https://github.com/honeydipper/honeydipper/issues/272)) ([898af7b](https://github.com/honeydipper/honeydipper/commit/898af7b47ef43bd636157e3a55146560f46ed3e4))
+
 ## [1.5.1](https://github.com/honeydipper/honeydipper/compare/v1.5.0...v1.5.1) (2020-06-04)
 
 
