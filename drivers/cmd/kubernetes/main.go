@@ -78,7 +78,8 @@ func deleteJob(m *dipper.Message) {
 	client := k8client.BatchV1().Jobs(nameSpace)
 	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
 	defer cancel()
-	err := client.Delete(ctx, jobName, metav1.DeleteOptions{})
+	deletePropagation := metav1.DeletePropagationBackground
+	err := client.Delete(ctx, jobName, metav1.DeleteOptions{PropagationPolicy: &deletePropagation})
 	if err != nil {
 		log.Panicf("[%s] unable to delete the job %s: %+v", driver.Service, jobName, err)
 	}
