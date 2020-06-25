@@ -2,12 +2,10 @@
   "extends": [
     "config:base"
   ],
-  "schedule": ["on Monday every 2 weeks"],
+  "schedule": ["before 3:00am on the 3 day of the month"],
   "packageRules": [
     {
-      "depTypeList": [
-        "require"
-      ],
+      "depTypeList": ["require"],
       "semanticCommitType": "fix"
     }
   ]

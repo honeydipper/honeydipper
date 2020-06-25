@@ -1,7 +1,7 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.14.3-alpine3.11
+    - image: golang:1.14.4-alpine3.11
       environment:
         - GO111MODULE=auto
   working_directory: /go/src/github.com/honeydipper/honeydipper
@@ -57,7 +57,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.14.3-alpine3.11
+      - image: golang:1.14.4-alpine3.11
       - image: redis:5.0.9-alpine
     steps:
       - run:
