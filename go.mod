@@ -5,6 +5,7 @@ go 1.13
 require (
 	cloud.google.com/go v0.58.0
 	cloud.google.com/go/pubsub v1.3.1
+	cloud.google.com/go/spanner v1.6.0
 	cloud.google.com/go/storage v1.8.0
 	github.com/DataDog/datadog-go v3.7.1+incompatible
 	github.com/Masterminds/semver v1.5.0 // indirect
@@ -14,6 +15,7 @@ require (
 	github.com/go-errors/errors v1.1.1
 	github.com/go-redis/redis v6.15.8+incompatible
 	github.com/golang/mock v1.4.3
+	github.com/golang/protobuf v1.4.2
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/imdario/mergo v0.3.8
@@ -26,6 +28,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	google.golang.org/api v0.26.0
 	google.golang.org/genproto v0.0.0-20200622133129-d0ee0c36e670
+	google.golang.org/protobuf v1.24.0
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.3.0
