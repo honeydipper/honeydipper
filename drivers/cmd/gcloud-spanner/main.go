@@ -57,6 +57,15 @@ func backup(m *dipper.Message) {
 	if !ok {
 		panic(errors.New("db required"))
 	}
+	expireDuration := time.Hour * 24 * 180
+	expireStr, ok := dipper.GetMapDataStr(params, "expires")
+	if ok {
+		var err error
+		expireDuration, err = time.ParseDuration(expireStr)
+		if err != nil {
+			panic(err)
+		}
+	}
 	timeout := time.Duration(1800)
 	timeoutStr, ok := m.Labels["timeout"]
 	if ok {
@@ -79,7 +88,7 @@ func backup(m *dipper.Message) {
 		panic(errors.New("unable to create gcloud spanner admin client"))
 	}
 
-	t := time.Now().Add(time.Hour * 24 * 180)
+	t := time.Now().Add(expireDuration)
 	expireTime := &timestamp.Timestamp{Seconds: int64(t.Unix()), Nanos: int32(t.Nanosecond())}
 	req := &spannerAdminSchema.CreateBackupRequest{
 		Parent:   fmt.Sprintf("projects/%s/instances/%s", project, instance),
