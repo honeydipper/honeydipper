@@ -59,7 +59,7 @@ func backup(m *dipper.Message) {
 	}
 	expireDuration := time.Hour * 24 * 180
 	expireStr, ok := dipper.GetMapDataStr(params, "expires")
-	if ok {
+	if ok && len(expireStr) > 0 {
 		var err error
 		expireDuration, err = time.ParseDuration(expireStr)
 		if err != nil {
