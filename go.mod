@@ -12,6 +12,7 @@ require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/ghodss/yaml v1.0.0
+	github.com/gin-gonic/gin v1.6.3
 	github.com/go-errors/errors v1.1.1
 	github.com/go-redis/redis/v8 v8.0.0-beta.7
 	github.com/golang/mock v1.4.4

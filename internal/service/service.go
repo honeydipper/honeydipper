@@ -18,6 +18,7 @@ import (
 	"time"
 
 	serrors "github.com/go-errors/errors"
+	"github.com/honeydipper/honeydipper/internal/api"
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/internal/driver"
@@ -73,6 +74,8 @@ type Service struct {
 	DiscoverFeatures   func(*config.DataSet) map[string]interface{}
 	ServiceReload      func(*config.Config)
 	EmitMetrics        func()
+	APIs               map[string]func(*api.Response)
+	CreateAPIResponse  func(*dipper.RPCCaller, io.Writer, *dipper.Message) *api.Response
 }
 
 // Services holds a catalog of running services in this daemon process.
@@ -93,6 +96,10 @@ func NewService(cfg *config.Config, name string) *Service {
 	svc.responders["rpc:call"] = []MessageResponder{handleRPCCall}
 	svc.responders["rpc:return"] = []MessageResponder{handleRPCReturn}
 	svc.responders["broadcast:reload"] = []MessageResponder{handleReload}
+	svc.responders["api:call"] = []MessageResponder{handleAPI}
+
+	svc.CreateAPIResponse = api.ResponseFactory()
+	svc.APIs = map[string]func(*api.Response){}
 
 	return svc
 }
@@ -663,6 +670,24 @@ func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
 		s.HandleReturn(m)
 	} else {
 		dipper.SendMessage(s.getDriverRuntime(caller).Output, m)
+	}
+}
+
+func handleAPI(from *driver.Runtime, m *dipper.Message) {
+	s := Services[from.Service]
+	dipper.DeserializePayload(m)
+	resp := s.CreateAPIResponse(&s.RPCCaller, s.getDriverRuntime("eventbus").Output, m)
+	if resp == nil {
+		dipper.Logger.Debugf("[%s] skipping handling API: %+v", s.name, m.Labels)
+		return
+	}
+	method := m.Labels["fn"]
+	dipper.Logger.Debugf("[%s] handling API [%s]: %+v", s.name, method, m.Labels)
+	if apiFunc, ok := s.APIs[method]; ok {
+		go func() {
+			defer dipper.SafeExitOnError("[%s] api call panic for [%s]", s.name, method)
+			apiFunc(resp)
+		}()
 	}
 }
 
