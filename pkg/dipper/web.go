@@ -13,8 +13,8 @@ import (
 	"strings"
 )
 
-// ExtractWebRequest put needed information from a request in a map.
-func ExtractWebRequest(r *http.Request) map[string]interface{} {
+// ExtractWebRequestExceptBody put needed information except body from a request in a map.
+func ExtractWebRequestExceptBody(r *http.Request) map[string]interface{} {
 	Must(r.ParseForm())
 
 	req := map[string]interface{}{
@@ -25,6 +25,13 @@ func ExtractWebRequest(r *http.Request) map[string]interface{} {
 		"host":       r.Host,
 		"remoteAddr": r.RemoteAddr,
 	}
+
+	return req
+}
+
+// ExtractWebRequest put needed information from a request in a map.
+func ExtractWebRequest(r *http.Request) map[string]interface{} {
+	req := ExtractWebRequestExceptBody(r)
 
 	if r.Method == http.MethodPost {
 		req["body"] = Must(ioutil.ReadAll(r.Body))

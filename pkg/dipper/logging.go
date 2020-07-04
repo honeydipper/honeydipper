@@ -7,6 +7,7 @@
 package dipper
 
 import (
+	"io"
 	"os"
 	"strings"
 
@@ -19,6 +20,9 @@ var (
 	Logger      *logging.Logger
 	logBackends []logging.Backend
 )
+
+// LoggingWriter is the writer used for sending logs.
+var LoggingWriter io.Writer
 
 func initLogBackend(level logging.Level, logFile *os.File) logging.Backend {
 	backend := logging.NewLogBackend(logFile, "", 0)
@@ -57,6 +61,7 @@ func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.L
 	if len(logFiles) > 0 {
 		log = logFiles[0]
 	}
+	LoggingWriter = log
 	if level > logging.WARNING {
 		logBackends = append(logBackends, initLogBackend(level, log))
 	}

@@ -110,7 +110,7 @@ func start() {
 
 	services := cfg.Services
 	if len(services) == 0 {
-		services = []string{"engine", "receiver", "operator"}
+		services = []string{"engine", "receiver", "operator", "api"}
 	}
 	for _, s := range services {
 		switch s {
@@ -120,6 +120,8 @@ func start() {
 			service.StartReceiver(&cfg)
 		case "operator":
 			service.StartOperator(&cfg)
+		case "api":
+			service.StartAPI(&cfg)
 		default:
 			dipper.Logger.Fatalf("'%v' service is not implemented", s)
 		}
