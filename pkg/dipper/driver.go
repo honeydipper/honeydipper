@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/op/go-logging"
 )
 
@@ -187,4 +188,21 @@ func (d *Driver) GetStream(feature string) io.Writer {
 // GetName returns the name of the driver
 func (d *Driver) GetName() string {
 	return d.Name
+}
+
+// EmitEvent creates a new event
+func (d *Driver) EmitEvent(payload map[string]interface{}) string {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		panic(err)
+	}
+	d.SendMessage(&Message{
+		Channel: "eventbus",
+		Subject: "message",
+		Payload: payload,
+		Labels: map[string]string{
+			"eventID": id.String(),
+		},
+	})
+	return id.String()
 }

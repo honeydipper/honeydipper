@@ -43,10 +43,11 @@ func (s *SessionStore) Len() int {
 }
 
 // newSession creates the workflow session
-func (s *SessionStore) newSession(parent string, wf *config.Workflow) SessionHandler {
+func (s *SessionStore) newSession(parent string, event_uuid string, wf *config.Workflow) SessionHandler {
 	var w = &Session{
 		parent:   parent,
 		store:    s,
+		EventID:  event_uuid,
 		workflow: wf,
 	}
 
@@ -59,7 +60,8 @@ func (s *SessionStore) newSession(parent string, wf *config.Workflow) SessionHan
 // StartSession starts a workflow session
 func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session")
-	w := s.newSession("", wf)
+	event_uuid, _ := msg.Labels["eventID"]
+	w := s.newSession("", event_uuid, wf)
 	w.prepare(msg, nil, ctx)
 	w.execute(msg)
 }
