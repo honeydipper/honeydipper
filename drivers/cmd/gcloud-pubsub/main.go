@@ -147,13 +147,9 @@ func msgHandlerBuilder(config *SubscriberConfig) msgHandler {
 		}
 
 		if matched {
-			driver.SendMessage(&dipper.Message{
-				Channel: "eventbus",
-				Subject: "message",
-				Payload: map[string]interface{}{
-					"events": []interface{}{"gcloud-pubsub."},
-					"data":   actual,
-				},
+			driver.EmitEvent(map[string]interface{}{
+				"events": []interface{}{"gcloud-pubsub."},
+				"data":   actual,
 			})
 		} else {
 			dipper.Logger.Debugf("Incoming message [%v] does not match with any gcloud-pubsub subscriber rule", data)

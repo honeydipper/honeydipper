@@ -17,6 +17,7 @@ import (
 // Session is the data structure about a running workflow and its definition.
 type Session struct {
 	ID             string
+	EventID        string
 	workflow       *config.Workflow
 	current        int32 // current thread or step
 	iteration      int32 // current item in the iteration list
@@ -320,7 +321,7 @@ func (w *Session) inheritParentSettings(p *Session) {
 
 // createChildSession creates a child workflow session
 func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *Session {
-	child := w.store.newSession(w.ID, wf)
+	child := w.store.newSession(w.ID, w.EventID, wf)
 	child.prepare(msg, w, nil)
 	return child.(*Session)
 }

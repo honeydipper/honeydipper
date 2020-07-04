@@ -54,46 +54,46 @@ contexts:
 
 	mockHelper.EXPECT().GetConfig().AnyTimes().Return(testConfig)
 
-	w := s.newSession("", &config.Workflow{}).(*Session)
+	w := s.newSession("", "uuid1", &config.Workflow{}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
 	assert.Equal(t, "bar_default", w.ctx["foo"], "inheriting from default context '*'")
 
-	w = s.newSession("", &config.Workflow{Name: "workflow1"}).(*Session)
+	w = s.newSession("", "uuid2", &config.Workflow{Name: "workflow1"}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
 	assert.Equal(t, "bar_context", w.ctx["foo"], "inheriting from default context targetted to 'workflow1'")
 
-	w = s.newSession("", &config.Workflow{Name: "workflow2"}).(*Session)
+	w = s.newSession("", "uuid3", &config.Workflow{Name: "workflow2"}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
 	assert.Equal(t, "bar_event", w.ctx["foo"], "inheriting from event context targetted to 'workflow2'")
 
-	w = s.newSession("", &config.Workflow{Name: "workflow1", Context: "override"}).(*Session)
+	w = s.newSession("", "uuid4", &config.Workflow{Name: "workflow1", Context: "override"}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
 	assert.Equal(t, "bar_override", w.ctx["foo"], "inheriting from overriding context")
 
-	w = s.newSession("", &config.Workflow{Name: "workflow1", Local: map[string]interface{}{}}).(*Session)
+	w = s.newSession("", "uuid5", &config.Workflow{Name: "workflow1", Local: map[string]interface{}{}}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{"foo": "bar_event"})
 	assert.Equal(t, "bar_event", w.ctx["foo"], "inheriting from overriding context")
 
-	w = s.newSession("", &config.Workflow{Name: "workflow1", Local: map[string]interface{}{"foo": "bar_local"}}).(*Session)
+	w = s.newSession("", "uuid6", &config.Workflow{Name: "workflow1", Local: map[string]interface{}{"foo": "bar_local"}}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{"foo": "bar_event"})
 	assert.Equal(t, "bar_local", w.ctx["foo"], "using local context")
 
-	child := s.newSession("", &config.Workflow{Name: "workflow2", Local: map[string]interface{}{}}).(*Session)
+	child := s.newSession("", "uuid7", &config.Workflow{Name: "workflow2", Local: map[string]interface{}{}}).(*Session)
 	child.prepare(&dipper.Message{}, w, nil)
 	assert.Equal(t, "bar_local", w.ctx["foo"], "inherit from parent context")
 
-	w = s.newSession("", &config.Workflow{Name: "workflow1", Local: map[string]interface{}{"hooks": map[string]interface{}{"on_first_action": "bar"}}}).(*Session)
+	w = s.newSession("", "uuid8", &config.Workflow{Name: "workflow1", Local: map[string]interface{}{"hooks": map[string]interface{}{"on_first_action": "bar"}}}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{"foo": "bar_event"})
-	child = s.newSession("", &config.Workflow{Name: "workflow2", Local: map[string]interface{}{}}).(*Session)
+	child = s.newSession("", "uuid9", &config.Workflow{Name: "workflow2", Local: map[string]interface{}{}}).(*Session)
 	child.prepare(&dipper.Message{}, w, nil)
 	assert.NotContains(t, w.ctx["foo"], "hooks", "not inheriting hooks from parent context")
 
-	w = s.newSession("", &config.Workflow{Name: "workflow1", NoExport: []string{"data1"}}).(*Session)
+	w = s.newSession("", "uuid10", &config.Workflow{Name: "workflow1", NoExport: []string{"data1"}}).(*Session)
 	exported := map[string]interface{}{"data1": "testdata", "data2": "shouldstay"}
 	w.processNoExport(exported)
 	assert.NotContains(t, exported, "data1", "remove no_export items from exported data")
 
-	w = s.newSession("", &config.Workflow{Name: "workflow1", NoExport: []string{"*"}}).(*Session)
+	w = s.newSession("", "uuid11", &config.Workflow{Name: "workflow1", NoExport: []string{"*"}}).(*Session)
 	exported = map[string]interface{}{"data1": "testdata"}
 	w.processNoExport(exported)
 	assert.Empty(t, exported, "remove all items from exported data")

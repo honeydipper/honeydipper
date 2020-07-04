@@ -323,31 +323,31 @@ func TestSessionConditions(t *testing.T) {
 	mockHelper := mock_workflow.NewMockSessionStoreHelper(ctrl)
 	s := NewSessionStore(mockHelper)
 
-	w := s.newSession("", &config.Workflow{If: []string{"yes", "1", "true"}}).(*Session)
+	w := s.newSession("", "uuid1", &config.Workflow{If: []string{"yes", "1", "true"}}).(*Session)
 	assert.True(t, w.checkCondition(), "return true if all truy value")
 
-	w = s.newSession("", &config.Workflow{If: []string{"yes", "0", "true"}}).(*Session)
+	w = s.newSession("", "uuid2", &config.Workflow{If: []string{"yes", "0", "true"}}).(*Session)
 	assert.False(t, w.checkCondition(), "return false if any false value")
 
-	w = s.newSession("", &config.Workflow{IfAny: []string{"nil", "0", "true"}}).(*Session)
+	w = s.newSession("", "uuid3", &config.Workflow{IfAny: []string{"nil", "0", "true"}}).(*Session)
 	assert.True(t, w.checkCondition(), "return true if_any truy value")
 
-	w = s.newSession("", &config.Workflow{IfAny: []string{"nil", "0", ""}}).(*Session)
+	w = s.newSession("", "uuid4", &config.Workflow{IfAny: []string{"nil", "0", ""}}).(*Session)
 	assert.False(t, w.checkCondition(), "return false if_any all false value")
 
-	w = s.newSession("", &config.Workflow{Unless: []string{"nil", "0", ""}}).(*Session)
+	w = s.newSession("", "uuid5", &config.Workflow{Unless: []string{"nil", "0", ""}}).(*Session)
 	assert.True(t, w.checkCondition(), "return true  unless all false value")
 
-	w = s.newSession("", &config.Workflow{Unless: []string{"nil", "1", ""}}).(*Session)
+	w = s.newSession("", "uuid6", &config.Workflow{Unless: []string{"nil", "1", ""}}).(*Session)
 	assert.False(t, w.checkCondition(), "return true  unless with a truy value")
 
-	w = s.newSession("", &config.Workflow{UnlessAll: []string{"true", "1", "yes"}}).(*Session)
+	w = s.newSession("", "uuid7", &config.Workflow{UnlessAll: []string{"true", "1", "yes"}}).(*Session)
 	assert.False(t, w.checkCondition(), "return false  unless_all with all truy values")
 
-	w = s.newSession("", &config.Workflow{UnlessAll: []string{"nil", "1", ""}}).(*Session)
+	w = s.newSession("", "uuid8", &config.Workflow{UnlessAll: []string{"nil", "1", ""}}).(*Session)
 	assert.True(t, w.checkCondition(), "return true  unless_all with some false value")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid9", &config.Workflow{
 		Match: map[string]interface{}{
 			"expect_value1": "value1",
 		},
@@ -363,7 +363,7 @@ func TestSessionConditions(t *testing.T) {
 	}
 	assert.False(t, w.checkCondition(), "return false when ctx not match skeleton")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid10", &config.Workflow{
 		Match: []interface{}{
 			map[string]interface{}{"expect_value1": "value1"},
 			map[string]interface{}{"expect_value1": "value2"},
@@ -385,7 +385,7 @@ func TestSessionConditions(t *testing.T) {
 	}
 	assert.False(t, w.checkCondition(), "return false when ctx not match any of the skeletons")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid11", &config.Workflow{
 		UnlessMatch: map[string]interface{}{
 			"expect_value1": "value1",
 		},
@@ -401,7 +401,7 @@ func TestSessionConditions(t *testing.T) {
 	}
 	assert.False(t, w.checkCondition(), "return false when ctx unless_match match skeleton")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid12", &config.Workflow{
 		UnlessMatch: []interface{}{
 			map[string]interface{}{"expect_value1": "value1"},
 			map[string]interface{}{"expect_value1": "value2"},
@@ -418,7 +418,7 @@ func TestSessionConditions(t *testing.T) {
 	}
 	assert.True(t, w.checkCondition(), "return true when unless_match ctx not match any of the skeletons")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid13", &config.Workflow{
 		UnlessMatch: []interface{}{},
 	}).(*Session)
 	w.ctx = map[string]interface{}{
@@ -437,31 +437,31 @@ func TestSessionLoopConditions(t *testing.T) {
 
 	msg := &dipper.Message{}
 
-	w := s.newSession("", &config.Workflow{While: []string{"yes", "1", "true"}}).(*Session)
+	w := s.newSession("", "uuid14", &config.Workflow{While: []string{"yes", "1", "true"}}).(*Session)
 	assert.True(t, w.checkLoopCondition(msg), "return true if all truy value")
 
-	w = s.newSession("", &config.Workflow{While: []string{"yes", "0", "true"}}).(*Session)
+	w = s.newSession("", "uuid15", &config.Workflow{While: []string{"yes", "0", "true"}}).(*Session)
 	assert.False(t, w.checkLoopCondition(msg), "return false if any false value")
 
-	w = s.newSession("", &config.Workflow{WhileAny: []string{"nil", "0", "true"}}).(*Session)
+	w = s.newSession("", "uuid16", &config.Workflow{WhileAny: []string{"nil", "0", "true"}}).(*Session)
 	assert.True(t, w.checkLoopCondition(msg), "return true if_any truy value")
 
-	w = s.newSession("", &config.Workflow{WhileAny: []string{"nil", "0", ""}}).(*Session)
+	w = s.newSession("", "uuid17", &config.Workflow{WhileAny: []string{"nil", "0", ""}}).(*Session)
 	assert.False(t, w.checkLoopCondition(msg), "return false if_any all false value")
 
-	w = s.newSession("", &config.Workflow{Until: []string{"nil", "0", ""}}).(*Session)
+	w = s.newSession("", "uuid18", &config.Workflow{Until: []string{"nil", "0", ""}}).(*Session)
 	assert.True(t, w.checkLoopCondition(msg), "return true  unless all false value")
 
-	w = s.newSession("", &config.Workflow{Until: []string{"nil", "1", ""}}).(*Session)
+	w = s.newSession("", "uuid19", &config.Workflow{Until: []string{"nil", "1", ""}}).(*Session)
 	assert.False(t, w.checkLoopCondition(msg), "return true  unless with a truy value")
 
-	w = s.newSession("", &config.Workflow{UntilAll: []string{"true", "1", "yes"}}).(*Session)
+	w = s.newSession("", "uuid20", &config.Workflow{UntilAll: []string{"true", "1", "yes"}}).(*Session)
 	assert.False(t, w.checkLoopCondition(msg), "return false  unless_all with all truy values")
 
-	w = s.newSession("", &config.Workflow{UntilAll: []string{"nil", "1", ""}}).(*Session)
+	w = s.newSession("", "uuid21", &config.Workflow{UntilAll: []string{"nil", "1", ""}}).(*Session)
 	assert.True(t, w.checkLoopCondition(msg), "return true  unless_all with some false value")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid22", &config.Workflow{
 		WhileMatch: map[string]interface{}{
 			"expect_value1": "value1",
 		},
@@ -477,7 +477,7 @@ func TestSessionLoopConditions(t *testing.T) {
 	}
 	assert.False(t, w.checkLoopCondition(msg), "return false when ctx not match skeleton")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid23", &config.Workflow{
 		WhileMatch: []interface{}{
 			map[string]interface{}{"expect_value1": "value1"},
 			map[string]interface{}{"expect_value1": "value2"},
@@ -499,7 +499,7 @@ func TestSessionLoopConditions(t *testing.T) {
 	}
 	assert.False(t, w.checkLoopCondition(msg), "return false when ctx not match any of the skeletons")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid24", &config.Workflow{
 		UntilMatch: map[string]interface{}{
 			"expect_value1": "value1",
 		},
@@ -515,7 +515,7 @@ func TestSessionLoopConditions(t *testing.T) {
 	}
 	assert.False(t, w.checkLoopCondition(msg), "return false when ctx unless_match match skeleton")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid25", &config.Workflow{
 		UntilMatch: []interface{}{
 			map[string]interface{}{"expect_value1": "value1"},
 			map[string]interface{}{"expect_value1": "value2"},
@@ -532,7 +532,7 @@ func TestSessionLoopConditions(t *testing.T) {
 	}
 	assert.True(t, w.checkLoopCondition(msg), "return true when unless_match ctx not match any of the skeletons")
 
-	w = s.newSession("", &config.Workflow{
+	w = s.newSession("", "uuid26", &config.Workflow{
 		UntilMatch: []interface{}{},
 	}).(*Session)
 	w.ctx = map[string]interface{}{

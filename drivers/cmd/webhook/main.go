@@ -124,16 +124,13 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if matched {
-			driver.SendMessage(&dipper.Message{
-				Channel: "eventbus",
-				Subject: "message",
-				Payload: map[string]interface{}{
-					"events": []interface{}{"webhook."},
-					"data":   eventData,
-				},
+			id := driver.EmitEvent(map[string]interface{}{
+				"events": []interface{}{"webhook."},
+				"data":   eventData,
 			})
 
-			w.WriteHeader(http.StatusOK)
+			w.Header().Set("content-type", "application/json")
+			w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
 			return
 		}
 
