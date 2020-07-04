@@ -27,7 +27,7 @@ require (
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	google.golang.org/api v0.26.0
-	google.golang.org/genproto v0.0.0-20200622133129-d0ee0c36e670
+	google.golang.org/genproto v0.0.0-20200702021140-07506425bd67
 	google.golang.org/protobuf v1.24.0
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
