@@ -98,10 +98,18 @@ func subscribe() {
 			for msg := range ch {
 				payload := dipper.DeserializeContent([]byte(msg.Payload))
 				labels := map[string]string{}
+				skip := false
 				labelMap, ok := dipper.GetMapData(payload, "labels")
 				if ok {
 					for k, v := range labelMap.(map[string]interface{}) {
+						if k == "service" && v != nil && v.(string) != "" && v.(string) != driver.Service {
+							skip = true
+							break
+						}
 						labels[k] = v.(string)
+					}
+					if skip {
+						continue
 					}
 				}
 				data, _ := dipper.GetMapData(payload, "data")
