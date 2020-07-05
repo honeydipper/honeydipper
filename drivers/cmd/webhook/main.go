@@ -9,14 +9,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
@@ -152,35 +149,12 @@ func badRequest(w http.ResponseWriter) {
 }
 
 func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interface{} {
-	dipper.PanicError(r.ParseForm())
-
-	eventData := map[string]interface{}{
-		"url":        r.URL.Path,
-		"method":     r.Method,
-		"form":       r.Form,
-		"headers":    r.Header,
-		"host":       r.Host,
-		"remoteAddr": r.RemoteAddr,
-	}
-
-	if r.Method == http.MethodPost {
-		bodyBytes, err := ioutil.ReadAll(r.Body)
-		if err != nil {
+	defer func() {
+		if r := recover(); r != nil {
 			badRequest(w)
-			log.Panicf("[%s] unable to read post body", driver.Service)
+			log.Panicf("[%s] invalid json in post body", driver.Service)
 		}
-		contentType := r.Header.Get("Content-type")
-		eventData["body"] = string(bodyBytes)
-		if len(contentType) > 0 && strings.HasPrefix(contentType, "application/json") {
-			bodyObj := map[string]interface{}{}
-			err := json.Unmarshal(bodyBytes, &bodyObj)
-			if err != nil {
-				badRequest(w)
-				log.Panicf("[%s] invalid json in post body", driver.Service)
-			}
-			eventData["json"] = bodyObj
-		}
-	}
+	}()
 
-	return eventData
+	return dipper.ExtractWebRequest(r)
 }
