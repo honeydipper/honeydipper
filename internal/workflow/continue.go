@@ -184,6 +184,7 @@ func (w *Session) isInCompleteHooks() bool {
 
 // complete gracefully terminates a session and return exported data to parent
 func (w *Session) complete(msg *dipper.Message) {
+	w.savedMsg = msg
 	if msg.Labels == nil {
 		msg.Labels = map[string]string{}
 	}
@@ -212,6 +213,9 @@ func (w *Session) complete(msg *dipper.Message) {
 		}
 		dipper.Logger.Infof("[workflow] session [%s] completed", w.ID)
 		w.ID = ""
+	}
+	if w.cancelFunc != nil {
+		w.cancelFunc()
 	}
 }
 

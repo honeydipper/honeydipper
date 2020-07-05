@@ -7,6 +7,7 @@
 package workflow
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 
@@ -34,6 +35,8 @@ type Session struct {
 	savedMsg       *dipper.Message
 	performing     string
 	isHook         bool
+	context        context.Context
+	cancelFunc     context.CancelFunc
 }
 
 // SessionHandler prepare and execute the session provides entry point for SessionStore to invoke and mock for testing
@@ -42,6 +45,13 @@ type SessionHandler interface {
 	execute(msg *dipper.Message)
 	continueExec(msg *dipper.Message, exports map[string]interface{})
 	onError()
+	GetName() string
+	GetDescription() string
+	GetParent() string
+	GetEventID() string
+	GetStatus() (string, string)
+	GetExported() map[string]interface{}
+	Watch() <-chan struct{}
 }
 
 const (
@@ -399,4 +409,50 @@ func (w *Session) createChildSessionWithName(name string, msg *dipper.Message) *
 	}
 	wf := &src
 	return w.createChildSession(wf, msg)
+}
+
+// GetName returns the workflow name
+func (w *Session) GetName() string {
+	return w.workflow.Name
+}
+
+// GetDescription returns the workflow description
+func (w *Session) GetDescription() string {
+	return w.workflow.Description
+}
+
+// GetEventID returns the global unique eventID
+func (w *Session) GetEventID() string {
+	return w.EventID
+}
+
+// GetParent returns the parent ID of the session
+func (w *Session) GetParent() string {
+	return w.parent
+}
+
+// Watch returns a channel for watching the session
+func (w *Session) Watch() <-chan struct{} {
+	if w.context == nil {
+		w.context, w.cancelFunc = context.WithCancel(context.Background())
+	}
+	return w.context.Done()
+}
+
+// GetStatus return the session status
+func (w *Session) GetStatus() (string, string) {
+	var (
+		status, reason string
+		ok             bool
+	)
+	if status, ok = w.savedMsg.Labels["status"]; ok {
+		status = SessionStatusSuccess
+	}
+	reason, _ = w.savedMsg.Labels["reason"]
+	return status, reason
+}
+
+// GetExported returns the exported data from the session
+func (w *Session) GetExported() map[string]interface{} {
+	return w.exported
 }
