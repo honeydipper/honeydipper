@@ -101,3 +101,14 @@ func (s *SessionStore) ResumeSession(key string, msg *dipper.Message) {
 		}()
 	}
 }
+
+// ByEventID retrieves all sessions that match the given EventID
+func (s *SessionStore) ByEventID(eventID string) []SessionHandler {
+	var ret []SessionHandler
+	for _, sh := range s.sessions {
+		if sh.GetParent() == "" && sh.GetEventID() == eventID {
+			ret = append(ret, sh)
+		}
+	}
+	return ret
+}
