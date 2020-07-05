@@ -39,6 +39,7 @@ func main() {
 	flag.Parse()
 	driver = dipper.NewDriver(os.Args[1], "redispubsub")
 	driver.Start = start
+	driver.RPCHandlers["send"] = broadcastToRedis
 	if driver.Service == "operator" {
 		driver.Commands["send"] = broadcastToRedis
 	}
