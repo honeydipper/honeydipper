@@ -137,7 +137,7 @@ func TestWorkflowIterateParallel(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 			{
 				"sessionID": "2",
@@ -149,7 +149,7 @@ func TestWorkflowIterateParallel(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 			{
 				"sessionID": "3",
@@ -161,7 +161,7 @@ func TestWorkflowIterateParallel(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	})
@@ -263,7 +263,7 @@ func TestWorkflowThreads(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 			{
 				"sessionID": "2",
@@ -275,7 +275,7 @@ func TestWorkflowThreads(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 			{
 				"sessionID": "3",
@@ -287,7 +287,7 @@ func TestWorkflowThreads(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	})

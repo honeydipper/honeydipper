@@ -61,7 +61,7 @@ func TestConditionElse(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -109,7 +109,7 @@ func TestSwitchDefault(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -159,7 +159,7 @@ func TestSwitch(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -223,7 +223,7 @@ func TestWorkflowLoop(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 						Channel: "eventbus",
@@ -266,7 +266,7 @@ func TestWorkflowLoop(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 						Channel: "eventbus",
@@ -309,7 +309,7 @@ func TestWorkflowLoop(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}

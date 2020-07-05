@@ -25,7 +25,7 @@ type Session struct {
 	parent         string
 	ctx            map[string]interface{}
 	event          map[string]interface{}
-	exported       []map[string]interface{}
+	exported       map[string]interface{}
 	elseBranch     *config.Workflow
 	inFlyFunction  *config.Function
 	store          *SessionStore
@@ -40,7 +40,7 @@ type Session struct {
 type SessionHandler interface {
 	prepare(msg *dipper.Message, parent interface{}, ctx map[string]interface{})
 	execute(msg *dipper.Message)
-	continueExec(msg *dipper.Message, exports []map[string]interface{})
+	continueExec(msg *dipper.Message, exports map[string]interface{})
 	onError()
 }
 

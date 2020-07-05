@@ -66,7 +66,7 @@ func TestOnSessionHook(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -117,7 +117,7 @@ func TestOnFirstActionHook(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -187,7 +187,7 @@ func TestOnExitHook(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -239,7 +239,7 @@ func TestOnSuccessHook(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -297,7 +297,7 @@ func TestOnFailureHook(t *testing.T) {
 						"reason":    "testing hook on failure",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 						Channel: "eventbus",
@@ -338,7 +338,7 @@ func TestOnFailureHook(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -400,7 +400,7 @@ func TestOnErrorHook(t *testing.T) {
 						"reason":    "testing hook on error",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 						Channel: "eventbus",
@@ -440,7 +440,7 @@ func TestOnErrorHook(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -490,7 +490,7 @@ func TestFailureInHook(t *testing.T) {
 						"status":    "failure",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -542,7 +542,7 @@ func TestErrorInCompletionHook(t *testing.T) {
 						"status":    "error",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
