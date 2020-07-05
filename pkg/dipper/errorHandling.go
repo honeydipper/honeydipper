@@ -47,3 +47,11 @@ func PanicError(args ...interface{}) {
 		}
 	}
 }
+
+// Must is used to catch function return with error
+func Must(ret interface{}, err error) interface{} {
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
