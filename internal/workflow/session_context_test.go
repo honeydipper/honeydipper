@@ -160,7 +160,7 @@ func TestWorkflowWithEventContext(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -228,7 +228,7 @@ func TestWorkflowWithEventSectionInContext(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -301,7 +301,7 @@ func TestWorkflowWithNamedContext(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
