@@ -39,7 +39,7 @@ func main() {
 	flag.Parse()
 	driver = dipper.NewDriver(os.Args[1], "redispubsub")
 	driver.Start = start
-	driver.RPCHandlers["send"] = broadcastToRedis
+	driver.RPCHandlers["send"] = sendBroadcast
 	if driver.Service == "operator" {
 		driver.Commands["send"] = broadcastToRedis
 	}
@@ -67,10 +67,29 @@ func start(msg *dipper.Message) {
 func broadcastToRedis(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	payload := map[string]interface{}{
-		"labels": msg.Labels,
+		"labels":           msg.Labels,
+		"broadcastSubject": dipper.MustGetMapDataStr(msg.Payload, "broadcastSubject"),
 	}
-	if msg.Payload != nil {
-		payload["data"] = msg.Payload
+	if data, ok := dipper.GetMapData(msg.Payload, "data"); ok && data != nil {
+		payload["data"] = data
+	}
+	buf := dipper.SerializeContent(payload)
+	client := redis.NewClient(redisOptions)
+	defer client.Close()
+	if err := client.Publish(broadcastTopic, string(buf)).Err(); err != nil {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+	msg.Reply <- dipper.Message{}
+}
+
+func sendBroadcast(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	payload := map[string]interface{}{
+		"labels":           dipper.MustGetMapData(msg.Payload, "labels").(map[string]interface{}),
+		"broadcastSubject": dipper.MustGetMapDataStr(msg.Payload, "broadcastSubject"),
+	}
+	if data, ok := dipper.GetMapData(msg.Payload, "data"); ok && data != nil {
+		payload["data"] = data
 	}
 	buf := dipper.SerializeContent(payload)
 	client := redis.NewClient(redisOptions)
@@ -115,7 +134,7 @@ func subscribe() {
 				data, _ := dipper.GetMapData(payload, "data")
 				driver.SendMessage(&dipper.Message{
 					Channel: "broadcast",
-					Subject: dipper.MustGetMapDataStr(data, "broadcastSubject"),
+					Subject: dipper.MustGetMapDataStr(payload, "broadcastSubject"),
 					Payload: data,
 					Labels:  labels,
 				})
