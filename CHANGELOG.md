@@ -1,3 +1,18 @@
+# [1.6.0](https://github.com/honeydipper/honeydipper/compare/v1.5.2...v1.6.0) (2020-07-07)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 75b2880 ([#284](https://github.com/honeydipper/honeydipper/issues/284)) ([0a0f811](https://github.com/honeydipper/honeydipper/commit/0a0f8111890388d4612815d9d6c1ac0681fb3888))
+* **deps:** update google.golang.org/genproto commit hash to 0750642 ([#285](https://github.com/honeydipper/honeydipper/issues/285)) ([6852a5c](https://github.com/honeydipper/honeydipper/commit/6852a5ceb9ef32d86cee904e009e9e3b775486b4))
+* **deps:** update module cloud.google.com/go to v0.60.0 ([#287](https://github.com/honeydipper/honeydipper/issues/287)) ([795b207](https://github.com/honeydipper/honeydipper/commit/795b2075df6eb7e8611d2c1f7638c6ff2a1dbd30))
+* **deps:** update module datadog/datadog-go to v3.7.2 ([#288](https://github.com/honeydipper/honeydipper/issues/288)) ([60a5b92](https://github.com/honeydipper/honeydipper/commit/60a5b9292ccbbbd8bc43a54bcab0a355da02f86f))
+
+
+### Features
+
+* **drivers:** spanner driver for taking native backups ([#283](https://github.com/honeydipper/honeydipper/issues/283)) ([07700e4](https://github.com/honeydipper/honeydipper/commit/07700e498b664a7eb13c004bb126c31d6102c14f))
+
 ## [1.5.2](https://github.com/honeydipper/honeydipper/compare/v1.5.1...v1.5.2) (2020-06-25)
 
 
