@@ -68,7 +68,9 @@ func (c *RPCCaller) CallRaw(feature string, method string, params []byte) ([]byt
 	// waiting for the result to come back
 	select {
 	case msg := <-result:
-		if e, ok := msg.(error); ok {
+		if msg == nil {
+			return nil, nil
+		} else if e, ok := msg.(error); ok {
 			return nil, e
 		}
 		return msg.([]byte), nil
