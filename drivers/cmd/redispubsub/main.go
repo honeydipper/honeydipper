@@ -23,6 +23,7 @@ var log *logging.Logger
 var driver *dipper.Driver
 var redisOptions *redis.Options
 var broadcastTopic string
+var broadcastChannel string
 var ok bool
 var err error
 
@@ -50,9 +51,13 @@ func loadOptions() {
 	log = driver.GetLogger()
 	log.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
 
-	broadcastTopic, ok = driver.GetOptionStr("data.topics.broadcast")
+	broadcastTopic, ok = driver.GetOptionStr("data.topic")
 	if !ok {
 		broadcastTopic = "honeydipper:broadcast"
+	}
+	broadcastChannel, ok = driver.GetOptionStr("data.channel")
+	if !ok {
+		broadcastChannel = "broadcast"
 	}
 
 	redisOptions = redisclient.GetRedisOps(driver)
@@ -133,7 +138,7 @@ func subscribe() {
 				}
 				data, _ := dipper.GetMapData(payload, "data")
 				driver.SendMessage(&dipper.Message{
-					Channel: "broadcast",
+					Channel: broadcastChannel,
 					Subject: dipper.MustGetMapDataStr(payload, "broadcastSubject"),
 					Payload: data,
 					Labels:  labels,
