@@ -24,6 +24,7 @@ type EventBusOptions struct {
 	EventTopic   string
 	CommandTopic string
 	ReturnTopic  string
+	APITopic     string
 }
 
 var log *logging.Logger
@@ -52,6 +53,7 @@ func main() {
 	case "operator":
 		driver.MessageHandlers["eventbus:return"] = relayToRedis
 	}
+	driver.MessageHandlers["eventbus:api"] = relayToRedis
 	driver.Run()
 }
 
@@ -63,6 +65,7 @@ func loadOptions() {
 		CommandTopic: "honeydipper:commands",
 		EventTopic:   "honeydipper:events",
 		ReturnTopic:  "honeydipper:return:",
+		APITopic:     "honeydipper:api:",
 	}
 	if commandTopic, ok := driver.GetOptionStr("data.topics.command"); ok {
 		eb.CommandTopic = commandTopic
@@ -72,6 +75,9 @@ func loadOptions() {
 	}
 	if returnTopic, ok := driver.GetOptionStr("data.topics.return"); ok {
 		eb.ReturnTopic = returnTopic
+	}
+	if apiTopic, ok := driver.GetOptionStr("data.topics.api"); ok {
+		eb.APITopic = apiTopic
 	}
 	eventbus = eb
 
@@ -86,6 +92,8 @@ func start(msg *dipper.Message) {
 		go subscribe(eventbus.ReturnTopic, "return")
 	case "operator":
 		go subscribe(eventbus.CommandTopic, "command")
+	case "api":
+		go subscribe(eventbus.APITopic, "api")
 	case "receiver":
 		client := redis.NewClient(redisOptions)
 		defer client.Close()
@@ -103,6 +111,12 @@ func relayToRedis(msg *dipper.Message) {
 			msg.Labels["engine"] = dipper.GetIP()
 		}
 		topic = eventbus.CommandTopic
+	} else if msg.Subject == "api" {
+		caller, ok := msg.Labels["caller"]
+		if !ok {
+			log.Panicf("[%s] api return message without receipient", driver.Service)
+		}
+		topic = eventbus.APITopic + caller
 	} else if msg.Subject == "return" {
 		returnTo, ok := msg.Labels["engine"]
 		if !ok {
@@ -133,7 +147,7 @@ func subscribe(topic string, subject string) {
 			client := redis.NewClient(redisOptions)
 			defer client.Close()
 			realTopic := topic
-			if topic == eventbus.ReturnTopic {
+			if topic == eventbus.ReturnTopic || topic == eventbus.APITopic {
 				realTopic = topic + dipper.GetIP()
 			}
 			log.Infof("[%s] start receiving messages on topic: %s", driver.Service, realTopic)
