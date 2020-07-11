@@ -104,22 +104,20 @@ func start(msg *dipper.Message) {
 }
 
 func relayToRedis(msg *dipper.Message) {
+	returnTo, _ := msg.Labels["from"]
+	msg.Labels["from"] = dipper.GetIP()
 	topic := eventbus.EventTopic
-	if msg.Subject == "command" {
-		sessionID, ok := msg.Labels["sessionID"]
-		if ok && sessionID != "" {
-			msg.Labels["engine"] = dipper.GetIP()
-		}
+
+	switch msg.Subject {
+	case "command":
 		topic = eventbus.CommandTopic
-	} else if msg.Subject == "api" {
-		caller, ok := msg.Labels["caller"]
-		if !ok {
+	case "api":
+		topic = eventbus.APITopic + returnTo
+		if returnTo == "" {
 			log.Panicf("[%s] api return message without receipient", driver.Service)
 		}
-		topic = eventbus.APITopic + caller
-	} else if msg.Subject == "return" {
-		returnTo, ok := msg.Labels["engine"]
-		if !ok {
+	case "return":
+		if returnTo == "" {
 			log.Panicf("[%s] return message without receipient", driver.Service)
 		}
 		topic = eventbus.ReturnTopic + returnTo
