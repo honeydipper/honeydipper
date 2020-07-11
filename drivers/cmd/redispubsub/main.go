@@ -71,8 +71,13 @@ func start(msg *dipper.Message) {
 
 func broadcastToRedis(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
+	labels := msg.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels["from"] = dipper.GetIP()
 	payload := map[string]interface{}{
-		"labels":           msg.Labels,
+		"labels":           labels,
 		"broadcastSubject": dipper.MustGetMapDataStr(msg.Payload, "broadcastSubject"),
 	}
 	if data, ok := dipper.GetMapData(msg.Payload, "data"); ok && data != nil {
@@ -89,8 +94,13 @@ func broadcastToRedis(msg *dipper.Message) {
 
 func sendBroadcast(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
+	labels, ok := dipper.GetMapData(msg.Payload, "labels")
+	if !ok || labels == nil {
+		labels = map[string]interface{}{}
+	}
+	labels.(map[string]interface{})["from"] = dipper.GetIP()
 	payload := map[string]interface{}{
-		"labels":           dipper.MustGetMapData(msg.Payload, "labels").(map[string]interface{}),
+		"labels":           labels,
 		"broadcastSubject": dipper.MustGetMapDataStr(msg.Payload, "broadcastSubject"),
 	}
 	if data, ok := dipper.GetMapData(msg.Payload, "data"); ok && data != nil {
