@@ -335,12 +335,12 @@ func mergeModifier(dst map[string]interface{}) {
 		switch {
 		case k[len(k)-1] == '+': // append
 			ev, ok := dst[k[:len(k)-1]]
-			if !ok {
+			if !ok || ev == nil {
 				dst[k[:len(k)-1]] = v
 			} else {
 				if vstr, ok := v.(string); ok {
 					dst[k[:len(k)-1]] = ev.(string) + vstr
-				} else {
+				} else if v != nil {
 					dst[k[:len(k)-1]] = reflect.AppendSlice(reflect.ValueOf(ev), reflect.ValueOf(v)).Interface()
 				}
 			}
