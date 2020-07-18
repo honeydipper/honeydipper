@@ -25,8 +25,10 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 )
 
 // DefaultNamespace is the name of the default space in kubernetes cluster
@@ -190,29 +192,21 @@ func waitForJob(m *dipper.Message) {
 		timeout = time.Duration(timeoutInt)
 	}
 
-	jobclient := k8client.BatchV1().Jobs(nameSpace)
-	watchOption := metav1.ListOptions{
-		FieldSelector: "metadata.name==" + jobName,
-	}
-	watchOption.Kind = "Job"
-	ctxWatch, cancelWatch := context.WithTimeout(context.Background(), timeout*time.Second)
-	defer cancelWatch()
-	jobstatus, err := jobclient.Watch(ctxWatch, watchOption)
-	if err != nil {
-		log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
-	}
-	defer jobstatus.Stop()
+	stopper := make(chan struct{})
+	signal := make(chan struct{})
+	defer close(signal)
 
-	jobStatus := StatusSuccess
-	reason := []string{}
-loop:
-	for {
-		select {
-		case <-ctxWatch.Done():
-			break loop
-		case evt := <-jobstatus.ResultChan():
-			job := evt.Object.(*batchv1.Job)
-			if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
+	factory := informers.NewFilteredSharedInformerFactory(k8client, 0, nameSpace, func(o *metav1.ListOptions) {
+		o.FieldSelector = "metadata.name==" + jobName
+		o.Kind = "job"
+	})
+	informer := factory.Batch().V1().Jobs().Informer()
+	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old interface{}, updated interface{}) {
+			jobStatus := StatusSuccess
+			var reason []string
+			job := updated.(*batchv1.Job)
+			if job.Status.CompletionTime != nil {
 				if job.Status.Failed > 0 {
 					jobStatus = StatusFailure
 					for _, condition := range job.Status.Conditions {
@@ -228,10 +222,19 @@ loop:
 						"reason": strings.Join(reason, "\n"),
 					},
 				}
-				break loop
+				signal <- struct{}{}
 			}
+		},
+	})
+
+	go func() {
+		select {
+		case <-time.After(timeout * time.Second):
+		case <-signal:
 		}
-	}
+		close(stopper)
+	}()
+	informer.Run(stopper)
 }
 
 func createJob(m *dipper.Message) {
