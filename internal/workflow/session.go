@@ -54,6 +54,7 @@ type SessionHandler interface {
 	GetDescription() string
 	GetParent() string
 	GetEventID() string
+	GetEventName() string
 	GetStatus() (string, string)
 	GetExported() map[string]interface{}
 	Watch() <-chan struct{}
@@ -464,4 +465,13 @@ func (w *Session) GetStatus() (string, string) {
 // GetExported returns the exported data from the session.
 func (w *Session) GetExported() map[string]interface{} {
 	return w.exported
+}
+
+// GetEventName returns the name of the event.
+func (w *Session) GetEventName() string {
+	evn, ok := w.ctx["_meta_event"]
+	if ok {
+		return evn.(string)
+	}
+	return ""
 }

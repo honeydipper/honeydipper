@@ -7,6 +7,7 @@
 package api
 
 import (
+	"net/http"
 	"time"
 )
 
@@ -35,7 +36,11 @@ const (
 
 // GetDefs return definition for all known API calls.
 func GetDefs() map[string]map[string]Def {
-	return map[string]map[string]Def{}
+	return map[string]map[string]Def{
+		"/events/:eventID/wait": {
+			http.MethodGet: {name: "eventWait", reqType: TypeMatch, service: "engine", timeout: InfiniteDuration},
+		},
+	}
 }
 
 // GetDefsByName return definition for all known API calls.
