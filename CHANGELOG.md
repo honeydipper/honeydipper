@@ -1,3 +1,11 @@
+## [1.6.1](https://github.com/honeydipper/honeydipper/compare/v1.6.0...v1.6.1) (2020-07-20)
+
+
+### Bug Fixes
+
+* **dipper:** map modifier handle nil value gracefully ([#295](https://github.com/honeydipper/honeydipper/issues/295)) ([c4710c1](https://github.com/honeydipper/honeydipper/commit/c4710c1371931d7162ce050f045ad902e9328ec0))
+* **drivers:** watch API requries calling get and re-authentication ([#297](https://github.com/honeydipper/honeydipper/issues/297)) ([8b73614](https://github.com/honeydipper/honeydipper/commit/8b7361472713b68035d605f9489d3df6b89d7c07)), closes [#296](https://github.com/honeydipper/honeydipper/issues/296)
+
 # [1.6.0](https://github.com/honeydipper/honeydipper/compare/v1.5.2...v1.6.0) (2020-07-07)
 
 
