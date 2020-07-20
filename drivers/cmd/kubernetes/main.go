@@ -25,6 +25,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -175,62 +176,109 @@ func getJobLog(m *dipper.Message) {
 }
 
 func waitForJob(m *dipper.Message) {
-	k8client := prepareKubeConfig(m)
-
+	m = dipper.DeserializePayload(m)
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
 	if !ok {
 		nameSpace = DefaultNamespace
 	}
 
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
+
 	timeout := time.Duration(10)
-	timeoutStr, ok := m.Labels["timeout"]
-	if ok {
+	if timeoutStr, ok := m.Labels["timeout"]; ok {
 		timeoutInt, _ := strconv.Atoi(timeoutStr)
 		timeout = time.Duration(timeoutInt)
 	}
 
-	jobclient := k8client.BatchV1().Jobs(nameSpace)
-	watchOption := metav1.ListOptions{
-		FieldSelector: "metadata.name==" + jobName,
-	}
-	watchOption.Kind = "Job"
-	ctxWatch, cancelWatch := context.WithTimeout(context.Background(), timeout*time.Second)
-	defer cancelWatch()
-	jobstatus, err := jobclient.Watch(ctxWatch, watchOption)
-	if err != nil {
-		log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
-	}
-	defer jobstatus.Stop()
-
-	jobStatus := StatusSuccess
-	reason := []string{}
-loop:
-	for {
-		select {
-		case <-ctxWatch.Done():
-			break loop
-		case evt := <-jobstatus.ResultChan():
-			job := evt.Object.(*batchv1.Job)
-			if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
-				if job.Status.Failed > 0 {
-					jobStatus = StatusFailure
-					for _, condition := range job.Status.Conditions {
-						reason = append(reason, condition.Reason)
-					}
-				}
-				m.Reply <- dipper.Message{
-					Payload: map[string]interface{}{
-						"status": job.Status,
-					},
-					Labels: map[string]string{
-						"status": jobStatus,
-						"reason": strings.Join(reason, "\n"),
-					},
-				}
-				break loop
+	returnJobStatus := func(job *batchv1.Job) {
+		var (
+			jobStatus string = StatusSuccess
+			reason    []string
+		)
+		if job.Status.Failed > 0 {
+			jobStatus = StatusFailure
+			for _, condition := range job.Status.Conditions {
+				reason = append(reason, condition.Reason)
 			}
 		}
+		m.Reply <- dipper.Message{
+			Payload: map[string]interface{}{
+				"status": job.Status,
+			},
+			Labels: map[string]string{
+				"status": jobStatus,
+				"reason": strings.Join(reason, "\n"),
+			},
+		}
+	}
+
+	ctxWatch, cancelWatch := context.WithTimeout(context.Background(), timeout*time.Second)
+	defer cancelWatch()
+	for EOW := false; !EOW; {
+		var job *batchv1.Job
+		k8client := prepareKubeConfig(m)
+		jobclient := k8client.BatchV1().Jobs(nameSpace)
+
+		watchOption := metav1.ListOptions{
+			FieldSelector: "metadata.name==" + jobName,
+		}
+		watchOption.Kind = "job"
+
+		func() {
+			listCtx, cancelList := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+			defer cancelList()
+			joblist, err := jobclient.List(listCtx, watchOption)
+			if err != nil || len(joblist.Items) == 0 {
+				log.Panicf("[%s] job not found [%s]: %+v", driver.Service, jobName, err)
+			}
+			job = &joblist.Items[0]
+			watchOption.ResourceVersion = joblist.ResourceVersion
+		}()
+
+		if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
+			returnJobStatus(job)
+			break
+		}
+
+		jobstatus, err := jobclient.Watch(ctxWatch, watchOption)
+		if err != nil {
+			log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
+		}
+
+		func() {
+			defer jobstatus.Stop()
+
+		loop:
+			for {
+				select {
+				case <-ctxWatch.Done():
+					EOW = true
+					break loop
+				case evt := <-jobstatus.ResultChan():
+					switch evt.Type {
+					case watch.Error:
+						e := evt.Object.(*metav1.Status)
+						if e.Code == 410 {
+							log.Warningf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
+							break loop
+						} else {
+							log.Panicf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
+						}
+					default:
+						if evt.Object == nil {
+							break loop
+						}
+						job := evt.Object.(*batchv1.Job)
+						log.Debugf("[%s] receiving a event when watching for job [%s] %s: %+v", driver.Service, jobName, evt.Type, job.Status)
+						if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
+							returnJobStatus(job)
+							EOW = true
+							break loop
+						}
+					}
+				}
+			}
+		}()
 	}
 }
 
