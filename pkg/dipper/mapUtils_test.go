@@ -126,3 +126,59 @@ func TestDeepCopy(t *testing.T) {
 	assert.NotEqual(t, src, ret)
 	assert.Nil(t, err)
 }
+
+func TestMerge(t *testing.T) {
+
+	testCases := []map[string]interface{}{
+		map[string]interface{}{
+			"name": "append modifier with nil in src",
+			"dst": map[string]interface{}{
+				"f1": "d1",
+				"f2": []interface{}{"item1", "item2"},
+			},
+			"src": map[string]interface{}{
+				"f2+": nil,
+			},
+			"expect": map[string]interface{}{
+				"f1": "d1",
+				"f2": []interface{}{"item1", "item2"},
+			},
+		},
+		{
+			"name": "append modifier with nil in dst",
+			"dst": map[string]interface{}{
+				"f1": "d1",
+				"f2": nil,
+			},
+			"src": map[string]interface{}{
+				"f2+": []interface{}{"item1", "item2"},
+			},
+			"expect": map[string]interface{}{
+				"f1": "d1",
+				"f2": []interface{}{"item1", "item2"},
+			},
+		},
+		{
+			"name": "append modifier missing key in dst",
+			"dst": map[string]interface{}{
+				"f1": "d1",
+			},
+			"src": map[string]interface{}{
+				"f2+": []interface{}{"item1", "item2"},
+			},
+			"expect": map[string]interface{}{
+				"f1": "d1",
+				"f2": []interface{}{"item1", "item2"},
+			},
+		},
+	}
+	for _, c := range testCases {
+		d, _ := c["dst"].(map[string]interface{})
+		s := c["src"]
+		e := c["expect"]
+		n := c["name"]
+
+		assert.NotPanics(t, func() { MergeMap(d, s) })
+		assert.Equal(t, e, d, n)
+	}
+}
