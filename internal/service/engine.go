@@ -60,6 +60,7 @@ func StartEngine(cfg *config.Config) {
 	engine.addResponder("broadcast:resume_session", resumeSession)
 	engine.addResponder("eventbus:message", createSessions)
 	engine.addResponder("eventbus:return", continueSession)
+	setupEngineAPIs()
 
 	buildRuleMap(cfg)
 	engine.start()
