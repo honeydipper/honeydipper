@@ -8,6 +8,23 @@ package dipper
 
 import "github.com/go-errors/errors"
 
+// Error type is a simple error type used by dipper
+type Error string
+
+// Error gives the message of the Error
+func (e Error) Error() string {
+	return string(e)
+}
+
+// Is check if a given error matches this error
+func (e Error) Is(target error) bool {
+	if t, ok := target.(Error); ok {
+		return t == e
+	}
+
+	return false
+}
+
 // SafeExitOnError : use this function in defer statement to ignore errors
 func SafeExitOnError(args ...interface{}) {
 	if r := recover(); r != nil {

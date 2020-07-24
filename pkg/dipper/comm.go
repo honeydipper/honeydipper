@@ -131,7 +131,7 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 		if strings.Contains(errMsg, "file already closed") {
 			panic(io.EOF)
 		}
-		panic(fmt.Errorf("invalid message envelope: %+v", err))
+		panic(fmt.Errorf("invalid message envelope: %w", err))
 	}
 
 	msg = &Message{
@@ -151,12 +151,12 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 
 			_, err := fmt.Fscanln(in, &lname, &vl)
 			if err != nil {
-				panic(fmt.Errorf("unable to fetch message label name: %+v", err))
+				panic(fmt.Errorf("unable to fetch message label name: %w", err))
 			}
 			if vl > 0 {
 				lvalue := make([]byte, vl)
 				if _, err = io.ReadFull(in, lvalue); err != nil {
-					panic(fmt.Errorf("unable to fetch value for label %s: %+v", lname, err))
+					panic(fmt.Errorf("unable to fetch value for label %s: %w", lname, err))
 				}
 
 				msg.Labels[lname] = string(lvalue)

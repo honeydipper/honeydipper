@@ -7,11 +7,18 @@
 package dipper
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"sync"
 	"time"
+)
+
+const (
+	// TimeoutError indicates a timeout error
+	TimeoutError Error = "timeout"
+
+	// RPCError indicates errors happened during RPC call
+	RPCError Error = "rpc error"
 )
 
 // RPCHandler : a type of functions that handle RPC calls between drivers
@@ -75,7 +82,7 @@ func (c *RPCCaller) CallRaw(feature string, method string, params []byte) ([]byt
 		}
 		return msg.([]byte), nil
 	case <-time.After(time.Second * 10):
-		return nil, errors.New("timeout")
+		return nil, TimeoutError
 	}
 }
 
@@ -93,7 +100,7 @@ func (c *RPCCaller) CallRawNoWait(feature string, method string, params []byte, 
 
 	out := c.Parent.GetStream(feature)
 	if out == nil {
-		return fmt.Errorf("feature not available: %s", feature)
+		return fmt.Errorf("feature not available: %s: %w", feature, RPCError)
 	}
 
 	// making the call by sending a message
@@ -121,7 +128,7 @@ func (c *RPCCaller) HandleReturn(m *Message) {
 	reason, ok := m.Labels["error"]
 
 	if ok {
-		result <- errors.New(reason)
+		result <- fmt.Errorf("reason: %s: %w", reason, RPCError)
 	} else {
 		result <- m.Payload
 	}

@@ -17,6 +17,11 @@ import (
 	"github.com/ghodss/yaml"
 )
 
+const (
+	// all errors thrown due to failure to interpolation
+	InterpolationError Error = "config error"
+)
+
 // FuncMap : used to add functions to the go templates
 var FuncMap = template.FuncMap{
 	"fromPath": MustGetMapData,
@@ -81,13 +86,13 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 
 			quote := strings.IndexAny(parsed, "\"'`")
 			if allowNull && quote >= 0 {
-				panic(fmt.Errorf("no need to allow null with default value %s", v))
+				panic(fmt.Errorf("allow nil combine with default value: %s: %w", v, InterpolationError))
 			}
 
 			var keys []string
 			if quote > 0 {
 				if parsed[quote-1] != ',' {
-					panic(fmt.Errorf("default value should be separated from the key with comma %s", v))
+					panic(fmt.Errorf("missing comma: %s: %w", v, InterpolationError))
 				}
 				keys = strings.Split(parsed[:quote-1], ",")
 			} else if quote < 0 {
@@ -106,7 +111,7 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 
 			if quote >= 0 {
 				if parsed[quote] != parsed[len(parsed)-1] {
-					panic(fmt.Errorf("quotes not matching for default value %s", parsed))
+					panic(fmt.Errorf("quotes not matching: %s: %w", parsed, InterpolationError))
 				}
 				return parsed[quote+1 : len(parsed)-1]
 			}
@@ -114,7 +119,7 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			if allowNull {
 				return nil
 			}
-			panic(fmt.Errorf("invalid path %s", v[1:]))
+			panic(fmt.Errorf("invalid path: %s: %w", v[1:], InterpolationError))
 		}
 
 		ret := InterpolateGoTemplate(v, data)

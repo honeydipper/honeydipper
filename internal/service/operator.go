@@ -16,6 +16,11 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+const (
+	// OperatorError is the base for all operator related error
+	OperatorError dipper.Error = "operator error"
+)
+
 var operator *Service
 
 // StartOperator starts the operator service
@@ -73,7 +78,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 
 		worker := operator.getDriverRuntime("driver:" + driver)
 		if worker == nil {
-			panic(fmt.Errorf("driver %s not defined", driver))
+			panic(fmt.Errorf("not defined: %s: %w", driver, OperatorError))
 		}
 		finalParams := params
 		if params != nil {

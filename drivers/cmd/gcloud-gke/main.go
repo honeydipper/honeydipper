@@ -21,6 +21,15 @@ import (
 	"google.golang.org/api/option"
 )
 
+var (
+	// ErrMissingProject means missing project
+	ErrMissingProject = errors.New("project required")
+	// ErrMissingLocation means missing location
+	ErrMissingLocation = errors.New("location required")
+	// ErrMissingCluster means missing location
+	ErrMissingCluster = errors.New("cluster required")
+)
+
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -54,11 +63,11 @@ func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Toke
 		}
 		conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
 		if err != nil {
-			panic(errors.New("invalid service account"))
+			panic(err)
 		}
 		token, err = conf.TokenSource(context.Background()).Token()
 		if err != nil {
-			panic(errors.New("failed to fetch a access_token"))
+			panic(err)
 		}
 	} else {
 		containerService, err = container.NewService(context.Background())
@@ -67,11 +76,11 @@ func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Toke
 		}
 		tokenSource, err := google.DefaultTokenSource(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
 		if err != nil {
-			panic(errors.New("failed to get a token source"))
+			panic(err)
 		}
 		token, err = tokenSource.Token()
 		if err != nil {
-			panic(errors.New("failed to fetch a access_token"))
+			panic(err)
 		}
 	}
 
@@ -84,11 +93,11 @@ func getKubeCfg(msg *dipper.Message) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
-		panic(errors.New("project required"))
+		panic(ErrMissingProject)
 	}
 	location, ok := dipper.GetMapDataStr(params, "location")
 	if !ok {
-		panic(errors.New("location required"))
+		panic(ErrMissingLocation)
 	}
 	regional := false
 	if regionalData, ok := dipper.GetMapData(params, "regional"); ok {
@@ -96,7 +105,7 @@ func getKubeCfg(msg *dipper.Message) {
 	}
 	cluster, ok := dipper.GetMapDataStr(params, "cluster")
 	if !ok {
-		panic(errors.New("cluster required"))
+		panic(ErrMissingCluster)
 	}
 	var name string
 	if regional {
@@ -117,7 +126,7 @@ func getKubeCfg(msg *dipper.Message) {
 		clusterObj, err = containerService.Projects.Locations.Clusters.Get(name).Context(execContext).Do()
 	}()
 	if err != nil {
-		panic(errors.New("failed to fetch cluster info from gcloud"))
+		panic(err)
 	}
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{

@@ -18,6 +18,21 @@ import (
 	spannerAdminSchema "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
 )
 
+var (
+	// ErrMissingProject means missing project
+	ErrMissingProject = errors.New("project required")
+	// ErrMissingLocation means missing location
+	ErrMissingLocation = errors.New("location required")
+	// ErrMissingDB means missing db
+	ErrMissingDB = errors.New("db required")
+	// ErrMissingBackupOpID means missing backupOpId
+	ErrMissingBackupOpID = errors.New("backupOpId required")
+	// ErrCreateClient means failure when creating API client
+	ErrCreateClient = errors.New("fail to create client")
+	// ErrBackupOpNotFound means the backup operation not found
+	ErrBackupOpNotFound = errors.New("backup op not found")
+)
+
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -47,15 +62,15 @@ func backup(m *dipper.Message) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
-		panic(errors.New("project required"))
+		panic(ErrMissingProject)
 	}
 	instance, ok := dipper.GetMapDataStr(params, "instance")
 	if !ok {
-		panic(errors.New("location required"))
+		panic(ErrMissingLocation)
 	}
 	db, ok := dipper.GetMapDataStr(params, "db")
 	if !ok {
-		panic(errors.New("db required"))
+		panic(ErrMissingDB)
 	}
 	expireDuration := time.Hour * 24 * 180
 	expireStr, ok := dipper.GetMapDataStr(params, "expires")
@@ -85,7 +100,7 @@ func backup(m *dipper.Message) {
 	}
 
 	if err != nil {
-		panic(errors.New("unable to create gcloud spanner admin client"))
+		panic(ErrCreateClient)
 	}
 
 	t := time.Now().Add(expireDuration)
@@ -128,7 +143,7 @@ func waitForBackup(m *dipper.Message) {
 	params := m.Payload
 	backupOpId, ok := dipper.GetMapDataStr(params, "backupOpId")
 	if !ok {
-		panic(errors.New("backupOpId required"))
+		panic(ErrMissingBackupOpID)
 	}
 
 	obj, ok := lro.Load(backupOpId)
@@ -147,6 +162,6 @@ func waitForBackup(m *dipper.Message) {
 			},
 		}
 	} else {
-		panic(errors.New("backup operation not exists"))
+		panic(ErrBackupOpNotFound)
 	}
 }

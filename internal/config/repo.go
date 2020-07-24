@@ -200,7 +200,7 @@ func (c *Repo) refreshRepo() bool {
 		}
 
 		err = tree.Pull(opts)
-		if err == git.NoErrAlreadyUpToDate {
+		if errors.Is(err, git.NoErrAlreadyUpToDate) {
 			dipper.Logger.Infof("no changes skip repo [%s]", c.repo.Repo)
 			return false
 		} else if err != nil {

@@ -8,7 +8,6 @@ package service
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,6 +27,9 @@ import (
 // features known to the service for providing some functionalities
 const (
 	FeatureEmitter = "emitter"
+
+	// ServiceError indicates error condition when rendering service
+	ServiceError dipper.Error = "service error"
 )
 
 // MessageResponder is a function type that respond to messages.
@@ -97,12 +99,12 @@ func (s *Service) GetStream(feature string) io.Writer {
 		}
 
 		if runtime.State != driver.DriverAlive {
-			panic(fmt.Errorf("feature failed or loading timeout: %s", feature))
+			panic(fmt.Errorf("feature failed or loading timeout: %s: %w", feature, ServiceError))
 		}
 
 		return runtime.Output
 	}
-	panic(fmt.Errorf("feature not loaded: %s", feature))
+	panic(fmt.Errorf("feature not loaded: %s: %w", feature, ServiceError))
 }
 
 func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{}, replace bool) {
@@ -135,7 +137,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			if err, ok := r.(error); ok {
 				rerr = err
 			} else {
-				rerr = errors.New(fmt.Sprint(r))
+				rerr = fmt.Errorf("%+v: %w", r, ServiceError)
 			}
 		}
 	}()
