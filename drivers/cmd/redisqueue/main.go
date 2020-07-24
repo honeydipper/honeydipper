@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -156,7 +157,7 @@ func subscribe(topic string, subject string) {
 			log.Infof("[%s] start receiving messages on topic: %s", driver.Service, realTopic)
 			for {
 				messages, err := client.BLPop(context.Background(), time.Second, realTopic).Result()
-				if err != nil && err != redis.Nil {
+				if err != nil && !errors.Is(err, redis.Nil) {
 					log.Panicf("[%s] redis error: %v", driver.Service, err)
 				}
 				if len(messages) > 1 {

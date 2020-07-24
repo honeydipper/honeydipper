@@ -7,7 +7,6 @@
 package dipper
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -45,7 +44,7 @@ func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...int
 		},
 	})
 	Logger.Warningf("[operator] %s", errText)
-	return errors.New(errText)
+	return Error(errText)
 }
 
 // Return : return a value to rpc caller

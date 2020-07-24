@@ -14,6 +14,11 @@ import (
 	"google.golang.org/api/option"
 )
 
+var (
+	// ErrFailedCreateClient means failure during create client
+	ErrFailedCreateClient = errors.New("unable to create gcloud pubsub client")
+)
+
 // SubscriberConfig stores all gcloud pubsub subscriber information
 type SubscriberConfig struct {
 	Project          string
@@ -55,7 +60,7 @@ func getPubsubClient(serviceAccountBytes, project string) *pubsub.Client {
 		client, err = pubsub.NewClient(context.Background(), project)
 	}
 	if err != nil {
-		panic(errors.New("unable to create gcloud pubsub client"))
+		panic(ErrFailedCreateClient)
 	}
 	return client
 }
@@ -180,7 +185,7 @@ func subscribeAll() {
 						msgFunc(ctx, msg)
 						msg.Ack()
 					})
-					if err != context.Canceled {
+					if !errors.Is(err, context.Canceled) {
 						dipper.Logger.Warningf("Failed to receive message from pubsub [%s]", subscriptionName)
 					}
 				}()

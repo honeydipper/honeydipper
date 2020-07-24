@@ -21,19 +21,19 @@ func TestDriverNewDriver(t *testing.T) {
 	testCases := map[string]interface{}{
 		"panic when driver name is missing": []interface{}{
 			map[string]interface{}{}, // driver meta
-			"driver name missing ",   // error prefix
+			"driver name missing: ",  // error prefix
 		},
 		"panic when driver type is missing": []interface{}{
 			map[string]interface{}{"name": "test"}, // driver meta
-			"unsupported driver type ",             // error prefix
+			"unsupported driver type: ",            // error prefix
 		},
 		"panic when driver type is unknown": []interface{}{
 			map[string]interface{}{"name": "test", "type": "faketype"}, // driver meta
-			"unsupported driver type ",                                 // error prefix
+			"unsupported driver type: ",                                // error prefix
 		},
 		"panic when builtin driver data missing": []interface{}{
 			map[string]interface{}{"name": "test", "type": "builtin"}, // driver meta
-			"shortName is missing ",                                   // error prefix
+			"shortName is missing for builtin driver: ",               // error prefix
 		},
 	}
 

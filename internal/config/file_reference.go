@@ -15,10 +15,15 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
+const (
+	// FileError is all errors when accessing a file
+	FileError dipper.Error = "file error"
+)
+
 func (c *Repo) normalizeFilePath(cwd string, file string) string {
 	fullpath := path.Clean(path.Join(c.root, cwd, file))
 	if !strings.HasPrefix(fullpath, c.root+"/") {
-		panic(fmt.Errorf("path is invalid: %s", fullpath))
+		panic(fmt.Errorf("invalid path: %s: %w", fullpath, FileError))
 	}
 	return fullpath
 }

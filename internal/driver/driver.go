@@ -17,6 +17,11 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+const (
+	// DriverError is the base for all driver related error
+	DriverError dipper.Error = "driver error"
+)
+
 // Handler provides common functions for handling a driver
 type Handler interface {
 	Acquire()
@@ -32,11 +37,11 @@ func NewDriver(data map[string]interface{}) Handler {
 	var meta Meta
 	err := mapstructure.Decode(data, &meta)
 	if err != nil {
-		panic(fmt.Errorf("malformat driver meta %+v %+v", data, err))
+		panic(fmt.Errorf("malformat driver meta: %+v: %w", data, err))
 	}
 
 	if meta.Name == "" {
-		panic(fmt.Errorf("driver name missing %+v", meta))
+		panic(fmt.Errorf("driver name missing: %+v: %w", meta, DriverError))
 	}
 
 	var dh Handler
@@ -45,14 +50,14 @@ func NewDriver(data map[string]interface{}) Handler {
 	case "builtin":
 		dh = NewBuiltinDriver(&meta)
 	default:
-		panic(fmt.Errorf("unsupported driver type %s", meta.Type))
+		panic(fmt.Errorf("unsupported driver type: %s: %w", meta.Type, DriverError))
 	}
 
 	dh.Acquire()
 	dh.Prepare()
 
 	if meta.Executable == "" {
-		panic(fmt.Errorf("executable not defined for driver %s", meta.Name))
+		panic(fmt.Errorf("executable not defined for driver: %s: %w", meta.Name, DriverError))
 	}
 	return dh
 }

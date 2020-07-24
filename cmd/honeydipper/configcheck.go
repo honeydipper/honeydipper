@@ -18,15 +18,15 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-const (
+var (
 	// ErrorFieldCollision is the error message when two conflicting fields are set
-	ErrorFieldCollision = `cannot define both "%s" and "%s"`
+	ErrorFieldCollision = fmt.Errorf("cannot define both")
 	// ErrorNotDefined is the error message when an required asset is not defined
-	ErrorNotDefined = `%s "%s" not defined`
+	ErrorNotDefined = fmt.Errorf("not defined")
 	// ErrorNotAllowed is the message when a field is not allowed due to missing pairing field
-	ErrorNotAllowed = `field "%s" not allowed without pairing field`
+	ErrorNotAllowed = fmt.Errorf("not allowed without pairing field")
 	// ErrorNotAList is the message when a field is supposed to be a list
-	ErrorNotAList = `field "%s" must be a list or something interpolated into a list`
+	ErrorNotAList = fmt.Errorf("must be a list or something interpolated into a list")
 )
 
 type dipperCLError struct {
@@ -243,12 +243,12 @@ func checkIsList(name string, f interface{}) {
 	if f != nil {
 		if s, ok := f.(string); ok {
 			if s != "" && hasLiteral(s) {
-				panic(fmt.Errorf(ErrorNotAList, name))
+				panic(fmt.Errorf("field \"%s\" %w", name, ErrorNotAList))
 			}
 		} else {
 			v := reflect.ValueOf(f)
 			if v.Kind() != reflect.Array && v.Kind() != reflect.Slice {
-				panic(fmt.Errorf(ErrorNotAList, name))
+				panic(fmt.Errorf("field \"%s\" %w", name, ErrorNotAList))
 			}
 		}
 	}
@@ -257,7 +257,7 @@ func checkIsList(name string, f interface{}) {
 func checkObjectExists(t, name string, m interface{}) {
 	if name != "" && !hasInterpolation(name) {
 		if !reflect.ValueOf(m).MapIndex(reflect.ValueOf(name)).IsValid() {
-			panic(fmt.Errorf(ErrorNotDefined, t, name))
+			panic(fmt.Errorf("%s \"%s\" %w", t, name, ErrorNotDefined))
 		}
 	}
 }
@@ -279,7 +279,7 @@ type fieldChecker struct {
 func (f *fieldChecker) setField(name string, condition bool) {
 	if condition {
 		if f.field != "" {
-			panic(fmt.Errorf(ErrorFieldCollision, f.field, name))
+			panic(fmt.Errorf("%w \"%s\" and \"%s\"", ErrorFieldCollision, f.field, name))
 		}
 		f.field = name
 	}
@@ -287,6 +287,6 @@ func (f *fieldChecker) setField(name string, condition bool) {
 
 func (f *fieldChecker) allowFieldWhenSet(name string, condition bool) {
 	if condition && f.field == "" {
-		panic(fmt.Errorf(ErrorNotAllowed, name))
+		panic(fmt.Errorf("field \"%s\" %w", name, ErrorNotAllowed))
 	}
 }

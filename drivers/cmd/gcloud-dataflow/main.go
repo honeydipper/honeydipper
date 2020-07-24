@@ -23,6 +23,19 @@ import (
 	"google.golang.org/api/option"
 )
 
+var (
+	// ErrMissingProject means missing project
+	ErrMissingProject = errors.New("project required")
+	// ErrMissingJobSpec means missing location
+	ErrMissingJobSpec = errors.New("job spec required")
+	// ErrMissingJobID means missing jobid
+	ErrMissingJobID = errors.New("jobid required")
+	// ErrMissingName means missing name
+	ErrMissingName = errors.New("name required")
+	// ErrJobNotFound means job not found
+	ErrJobNotFound = errors.New("job not found")
+)
+
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -68,7 +81,7 @@ func getCommonParams(params interface{}) (string, string, string) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
-		panic(errors.New("project required"))
+		panic(ErrMissingProject)
 	}
 	location, ok := dipper.GetMapDataStr(params, "location")
 	if ok {
@@ -87,7 +100,7 @@ func createJob(msg *dipper.Message) {
 
 	job, ok := dipper.GetMapData(params, "job")
 	if !ok {
-		panic(errors.New("job spec required"))
+		panic(ErrMissingJobSpec)
 	}
 	var jobSpec dataflow.CreateJobFromTemplateRequest
 	dipper.PanicError(mapstructure.Decode(job, &jobSpec))
@@ -125,7 +138,7 @@ func getJob(msg *dipper.Message) {
 
 	jobID, ok := dipper.GetMapDataStr(params, "jobID")
 	if !ok {
-		panic(errors.New("jobID required"))
+		panic(ErrMissingJobID)
 	}
 
 	var fieldList []googleapi.Field
@@ -232,7 +245,7 @@ func findJobByName(msg *dipper.Message) {
 			},
 		}
 	} else {
-		panic(errors.New("job not found"))
+		panic(ErrJobNotFound)
 	}
 }
 
@@ -243,7 +256,7 @@ func waitForJob(msg *dipper.Message) {
 
 	jobID, ok := dipper.GetMapDataStr(params, "jobID")
 	if !ok {
-		panic(errors.New("jobID required"))
+		panic(ErrMissingJobID)
 	}
 	interval := 10
 	intervalStr, ok := dipper.GetMapDataStr(msg.Payload, "interval")
@@ -323,7 +336,7 @@ func updateJob(msg *dipper.Message) {
 
 	job, ok := dipper.GetMapData(params, "jobSpec")
 	if !ok {
-		panic(errors.New("job spec required"))
+		panic(ErrMissingJobSpec)
 	}
 	var jobSpec dataflow.Job
 	err := mapstructure.Decode(job, &jobSpec)
