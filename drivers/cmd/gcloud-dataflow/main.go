@@ -103,7 +103,7 @@ func createJob(msg *dipper.Message) {
 		panic(ErrMissingJobSpec)
 	}
 	var jobSpec dataflow.CreateJobFromTemplateRequest
-	dipper.PanicError(mapstructure.Decode(job, &jobSpec))
+	dipper.Must(mapstructure.Decode(job, &jobSpec))
 
 	var dataflowService = getDataflowService(serviceAccountBytes)
 

@@ -208,12 +208,12 @@ func (c *Config) extendSystem(processed map[string]bool, system string) {
 		baseCopy := dipper.Must(SystemCopy(&baseSys)).(*System)
 
 		if subKey == "" {
-			dipper.PanicError(mergeSystem(&merged, *baseCopy))
+			dipper.Must(mergeSystem(&merged, *baseCopy))
 		} else {
 			addSubsystem(&merged, *baseCopy, subKey)
 		}
 	}
-	dipper.PanicError(mergeSystem(&merged, current))
+	dipper.Must(mergeSystem(&merged, current))
 	c.DataSet.Systems[system] = merged
 	processed[system] = true
 }
@@ -251,7 +251,7 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 	for name, system := range s.Systems {
 		exist, ok := d.Systems[name]
 		if ok {
-			dipper.PanicError(mergeSystem(&exist, system))
+			dipper.Must(mergeSystem(&exist, system))
 		} else {
 			exist = system
 		}

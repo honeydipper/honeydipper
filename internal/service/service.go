@@ -595,7 +595,7 @@ func coldReloadDriverRuntime(d *driver.Runtime, m *dipper.Message) {
 	s := Services[d.Service]
 	s.checkDeleteDriverRuntime(d.Feature, d)
 	d.Output.Close()
-	dipper.PanicError(s.loadFeature(d.Feature))
+	dipper.Must(s.loadFeature(d.Feature))
 }
 
 func loadFailedDriverRuntime(d *driver.Runtime, count int) {

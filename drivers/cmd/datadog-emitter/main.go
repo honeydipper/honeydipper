@@ -79,7 +79,7 @@ func loadOptions(msg *dipper.Message) {
 		panic(err)
 	}
 
-	dipper.PanicError(dogstatsd.Event(&statsd.Event{
+	dipper.Must(dogstatsd.Event(&statsd.Event{
 		Title: "Honeydipper statistics started",
 		Text:  "Honeydipper statistics started",
 	}))
@@ -97,7 +97,7 @@ func counterIncr(msg *dipper.Message) {
 		tags = append(tags, tag.(string))
 	}
 
-	dipper.PanicError(dogstatsd.Incr(name, tags, 1))
+	dipper.Must(dogstatsd.Incr(name, tags, 1))
 }
 
 func gaugeSet(msg *dipper.Message) {
@@ -116,5 +116,5 @@ func gaugeSet(msg *dipper.Message) {
 		tags = append(tags, tag.(string))
 	}
 
-	dipper.PanicError(dogstatsd.Gauge(name, value, tags, 1))
+	dipper.Must(dogstatsd.Gauge(name, value, tags, 1))
 }

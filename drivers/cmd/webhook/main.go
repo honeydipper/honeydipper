@@ -50,7 +50,7 @@ func main() {
 }
 
 func stopWebhook(*dipper.Message) {
-	dipper.PanicError(server.Shutdown(context.Background()))
+	dipper.Must(server.Shutdown(context.Background()))
 }
 
 func loadOptions(m *dipper.Message) {
@@ -142,7 +142,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 
 func badRequest(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusBadRequest)
-	dipper.PanicError(io.WriteString(w, "Bad Request\n"))
+	dipper.Must(io.WriteString(w, "Bad Request\n"))
 }
 
 func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interface{} {
