@@ -8,15 +8,15 @@ package dipper
 
 import "github.com/go-errors/errors"
 
-// Error type is a simple error type used by dipper
+// Error type is a simple error type used by dipper.
 type Error string
 
-// Error gives the message of the Error
+// Error gives the message of the Error.
 func (e Error) Error() string {
 	return string(e)
 }
 
-// Is check if a given error matches this error
+// Is check if a given error matches this error.
 func (e Error) Is(target error) bool {
 	if t, ok := target.(Error); ok {
 		return t == e
@@ -25,7 +25,7 @@ func (e Error) Is(target error) bool {
 	return false
 }
 
-// SafeExitOnError : use this function in defer statement to ignore errors
+// SafeExitOnError : use this function in defer statement to ignore errors.
 func SafeExitOnError(args ...interface{}) {
 	if r := recover(); r != nil {
 		Logger.Warningf("Resuming after error: %v", r)
@@ -34,14 +34,14 @@ func SafeExitOnError(args ...interface{}) {
 	}
 }
 
-// IgnoreError : use this function in defer statement to ignore a particular error
+// IgnoreError : use this function in defer statement to ignore a particular error.
 func IgnoreError(expectedError interface{}) {
 	if x := recover(); x != nil && x != expectedError {
 		panic(x)
 	}
 }
 
-// CatchError : use this in defer to catch a certain error
+// CatchError : use this in defer to catch a certain error.
 func CatchError(err interface{}, handler func()) {
 	if x := recover(); x != nil {
 		if x == err {
@@ -55,7 +55,7 @@ func CatchError(err interface{}, handler func()) {
 // PanicError accepts multiple variables and will panic if the last variable is not nil.
 // It is used to wrap around functions that return error as the last return value.
 //   dipper.PanicError(io.ReadFull(&b, lval))
-// The io.ReadFull return length read and an error. If error is returned, the function will
+// The io.ReadFull return length read and an error. If error is returned, the function will.
 // panic.
 func PanicError(args ...interface{}) {
 	if l := len(args); l > 0 {
@@ -65,7 +65,7 @@ func PanicError(args ...interface{}) {
 	}
 }
 
-// Must is used to catch function return with error
+// Must is used to catch function return with error.
 func Must(ret interface{}, err error) interface{} {
 	if err != nil {
 		panic(err)

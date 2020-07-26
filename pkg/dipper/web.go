@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// ExtractWebRequest put needed information from a request in a map
+// ExtractWebRequest put needed information from a request in a map.
 func ExtractWebRequest(r *http.Request) map[string]interface{} {
 	PanicError(r.ParseForm())
 

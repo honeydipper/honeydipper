@@ -24,7 +24,7 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-// features known to the service for providing some functionalities
+// features known to the service for providing some functionalities.
 const (
 	FeatureEmitter = "emitter"
 
@@ -85,12 +85,12 @@ func NewService(cfg *config.Config, name string) *Service {
 	return svc
 }
 
-// GetName returns the name of the service
+// GetName returns the name of the service.
 func (s *Service) GetName() string {
 	return s.name
 }
 
-// GetStream returns the writer for communication with the specified feature
+// GetStream returns the writer for communication with the specified feature.
 func (s *Service) GetStream(feature string) io.Writer {
 	if runtime := s.getDriverRuntime(feature); runtime != nil {
 		seconds := 0
@@ -538,9 +538,8 @@ func (s *Service) addExpect(expectKey string, processor ExpectHandler, timeout t
 				defer s.expectLock.Unlock()
 				s.expectLock.Lock()
 				if len(expects) > 1 {
-					for i, p := range expects {
-						//nolint:scopelint
-						if &p == &processor {
+					for i := range expects {
+						if &expects[i] == &processor {
 							expects = append(expects[:i], expects[i+1:]...)
 							break
 						}

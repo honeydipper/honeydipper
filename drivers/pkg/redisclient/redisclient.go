@@ -6,12 +6,9 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/op/go-logging"
 )
 
-var log *logging.Logger
-
-// GetRedisOps configures driver to talk to Redis
+// GetRedisOps configures driver to talk to Redis.
 func GetRedisOps(driver *dipper.Driver) *redis.Options {
 	if localRedis, ok := os.LookupEnv("LOCALREDIS"); ok && localRedis != "" {
 		return &redis.Options{

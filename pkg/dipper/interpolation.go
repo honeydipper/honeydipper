@@ -22,7 +22,7 @@ const (
 	InterpolationError Error = "config error"
 )
 
-// FuncMap : used to add functions to the go templates
+// FuncMap : used to add functions to the go templates.
 var FuncMap = template.FuncMap{
 	"fromPath": MustGetMapData,
 	"now":      time.Now,
@@ -37,7 +37,7 @@ var FuncMap = template.FuncMap{
 	},
 }
 
-// InterpolateStr : interpolate a string and return a string
+// InterpolateStr : interpolate a string and return a string.
 func InterpolateStr(pattern string, data interface{}) string {
 	ret := Interpolate(pattern, data)
 	if ret != nil {
@@ -46,7 +46,7 @@ func InterpolateStr(pattern string, data interface{}) string {
 	return ""
 }
 
-// InterpolateGoTemplate : parse the string as go template
+// InterpolateGoTemplate : parse the string as go template.
 func InterpolateGoTemplate(pattern string, data interface{}) string {
 	if strings.Contains(pattern, "{{") {
 		tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
@@ -60,7 +60,7 @@ func InterpolateGoTemplate(pattern string, data interface{}) string {
 	return pattern
 }
 
-// ParseYaml : load the data in the string as yaml
+// ParseYaml : load the data in the string as yaml.
 func ParseYaml(pattern string) interface{} {
 	var data interface{}
 	err := yaml.Unmarshal([]byte(pattern), &data)
@@ -71,7 +71,7 @@ func ParseYaml(pattern string) interface{} {
 	return data
 }
 
-// InterpolateDollarStr handles dollar interpolation
+// InterpolateDollarStr handles dollar interpolation.
 func InterpolateDollarStr(v string, data interface{}) interface{} {
 	allowNull := (v[1] == '?')
 	var parsed string
@@ -119,7 +119,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 	panic(fmt.Errorf("invalid path: %s: %w", v[1:], InterpolationError))
 }
 
-// Interpolate : go through the map data structure to find and parse all the templates
+// Interpolate : go through the map data structure to find and parse all the templates.
 func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:

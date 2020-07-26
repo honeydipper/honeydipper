@@ -25,7 +25,7 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-// DocItem describe a item or a group of items in the document output
+// DocItem describe a item or a group of items in the document output.
 type DocItem struct {
 	ForEach  string `json:"for_each"`
 	Template string
@@ -34,14 +34,14 @@ type DocItem struct {
 	Children []string
 }
 
-// DocGenConfig is the schema for config how to generate the documents
+// DocGenConfig is the schema for config how to generate the documents.
 type DocGenConfig struct {
 	Repos    []config.RepoInfo
 	Items    []DocItem
 	Sections []DocGenConfig
 }
 
-// IncludePattern is used for find all include statements
+// IncludePattern is used for find all include statements.
 var IncludePattern = regexp.MustCompile(`\{\{\s*include\s+"([\w\.\/-]+)"\s+\}\}`)
 var tmplCache = map[string]string{}
 
@@ -119,6 +119,7 @@ func fetchItem(item DocItem, cfg *config.Config) {
 
 			file := path.Join(cfg.DocDst, item.Name)
 			ensureDirExists(file)
+			//nolint:gosec
 			err = ioutil.WriteFile(file, content, 0644)
 			if err != nil {
 				panic(err)
@@ -198,6 +199,7 @@ func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config
 
 	file := path.Join(cfg.DocDst, name)
 	ensureDirExists(file)
+	//nolint:gosec
 	err := ioutil.WriteFile(file, []byte(doc), 0644)
 	if err != nil {
 		panic(err)

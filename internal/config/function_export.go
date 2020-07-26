@@ -12,7 +12,7 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-// ExportFunctionContext create a context data structure based on the collapsed function exports
+// ExportFunctionContext create a context data structure based on the collapsed function exports.
 func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Config) map[string]interface{} {
 	var exported map[string]interface{}
 	status := "success"

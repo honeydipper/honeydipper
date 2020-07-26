@@ -39,7 +39,7 @@ func receiverRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	return ret
 }
 
-// ReceiverFeatures goes through the config data to figure out what driver/feature to start for receiving events
+// ReceiverFeatures goes through the config data to figure out what driver/feature to start for receiving events.
 func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 	dynamicData := map[string]interface{}{}
 

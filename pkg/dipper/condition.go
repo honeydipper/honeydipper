@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// Compare : compare an actual value to a criteria
+// Compare : compare an actual value to a criteria.
 func Compare(actual string, criteria interface{}) bool {
 	if criteria == nil {
 		return true
@@ -42,7 +42,7 @@ func Compare(actual string, criteria interface{}) bool {
 	return false
 }
 
-// CompareMap : compare a map to a map
+// CompareMap : compare a map to a map.
 func CompareMap(actual interface{}, criteria interface{}) bool {
 	switch scenario := criteria.(type) {
 	case []interface{}:
@@ -84,7 +84,7 @@ func CompareMap(actual interface{}, criteria interface{}) bool {
 	return false
 }
 
-// CompareAll : compare all conditions against an event data structure
+// CompareAll : compare all conditions against an event data structure.
 func CompareAll(actual interface{}, criteria interface{}) bool {
 	if criteria == nil {
 		return true
@@ -123,7 +123,7 @@ func CompareAll(actual interface{}, criteria interface{}) bool {
 	return false
 }
 
-// RegexParser : used with Recursive to process the data in the conditions so they can be used for matching
+// RegexParser : used with Recursive to process the data in the conditions so they can be used for matching.
 func RegexParser(key string, val interface{}) (ret interface{}, replace bool) {
 	if str, ok := val.(string); ok {
 		if strings.HasPrefix(str, ":regex:") {

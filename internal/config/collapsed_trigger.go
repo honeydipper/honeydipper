@@ -10,7 +10,7 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-// CollapsedTrigger is a trigger with collapsed matching criteria, parameters, merged sysData and stack of exports
+// CollapsedTrigger is a trigger with collapsed matching criteria, parameters, merged sysData and stack of exports.
 type CollapsedTrigger struct {
 	Match      map[string]interface{}   `json:"match"`
 	Exports    []map[string]interface{} `json:"exports"`
@@ -18,7 +18,7 @@ type CollapsedTrigger struct {
 	Parameters map[string]interface{}   `json:"parameters"`
 }
 
-// CollapseTrigger collapses matching criteria, exports and sysData of a trigger and its inheritted triggers
+// CollapseTrigger collapses matching criteria, exports and sysData of a trigger and its inheritted triggers.
 func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 	var stack []*Trigger
 	current := t
@@ -60,7 +60,7 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 	}
 }
 
-// ExportContext putting raw data from event into context as abstracted fields
+// ExportContext putting raw data from event into context as abstracted fields.
 func (t *CollapsedTrigger) ExportContext(eventName string, envData map[string]interface{}) map[string]interface{} {
 	newCtx := map[string]interface{}{}
 	envData["ctx"] = newCtx

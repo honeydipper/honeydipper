@@ -19,7 +19,7 @@ var (
 	ErrFailedCreateClient = errors.New("unable to create gcloud pubsub client")
 )
 
-// SubscriberConfig stores all gcloud pubsub subscriber information
+// SubscriberConfig stores all gcloud pubsub subscriber information.
 type SubscriberConfig struct {
 	Project          string
 	ServiceAccount   string

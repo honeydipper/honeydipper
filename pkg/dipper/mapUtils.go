@@ -24,7 +24,7 @@ const (
 	MergeError Error = "merge error"
 )
 
-// GetMapData : get the data from the deep map following a KV path
+// GetMapData : get the data from the deep map following a KV path.
 func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 	var current = reflect.ValueOf(from)
 	if !current.IsValid() {
@@ -60,7 +60,7 @@ func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 	return current.Interface(), true
 }
 
-// MustGetMapData : get the data from the deep map following a KV path, may raise errors
+// MustGetMapData : get the data from the deep map following a KV path, may raise errors.
 func MustGetMapData(from interface{}, path string) interface{} {
 	ret, ok := GetMapData(from, path)
 	if !ok {
@@ -69,7 +69,7 @@ func MustGetMapData(from interface{}, path string) interface{} {
 	return ret
 }
 
-// GetMapDataStr : get the data as string from the deep map following a KV path
+// GetMapDataStr : get the data as string from the deep map following a KV path.
 func GetMapDataStr(from interface{}, path string) (ret string, ok bool) {
 	if data, ok := GetMapData(from, path); ok {
 		str, ok := data.(string)
@@ -78,13 +78,13 @@ func GetMapDataStr(from interface{}, path string) (ret string, ok bool) {
 	return "", ok
 }
 
-// MustGetMapDataStr : get the data as string from the deep map following a KV path, may raise errors
+// MustGetMapDataStr : get the data as string from the deep map following a KV path, may raise errors.
 func MustGetMapDataStr(from interface{}, path string) string {
 	ret := MustGetMapData(from, path)
 	return ret.(string)
 }
 
-// GetMapDataBool : get the data as bool from the deep map following a KV path
+// GetMapDataBool : get the data as bool from the deep map following a KV path.
 func GetMapDataBool(from interface{}, path string) (ret bool, ok bool) {
 	if data, ok := GetMapData(from, path); ok {
 		switch v := data.(type) {
@@ -102,7 +102,7 @@ func GetMapDataBool(from interface{}, path string) (ret bool, ok bool) {
 	return false, false
 }
 
-// MustGetMapDataBool : get the data as bool from the deep map following a KV path or panic
+// MustGetMapDataBool : get the data as bool from the deep map following a KV path or panic.
 func MustGetMapDataBool(from interface{}, path string) bool {
 	data, ok := GetMapData(from, path)
 	if ok {
@@ -124,12 +124,12 @@ func MustGetMapDataBool(from interface{}, path string) bool {
 	panic(fmt.Errorf("not a bool: %s: %w", path, MapError))
 }
 
-// Recursive : enumerate all the data element deep into the map call the function provided
+// Recursive : enumerate all the data element deep into the map call the function provided.
 func Recursive(from interface{}, process func(key string, val interface{}) (newval interface{}, ok bool)) {
 	RecursiveWithPrefix(nil, "", "", from, process)
 }
 
-// RecursiveWithPrefix : enumerate all the data element deep into the map call the function provided
+// RecursiveWithPrefix : enumerate all the data element deep into the map call the function provided.
 func RecursiveWithPrefix(
 	parent interface{},
 	prefixes string,
@@ -190,7 +190,7 @@ func RecursiveWithPrefix(
 	}
 }
 
-// LockGetMap : acquire a lock and look up a key in the map then return the result
+// LockGetMap : acquire a lock and look up a key in the map then return the result.
 func LockGetMap(lock *sync.Mutex, resource interface{}, key interface{}) (ret interface{}, ok bool) {
 	lock.Lock()
 	defer lock.Unlock()
@@ -205,7 +205,7 @@ func LockGetMap(lock *sync.Mutex, resource interface{}, key interface{}) (ret in
 	return retVal.Interface(), true
 }
 
-// LockSetMap : acquire a lock and set the value in the map by index and return the previous value if available
+// LockSetMap : acquire a lock and set the value in the map by index and return the previous value if available.
 func LockSetMap(lock *sync.Mutex, resource interface{}, key interface{}, val interface{}) (ret interface{}) {
 	lock.Lock()
 	defer lock.Unlock()
@@ -224,7 +224,7 @@ func LockSetMap(lock *sync.Mutex, resource interface{}, key interface{}, val int
 	return nil
 }
 
-// LockCheckDeleteMap : acquire a lock and delete the entry from the map and return the previous value if available
+// LockCheckDeleteMap : acquire a lock and delete the entry from the map and return the previous value if available.
 func LockCheckDeleteMap(lock *sync.Mutex, resource interface{}, key interface{}, checkValue interface{}) (ret interface{}) {
 	lock.Lock()
 	defer lock.Unlock()
@@ -294,7 +294,7 @@ func DeepCopy(m interface{}) (interface{}, error) {
 	return m, nil
 }
 
-// MustDeepCopyMap : performs a deep copy of the given map m, panic if run into errors
+// MustDeepCopyMap : performs a deep copy of the given map m, panic if run into errors.
 func MustDeepCopyMap(m map[string]interface{}) map[string]interface{} {
 	ret, err := DeepCopyMap(m)
 	if err != nil {
@@ -303,7 +303,7 @@ func MustDeepCopyMap(m map[string]interface{}) map[string]interface{} {
 	return ret
 }
 
-// MustDeepCopy : performs a deep copy of the given map or slice, panic if run into errors
+// MustDeepCopy : performs a deep copy of the given map or slice, panic if run into errors.
 func MustDeepCopy(m interface{}) interface{} {
 	ret, err := DeepCopy(m)
 	if err != nil {
@@ -312,7 +312,7 @@ func MustDeepCopy(m interface{}) interface{} {
 	return ret
 }
 
-// CombineMap : combine the data form two maps without merging them
+// CombineMap : combine the data form two maps without merging them.
 func CombineMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
 	if src == nil {
 		return dst
@@ -362,7 +362,7 @@ func mergeModifier(dst map[string]interface{}) {
 	}
 }
 
-// MergeMap : merge the data from source to destination with some overriding rule
+// MergeMap : merge the data from source to destination with some overriding rule.
 func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
 	dst = CombineMap(dst, src)
 

@@ -14,15 +14,15 @@ import (
 )
 
 const (
-	// SUCCESS means the workflow finished successfully
+	// SUCCESS means the workflow finished successfully.
 	SUCCESS = "success"
-	// FAILURE means the workflow finished with failure status
+	// FAILURE means the workflow finished with failure status.
 	FAILURE = "failure"
-	// ERROR means the workflow run into errors and could not complete
+	// ERROR means the workflow run into errors and could not complete.
 	ERROR = "error"
 )
 
-// CommandProvider : an interface for providing Command handling feature
+// CommandProvider : an interface for providing Command handling feature.
 type CommandProvider struct {
 	Commands     map[string]MessageHandler
 	ReturnWriter io.Writer
@@ -30,7 +30,7 @@ type CommandProvider struct {
 	Subject      string
 }
 
-// Init : initializing rpc provider
+// Init : initializing rpc provider.
 func (p *CommandProvider) Init(channel string, subject string, defaultWriter io.Writer) {
 	p.Commands = map[string]MessageHandler{}
 	p.ReturnWriter = defaultWriter
@@ -38,7 +38,7 @@ func (p *CommandProvider) Init(channel string, subject string, defaultWriter io.
 	p.Subject = subject
 }
 
-// ReturnError sends an error message return to caller and create an error
+// ReturnError sends an error message return to caller and create an error.
 func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...interface{}) error {
 	errText := fmt.Sprintf(pattern, args...)
 	p.Return(call, &Message{
@@ -50,7 +50,7 @@ func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...int
 	return Error(errText)
 }
 
-// Return : return a value to rpc caller
+// Return : return a value to rpc caller.
 func (p *CommandProvider) Return(call *Message, retval *Message) {
 	defer func() {
 		call.Reply = nil
@@ -86,7 +86,7 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 	SendMessage(p.ReturnWriter, retMsg)
 }
 
-// Router : route the message to rpc handlers
+// Router : route the message to rpc handlers.
 func (p *CommandProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
 	f, ok := p.Commands[method]
@@ -145,7 +145,7 @@ func (p *CommandProvider) Router(msg *Message) {
 	attempt(make(chan Message, 1))
 }
 
-// UnpackLabels loads necessary variables out of the labels
+// UnpackLabels loads necessary variables out of the labels.
 func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backoffms time.Duration) {
 	var err error
 

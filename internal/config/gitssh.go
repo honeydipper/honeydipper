@@ -19,7 +19,7 @@ import (
 var loadedSSHAuth bool
 var currentSSHAuth transport.AuthMethod
 
-// GetGitSSHAuth creates an AuthMethod to be used for various git operations
+// GetGitSSHAuth creates an AuthMethod to be used for various git operations.
 func GetGitSSHAuth() transport.AuthMethod {
 	if loadedSSHAuth {
 		return currentSSHAuth

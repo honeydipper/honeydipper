@@ -21,7 +21,7 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-// Error represents a configuration error
+// Error represents a configuration error.
 type Error struct {
 	Error error
 	File  string

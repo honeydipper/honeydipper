@@ -25,8 +25,8 @@ func init() {
 	gob.Register([]interface{}{})
 }
 
-// Config is a wrapper around the final complete configration of the daemon
-// including history and the runtime information
+// Config is a wrapper around the final complete configration of the daemon.
+// including history and the runtime information.
 type Config struct {
 	InitRepo          RepoInfo
 	Services          []string
@@ -179,7 +179,7 @@ func (c *Config) GetDriverData(path string) (ret interface{}, ok bool) {
 
 // GetDriverDataStr gets an item from a driver's data block.
 //   logLevel,ok := c.GetDriverData("daemon.loglevel")
-// The function assume the return value is a string will do a type assertion
+// The function assume the return value is a string will do a type assertion.
 // upon returning.
 func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {
 	if c.DataSet == nil || c.DataSet.Drivers == nil {
@@ -227,7 +227,7 @@ func (c *Config) extendAllSystems() {
 	}
 }
 
-// SystemCopy performs a deep copy of the given system
+// SystemCopy performs a deep copy of the given system.
 func SystemCopy(s *System) (*System, error) {
 	var buf bytes.Buffer
 	if s == nil {

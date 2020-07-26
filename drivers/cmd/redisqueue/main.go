@@ -21,7 +21,7 @@ import (
 	"github.com/op/go-logging"
 )
 
-// EventBusOptions : stores all the redis key names used by honeydipper
+// EventBusOptions : stores all the redis key names used by honeydipper.
 type EventBusOptions struct {
 	EventTopic   string
 	CommandTopic string

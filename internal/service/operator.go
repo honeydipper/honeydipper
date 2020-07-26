@@ -23,7 +23,7 @@ const (
 
 var operator *Service
 
-// StartOperator starts the operator service
+// StartOperator starts the operator service.
 func StartOperator(cfg *config.Config) {
 	operator = NewService(cfg, "operator")
 	operator.Route = operatorRoute
@@ -31,7 +31,7 @@ func StartOperator(cfg *config.Config) {
 	operator.start()
 }
 
-// handleEventbusCommand
+// handleEventbusCommand.
 func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 	defer func() {
 		if r := recover(); r != nil {
