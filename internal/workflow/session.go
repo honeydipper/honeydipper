@@ -457,7 +457,7 @@ func (w *Session) GetStatus() (string, string) {
 	if status, ok = w.savedMsg.Labels["status"]; ok {
 		status = SessionStatusSuccess
 	}
-	reason, _ = w.savedMsg.Labels["reason"]
+	reason = w.savedMsg.Labels["reason"]
 	return status, reason
 }
 

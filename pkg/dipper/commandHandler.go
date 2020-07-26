@@ -149,7 +149,7 @@ func (p *CommandProvider) Router(msg *Message) {
 func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backoffms time.Duration) {
 	var err error
 
-	retryStr, _ := msg.Labels["retry"]
+	retryStr := msg.Labels["retry"]
 	if retryStr != "" {
 		retry, err = strconv.Atoi(retryStr)
 		if err != nil {
@@ -157,7 +157,7 @@ func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backof
 		}
 	}
 
-	backoffStr, _ := msg.Labels["backoff_ms"]
+	backoffStr := msg.Labels["backoff_ms"]
 	if backoffStr != "" {
 		backoffVal, err := strconv.Atoi(backoffStr)
 		if err != nil {
@@ -168,7 +168,7 @@ func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backof
 		backoffms = 1000
 	}
 
-	timeoutStr, _ := msg.Labels["timeout"]
+	timeoutStr := msg.Labels["timeout"]
 	if timeoutStr != "" {
 		timeoutVal, err := strconv.Atoi(timeoutStr)
 		if err != nil {

@@ -39,7 +39,7 @@ func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Con
 	// we will also need to provide the squashed sysData for interpolation
 	// the outer parameters should override inner parameters, but
 	// the inner sysData should override outer sysData
-	outerParam, _ := envData["params"]
+	outerParam := envData["params"]
 	envData["params"] = dipper.MergeMap(dipper.MustDeepCopyMap(f.Parameters), outerParam)
 
 	if f.Target.System != "" {
@@ -73,7 +73,7 @@ func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Con
 		// here comes the interpolation for the squashed parameters. This interpolation only happens
 		// once, in the inner most function. After that, the parameters can be used for export in all outer
 		// layers.
-		squashedParams, _ := envData["params"]
+		squashedParams := envData["params"]
 		envData["params"] = dipper.Interpolate(squashedParams, envData)
 	}
 
