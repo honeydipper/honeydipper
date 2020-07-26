@@ -386,9 +386,9 @@ func recycleDeployment(m *dipper.Message) {
 
 		for k, v := range deployment.Spec.Selector.MatchLabels {
 			if len(labels) > 0 {
-				labels = labels + ","
+				labels += ","
 			}
-			labels = labels + k + "=" + v
+			labels += k + "=" + v
 		}
 	}
 

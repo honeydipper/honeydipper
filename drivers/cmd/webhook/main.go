@@ -133,7 +133,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		})
 
 		w.Header().Set("content-type", "application/json")
-		w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
+		_, _ = w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
 		return
 	}
 
