@@ -58,10 +58,11 @@ func CompareMap(actual interface{}, criteria interface{}) bool {
 	case map[string]interface{}:
 		value := reflect.ValueOf(actual)
 		for key, subCriteria := range scenario {
-			if key == ":auth:" {
+			switch {
+			case key == ":auth:":
 				// offload to another driver using RPC
 				// pass
-			} else if key == ":absent:" {
+			case key == ":absent:":
 				keys := []interface{}{}
 				for _, k := range value.MapKeys() {
 					keys = append(keys, k.Interface())
@@ -70,13 +71,11 @@ func CompareMap(actual interface{}, criteria interface{}) bool {
 					// key not absent
 					return false
 				}
-			} else if subVal := value.MapIndex(reflect.ValueOf(key)); subVal.IsValid() {
-				if !CompareAll(subVal.Interface(), subCriteria) {
+			default:
+				subVal := value.MapIndex(reflect.ValueOf(key))
+				if !subVal.IsValid() || (subVal.IsValid() && !CompareAll(subVal.Interface(), subCriteria)) {
 					return false
 				}
-			} else {
-				// value not present for this criteria
-				return false
 			}
 		}
 		return true

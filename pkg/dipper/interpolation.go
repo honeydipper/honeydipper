@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	// all errors thrown due to failure to interpolation
+	// InterpolationError represents all errors thrown due to failure to interpolate
 	InterpolationError Error = "config error"
 )
 
@@ -71,55 +71,60 @@ func ParseYaml(pattern string) interface{} {
 	return data
 }
 
+// InterpolateDollarStr handles dollar interpolation
+func InterpolateDollarStr(v string, data interface{}) interface{} {
+	allowNull := (v[1] == '?')
+	var parsed string
+	if allowNull {
+		parsed = InterpolateStr(v[2:], data)
+	} else {
+		parsed = InterpolateStr(v[1:], data)
+	}
+
+	quote := strings.IndexAny(parsed, "\"'`")
+	if allowNull && quote >= 0 {
+		panic(fmt.Errorf("allow nil combine with default value: %s: %w", v, InterpolationError))
+	}
+
+	var keys []string
+	if quote > 0 {
+		if parsed[quote-1] != ',' {
+			panic(fmt.Errorf("missing comma: %s: %w", v, InterpolationError))
+		}
+		keys = strings.Split(parsed[:quote-1], ",")
+	} else if quote < 0 {
+		keys = strings.Split(parsed, ",")
+	}
+
+	for _, key := range keys {
+		ret, _ := GetMapData(data, key)
+		if ret != nil {
+			if strings.HasPrefix(key, "sysData.") {
+				return Interpolate(ret, data)
+			}
+			return ret
+		}
+	}
+
+	if quote >= 0 {
+		if parsed[quote] != parsed[len(parsed)-1] {
+			panic(fmt.Errorf("quotes not matching: %s: %w", parsed, InterpolationError))
+		}
+		return parsed[quote+1 : len(parsed)-1]
+	}
+
+	if allowNull {
+		return nil
+	}
+	panic(fmt.Errorf("invalid path: %s: %w", v[1:], InterpolationError))
+}
+
 // Interpolate : go through the map data structure to find and parse all the templates
 func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:
 		if strings.HasPrefix(v, "$") {
-			allowNull := (v[1] == '?')
-			var parsed string
-			if allowNull {
-				parsed = InterpolateStr(v[2:], data)
-			} else {
-				parsed = InterpolateStr(v[1:], data)
-			}
-
-			quote := strings.IndexAny(parsed, "\"'`")
-			if allowNull && quote >= 0 {
-				panic(fmt.Errorf("allow nil combine with default value: %s: %w", v, InterpolationError))
-			}
-
-			var keys []string
-			if quote > 0 {
-				if parsed[quote-1] != ',' {
-					panic(fmt.Errorf("missing comma: %s: %w", v, InterpolationError))
-				}
-				keys = strings.Split(parsed[:quote-1], ",")
-			} else if quote < 0 {
-				keys = strings.Split(parsed, ",")
-			}
-
-			for _, key := range keys {
-				ret, _ := GetMapData(data, key)
-				if ret != nil {
-					if strings.HasPrefix(key, "sysData.") {
-						return Interpolate(ret, data)
-					}
-					return ret
-				}
-			}
-
-			if quote >= 0 {
-				if parsed[quote] != parsed[len(parsed)-1] {
-					panic(fmt.Errorf("quotes not matching: %s: %w", parsed, InterpolationError))
-				}
-				return parsed[quote+1 : len(parsed)-1]
-			}
-
-			if allowNull {
-				return nil
-			}
-			panic(fmt.Errorf("invalid path: %s: %w", v[1:], InterpolationError))
+			return InterpolateDollarStr(v, data)
 		}
 
 		ret := InterpolateGoTemplate(v, data)

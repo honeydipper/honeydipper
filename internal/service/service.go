@@ -85,10 +85,12 @@ func NewService(cfg *config.Config, name string) *Service {
 	return svc
 }
 
+// GetName returns the name of the service
 func (s *Service) GetName() string {
 	return s.name
 }
 
+// GetStream returns the writer for communication with the specified feature
 func (s *Service) GetStream(feature string) io.Writer {
 	if runtime := s.getDriverRuntime(feature); runtime != nil {
 		seconds := 0
@@ -149,15 +151,13 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		dipper.Logger.Warningf("[%s] reloading feature %s", s.name, feature)
 	}
 
+	var ok bool
 	if strings.HasPrefix(feature, "driver:") {
 		driverName = feature[7:]
 	} else {
-		featureMap, ok := s.config.GetDriverData("daemon.featureMap")
-		if ok {
-			driverName, ok = dipper.GetMapDataStr(featureMap, s.name+"."+feature)
-			if !ok {
-				driverName, ok = dipper.GetMapDataStr(featureMap, "global."+feature)
-			}
+		driverName, ok = s.config.GetDriverDataStr(fmt.Sprintf("daemon.featureMap.%s.%s", s.name, feature))
+		if !ok {
+			driverName, ok = s.config.GetDriverDataStr(fmt.Sprintf("daemon.featureMap.global.%s", feature))
 		}
 		if !ok {
 			panic("driver not defined for the feature")
@@ -196,41 +196,49 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		} else {
 			// hot reload
 			affected = true
-			oldRuntime.Data = driverRuntime.Data
-			oldRuntime.DynamicData = driverRuntime.DynamicData
-			oldRuntime.State = driver.DriverReloading
-			oldRuntime.SendOptions()
+			s.hotReload(&driverRuntime, oldRuntime)
 		}
 	} else {
 		// cold reload
 		affected = true
-		driverRuntime.Start(s.name)
-
-		s.setDriverRuntime(feature, &driverRuntime)
-		go func(s *Service, feature string, runtime *driver.Runtime) {
-			defer dipper.SafeExitOnError("[%s] driver runtime %s crash", s.name, runtime.Handler.Meta().Name)
-			defer s.checkDeleteDriverRuntime(feature, runtime)
-			defer close(runtime.Stream)
-
-			//nolint:errcheck
-			runtime.Run.Wait()
-		}(s, feature, &driverRuntime)
-
-		if oldRuntime != nil {
-			s.checkDeleteDriverRuntime(feature, nil)
-			if feature == FeatureEmitter {
-				// emitter is being replaced
-				delete(daemon.Emitters, s.name)
-			}
-			go func(runtime *driver.Runtime) {
-				defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Handler.Meta().Name)
-				// allow 50 millisecond for the data to drain
-				time.Sleep(50 * time.Millisecond)
-				runtime.Output.Close()
-			}(oldRuntime)
-		}
+		s.coldReload(&driverRuntime, oldRuntime)
 	}
 	return affected, driverName, nil
+}
+
+func (s *Service) hotReload(driverRuntime *driver.Runtime, oldRuntime *driver.Runtime) {
+	oldRuntime.Data = driverRuntime.Data
+	oldRuntime.DynamicData = driverRuntime.DynamicData
+	oldRuntime.State = driver.DriverReloading
+	oldRuntime.SendOptions()
+}
+
+func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.Runtime) {
+	driverRuntime.Start(s.name)
+
+	s.setDriverRuntime(driverRuntime.Feature, driverRuntime)
+	go func(s *Service, runtime *driver.Runtime) {
+		defer dipper.SafeExitOnError("[%s] driver runtime %s crash", s.name, runtime.Handler.Meta().Name)
+		defer s.checkDeleteDriverRuntime(runtime.Feature, runtime)
+		defer close(runtime.Stream)
+
+		//nolint:errcheck
+		runtime.Run.Wait()
+	}(s, driverRuntime)
+
+	if oldRuntime != nil {
+		s.checkDeleteDriverRuntime(driverRuntime.Feature, nil)
+		if driverRuntime.Feature == FeatureEmitter {
+			// emitter is being replaced
+			delete(daemon.Emitters, s.name)
+		}
+		go func(runtime *driver.Runtime) {
+			defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Handler.Meta().Name)
+			// allow 50 millisecond for the data to drain
+			time.Sleep(50 * time.Millisecond)
+			runtime.Output.Close()
+		}(oldRuntime)
+	}
 }
 
 func (s *Service) start() {
@@ -312,40 +320,44 @@ func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 
 func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 	for feature, required := range featureList {
-		if required {
-			affected, driverName, err := s.loadFeature(feature)
-			if err != nil {
-				if boot {
-					dipper.Logger.Fatalf("[%s] failed to load required feature [%s]", s.name, feature)
-				} else {
-					dipper.Logger.Panicf("[%s] failed to reload required feature [%s]", s.name, feature)
-				}
-			}
-			if affected {
-				func(feature string, driverName string) {
-					s.addExpect(
-						"state:alive:"+driverName,
-						func(*dipper.Message) {
-							s.driverRuntimes[feature].State = driver.DriverAlive
-							if feature == FeatureEmitter {
-								// emitter is loaded
-								daemon.Emitters[s.name] = s
-							}
-						},
-						10*time.Second,
-						func() {
-							if boot {
-								dipper.Logger.Fatalf("failed to start driver %s.%s", s.name, driverName)
-							} else {
-								dipper.Logger.Warningf("failed to reload driver %s.%s", s.name, driverName)
-								s.driverRuntimes[feature].State = driver.DriverFailed
-								s.config.RollBack()
-							}
-						},
-					)
-				}(feature, driverName)
+		if !required {
+			continue
+		}
+		affected, driverName, err := s.loadFeature(feature)
+		if err != nil {
+			if boot {
+				dipper.Logger.Fatalf("[%s] failed to load required feature [%s]", s.name, feature)
+			} else {
+				dipper.Logger.Panicf("[%s] failed to reload required feature [%s]", s.name, feature)
 			}
 		}
+		if !affected {
+			continue
+		}
+
+		// expecting the driver to ping back then send options
+		func(feature string, driverName string) {
+			s.addExpect(
+				"state:alive:"+driverName,
+				func(*dipper.Message) {
+					s.driverRuntimes[feature].State = driver.DriverAlive
+					if feature == FeatureEmitter {
+						// emitter is loaded
+						daemon.Emitters[s.name] = s
+					}
+				},
+				10*time.Second,
+				func() {
+					if boot {
+						dipper.Logger.Fatalf("failed to start driver %s.%s", s.name, driverName)
+					} else {
+						dipper.Logger.Warningf("failed to reload driver %s.%s", s.name, driverName)
+						s.driverRuntimes[feature].State = driver.DriverFailed
+						s.config.RollBack()
+					}
+				},
+			)
+		}(feature, driverName)
 	}
 }
 
@@ -414,18 +426,10 @@ func (s *Service) serviceLoop() {
 			chosen, value, ok = reflect.Select(cases)
 		}()
 
-		if !ok {
-			if chosen < len(orderedRuntimes) {
-				if orderedRuntimes[chosen].Feature == FeatureEmitter {
-					// emitter has crashed
-					delete(daemon.Emitters, s.name)
-				}
-				if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive {
-					// only reload drivers that used to be in DriveAlive state
-					go loadFailedDriverRuntime(orderedRuntimes[chosen], 0)
-				}
-			}
-		} else if chosen < len(orderedRuntimes) {
+		switch {
+		case ok && chosen < len(orderedRuntimes):
+			// selected driver gives message
+
 			func() {
 				defer dipper.SafeExitOnError("[%s] service loop continue", s.name)
 				runtime := orderedRuntimes[chosen]
@@ -446,8 +450,21 @@ func (s *Service) serviceLoop() {
 				defer s.driverLock.Unlock()
 				go s.process(msg, runtime)
 			}()
+
+		case !ok && chosen < len(orderedRuntimes):
+			// selected driver crashed
+
+			if orderedRuntimes[chosen].Feature == FeatureEmitter {
+				// emitter has crashed
+				delete(daemon.Emitters, s.name)
+			}
+			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive {
+				// only reload drivers that used to be in DriveAlive state
+				go loadFailedDriverRuntime(orderedRuntimes[chosen], 0)
+			}
 		}
 	}
+
 	for fname, runtime := range s.driverRuntimes {
 		func() {
 			defer dipper.SafeExitOnError("[%s] driver runtime for feature %s already closed", s.name, fname)
@@ -592,14 +609,19 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 			"driver:" + driverName,
 		})
 	}
-	_, _, err := s.loadFeature(d.Feature)
-	if err != nil {
+
+	retry := func() {
+		dipper.Logger.Warningf("[%s] failed to load/reload driver %s attempt %d", s.name, driverName, count)
 		if count < 3 {
 			time.Sleep(30 * time.Second)
 			go loadFailedDriverRuntime(d, count+1)
 		} else {
 			dipper.Logger.Fatalf("[%s] quiting after failed to reload crashed driver %s", s.name, driverName)
 		}
+	}
+	_, _, err := s.loadFeature(d.Feature)
+	if err != nil {
+		retry()
 	} else {
 		s.addExpect(
 			"state:alive:"+driverName,
@@ -611,14 +633,7 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 				}
 			},
 			10*time.Second,
-			func() {
-				dipper.Logger.Warningf("[%s] failed to reload driver %s", s.name, driverName)
-				if count < 3 {
-					go loadFailedDriverRuntime(d, count+1)
-				} else {
-					dipper.Logger.Fatalf("[%s] quiting after failed to reload crashed driver %s", s.name, driverName)
-				}
-			},
+			retry,
 		)
 	}
 }
@@ -642,26 +657,27 @@ func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
 
 func handleReload(from *driver.Runtime, m *dipper.Message) {
 	daemonID, ok := m.Labels["daemonID"]
-	if !ok || daemonID == dipper.GetIP() {
-		var min string
-		for min = range Services {
-			if from.Service > min {
-				break
+	if ok && daemonID != dipper.GetIP() {
+		return
+	}
+	var min string
+	for min = range Services {
+		if from.Service > min {
+			break
+		}
+	}
+	if from.Service <= min {
+		m := dipper.DeserializePayload(m)
+		go func() {
+			time.Sleep(time.Second)
+			if force, ok := dipper.GetMapDataStr(m.Payload, "force"); ok && (force == "yes" || force == "true") {
+				daemon.ShutDown()
+				os.Exit(0)
+			} else {
+				dipper.Logger.Infof("[%s] reload config on broadcast reload message", min)
+				Services[min].config.Refresh()
 			}
-		}
-		if from.Service <= min {
-			m := dipper.DeserializePayload(m)
-			go func() {
-				time.Sleep(time.Second)
-				if force, ok := dipper.GetMapDataStr(m.Payload, "force"); ok && (force == "yes" || force == "true") {
-					daemon.ShutDown()
-					os.Exit(0)
-				} else {
-					dipper.Logger.Infof("[%s] reload config on broadcast reload message", min)
-					Services[min].config.Refresh()
-				}
-			}()
-		}
+		}()
 	}
 }
 

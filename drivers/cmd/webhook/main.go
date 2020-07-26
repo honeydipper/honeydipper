@@ -94,50 +94,50 @@ func startWebhook(m *dipper.Message) {
 func hookHandler(w http.ResponseWriter, r *http.Request) {
 	eventData := extractEventData(w, r)
 
-	if eventData["url"] != "/hz/alive" {
-		log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
+	if eventData["url"] == "/hz/alive" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
-		matched := false
-		for _, hook := range hooks {
-			for _, collapsed := range hook.([]interface{}) {
-				condition, _ := dipper.GetMapData(collapsed, "match")
-				auth, ok := dipper.GetMapData(condition, ":auth:")
-				if ok {
-					authDriver := dipper.MustGetMapDataStr(auth, "driver")
-					authResult, err := driver.Call("driver:"+authDriver, "webhookAuth", map[string]interface{}{
-						"event":     eventData,
-						"condition": auth,
-					})
-					if err != nil || string(authResult) != "authenticated" {
-						log.Warningf("[%s] failed to authenticate webhook request with %s error %+v", driver.Service, authDriver, err)
-						continue
-					}
-				}
-				if dipper.CompareAll(eventData, condition) {
-					matched = true
-					break
+	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
+	matched := false
+	for _, hook := range hooks {
+		for _, collapsed := range hook.([]interface{}) {
+			condition, _ := dipper.GetMapData(collapsed, "match")
+			auth, ok := dipper.GetMapData(condition, ":auth:")
+			if ok {
+				authDriver := dipper.MustGetMapDataStr(auth, "driver")
+				authResult, err := driver.Call("driver:"+authDriver, "webhookAuth", map[string]interface{}{
+					"event":     eventData,
+					"condition": auth,
+				})
+				if err != nil || string(authResult) != "authenticated" {
+					log.Warningf("[%s] failed to authenticate webhook request with %s error %+v", driver.Service, authDriver, err)
+					continue
 				}
 			}
-			if matched {
+			if dipper.CompareAll(eventData, condition) {
+				matched = true
 				break
 			}
 		}
-
 		if matched {
-			id := driver.EmitEvent(map[string]interface{}{
-				"events": []interface{}{"webhook."},
-				"data":   eventData,
-			})
-
-			w.Header().Set("content-type", "application/json")
-			w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
-			return
+			break
 		}
-
-		http.NotFound(w, r)
-	} else {
-		w.WriteHeader(http.StatusOK)
 	}
+
+	if matched {
+		id := driver.EmitEvent(map[string]interface{}{
+			"events": []interface{}{"webhook."},
+			"data":   eventData,
+		})
+
+		w.Header().Set("content-type", "application/json")
+		w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
+		return
+	}
+
+	http.NotFound(w, r)
 }
 
 func badRequest(w http.ResponseWriter) {
