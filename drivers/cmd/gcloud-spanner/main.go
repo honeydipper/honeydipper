@@ -25,8 +25,8 @@ var (
 	ErrMissingLocation = errors.New("location required")
 	// ErrMissingDB means missing db
 	ErrMissingDB = errors.New("db required")
-	// ErrMissingBackupOpID means missing backupOpId
-	ErrMissingBackupOpID = errors.New("backupOpId required")
+	// ErrMissingBackupOpID means missing backupOpID
+	ErrMissingBackupOpID = errors.New("backupOpID required")
 	// ErrCreateClient means failure when creating API client
 	ErrCreateClient = errors.New("fail to create client")
 	// ErrBackupOpNotFound means the backup operation not found
@@ -120,20 +120,20 @@ func backup(m *dipper.Message) {
 		dipper.Logger.Panicf("[%s] unable to start the backup %s/%s/%s: %+v", driver.Service, project, instance, db, err)
 	}
 
-	backupOpId := strings.Join([]string{"backup", project, instance, db, req.BackupId}, "_")
+	backupOpID := strings.Join([]string{"backup", project, instance, db, req.BackupId}, "_")
 	waitCtx, cancelWait := context.WithTimeout(context.Background(), timeout*time.Second)
-	lro.Store(backupOpId, []interface{}{op, waitCtx})
+	lro.Store(backupOpID, []interface{}{op, waitCtx})
 
 	go func() {
 		defer cancelWait()
-		defer lro.Delete(backupOpId)
+		defer lro.Delete(backupOpID)
 
 		op.Wait(waitCtx)
 	}()
 
 	m.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
-			"backupOpId": backupOpId,
+			"backupOpID": backupOpID,
 		},
 	}
 }
@@ -141,12 +141,12 @@ func backup(m *dipper.Message) {
 func waitForBackup(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	params := m.Payload
-	backupOpId, ok := dipper.GetMapDataStr(params, "backupOpId")
+	backupOpID, ok := dipper.GetMapDataStr(params, "backupOpID")
 	if !ok {
 		panic(ErrMissingBackupOpID)
 	}
 
-	obj, ok := lro.Load(backupOpId)
+	obj, ok := lro.Load(backupOpID)
 	if ok {
 		op := obj.([]interface{})[0].(*spannerAdmin.CreateBackupOperation)
 		waitCtx := obj.([]interface{})[1].(context.Context)
