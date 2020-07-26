@@ -15,7 +15,7 @@ import (
 
 // ExtractWebRequest put needed information from a request in a map.
 func ExtractWebRequest(r *http.Request) map[string]interface{} {
-	PanicError(r.ParseForm())
+	Must(r.ParseForm())
 
 	req := map[string]interface{}{
 		"url":        r.URL.Path,
@@ -30,7 +30,7 @@ func ExtractWebRequest(r *http.Request) map[string]interface{} {
 		req["body"] = Must(ioutil.ReadAll(r.Body))
 		if strings.HasPrefix(r.Header.Get("content-type"), "application/json") {
 			bodyObj := map[string]interface{}{}
-			PanicError(json.Unmarshal(req["body"].([]byte), &bodyObj))
+			Must(json.Unmarshal(req["body"].([]byte), &bodyObj))
 			req["json"] = bodyObj
 		}
 	}

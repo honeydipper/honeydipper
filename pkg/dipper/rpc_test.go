@@ -49,7 +49,7 @@ func TestRPCCallRaw(t *testing.T) {
 	fmt.Fscanln(&b, &lname, &vl)
 	if vl > 0 {
 		lval = make([]byte, vl)
-		PanicError(io.ReadFull(&b, lval))
+		Must(io.ReadFull(&b, lval))
 		labels[lname] = string(lval)
 	} else {
 		labels[lname] = ""
@@ -57,7 +57,7 @@ func TestRPCCallRaw(t *testing.T) {
 	fmt.Fscanln(&b, &lname, &vl)
 	if vl > 0 {
 		lval = make([]byte, vl)
-		PanicError(io.ReadFull(&b, lval))
+		Must(io.ReadFull(&b, lval))
 		labels[lname] = string(lval)
 	} else {
 		labels[lname] = ""
@@ -65,7 +65,7 @@ func TestRPCCallRaw(t *testing.T) {
 	fmt.Fscanln(&b, &lname, &vl)
 	if vl > 0 {
 		lval = make([]byte, vl)
-		PanicError(io.ReadFull(&b, lval))
+		Must(io.ReadFull(&b, lval))
 		labels[lname] = string(lval)
 	} else {
 		labels[lname] = ""
@@ -73,7 +73,7 @@ func TestRPCCallRaw(t *testing.T) {
 	fmt.Fscanln(&b, &lname, &vl)
 	if vl > 0 {
 		lval = make([]byte, vl)
-		PanicError(io.ReadFull(&b, lval))
+		Must(io.ReadFull(&b, lval))
 		labels[lname] = string(lval)
 	} else {
 		labels[lname] = ""

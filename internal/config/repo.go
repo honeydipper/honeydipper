@@ -47,7 +47,7 @@ func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*
 		}
 	}
 
-	dipper.PanicError(mergeDataSet(assembled, c.DataSet))
+	dipper.Must(mergeDataSet(assembled, c.DataSet))
 	return assembled, assembledList
 }
 
@@ -64,7 +64,7 @@ func (c *Repo) loadFile(filename string) {
 
 	var content DataSet
 	yamlFile := dipper.Must(ioutil.ReadFile(path.Join(c.root, filename[1:]))).([]byte)
-	dipper.PanicError(yaml.Unmarshal(yamlFile, &content))
+	dipper.Must(yaml.Unmarshal(yamlFile, &content))
 
 	if content.Repos != nil {
 		if !c.parent.IsDocGen && (c.parent.CheckRemote || !c.parent.IsConfigCheck) {
@@ -87,7 +87,7 @@ func (c *Repo) loadFile(filename string) {
 	}
 
 	c.normalizeFilePaths(filename, &content)
-	dipper.PanicError(mergeDataSet(&(c.DataSet), content))
+	dipper.Must(mergeDataSet(&(c.DataSet), content))
 	c.files[filename] = true
 	dipper.Logger.Infof("config file [%v] loaded", filename)
 }
@@ -117,14 +117,14 @@ func (c *Repo) cloneFetchRepo() {
 	if c.repo.Branch != "" {
 		branch = c.repo.Branch
 	}
-	dipper.PanicError(repoObj.Fetch(&git.FetchOptions{
+	dipper.Must(repoObj.Fetch(&git.FetchOptions{
 		RefSpecs: []gitCfg.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
 		Auth:     opts.Auth,
 	}))
 
 	dipper.Logger.Infof("using branch [%v] in repo [%v]", branch, c.repo.Repo)
 	tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
-	dipper.PanicError(tree.Checkout(&git.CheckoutOptions{
+	dipper.Must(tree.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
 	}))
 }

@@ -52,23 +52,20 @@ func CatchError(err interface{}, handler func()) {
 	}
 }
 
-// PanicError accepts multiple variables and will panic if the last variable is not nil.
-// It is used to wrap around functions that return error as the last return value.
-//   dipper.PanicError(io.ReadFull(&b, lval))
-// The io.ReadFull return length read and an error. If error is returned, the function will.
-// panic.
-func PanicError(args ...interface{}) {
-	if l := len(args); l > 0 {
-		if err := args[l-1]; err != nil {
-			panic(err)
-		}
+// Must is used to catch function return with error, used for wrapping a call that can return a error.
+func Must(args ...interface{}) interface{} {
+	l := len(args)
+	if l == 0 {
+		return nil
 	}
-}
-
-// Must is used to catch function return with error.
-func Must(ret interface{}, err error) interface{} {
-	if err != nil {
+	if err := args[l-1]; err != nil {
 		panic(err)
 	}
-	return ret
+	switch l {
+	case 1:
+		return nil
+	case 2:
+		return args[0]
+	}
+	return args[0 : l-1]
 }
