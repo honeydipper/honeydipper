@@ -60,7 +60,7 @@ func (s *SessionStore) newSession(parent string, eventUUID string, wf *config.Wo
 // StartSession starts a workflow session.
 func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session")
-	eventUUID, _ := msg.Labels["eventID"]
+	eventUUID := msg.Labels["eventID"]
 	w := s.newSession("", eventUUID, wf)
 	w.prepare(msg, nil, ctx)
 	w.execute(msg)

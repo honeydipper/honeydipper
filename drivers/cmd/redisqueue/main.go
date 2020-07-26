@@ -108,7 +108,7 @@ func start(msg *dipper.Message) {
 }
 
 func relayToRedis(msg *dipper.Message) {
-	returnTo, _ := msg.Labels["from"]
+	returnTo := msg.Labels["from"]
 	msg.Labels["from"] = dipper.GetIP()
 	topic := eventbus.EventTopic
 
