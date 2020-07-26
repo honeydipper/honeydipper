@@ -240,16 +240,18 @@ func checkWorkflowConditions(w config.Workflow) {
 // helper functions below
 
 func checkIsList(name string, f interface{}) {
-	if f != nil {
-		if s, ok := f.(string); ok {
-			if s != "" && hasLiteral(s) {
-				panic(fmt.Errorf("field \"%s\" %w", name, ErrorNotAList))
-			}
-		} else {
-			v := reflect.ValueOf(f)
-			if v.Kind() != reflect.Array && v.Kind() != reflect.Slice {
-				panic(fmt.Errorf("field \"%s\" %w", name, ErrorNotAList))
-			}
+	if f == nil {
+		return
+	}
+
+	if s, ok := f.(string); ok {
+		if s != "" && hasLiteral(s) {
+			panic(fmt.Errorf("field \"%s\" %w", name, ErrorNotAList))
+		}
+	} else {
+		v := reflect.ValueOf(f)
+		if v.Kind() != reflect.Array && v.Kind() != reflect.Slice {
+			panic(fmt.Errorf("field \"%s\" %w", name, ErrorNotAList))
 		}
 	}
 }

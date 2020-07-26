@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -80,69 +81,46 @@ func sendRequest(m *dipper.Message) {
 		method = "GET"
 	}
 
-	var req *http.Request
-	var err error
-	if method == "POST" || method == "PUT" {
-		content, ok := dipper.GetMapData(m.Payload, "content")
-		if ok {
-			switch v := content.(type) {
-			case string:
-				req, err = http.NewRequest(method, rurl, bytes.NewBufferString(v))
-				if err != nil {
-					panic(err)
-				}
-			case map[string]interface{}:
-				if strings.HasPrefix(header.Get("content-type"), "application/json") {
-					contentBytes, err := json.Marshal(v)
-					if err != nil {
-						panic(err)
-					}
-					req, err = http.NewRequest(method, rurl, bytes.NewBuffer(contentBytes))
-					if err != nil {
-						panic(err)
-					}
-				} else {
-					postForm := url.Values{}
-					for key, val := range v {
-						postForm.Add(key, val.(string))
-					}
-					contentStr := postForm.Encode()
-					req, err = http.NewRequest(method, rurl, bytes.NewBufferString(contentStr))
-					if err != nil {
-						panic(err)
-					}
-				}
-			default:
-				log.Panic("Unable to handle the content")
+	var (
+		req *http.Request
+		buf io.Reader
+	)
+
+	switch method {
+	case "POST":
+		fallthrough
+	case "PUT":
+		content, hasContent := dipper.GetMapData(m.Payload, "content")
+		contentStr, contentIsStr := content.(string)
+		needsJSON := strings.HasPrefix(header.Get("content-type"), "application/json")
+
+		switch {
+		case contentIsStr:
+			buf = bytes.NewBufferString(contentStr)
+		case hasContent && needsJSON:
+			contentBytes := dipper.Must(json.Marshal(content)).([]byte)
+			buf = bytes.NewBuffer(contentBytes)
+		case hasContent:
+			postForm := url.Values{}
+			for key, val := range content.(map[string]interface{}) {
+				postForm.Add(key, val.(string))
 			}
-		} else {
-			if strings.HasPrefix(header.Get("content-type"), "application/json") {
-				contentBytes, err := json.Marshal(formData)
-				if err != nil {
-					panic(err)
-				}
-				req, err = http.NewRequest(method, rurl, bytes.NewBuffer(contentBytes))
-				if err != nil {
-					panic(err)
-				}
-			} else {
-				contentStr := form.Encode()
-				req, err = http.NewRequest(method, rurl, bytes.NewBufferString(contentStr))
-				if err != nil {
-					panic(err)
-				}
-			}
+			buf = bytes.NewBufferString(postForm.Encode())
+		case needsJSON:
+			contentBytes := dipper.Must(json.Marshal(formData)).([]byte)
+			buf = bytes.NewBuffer(contentBytes)
+		default:
+			buf = bytes.NewBufferString(form.Encode())
 		}
-	} else {
-		req, err = http.NewRequest(method, rurl, nil)
-		if err != nil {
-			panic(err)
-		}
+
+		req = dipper.Must(http.NewRequest(method, rurl, buf)).(*http.Request)
+
+	default: // GET
+		req = dipper.Must(http.NewRequest(method, rurl, nil)).(*http.Request)
 		if len(req.URL.RawQuery) > 0 {
-			req.URL.RawQuery = req.URL.RawQuery + "&" + form.Encode()
-		} else {
-			req.URL.RawQuery = form.Encode()
+			req.URL.RawQuery += "&"
 		}
+		req.URL.RawQuery += form.Encode()
 	}
 
 	req.Header = header

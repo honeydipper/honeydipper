@@ -141,28 +141,26 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 		Size:    size,
 	}
 
-	if numLabels > 0 {
-		msg.Labels = map[string]string{}
-		for ; numLabels > 0; numLabels-- {
-			var (
-				lname string
-				vl    int
-			)
+	msg.Labels = map[string]string{}
+	for ; numLabels > 0; numLabels-- {
+		var (
+			lname string
+			vl    int
+		)
 
-			_, err := fmt.Fscanln(in, &lname, &vl)
-			if err != nil {
-				panic(fmt.Errorf("unable to fetch message label name: %w", err))
+		_, err := fmt.Fscanln(in, &lname, &vl)
+		if err != nil {
+			panic(fmt.Errorf("unable to fetch message label name: %w", err))
+		}
+		if vl > 0 {
+			lvalue := make([]byte, vl)
+			if _, err = io.ReadFull(in, lvalue); err != nil {
+				panic(fmt.Errorf("unable to fetch value for label %s: %w", lname, err))
 			}
-			if vl > 0 {
-				lvalue := make([]byte, vl)
-				if _, err = io.ReadFull(in, lvalue); err != nil {
-					panic(fmt.Errorf("unable to fetch value for label %s: %w", lname, err))
-				}
 
-				msg.Labels[lname] = string(lvalue)
-			} else {
-				msg.Labels[lname] = ""
-			}
+			msg.Labels[lname] = string(lvalue)
+		} else {
+			msg.Labels[lname] = ""
 		}
 	}
 

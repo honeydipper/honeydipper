@@ -153,34 +153,37 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 	if name[0] != '_' && !ok {
 		dipper.Logger.Panicf("[workflow] named context %s not defined", name)
 	}
-	if namedCTXs != nil {
-		envData := w.buildEnvData(msg)
-		ctx, ok := namedCTXs.(map[string]interface{})["*"]
+
+	if namedCTXs == nil {
+		return
+	}
+
+	envData := w.buildEnvData(msg)
+	ctx, ok := namedCTXs.(map[string]interface{})["*"]
+	if ok {
+		ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
+		ctx = dipper.Interpolate(ctx, envData)
+		w.ctx = dipper.MergeMap(w.ctx, ctx)
+		dipper.Logger.Infof("merged global values (*) from named context %s to workflow", name)
+	}
+
+	if w.parent == "" {
+		ctx, ok := namedCTXs.(map[string]interface{})["_events"]
 		if ok {
 			ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
 			ctx = dipper.Interpolate(ctx, envData)
 			w.ctx = dipper.MergeMap(w.ctx, ctx)
-			dipper.Logger.Infof("merged global values (*) from named context %s to workflow", name)
+			dipper.Logger.Infof("[workflow] merged _events section of context [%s] to workflow [%s]", name, w.workflow.Name)
 		}
+	}
 
-		if w.parent == "" {
-			ctx, ok := namedCTXs.(map[string]interface{})["_events"]
-			if ok {
-				ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
-				ctx = dipper.Interpolate(ctx, envData)
-				w.ctx = dipper.MergeMap(w.ctx, ctx)
-				dipper.Logger.Infof("[workflow] merged _events section of context [%s] to workflow [%s]", name, w.workflow.Name)
-			}
-		}
-
-		if w.workflow.Name != "" {
-			ctx, ok := namedCTXs.(map[string]interface{})[w.workflow.Name]
-			if ok {
-				ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
-				ctx = dipper.Interpolate(ctx, envData)
-				w.ctx = dipper.MergeMap(w.ctx, ctx)
-				dipper.Logger.Infof("[workflow] merged named context [%s] to workflow [%s]", name, w.workflow.Name)
-			}
+	if w.workflow.Name != "" {
+		ctx, ok := namedCTXs.(map[string]interface{})[w.workflow.Name]
+		if ok {
+			ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
+			ctx = dipper.Interpolate(ctx, envData)
+			w.ctx = dipper.MergeMap(w.ctx, ctx)
+			dipper.Logger.Infof("[workflow] merged named context [%s] to workflow [%s]", name, w.workflow.Name)
 		}
 	}
 }
@@ -213,20 +216,21 @@ func (w *Session) initCTX(msg *dipper.Message) {
 
 	if w.workflow.Contexts != nil {
 		for _, n := range w.workflow.Contexts.([]interface{}) {
-			if n != nil {
-				name, ok := n.(string)
-				if !ok {
-					panic(fmt.Errorf("expected list of strings in contexts in workflow: %s: %w", w.workflow.Name, WorkflowError))
-				}
-				if name != "" {
-					// at this stage the hooks flag is added only through `context` not `contexts`
-					// this part of the code is unreachable
-					// if name == SessionContextHooks {
-					//	 w.isHook = true
-					// }
-					w.injectNamedCTX(name, msg)
-					w.loadedContexts = append(w.loadedContexts, name)
-				}
+			if n == nil {
+				continue
+			}
+			name, ok := n.(string)
+			if !ok {
+				panic(fmt.Errorf("expected list of strings in contexts in workflow: %s: %w", w.workflow.Name, WorkflowError))
+			}
+			if name != "" {
+				// at this stage the hooks flag is added only through `context` not `contexts`
+				// this part of the code is unreachable
+				// if name == SessionContextHooks {
+				//	 w.isHook = true
+				// }
+				w.injectNamedCTX(name, msg)
+				w.loadedContexts = append(w.loadedContexts, name)
 			}
 		}
 	}

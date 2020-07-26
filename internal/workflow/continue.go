@@ -191,26 +191,28 @@ func (w *Session) complete(msg *dipper.Message) {
 	if msg.Labels["status"] != SessionStatusSuccess && msg.Labels["performing"] == "" {
 		msg.Labels["performing"] = w.performing
 	}
-	dipper.Logger.Infof("[workflow] session [%s] completing with msg labels %+v", w.ID, msg.Labels)
-	if w.ID != "" {
-		if dipper.IDMapGet(&w.store.sessions, w.ID) != nil {
-			if w.currentHook == "" {
-				w.processExport(msg)
-			}
-			w.fireCompleteHooks(msg)
-			if w.currentHook != "" {
-				return
-			}
 
-			dipper.IDMapDel(&w.store.sessions, w.ID)
-			if w.parent != "" {
-				daemon.Children.Add(1)
-				go func() {
-					defer daemon.Children.Done()
-					w.store.ContinueSession(w.parent, msg, w.exported)
-				}()
-			}
+	dipper.Logger.Infof("[workflow] session [%s] completing with msg labels %+v", w.ID, msg.Labels)
+	if w.ID != "" && dipper.IDMapGet(&w.store.sessions, w.ID) != nil {
+		if w.currentHook == "" {
+			w.processExport(msg)
 		}
+		w.fireCompleteHooks(msg)
+		if w.currentHook != "" {
+			return
+		}
+
+		dipper.IDMapDel(&w.store.sessions, w.ID)
+		if w.parent != "" {
+			daemon.Children.Add(1)
+			go func() {
+				defer daemon.Children.Done()
+				w.store.ContinueSession(w.parent, msg, w.exported)
+			}()
+		}
+	}
+
+	if w.ID != "" {
 		dipper.Logger.Infof("[workflow] session [%s] completed", w.ID)
 		w.ID = ""
 	}
@@ -235,69 +237,74 @@ func (w *Session) onError() {
 	}
 }
 
+// continueAfterHook resume a session after finishing a hook
+func (w *Session) continueAfterHook(msg *dipper.Message) {
+	if msg.Labels["status"] == SessionStatusSuccess {
+		switch w.currentHook {
+		case "on_session":
+			w.execute(w.savedMsg)
+		case "on_first_round":
+			fallthrough
+		case "on_round":
+			w.executeRound(w.savedMsg)
+		case "on_first_item":
+			fallthrough
+		case "on_item":
+			w.executeIteration(w.savedMsg)
+		case "on_first_action":
+			fallthrough
+		case "on_action":
+			w.executeAction(w.savedMsg)
+		case WorkflowHookExit:
+			fallthrough
+		case WorkflowHookFailure:
+			fallthrough
+		case WorkflowHookSuccess:
+			fallthrough
+		case WorkflowHookError:
+			w.complete(w.savedMsg)
+		}
+	} else {
+		reason := fmt.Sprintf("hook [%s] failed with status '%s' due to: %s", w.currentHook, msg.Labels["status"], msg.Labels["reason"])
+		if !w.isInCompleteHooks() {
+			// clear the hook flag start completion process
+			w.currentHook = ""
+		}
+		w.complete(&dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusReturn,
+			Labels: map[string]string{
+				"status": SessionStatusError,
+				"reason": reason,
+			},
+			Payload: map[string]interface{}{},
+		})
+	}
+}
+
 // continueExec resume a session with given dipper message
 func (w *Session) continueExec(msg *dipper.Message, exports map[string]interface{}) {
 	w.mergeContext(exports)
 	if w.currentHook != "" {
-		if msg.Labels["status"] == SessionStatusSuccess {
-			switch w.currentHook {
-			case "on_session":
-				w.execute(w.savedMsg)
-			case "on_first_round":
-				fallthrough
-			case "on_round":
-				w.executeRound(w.savedMsg)
-			case "on_first_item":
-				fallthrough
-			case "on_item":
-				w.executeIteration(w.savedMsg)
-			case "on_first_action":
-				fallthrough
-			case "on_action":
-				w.executeAction(w.savedMsg)
-			case WorkflowHookExit:
-				fallthrough
-			case WorkflowHookFailure:
-				fallthrough
-			case WorkflowHookSuccess:
-				fallthrough
-			case WorkflowHookError:
-				w.complete(w.savedMsg)
-			}
-		} else {
-			reason := fmt.Sprintf("hook [%s] failed with status '%s' due to: %s", w.currentHook, msg.Labels["status"], msg.Labels["reason"])
-			if !w.isInCompleteHooks() {
-				// clear the hook flag start completion process
-				w.currentHook = ""
-			}
-			w.complete(&dipper.Message{
-				Channel: dipper.ChannelEventbus,
-				Subject: dipper.EventbusReturn,
-				Labels: map[string]string{
-					"status": SessionStatusError,
-					"reason": reason,
-				},
-				Payload: map[string]interface{}{},
-			})
-		}
-	} else {
-		route := w.routeNext(msg)
-		dipper.Logger.Debugf("[workflow] session [%s] routing with '%s'", w.ID, WorkflowNextStrings[route])
-		switch route {
-		case WorkflowNextStep:
-			w.current++
-			w.executeStep(msg)
-		case WorkflowNextThread:
-		case WorkflowNextIteration:
-			w.iteration++
-			w.executeIteration(msg)
-		case WorkflowNextParallelIteration:
-			atomic.AddInt32(&w.iteration, 1)
-		case WorkflowNextRound:
-			w.loopCount++
-			w.executeRound(msg)
-		case WorkflowNextComplete:
-			w.complete(msg)
-		}
+		w.continueAfterHook(msg)
+		return
+	}
+	route := w.routeNext(msg)
+	dipper.Logger.Debugf("[workflow] session [%s] routing with '%s'", w.ID, WorkflowNextStrings[route])
+	switch route {
+	case WorkflowNextStep:
+		w.current++
+		w.executeStep(msg)
+	case WorkflowNextThread:
+	case WorkflowNextIteration:
+		w.iteration++
+		w.executeIteration(msg)
+	case WorkflowNextParallelIteration:
+		atomic.AddInt32(&w.iteration, 1)
+	case WorkflowNextRound:
+		w.loopCount++
+		w.executeRound(msg)
+	case WorkflowNextComplete:
+		w.complete(msg)
 	}
 }
