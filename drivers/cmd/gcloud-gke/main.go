@@ -57,12 +57,22 @@ func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Toke
 		token            *oauth2.Token
 	)
 	if len(serviceAccountBytes) > 0 {
-		containerService = dipper.Must(container.NewService(context.Background(), option.WithCredentialsJSON([]byte(serviceAccountBytes)))).(*container.Service)
+		containerService = dipper.Must(
+			container.NewService(
+				context.Background(),
+				option.WithCredentialsJSON([]byte(serviceAccountBytes)),
+			),
+		).(*container.Service)
 		conf := dipper.Must(google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")).(*jwt.Config)
 		token = dipper.Must(conf.TokenSource(context.Background()).Token()).(*oauth2.Token)
 	} else {
 		containerService = dipper.Must(container.NewService(context.Background())).(*container.Service)
-		tokenSource := dipper.Must(google.DefaultTokenSource(context.Background(), "https://www.googleapis.com/auth/cloud-platform")).(oauth2.TokenSource)
+		tokenSource := dipper.Must(
+			google.DefaultTokenSource(
+				context.Background(),
+				"https://www.googleapis.com/auth/cloud-platform",
+			),
+		).(oauth2.TokenSource)
 		token = dipper.Must(tokenSource.Token()).(*oauth2.Token)
 	}
 

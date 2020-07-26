@@ -104,7 +104,7 @@ func backup(m *dipper.Message) {
 	}
 
 	t := time.Now().Add(expireDuration)
-	expireTime := &timestamp.Timestamp{Seconds: int64(t.Unix()), Nanos: int32(t.Nanosecond())}
+	expireTime := &timestamp.Timestamp{Seconds: t.Unix(), Nanos: int32(t.Nanosecond())}
 	req := &spannerAdminSchema.CreateBackupRequest{
 		Parent:   fmt.Sprintf("projects/%s/instances/%s", project, instance),
 		BackupId: time.Now().Format("b20060102030405"),
@@ -128,7 +128,7 @@ func backup(m *dipper.Message) {
 		defer cancelWait()
 		defer lro.Delete(backupOpID)
 
-		op.Wait(waitCtx)
+		_, _ = op.Wait(waitCtx)
 	}()
 
 	m.Reply <- dipper.Message{
