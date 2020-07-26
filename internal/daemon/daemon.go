@@ -24,7 +24,7 @@ type Emitter interface {
 // ShuttingDown is a flag that is set to true if the daemon is in the shutdown process.
 var ShuttingDown bool
 
-// Children keeps track of the child go routines in the daemon
+// Children keeps track of the child go routines in the daemon.
 var Children = &sync.WaitGroup{}
 
 // Emitters contains a group of metrics emitter for sending metrics to external monitoring systems.

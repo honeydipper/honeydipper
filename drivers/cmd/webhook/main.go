@@ -33,7 +33,7 @@ var driver *dipper.Driver
 var server *http.Server
 var hooks map[string]interface{}
 
-// Addr : listening address and port of the webhook
+// Addr : listening address and port of the webhook.
 var Addr string
 
 func main() {

@@ -28,23 +28,23 @@ var ruleMap map[string][]*CollapsedRule
 var engine *Service
 var sessionStore *workflow.SessionStore
 
-// WorkflowHelper enables workflow engine to load config and send messages
+// WorkflowHelper enables workflow engine to load config and send messages.
 type WorkflowHelper struct {
 	engine *Service
 }
 
-// SendMessage method sends workflow messages to eventbus channle
+// SendMessage method sends workflow messages to eventbus channle.
 func (h *WorkflowHelper) SendMessage(msg *dipper.Message) {
 	worker := h.engine.getDriverRuntime(dipper.ChannelEventbus)
 	dipper.SendMessage(worker.Output, msg)
 }
 
-// GetConfig method feed config from service to workflow engine
+// GetConfig method feed config from service to workflow engine.
 func (h *WorkflowHelper) GetConfig() *config.Config {
 	return h.engine.config
 }
 
-// StartEngine Starts the engine service
+// StartEngine Starts the engine service.
 func StartEngine(cfg *config.Config) {
 	engine = NewService(cfg, "engine")
 	Services["engine"] = engine
@@ -109,7 +109,7 @@ func continueSession(d *driver.Runtime, msg *dipper.Message) {
 	go sessionStore.ContinueSession(sessionID, msg, nil)
 }
 
-// buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable
+// buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable.
 func buildRuleMap(cfg *config.Config) {
 	ruleMapLock.Lock()
 	defer ruleMapLock.Unlock()

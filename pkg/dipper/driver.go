@@ -17,7 +17,7 @@ import (
 	"github.com/op/go-logging"
 )
 
-// Driver : the helper stuct for creating a honey-dipper driver in golang
+// Driver : the helper stuct for creating a honey-dipper driver in golang.
 type Driver struct {
 	RPCCaller
 	RPCProvider
@@ -36,7 +36,7 @@ type Driver struct {
 	APITimeout      time.Duration
 }
 
-// NewDriver : create a blank driver object
+// NewDriver : create a blank driver object.
 func NewDriver(service string, name string) *Driver {
 	driver := Driver{
 		Name:    name,
@@ -64,7 +64,7 @@ func NewDriver(service string, name string) *Driver {
 	return &driver
 }
 
-// Run : start a loop to communicate with daemon
+// Run : start a loop to communicate with daemon.
 func (d *Driver) Run() {
 	Logger.Infof("[%s] driver loaded", d.Service)
 	for {
@@ -88,7 +88,7 @@ func (d *Driver) Run() {
 	}
 }
 
-// Ping : respond to daemon ping request with driver state
+// Ping : respond to daemon ping request with driver state.
 func (d *Driver) Ping(msg *Message) {
 	d.SendMessage(&Message{
 		Channel: "state",
@@ -96,7 +96,7 @@ func (d *Driver) Ping(msg *Message) {
 	})
 }
 
-// ReceiveOptions : receive options from daemon
+// ReceiveOptions : receive options from daemon.
 func (d *Driver) ReceiveOptions(msg *Message) {
 	msg = DeserializePayload(msg)
 	Recursive(msg.Payload, RegexParser)
@@ -146,27 +146,27 @@ func (d *Driver) stop(msg *Message) {
 	Logger.Fatalf("[%s] quiting on daemon request", d.Service)
 }
 
-// SendMessage : send a prepared message to daemon
+// SendMessage : send a prepared message to daemon.
 func (d *Driver) SendMessage(m *Message) {
 	Logger.Infof("[%s] sending raw message to daemon %s:%s", d.Service, m.Channel, m.Subject)
 	SendMessage(d.Out, m)
 }
 
-// GetOption : get the data from options map with the key
+// GetOption : get the data from options map with the key.
 func (d *Driver) GetOption(path string) (interface{}, bool) {
 	return GetMapData(d.Options, path)
 }
 
-// GetOptionStr : get the string data from options map with the key
+// GetOptionStr : get the string data from options map with the key.
 func (d *Driver) GetOptionStr(path string) (string, bool) {
 	return GetMapDataStr(d.Options, path)
 }
 
 // we have to keep hold of the os.File object to
-// avoid being closed by garbage collector (runtime.setFinalizer)
+// avoid being closed by garbage collector (runtime.setFinalizer).
 var logFile *os.File
 
-// GetLogger : getting a logger for the driver
+// GetLogger : getting a logger for the driver.
 func (d *Driver) GetLogger() *logging.Logger {
 	if Logger == nil {
 		levelstr, ok := d.GetOptionStr("data.loglevel")
@@ -181,17 +181,17 @@ func (d *Driver) GetLogger() *logging.Logger {
 	return Logger
 }
 
-// GetStream getting a output stream for a feature
+// GetStream getting a output stream for a feature.
 func (d *Driver) GetStream(feature string) io.Writer {
 	return d.Out
 }
 
-// GetName returns the name of the driver
+// GetName returns the name of the driver.
 func (d *Driver) GetName() string {
 	return d.Name
 }
 
-// EmitEvent creates a new event
+// EmitEvent creates a new event.
 func (d *Driver) EmitEvent(payload map[string]interface{}) string {
 	id, err := uuid.NewRandom()
 	if err != nil {

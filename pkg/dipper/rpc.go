@@ -21,16 +21,16 @@ const (
 	RPCError Error = "rpc error"
 )
 
-// RPCHandler : a type of functions that handle RPC calls between drivers
+// RPCHandler : a type of functions that handle RPC calls between drivers.
 type RPCHandler func(string, string, []byte)
 
-// RPCCallerStub is an interface which every RPC caller should implement
+// RPCCallerStub is an interface which every RPC caller should implement.
 type RPCCallerStub interface {
 	GetName() string
 	GetStream(feature string) io.Writer
 }
 
-// RPCCaller : an object that makes RPC calls
+// RPCCaller : an object that makes RPC calls.
 type RPCCaller struct {
 	Parent  RPCCallerStub
 	Channel string
@@ -40,7 +40,7 @@ type RPCCaller struct {
 	Counter int
 }
 
-// Init : initializing rpc caller
+// Init : initializing rpc caller.
 func (c *RPCCaller) Init(parent RPCCallerStub, channel string, subject string) {
 	c.Result = map[string]chan interface{}{}
 	InitIDMap(&c.Result)
@@ -50,18 +50,18 @@ func (c *RPCCaller) Init(parent RPCCallerStub, channel string, subject string) {
 	c.Parent = parent
 }
 
-// Call : making a RPC call to another driver with structured data
+// Call : making a RPC call to another driver with structured data.
 func (c *RPCCaller) Call(feature string, method string, params interface{}) ([]byte, error) {
 	ret, err := c.CallRaw(feature, method, SerializeContent(params))
 	return ret, err
 }
 
-// CallNoWait : making a RPC call to another driver with structured data not expecting any return
+// CallNoWait : making a RPC call to another driver with structured data not expecting any return.
 func (c *RPCCaller) CallNoWait(feature string, method string, params interface{}) error {
 	return c.CallRawNoWait(feature, method, SerializeContent(params), "skip")
 }
 
-// CallRaw : making a RPC call to another driver with raw data
+// CallRaw : making a RPC call to another driver with raw data.
 func (c *RPCCaller) CallRaw(feature string, method string, params []byte) ([]byte, error) {
 	// keep track the call in the map
 	result := make(chan interface{}, 1)
@@ -86,7 +86,7 @@ func (c *RPCCaller) CallRaw(feature string, method string, params []byte) ([]byt
 	}
 }
 
-// CallRawNoWait : making a RPC call to another driver with raw data not expecting return
+// CallRawNoWait : making a RPC call to another driver with raw data not expecting return.
 func (c *RPCCaller) CallRawNoWait(feature string, method string, params []byte, rpcID string) (ret error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -120,7 +120,7 @@ func (c *RPCCaller) CallRawNoWait(feature string, method string, params []byte, 
 	return nil
 }
 
-// HandleReturn : receiving return of a RPC call
+// HandleReturn : receiving return of a RPC call.
 func (c *RPCCaller) HandleReturn(m *Message) {
 	rpcID := m.Labels["rpcID"]
 	result := IDMapGet(&c.Result, rpcID).(chan interface{})
@@ -134,7 +134,7 @@ func (c *RPCCaller) HandleReturn(m *Message) {
 	}
 }
 
-// RPCProvider : an interface for providing RPC handling feature
+// RPCProvider : an interface for providing RPC handling feature.
 type RPCProvider struct {
 	RPCHandlers   map[string]MessageHandler
 	DefaultReturn io.Writer
@@ -142,7 +142,7 @@ type RPCProvider struct {
 	Subject       string
 }
 
-// Init : initializing rpc provider
+// Init : initializing rpc provider.
 func (p *RPCProvider) Init(channel string, subject string, defaultWriter io.Writer) {
 	p.RPCHandlers = map[string]MessageHandler{}
 	p.DefaultReturn = defaultWriter
@@ -150,7 +150,7 @@ func (p *RPCProvider) Init(channel string, subject string, defaultWriter io.Writ
 	p.Subject = subject
 }
 
-// ReturnError : return error to rpc caller
+// ReturnError : return error to rpc caller.
 func (p *RPCProvider) ReturnError(call *Message, reason string) {
 	var returnTo = call.ReturnTo
 	if returnTo == nil {
@@ -167,7 +167,7 @@ func (p *RPCProvider) ReturnError(call *Message, reason string) {
 	})
 }
 
-// Return : return a value to rpc caller
+// Return : return a value to rpc caller.
 func (p *RPCProvider) Return(call *Message, retval *Message) {
 	var returnTo = call.ReturnTo
 	if returnTo == nil {
@@ -185,7 +185,7 @@ func (p *RPCProvider) Return(call *Message, retval *Message) {
 	})
 }
 
-// Router : route the message to rpc handlers
+// Router : route the message to rpc handlers.
 func (p *RPCProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
 	f := p.RPCHandlers[method]

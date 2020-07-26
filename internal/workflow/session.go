@@ -44,7 +44,7 @@ type Session struct {
 	cancelFunc     context.CancelFunc
 }
 
-// SessionHandler prepare and execute the session provides entry point for SessionStore to invoke and mock for testing
+// SessionHandler prepare and execute the session provides entry point for SessionStore to invoke and mock for testing.
 type SessionHandler interface {
 	prepare(msg *dipper.Message, parent interface{}, ctx map[string]interface{})
 	execute(msg *dipper.Message)
@@ -75,7 +75,7 @@ const (
 	SessionContextHooks = "_hooks"
 )
 
-// buildEnvData builds a map of environmental data for interpolation
+// buildEnvData builds a map of environmental data for interpolation.
 func (w *Session) buildEnvData(msg *dipper.Message) map[string]interface{} {
 	data := msg.Payload
 	if data == nil {
@@ -92,7 +92,7 @@ func (w *Session) buildEnvData(msg *dipper.Message) map[string]interface{} {
 	return envData
 }
 
-// save will store the session in the memory
+// save will store the session in the memory.
 func (w *Session) save() {
 	if w.ID == "" {
 		w.ID = dipper.IDMapPut(&w.store.sessions, w)
@@ -100,7 +100,7 @@ func (w *Session) save() {
 	}
 }
 
-// isLoop checks if the workflow uses looping statements while and until
+// isLoop checks if the workflow uses looping statements while and until.
 func (w *Session) isLoop() bool {
 	return len(w.workflow.While) > 0 ||
 		len(w.workflow.Until) > 0 ||
@@ -110,12 +110,12 @@ func (w *Session) isLoop() bool {
 		w.workflow.UntilMatch != nil
 }
 
-// isIteration checks if the workflow needs to iterate through a list
+// isIteration checks if the workflow needs to iterate through a list.
 func (w *Session) isIteration() bool {
 	return w.workflow.Iterate != nil || w.workflow.IterateParallel != nil
 }
 
-// lenOfIterate gives the length of the iteration list
+// lenOfIterate gives the length of the iteration list.
 func (w *Session) lenOfIterate() int {
 	var it reflect.Value
 	if w.workflow.Iterate != nil {
@@ -127,12 +127,12 @@ func (w *Session) lenOfIterate() int {
 	return it.Len()
 }
 
-// isFunction checks if the workflow is a simple function call
+// isFunction checks if the workflow is a simple function call.
 func (w *Session) isFunction() bool {
 	return w.workflow.Function.Driver != "" || w.workflow.Function.Target.System != ""
 }
 
-// injectMsg injects the dipper message data into the session as event
+// injectMsg injects the dipper message data into the session as event.
 func (w *Session) injectMsg(msg *dipper.Message) {
 	if w.parent == "" {
 		data, _ := dipper.GetMapData(msg.Payload, "data")
@@ -145,7 +145,7 @@ func (w *Session) injectMsg(msg *dipper.Message) {
 	}
 }
 
-// injectNamedCTX inject a named context into the workflow
+// injectNamedCTX inject a named context into the workflow.
 func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 	var contexts = w.store.Helper.GetConfig().DataSet.Contexts
 
@@ -188,7 +188,7 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 	}
 }
 
-// initCTX initialize the contextual data used in this workflow
+// initCTX initialize the contextual data used in this workflow.
 func (w *Session) initCTX(msg *dipper.Message) {
 	w.injectNamedCTX(SessionContextDefault, msg)
 	if w.parent == "" {
@@ -241,7 +241,7 @@ func (w *Session) initCTX(msg *dipper.Message) {
 	}
 }
 
-// injectMeta injects the meta info into context
+// injectMeta injects the meta info into context.
 func (w *Session) injectMeta() {
 	if !w.isHook {
 		if w.workflow.Name != "" {
@@ -253,14 +253,14 @@ func (w *Session) injectMeta() {
 	}
 }
 
-// injectEventCTX injects the contextual data from the event into the workflow
+// injectEventCTX injects the contextual data from the event into the workflow.
 func (w *Session) injectEventCTX(ctx map[string]interface{}) {
 	if ctx != nil {
 		w.ctx = dipper.MergeMap(w.ctx, ctx)
 	}
 }
 
-// injectLocalCTX injects the workflow local context data
+// injectLocalCTX injects the workflow local context data.
 func (w *Session) injectLocalCTX(msg *dipper.Message) {
 	if w.workflow.Local != nil && w.workflow.CallDriver == "" {
 		envData := w.buildEnvData(msg)
@@ -270,7 +270,7 @@ func (w *Session) injectLocalCTX(msg *dipper.Message) {
 	}
 }
 
-// interpolateWorkflow creates a copy of the workflow and interpolates it with envData
+// interpolateWorkflow creates a copy of the workflow and interpolates it with envData.
 func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	v := w.workflow
 	envData := w.buildEnvData(msg)
@@ -328,7 +328,7 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	w.workflow = &ret
 }
 
-// inheritParentSettings copies some workflow settings from the parent session
+// inheritParentSettings copies some workflow settings from the parent session.
 func (w *Session) inheritParentSettings(p *Session) {
 	if w.workflow.OnError == "" {
 		w.workflow.OnError = p.workflow.OnError
@@ -338,14 +338,14 @@ func (w *Session) inheritParentSettings(p *Session) {
 	}
 }
 
-// createChildSession creates a child workflow session
+// createChildSession creates a child workflow session.
 func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *Session {
 	child := w.store.newSession(w.ID, w.EventID, wf)
 	child.prepare(msg, w, nil)
 	return child.(*Session)
 }
 
-// setPerforming records what is happening within the workflow
+// setPerforming records what is happening within the workflow.
 func (w *Session) setPerforming(performing string) string {
 	wf := w.workflow
 	switch {
@@ -378,7 +378,7 @@ func (w *Session) setPerforming(performing string) string {
 	return w.performing
 }
 
-// inheritParentData prepares the session using parent data
+// inheritParentData prepares the session using parent data.
 func (w *Session) inheritParentData(parent *Session) {
 	parent.setPerforming(w.performing)
 
@@ -389,7 +389,7 @@ func (w *Session) inheritParentData(parent *Session) {
 	delete(w.ctx, "hooks") // hooks don't get inherited
 }
 
-// prepare prepares a session for execution
+// prepare prepares a session for execution.
 func (w *Session) prepare(msg *dipper.Message, parent interface{}, ctx map[string]interface{}) {
 	if parent != nil {
 		w.inheritParentData(parent.(*Session))
@@ -407,7 +407,7 @@ func (w *Session) prepare(msg *dipper.Message, parent interface{}, ctx map[strin
 	w.injectMeta()
 }
 
-// createChildSessionWithName creates a child workflow session
+// createChildSessionWithName creates a child workflow session.
 func (w *Session) createChildSessionWithName(name string, msg *dipper.Message) *Session {
 	src, ok := w.store.Helper.GetConfig().DataSet.Workflows[name]
 	if !ok {
@@ -420,27 +420,27 @@ func (w *Session) createChildSessionWithName(name string, msg *dipper.Message) *
 	return w.createChildSession(wf, msg)
 }
 
-// GetName returns the workflow name
+// GetName returns the workflow name.
 func (w *Session) GetName() string {
 	return w.workflow.Name
 }
 
-// GetDescription returns the workflow description
+// GetDescription returns the workflow description.
 func (w *Session) GetDescription() string {
 	return w.workflow.Description
 }
 
-// GetEventID returns the global unique eventID
+// GetEventID returns the global unique eventID.
 func (w *Session) GetEventID() string {
 	return w.EventID
 }
 
-// GetParent returns the parent ID of the session
+// GetParent returns the parent ID of the session.
 func (w *Session) GetParent() string {
 	return w.parent
 }
 
-// Watch returns a channel for watching the session
+// Watch returns a channel for watching the session.
 func (w *Session) Watch() <-chan struct{} {
 	if w.context == nil {
 		w.context, w.cancelFunc = context.WithCancel(context.Background())
@@ -448,7 +448,7 @@ func (w *Session) Watch() <-chan struct{} {
 	return w.context.Done()
 }
 
-// GetStatus return the session status
+// GetStatus return the session status.
 func (w *Session) GetStatus() (string, string) {
 	var (
 		status, reason string
@@ -461,7 +461,7 @@ func (w *Session) GetStatus() (string, string) {
 	return status, reason
 }
 
-// GetExported returns the exported data from the session
+// GetExported returns the exported data from the session.
 func (w *Session) GetExported() map[string]interface{} {
 	return w.exported
 }

@@ -23,15 +23,15 @@ import (
 )
 
 var (
-	// ErrCreateClient means failed to create gs client
+	// ErrCreateClient means failed to create gs client.
 	ErrCreateClient = errors.New("failed to create gs client")
-	// ErrMissingProject means missing project
+	// ErrMissingProject means missing project.
 	ErrMissingProject = errors.New("missing project")
-	// ErrMissingBucketSpec means missing bucket spec
+	// ErrMissingBucketSpec means missing bucket spec.
 	ErrMissingBucketSpec = errors.New("missing bucket spec")
-	// ErrMissingFileSpec means missing file spec
+	// ErrMissingFileSpec means missing file spec.
 	ErrMissingFileSpec = errors.New("missing file spec")
-	// ErrNotMatchingFileType means the file and file type not matching
+	// ErrNotMatchingFileType means the file and file type not matching.
 	ErrNotMatchingFileType = errors.New("file content not matching fileType")
 )
 
@@ -84,12 +84,12 @@ func getCommonParams(params interface{}) (string, string) {
 	return serviceAccountBytes, project
 }
 
-// BucketIterator is an interface for iterate BucketAttrs
+// BucketIterator is an interface for iterate BucketAttrs.
 type BucketIterator interface {
 	Next() (*storage.BucketAttrs, error)
 }
 
-// ObjectIterator is an interface for iterate ObjectAttrs
+// ObjectIterator is an interface for iterate ObjectAttrs.
 type ObjectIterator interface {
 	Next() (*storage.ObjectAttrs, error)
 }

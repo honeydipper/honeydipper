@@ -204,7 +204,7 @@ func checkWorkflowDriver(w config.Workflow, cfg *config.Config) {
 	}
 }
 
-// make sure there aint multiple actions declared
+// make sure there aint multiple actions declared.
 func checkWorkflowActions(w config.Workflow) {
 	f := &fieldChecker{}
 
@@ -217,7 +217,7 @@ func checkWorkflowActions(w config.Workflow) {
 	f.setField("switch", w.Switch != "")
 }
 
-// check to make sure only one conditional field and one else field
+// check to make sure only one conditional field and one else field.
 func checkWorkflowConditions(w config.Workflow) {
 	f := &fieldChecker{}
 
@@ -237,7 +237,7 @@ func checkWorkflowConditions(w config.Workflow) {
 	f.allowFieldWhenSet("else", w.Else != nil)
 }
 
-// helper functions below
+// helper functions below.
 
 func checkIsList(name string, f interface{}) {
 	if f == nil {

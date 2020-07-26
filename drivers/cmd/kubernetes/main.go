@@ -31,13 +31,13 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// DefaultNamespace is the name of the default space in kubernetes cluster
+// DefaultNamespace is the name of the default space in kubernetes cluster.
 const DefaultNamespace string = "default"
 
-// StatusSuccess is the status when the job finished successfully
+// StatusSuccess is the status when the job finished successfully.
 const StatusSuccess = "success"
 
-// StatusFailure is the status when the job finished with error or not finished within time limit
+// StatusFailure is the status when the job finished with error or not finished within time limit.
 const StatusFailure = "failure"
 
 // LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
@@ -140,8 +140,8 @@ func getJobLog(m *dipper.Message) {
 				ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
 				defer cancel()
 				stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream(ctx)
-				defer stream.Close()
 				if err != nil {
+					defer stream.Close()
 					podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
 					messages = append(messages, podlogs[container.Name])
 					log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)

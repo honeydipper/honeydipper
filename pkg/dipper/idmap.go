@@ -12,27 +12,27 @@ import (
 	"sync"
 )
 
-// MaxID : the maximum rpcID
+// MaxID : the maximum rpcID.
 const MaxID = 13684
 
-// IDMap : a map that store values with automatically generated keys
+// IDMap : a map that store values with automatically generated keys.
 type IDMap interface{}
 
-// IDMapMeta : meta info structure for a IDMap object
+// IDMapMeta : meta info structure for a IDMap object.
 type IDMapMeta struct {
 	Counter int
 	Lock    sync.Mutex
 }
 
-// IDMapMetadata : actual metadata for all IDMap objects
+// IDMapMetadata : actual metadata for all IDMap objects.
 var IDMapMetadata = map[IDMap]*IDMapMeta{}
 
-// InitIDMap : create a new IDMap Object
+// InitIDMap : create a new IDMap Object.
 func InitIDMap(m IDMap) {
 	IDMapMetadata[m] = &IDMapMeta{}
 }
 
-// IDMapPut : putting an value in map return a unique ID
+// IDMapPut : putting an value in map return a unique ID.
 func IDMapPut(m IDMap, val interface{}) string {
 	meta := IDMapMetadata[m]
 
@@ -57,7 +57,7 @@ func IDMapPut(m IDMap, val interface{}) string {
 	return ID
 }
 
-// IDMapDel : deleting a value from ID map
+// IDMapDel : deleting a value from ID map.
 func IDMapDel(m IDMap, key string) {
 	meta := IDMapMetadata[m]
 	meta.Lock.Lock()
@@ -67,7 +67,7 @@ func IDMapDel(m IDMap, key string) {
 	mapValue.SetMapIndex(reflect.ValueOf(key), reflect.Value{})
 }
 
-// IDMapGet : getting a value from ID map
+// IDMapGet : getting a value from ID map.
 func IDMapGet(m IDMap, key string) interface{} {
 	meta := IDMapMetadata[m]
 	meta.Lock.Lock()

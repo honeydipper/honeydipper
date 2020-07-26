@@ -22,14 +22,14 @@ const (
 	DriverError dipper.Error = "driver error"
 )
 
-// Handler provides common functions for handling a driver
+// Handler provides common functions for handling a driver.
 type Handler interface {
 	Acquire()
 	Prepare()
 	Meta() *Meta
 }
 
-// replace the func variable with mock during testing
+// replace the func variable with mock during testing.
 var execCommand = exec.Command
 
 // NewDriver creates a driver object to represent a child process.

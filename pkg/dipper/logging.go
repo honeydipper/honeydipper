@@ -34,7 +34,7 @@ func initLogBackend(level logging.Level, logFile *os.File) logging.Backend {
 	return backendLeveled
 }
 
-// GetLogger : getting a logger for the module
+// GetLogger : getting a logger for the module.
 func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.Logger {
 	if debug, ok := os.LookupEnv("DEBUG"); ok {
 		if debug == "*" || strings.Contains(","+debug+",", ","+module+",") {

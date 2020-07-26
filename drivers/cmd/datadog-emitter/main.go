@@ -19,7 +19,7 @@ import (
 	"github.com/op/go-logging"
 )
 
-// DatadogOptions : datadog statsd connection options
+// DatadogOptions : datadog statsd connection options.
 type DatadogOptions struct {
 	UseHostPort bool
 	StatsdHost  string

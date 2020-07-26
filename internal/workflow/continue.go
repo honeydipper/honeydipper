@@ -42,7 +42,7 @@ const (
 	WorkflowHookExit = "on_exit"
 )
 
-// WorkflowNextStrings are used for logging the routing result
+// WorkflowNextStrings are used for logging the routing result.
 var WorkflowNextStrings = []string{
 	"complete",
 	"next step",
@@ -52,7 +52,7 @@ var WorkflowNextStrings = []string{
 	"next loop round",
 }
 
-// routeNext determines what to do next for the workflow
+// routeNext determines what to do next for the workflow.
 func (w *Session) routeNext(msg *dipper.Message) int {
 	if msg.Labels["status"] == SessionStatusError && w.workflow.OnError != "continue" {
 		return WorkflowNextComplete
@@ -84,14 +84,14 @@ func (w *Session) routeNext(msg *dipper.Message) int {
 	return WorkflowNextComplete
 }
 
-// mergeContext merges child workflow exported context to parent workflow
+// mergeContext merges child workflow exported context to parent workflow.
 func (w *Session) mergeContext(exports map[string]interface{}) {
 	w.ctx = dipper.MergeMap(w.ctx, dipper.MustDeepCopy(exports))
 	w.processNoExport(exports)
 	w.exported = dipper.MergeMap(w.exported, exports)
 }
 
-// processNoExport prevent exporting the data into parent workflow session
+// processNoExport prevent exporting the data into parent workflow session.
 func (w *Session) processNoExport(exported map[string]interface{}) {
 	for _, key := range w.workflow.NoExport {
 		if key == "*" {
@@ -106,7 +106,7 @@ func (w *Session) processNoExport(exported map[string]interface{}) {
 	}
 }
 
-// processExport export the data into parent workflow session
+// processExport export the data into parent workflow session.
 func (w *Session) processExport(msg *dipper.Message) {
 	if w.elseBranch == nil {
 		envData := w.buildEnvData(msg)
@@ -135,7 +135,7 @@ func (w *Session) postWorkflowExport(exportMap map[string]interface{}, envData m
 	envData["ctx"] = w.ctx
 }
 
-// fireCompleteHooks fires all the hooks at completion time asychronously
+// fireCompleteHooks fires all the hooks at completion time asychronously.
 func (w *Session) fireCompleteHooks(msg *dipper.Message) {
 	defer dipper.SafeExitOnError("session [%s] error on running completion hooks", w.ID)
 
@@ -167,7 +167,7 @@ func (w *Session) fireCompleteHooks(msg *dipper.Message) {
 	}
 }
 
-// isInCompleteHooks needs to take care of compete hooks carefully to not fall into crash loop
+// isInCompleteHooks needs to take care of compete hooks carefully to not fall into crash loop.
 func (w *Session) isInCompleteHooks() bool {
 	switch w.currentHook {
 	case WorkflowHookError:
@@ -182,7 +182,7 @@ func (w *Session) isInCompleteHooks() bool {
 	return false
 }
 
-// complete gracefully terminates a session and return exported data to parent
+// complete gracefully terminates a session and return exported data to parent.
 func (w *Session) complete(msg *dipper.Message) {
 	w.savedMsg = msg
 	if msg.Labels == nil {
@@ -221,7 +221,7 @@ func (w *Session) complete(msg *dipper.Message) {
 	}
 }
 
-// onError catches any error and complete the session
+// onError catches any error and complete the session.
 func (w *Session) onError() {
 	if r := recover(); r != nil {
 		w.complete(&dipper.Message{
@@ -237,7 +237,7 @@ func (w *Session) onError() {
 	}
 }
 
-// continueAfterHook resume a session after finishing a hook
+// continueAfterHook resume a session after finishing a hook.
 func (w *Session) continueAfterHook(msg *dipper.Message) {
 	if msg.Labels["status"] == SessionStatusSuccess {
 		switch w.currentHook {
@@ -282,7 +282,7 @@ func (w *Session) continueAfterHook(msg *dipper.Message) {
 	}
 }
 
-// continueExec resume a session with given dipper message
+// continueExec resume a session with given dipper message.
 func (w *Session) continueExec(msg *dipper.Message, exports map[string]interface{}) {
 	w.mergeContext(exports)
 	if w.currentHook != "" {

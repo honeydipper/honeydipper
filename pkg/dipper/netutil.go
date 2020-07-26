@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// GetIP : get first non loopback IP address
+// GetIP : get first non loopback IP address.
 func GetIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
