@@ -19,6 +19,9 @@ const (
 
 	// RPCError indicates errors happened during RPC call
 	RPCError Error = "rpc error"
+
+	// DefaultRPCTimeout is the default timeout in seconds for RPC calls
+	DefaultRPCTimeout time.Duration = 10
 )
 
 // RPCHandler : a type of functions that handle RPC calls between drivers.
@@ -81,7 +84,7 @@ func (c *RPCCaller) CallRaw(feature string, method string, params []byte) ([]byt
 			return nil, e
 		}
 		return msg.([]byte), nil
-	case <-time.After(time.Second * 10):
+	case <-time.After(time.Second * DefaultRPCTimeout):
 		return nil, TimeoutError
 	}
 }
@@ -202,7 +205,7 @@ func (p *RPCProvider) Router(msg *Message) {
 				} else {
 					p.Return(msg, &reply)
 				}
-			case <-time.After(time.Second * 10):
+			case <-time.After(time.Second * DefaultRPCTimeout):
 				p.ReturnError(msg, "timeout")
 			}
 		}()

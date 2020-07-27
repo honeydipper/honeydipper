@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -31,14 +32,19 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// DefaultNamespace is the name of the default space in kubernetes cluster.
-const DefaultNamespace string = "default"
+const (
+	// DefaultNamespace is the name of the default space in kubernetes cluster.
+	DefaultNamespace string = "default"
 
-// StatusSuccess is the status when the job finished successfully.
-const StatusSuccess = "success"
+	// StatusSuccess is the status when the job finished successfully.
+	StatusSuccess = "success"
 
-// StatusFailure is the status when the job finished with error or not finished within time limit.
-const StatusFailure = "failure"
+	// StatusFailure is the status when the job finished with error or not finished within time limit.
+	StatusFailure = "failure"
+
+	// DefaultJobWaitTimeout is the default timeout in seconds for waiting a job to be complete.
+	DefaultJobWaitTimeout time.Duration = 10
+)
 
 // LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
 const LabelHoneydipperUniqueIdentifier = "honeydipper-unique-identifier"
@@ -188,7 +194,7 @@ func waitForJob(m *dipper.Message) {
 
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
 
-	timeout := time.Duration(10)
+	timeout := DefaultJobWaitTimeout
 	if timeoutStr, ok := m.Labels["timeout"]; ok {
 		timeoutInt, _ := strconv.Atoi(timeoutStr)
 		timeout = time.Duration(timeoutInt)
@@ -262,7 +268,7 @@ func waitForJob(m *dipper.Message) {
 					switch evt.Type {
 					case watch.Error:
 						e := evt.Object.(*metav1.Status)
-						if e.Code == 410 {
+						if e.Code == http.StatusGone {
 							log.Warningf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
 							break loop
 						} else {

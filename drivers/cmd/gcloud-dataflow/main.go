@@ -23,6 +23,11 @@ import (
 	"google.golang.org/api/option"
 )
 
+const (
+	// DefaultJobWaitTimeout is the default timeout in seconds for waiting for a job to finish.
+	DefaultJobWaitTimeout time.Duration = 1800
+)
+
 var (
 	// ErrMissingProject means missing project
 	ErrMissingProject = errors.New("project required")
@@ -263,7 +268,7 @@ func waitForJob(msg *dipper.Message) {
 	if ok {
 		interval, _ = strconv.Atoi(intervalStr)
 	}
-	timeout := time.Duration(1800)
+	timeout := DefaultJobWaitTimeout
 	timeoutStr, ok := msg.Labels["timeout"]
 	if ok {
 		timeoutInt, _ := strconv.Atoi(timeoutStr)

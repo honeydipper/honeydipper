@@ -38,6 +38,7 @@ func main() {
 
 func waitAndSendDummyEvent(msg *dipper.Message) {
 	go func() {
+		//nolint:gomnd
 		time.Sleep(20 * time.Second)
 		driver.SendMessage(&dipper.Message{
 			Channel: "eventbus",

@@ -30,6 +30,18 @@ const (
 
 	// ServiceError indicates error condition when rendering service
 	ServiceError dipper.Error = "service error"
+
+	// DriverGracefulTimeout is the timeout in milliseconds for a driver to gracefully shutdown
+	DriverGracefulTimeout time.Duration = 50
+
+	// DriverReadyTimeout is the timeout in seconds for the driver to be ready
+	DriverReadyTimeout time.Duration = 10
+
+	// DriverRetryBackoff is the interval in seconds before retry loading a driver
+	DriverRetryBackoff time.Duration = 30
+
+	// DriverRetryCount is the number of attempts to load a driver
+	DriverRetryCount = 3
 )
 
 // MessageResponder is a function type that respond to messages.
@@ -235,7 +247,7 @@ func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.R
 		go func(runtime *driver.Runtime) {
 			defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Handler.Meta().Name)
 			// allow 50 millisecond for the data to drain
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(DriverGracefulTimeout * time.Millisecond)
 			runtime.Output.Close()
 		}(oldRuntime)
 	}
@@ -311,7 +323,7 @@ func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 			go func(runtime *driver.Runtime) {
 				defer dipper.SafeExitOnError("[%s] unused runtime %s output is already closed", s.name, runtime.Handler.Meta().Name)
 				// allow 50 millisecond for the data to drain
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(DriverGracefulTimeout * time.Millisecond)
 				runtime.Output.Close()
 			}(runtime)
 		}
@@ -346,7 +358,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 						daemon.Emitters[s.name] = s
 					}
 				},
-				10*time.Second,
+				DriverReadyTimeout*time.Second,
 				func() {
 					if boot {
 						dipper.Logger.Fatalf("failed to start driver %s.%s", s.name, driverName)
@@ -379,7 +391,7 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 								daemon.Emitters[s.name] = s
 							}
 						},
-						10*time.Second,
+						DriverReadyTimeout*time.Second,
 						func() {
 							dipper.Logger.Warningf("[%s] failed to start or reload driver %s", s.name, driverName)
 							s.driverRuntimes[feature].State = driver.DriverFailed
@@ -611,8 +623,8 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 
 	retry := func() {
 		dipper.Logger.Warningf("[%s] failed to load/reload driver %s attempt %d", s.name, driverName, count)
-		if count < 3 {
-			time.Sleep(30 * time.Second)
+		if count < DriverRetryCount {
+			time.Sleep(DriverRetryBackoff * time.Second)
 			go loadFailedDriverRuntime(d, count+1)
 		} else {
 			dipper.Logger.Fatalf("[%s] quiting after failed to reload crashed driver %s", s.name, driverName)
@@ -631,7 +643,7 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 					daemon.Emitters[s.name] = s
 				}
 			},
-			10*time.Second,
+			DriverReadyTimeout*time.Second,
 			retry,
 		)
 	}

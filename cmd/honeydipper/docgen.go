@@ -109,7 +109,7 @@ func fetchItem(item DocItem, cfg *config.Config) {
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode > 299 {
+		if resp.StatusCode >= http.StatusMultipleChoices {
 			dipper.Logger.Warningf("Received status code %d when fetching file %s", resp.StatusCode, item.Source)
 		} else {
 			content, err := ioutil.ReadAll(resp.Body)
