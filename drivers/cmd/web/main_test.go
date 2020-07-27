@@ -32,7 +32,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestSendRequest(t *testing.T) {
-
 	defer gock.Off()
 
 	gock.New("http://example.com").
@@ -57,7 +56,6 @@ func TestSendRequest(t *testing.T) {
 }
 
 func TestRecieveListJson(t *testing.T) {
-
 	defer gock.Off()
 
 	gock.New("http://example.com").
@@ -82,7 +80,6 @@ func TestRecieveListJson(t *testing.T) {
 }
 
 func TestSendRequestInvalid(t *testing.T) {
-
 	defer gock.Off()
 
 	// Test that we get an error with various >= 400 status codes

@@ -99,7 +99,7 @@ func listBuckets(msg *dipper.Message) {
 	params := msg.Payload
 	serviceAccountBytes, project := getCommonParams(params)
 
-	var client = getStorageClient(serviceAccountBytes)
+	client := getStorageClient(serviceAccountBytes)
 
 	it := client.Buckets(context.Background(), project)
 	listBucketsHelper(msg, it)
@@ -138,7 +138,7 @@ func listFiles(msg *dipper.Message) {
 	prefix, _ := dipper.GetMapDataStr(params, "prefix")
 	delim, _ := dipper.GetMapDataStr(params, "delimiter")
 
-	var client = getStorageClient(serviceAccountBytes)
+	client := getStorageClient(serviceAccountBytes)
 	query := &storage.Query{
 		Prefix:    prefix,
 		Delimiter: delim,
@@ -191,7 +191,7 @@ func fetchFile(msg *dipper.Message) {
 	}
 	fileType, _ := dipper.GetMapDataStr(params, "fileType")
 
-	var client = getStorageClient(serviceAccountBytes)
+	client := getStorageClient(serviceAccountBytes)
 	ctx := context.Background()
 	rc, err := client.Bucket(bucket).Object(fileObj).NewReader(ctx)
 	if err != nil {

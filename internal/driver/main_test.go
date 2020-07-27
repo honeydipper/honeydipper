@@ -15,7 +15,7 @@ import (
 
 func TestMain(m *testing.M) {
 	if dipper.Logger == nil {
-		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 		defer f.Close()
 		dipper.GetLogger("test driver", "DEBUG", f, f)
 	}

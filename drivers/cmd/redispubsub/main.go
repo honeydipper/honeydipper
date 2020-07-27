@@ -20,13 +20,15 @@ import (
 	"github.com/op/go-logging"
 )
 
-var log *logging.Logger
-var driver *dipper.Driver
-var redisOptions *redis.Options
-var broadcastTopic string
-var broadcastChannel string
-var ok bool
-var err error
+var (
+	log              *logging.Logger
+	driver           *dipper.Driver
+	redisOptions     *redis.Options
+	broadcastTopic   string
+	broadcastChannel string
+	ok               bool
+	err              error
+)
 
 func initFlags() {
 	flag.Usage = func() {

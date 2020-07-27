@@ -16,8 +16,10 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
 
-var loadedSSHAuth bool
-var currentSSHAuth transport.AuthMethod
+var (
+	loadedSSHAuth  bool
+	currentSSHAuth transport.AuthMethod
+)
 
 // GetGitSSHAuth creates an AuthMethod to be used for various git operations.
 func GetGitSSHAuth() transport.AuthMethod {

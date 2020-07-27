@@ -112,7 +112,7 @@ func intTestProcesses(t *testing.T) {
 }
 
 func intTestDaemonShutdown(t *testing.T) {
-	var graceful = make(chan bool)
+	graceful := make(chan bool)
 	go func() {
 		daemon.ShutDown()
 		graceful <- true

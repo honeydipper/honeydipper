@@ -44,7 +44,7 @@ func (s *SessionStore) Len() int {
 
 // newSession creates the workflow session.
 func (s *SessionStore) newSession(parent string, eventUUID string, wf *config.Workflow) SessionHandler {
-	var w = &Session{
+	w := &Session{
 		parent:   parent,
 		store:    s,
 		EventID:  eventUUID,

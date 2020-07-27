@@ -23,7 +23,7 @@ import (
 
 func TestServiceLoopCatchError(t *testing.T) {
 	if dipper.Logger == nil {
-		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 		defer f.Close()
 		dipper.GetLogger("test service", "DEBUG", f, f)
 	}
@@ -65,7 +65,7 @@ func TestServiceLoopCatchError(t *testing.T) {
 	}
 
 	svc.driverRuntimes["d1"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 	go func() {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic in route")
 	}()
@@ -84,7 +84,7 @@ func TestServiceLoopCatchError(t *testing.T) {
 	daemon.ShuttingDown = false
 
 	svc.driverRuntimes["d1"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 	go func() {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic in responder")
 	}()
@@ -103,7 +103,7 @@ func TestServiceLoopCatchError(t *testing.T) {
 	daemon.ShuttingDown = false
 
 	svc.driverRuntimes["d1"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 	go func() {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic in transformer")
 	}()
@@ -122,7 +122,7 @@ func TestServiceLoopCatchError(t *testing.T) {
 	daemon.ShuttingDown = false
 
 	svc.driverRuntimes["d1"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 	// injecting error in process
 	svc.driverRuntimes["d1"].Handler = nil
 	go func() {
@@ -152,7 +152,7 @@ func TestServiceLoopCatchError(t *testing.T) {
 
 func TestServiceRemoveEmitter(t *testing.T) {
 	if dipper.Logger == nil {
-		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 		defer f.Close()
 		dipper.GetLogger("test service", "DEBUG", f, f)
 	}
@@ -190,9 +190,9 @@ func TestServiceRemoveEmitter(t *testing.T) {
 
 	daemon.ShuttingDown = false
 	svc.driverRuntimes["driver:d1"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 	svc.driverRuntimes["emitter"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0777)
+	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0o777)
 	go func() {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter is removed")
 	}()
@@ -249,7 +249,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 
 func TestServiceEmitterCrashing(t *testing.T) {
 	if dipper.Logger == nil {
-		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 		defer f.Close()
 		dipper.GetLogger("test service", "DEBUG", f, f)
 	}
@@ -287,9 +287,9 @@ func TestServiceEmitterCrashing(t *testing.T) {
 
 	daemon.ShuttingDown = false
 	svc.driverRuntimes["driver:d1"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 	svc.driverRuntimes["emitter"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0777)
+	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0o777)
 	go func() {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter crashes")
 	}()
@@ -326,7 +326,7 @@ func TestServiceEmitterCrashing(t *testing.T) {
 
 func TestServiceReplaceEmitter(t *testing.T) {
 	if dipper.Logger == nil {
-		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 		defer f.Close()
 		dipper.GetLogger("test service", "DEBUG", f, f)
 	}
@@ -364,9 +364,9 @@ func TestServiceReplaceEmitter(t *testing.T) {
 
 	daemon.ShuttingDown = false
 	svc.driverRuntimes["driver:d1"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+	svc.driverRuntimes["driver:d1"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 	svc.driverRuntimes["emitter"].Stream = make(chan dipper.Message, 1)
-	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0777)
+	svc.driverRuntimes["emitter"].Output, _ = os.OpenFile(os.DevNull, os.O_APPEND|os.O_WRONLY, 0o777)
 	go func() {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter is changed")
 	}()

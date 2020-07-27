@@ -26,7 +26,7 @@ const (
 
 // GetMapData : get the data from the deep map following a KV path.
 func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
-	var current = reflect.ValueOf(from)
+	current := reflect.ValueOf(from)
 	if !current.IsValid() {
 		return nil, false
 	}

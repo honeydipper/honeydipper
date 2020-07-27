@@ -34,11 +34,13 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
-var log *logging.Logger
-var datadogOptions DatadogOptions
-var dogstatsd *statsd.Client
-var daemonID string
+var (
+	driver         *dipper.Driver
+	log            *logging.Logger
+	datadogOptions DatadogOptions
+	dogstatsd      *statsd.Client
+	daemonID       string
+)
 
 func main() {
 	initFlags()

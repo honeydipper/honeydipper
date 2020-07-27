@@ -190,7 +190,7 @@ func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {
 
 func (c *Config) extendSystem(processed map[string]bool, system string) {
 	var merged System
-	var current = c.DataSet.Systems[system]
+	current := c.DataSet.Systems[system]
 	for _, extend := range current.Extends {
 		parts := strings.Split(extend, "=")
 		var base, subKey string

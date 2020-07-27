@@ -22,7 +22,7 @@ import (
 
 func TestMain(m *testing.M) {
 	if dipper.Logger == nil {
-		//f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		// f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
 		f, _ := os.Create("test.log")
 		defer f.Close()
 		dipper.GetLogger("test service", "DEBUG", f, f)
@@ -30,9 +30,11 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var mockHelper *mock_workflow.MockSessionStoreHelper
-var emptyLabels map[string]string
-var store *SessionStore
+var (
+	mockHelper  *mock_workflow.MockSessionStoreHelper
+	emptyLabels map[string]string
+	store       *SessionStore
+)
 
 // every test case has following fields
 // - workflow: an workflow object to be executed using StartSession call
@@ -99,7 +101,7 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 
 	testContinueFunc := func() {
 		signal := make(chan int, 1)
-		var timeout = time.Duration(1)
+		timeout := time.Duration(1)
 		if num, ok := teststep["timeout"]; ok {
 			timeout = num.(time.Duration)
 		}
@@ -117,7 +119,7 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 
 	testResumeFunc := func() {
 		signal := make(chan int, 1)
-		var timeout = time.Duration(1)
+		timeout := time.Duration(1)
 		if num, ok := teststep["timeout"]; ok {
 			timeout = num.(time.Duration)
 		}
@@ -135,7 +137,7 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 
 	testNoopFunc := func() {
 		signal := make(chan int, 1)
-		var timeout = time.Duration(1)
+		timeout := time.Duration(1)
 		if num, ok := teststep["timeout"]; ok {
 			timeout = num.(time.Duration)
 		}
