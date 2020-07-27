@@ -60,7 +60,7 @@ func sendRequest(m *dipper.Message) {
 		log.Panicf("[%s] URL is required but missing", driver.Service)
 	}
 
-	var form = url.Values{}
+	form := url.Values{}
 	formData, _ := dipper.GetMapData(m.Payload, "form")
 	if formData != nil {
 		for k, v := range formData.(map[string]interface{}) {
@@ -68,7 +68,7 @@ func sendRequest(m *dipper.Message) {
 		}
 	}
 
-	var header = http.Header{}
+	header := http.Header{}
 	headerData, _ := dipper.GetMapData(m.Payload, "header")
 	if headerData != nil {
 		for k, v := range headerData.(map[string]interface{}) {
@@ -155,7 +155,7 @@ func extractHTTPResponseData(r *http.Response) map[string]interface{} {
 		log.Panicf("[%s] unable to read resp body", driver.Service)
 	}
 
-	var cookies = map[string]interface{}{}
+	cookies := map[string]interface{}{}
 	for _, c := range r.Cookies() {
 		cookies[c.Name] = c.Value
 	}

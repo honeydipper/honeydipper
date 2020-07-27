@@ -14,10 +14,8 @@ import (
 	"google.golang.org/api/option"
 )
 
-var (
-	// ErrFailedCreateClient means failure during create client
-	ErrFailedCreateClient = errors.New("unable to create gcloud pubsub client")
-)
+// ErrFailedCreateClient means failure during create client.
+var ErrFailedCreateClient = errors.New("unable to create gcloud pubsub client")
 
 // SubscriberConfig stores all gcloud pubsub subscriber information.
 type SubscriberConfig struct {
@@ -35,9 +33,11 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
-var subscriberConfigs map[string]*SubscriberConfig
-var serviceAccount string
+var (
+	driver            *dipper.Driver
+	subscriberConfigs map[string]*SubscriberConfig
+	serviceAccount    string
+)
 
 func main() {
 	initFlags()

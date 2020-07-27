@@ -110,7 +110,7 @@ func createJob(msg *dipper.Message) {
 	var jobSpec dataflow.CreateJobFromTemplateRequest
 	dipper.Must(mapstructure.Decode(job, &jobSpec))
 
-	var dataflowService = getDataflowService(serviceAccountBytes)
+	dataflowService := getDataflowService(serviceAccountBytes)
 
 	result := getExistingJob(project, location, jobSpec.JobName, dataflowService)
 	if result == nil {
@@ -153,7 +153,7 @@ func getJob(msg *dipper.Message) {
 		}
 	}
 
-	var dataflowService = getDataflowService(serviceAccountBytes)
+	dataflowService := getDataflowService(serviceAccountBytes)
 
 	var (
 		result *dataflow.Job
@@ -237,7 +237,7 @@ func findJobByName(msg *dipper.Message) {
 	serviceAccountBytes, project, location := getCommonParams(params)
 	jobName, ok := dipper.GetMapDataStr(params, "name")
 	if !ok {
-		panic(errors.New("missing name"))
+		panic(ErrMissingName)
 	}
 	dataflowService := getDataflowService(serviceAccountBytes)
 
@@ -275,7 +275,7 @@ func waitForJob(msg *dipper.Message) {
 		timeout = time.Duration(timeoutInt)
 	}
 
-	var dataflowService = getDataflowService(serviceAccountBytes)
+	dataflowService := getDataflowService(serviceAccountBytes)
 
 	terminatedStates := map[string]string{
 		"JOB_STATE_DONE":      "success",
@@ -350,7 +350,7 @@ func updateJob(msg *dipper.Message) {
 	}
 	jobID := dipper.MustGetMapDataStr(params, "jobID")
 
-	var dataflowService = getDataflowService(serviceAccountBytes)
+	dataflowService := getDataflowService(serviceAccountBytes)
 
 	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	var result *dataflow.Job

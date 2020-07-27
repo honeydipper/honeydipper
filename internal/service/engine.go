@@ -22,11 +22,15 @@ type CollapsedRule struct {
 	OriginalRule *config.Rule
 }
 
-var ruleMapLock sync.Mutex
-var ruleMap map[string][]*CollapsedRule
+var (
+	ruleMapLock sync.Mutex
+	ruleMap     map[string][]*CollapsedRule
+)
 
-var engine *Service
-var sessionStore *workflow.SessionStore
+var (
+	engine       *Service
+	sessionStore *workflow.SessionStore
+)
 
 // WorkflowHelper enables workflow engine to load config and send messages.
 type WorkflowHelper struct {

@@ -20,10 +20,8 @@ import (
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
-var (
-	// ErrKeyNameMissing means the key used for decrypting is not configured
-	ErrKeyNameMissing = errors.New("key name not configured")
-)
+// ErrKeyNameMissing means the key used for decrypting is not configured.
+var ErrKeyNameMissing = errors.New("key name not configured")
 
 func initFlags() {
 	flag.Usage = func() {

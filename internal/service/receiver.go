@@ -13,9 +13,11 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-var receiver *Service
-var numCollapsedEvents int
-var numDynamicFeatures int
+var (
+	receiver           *Service
+	numCollapsedEvents int
+	numDynamicFeatures int
+)
 
 // StartReceiver starts the receiver service.
 func StartReceiver(cfg *config.Config) {

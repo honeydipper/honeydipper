@@ -155,7 +155,7 @@ func (p *RPCProvider) Init(channel string, subject string, defaultWriter io.Writ
 
 // ReturnError : return error to rpc caller.
 func (p *RPCProvider) ReturnError(call *Message, reason string) {
-	var returnTo = call.ReturnTo
+	returnTo := call.ReturnTo
 	if returnTo == nil {
 		returnTo = p.DefaultReturn
 	}
@@ -172,7 +172,7 @@ func (p *RPCProvider) ReturnError(call *Message, reason string) {
 
 // Return : return a value to rpc caller.
 func (p *RPCProvider) Return(call *Message, retval *Message) {
-	var returnTo = call.ReturnTo
+	returnTo := call.ReturnTo
 	if returnTo == nil {
 		returnTo = p.DefaultReturn
 	}

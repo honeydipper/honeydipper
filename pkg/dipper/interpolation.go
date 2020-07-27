@@ -64,7 +64,6 @@ func InterpolateGoTemplate(pattern string, data interface{}) string {
 func ParseYaml(pattern string) interface{} {
 	var data interface{}
 	err := yaml.Unmarshal([]byte(pattern), &data)
-
 	if err != nil {
 		panic(err)
 	}

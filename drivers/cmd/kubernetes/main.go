@@ -44,13 +44,15 @@ const (
 
 	// DefaultJobWaitTimeout is the default timeout in seconds for waiting a job to be complete.
 	DefaultJobWaitTimeout time.Duration = 10
+
+	// LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
+	LabelHoneydipperUniqueIdentifier = "honeydipper-unique-identifier"
 )
 
-// LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
-const LabelHoneydipperUniqueIdentifier = "honeydipper-unique-identifier"
-
-var log *logging.Logger
-var err error
+var (
+	log *logging.Logger
+	err error
+)
 
 func initFlags() {
 	flag.Usage = func() {

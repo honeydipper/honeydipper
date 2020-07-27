@@ -83,7 +83,7 @@ func TestBuiltinPrepare(t *testing.T) {
 		"convert the list of interface to list of strings": []interface{}{
 			&BuiltinDriver{meta: &Meta{HandlerData: map[string]interface{}{"arguments": []interface{}{1, 2, false, "test"}}}},
 			"",               // no error
-			4,                //len(Arguments)
+			4,                // len(Arguments)
 			"1 2 false test", // concatenated parameters
 		},
 		"panic when arguments is not a list": []interface{}{

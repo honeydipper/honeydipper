@@ -34,10 +34,12 @@ type EventBusOptions struct {
 	APITopic     string
 }
 
-var log *logging.Logger
-var driver *dipper.Driver
-var eventbus *EventBusOptions
-var redisOptions *redis.Options
+var (
+	log          *logging.Logger
+	driver       *dipper.Driver
+	eventbus     *EventBusOptions
+	redisOptions *redis.Options
+)
 
 func initFlags() {
 	flag.Usage = func() {

@@ -147,7 +147,7 @@ func (w *Session) injectMsg(msg *dipper.Message) {
 
 // injectNamedCTX inject a named context into the workflow.
 func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
-	var contexts = w.store.Helper.GetConfig().DataSet.Contexts
+	contexts := w.store.Helper.GetConfig().DataSet.Contexts
 
 	namedCTXs, ok := contexts[name]
 	if name[0] != '_' && !ok {

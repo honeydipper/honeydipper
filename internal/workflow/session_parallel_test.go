@@ -24,7 +24,6 @@ type DipperMsgMatcher struct {
 }
 
 func (e *DipperMsgMatcher) Matches(x interface{}) bool {
-
 	// for thread operations, ignore the sessionID and resume_token
 
 	m := x.(*dipper.Message)

@@ -49,8 +49,10 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
-var lro *sync.Map
+var (
+	driver *dipper.Driver
+	lro    *sync.Map
+)
 
 func main() {
 	initFlags()
@@ -159,7 +161,6 @@ func waitForBackup(m *dipper.Message) {
 		op := obj.([]interface{})[0].(*spannerAdmin.CreateBackupOperation)
 		waitCtx := obj.([]interface{})[1].(context.Context)
 		backup, err := op.Wait(waitCtx)
-
 		if err != nil {
 			panic(err)
 		}

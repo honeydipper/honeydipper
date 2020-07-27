@@ -29,9 +29,11 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
-var server *http.Server
-var hooks map[string]interface{}
+var (
+	driver *dipper.Driver
+	server *http.Server
+	hooks  map[string]interface{}
+)
 
 // Addr : listening address and port of the webhook.
 var Addr string
