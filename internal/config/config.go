@@ -195,6 +195,7 @@ func (c *Config) extendSystem(processed map[string]bool, system string) {
 		parts := strings.Split(extend, "=")
 		var base, subKey string
 		base = strings.TrimSpace(parts[0])
+		//nolint:gomnd
 		if len(parts) >= 2 {
 			subKey = base
 			base = strings.TrimSpace(parts[1])

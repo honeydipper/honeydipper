@@ -20,6 +20,9 @@ import (
 const (
 	// DriverError is the base for all driver related error
 	DriverError dipper.Error = "driver error"
+
+	// DriverMessageBuffer is the size of the driver message buffer
+	DriverMessageBuffer = 10
 )
 
 // Handler provides common functions for handling a driver.
@@ -87,7 +90,7 @@ func (runtime *Runtime) Start(service string) {
 		dipper.Logger.Panicf("[%s] Unable to link to driver stdout %v", service, err)
 	} else {
 		runtime.Input = input
-		runtime.Stream = make(chan dipper.Message, 10)
+		runtime.Stream = make(chan dipper.Message, DriverMessageBuffer)
 		go runtime.fetchMessages()
 	}
 

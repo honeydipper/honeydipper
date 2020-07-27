@@ -21,6 +21,11 @@ import (
 	"github.com/op/go-logging"
 )
 
+const (
+	// TopicExpireTimeout is the timeout for a message in the topic to expire and be removed
+	TopicExpireTimeout time.Duration = time.Second * 1800
+)
+
 // EventBusOptions : stores all the redis key names used by honeydipper.
 type EventBusOptions struct {
 	EventTopic   string
@@ -141,7 +146,7 @@ func relayToRedis(msg *dipper.Message) {
 	if err := client.RPush(ctx, topic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
-	client.Expire(ctx, topic, time.Second*1800)
+	client.Expire(ctx, topic, TopicExpireTimeout)
 }
 
 func subscribe(topic string, subject string) {

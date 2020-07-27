@@ -17,6 +17,16 @@ import (
 	"github.com/op/go-logging"
 )
 
+const (
+	// DriverLogDescriptor is the file descriptor used for logging in driver,
+	// since the daemon always pass the log file descriptor as the first item in
+	// the ExtraFiles list, this is always 3.
+	DriverLogDescriptor uintptr = 3
+
+	// DefaultAPITimeout is the default timeout for making an outbound API call
+	DefaultAPITimeout time.Duration = 10
+)
+
 // Driver : the helper stuct for creating a honey-dipper driver in golang.
 type Driver struct {
 	RPCCaller
@@ -103,7 +113,7 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 	d.Options = msg.Payload
 	Logger = nil
 	d.GetLogger()
-	d.APITimeout = time.Duration(10)
+	d.APITimeout = DefaultAPITimeout
 	apiTimeoutStr, ok := d.GetOptionStr("api_timeout")
 	if ok {
 		apiTimeout, e := strconv.Atoi(apiTimeoutStr)
@@ -174,7 +184,7 @@ func (d *Driver) GetLogger() *logging.Logger {
 			levelstr = "INFO"
 		}
 		if logFile == nil {
-			logFile = os.NewFile(uintptr(3), "log")
+			logFile = os.NewFile(DriverLogDescriptor, "log")
 		}
 		return GetLogger(d.Name, levelstr, logFile)
 	}

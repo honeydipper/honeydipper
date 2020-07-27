@@ -18,6 +18,14 @@ import (
 	spannerAdminSchema "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
 )
 
+const (
+	// DefaultBackupOpWaitTimeout is the default timeout in seconds for waiting for the backup to complete
+	DefaultBackupOpWaitTimeout time.Duration = 1800
+
+	// DefaultBackupExpireDuration is the default duration before a backup is expired and removed
+	DefaultBackupExpireDuration time.Duration = time.Hour * 24 * 180
+)
+
 var (
 	// ErrMissingProject means missing project
 	ErrMissingProject = errors.New("project required")
@@ -72,7 +80,7 @@ func backup(m *dipper.Message) {
 	if !ok {
 		panic(ErrMissingDB)
 	}
-	expireDuration := time.Hour * 24 * 180
+	expireDuration := DefaultBackupExpireDuration
 	expireStr, ok := dipper.GetMapDataStr(params, "expires")
 	if ok && len(expireStr) > 0 {
 		var err error
@@ -81,7 +89,7 @@ func backup(m *dipper.Message) {
 			panic(err)
 		}
 	}
-	timeout := time.Duration(1800)
+	timeout := DefaultBackupOpWaitTimeout
 	timeoutStr, ok := m.Labels["timeout"]
 	if ok {
 		timeoutInt, _ := strconv.Atoi(timeoutStr)

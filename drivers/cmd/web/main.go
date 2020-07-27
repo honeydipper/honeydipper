@@ -140,7 +140,7 @@ func sendRequest(m *dipper.Message) {
 		Payload: response,
 		IsRaw:   false,
 	}
-	if statusCode >= 400 {
+	if statusCode >= http.StatusBadRequest {
 		ret.Labels = map[string]string{
 			"error": fmt.Sprintf("Error: got status code: %d", statusCode),
 		}
