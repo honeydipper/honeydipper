@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
+	batchv1client "k8s.io/client-go/kubernetes/typed/batch/v1"
 	"k8s.io/client-go/rest"
 )
 
@@ -38,6 +39,9 @@ const StatusSuccess = "success"
 
 // StatusFailure is the status when the job finished with error or not finished within time limit
 const StatusFailure = "failure"
+
+// LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
+const LabelHoneydipperUniqueIdentifier = "honeydipper-unique-identifier"
 
 var log *logging.Logger
 var err error
@@ -282,6 +286,28 @@ func waitForJob(m *dipper.Message) {
 	}
 }
 
+func getExistingJob(jobSpec *batchv1.Job, jobclient batchv1client.JobInterface) *batchv1.Job {
+	uniqID, ok := jobSpec.ObjectMeta.Labels[LabelHoneydipperUniqueIdentifier]
+	if !ok {
+		return nil
+	}
+
+	opt := metav1.ListOptions{
+		LabelSelector: LabelHoneydipperUniqueIdentifier + "=" + uniqID,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	defer cancel()
+
+	jobList := dipper.Must(jobclient.List(ctx, opt)).(*batchv1.JobList)
+
+	for _, job := range jobList.Items {
+		if job.Status.Active > 0 {
+			return &job
+		}
+	}
+	return nil
+}
+
 func createJob(m *dipper.Message) {
 	k8client := prepareKubeConfig(m)
 
@@ -303,11 +329,15 @@ func createJob(m *dipper.Message) {
 	log.Debugf("[%s] source %+v job spec %+v", driver.Service, dipper.MustGetMapData(m.Payload, "job"), jobSpec)
 
 	jobclient := k8client.BatchV1().Jobs(nameSpace)
-	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-	defer cancel()
-	jobResult, err := jobclient.Create(ctx, &jobSpec, metav1.CreateOptions{})
-	if err != nil {
-		log.Panicf("[%s] failed to create job %+v", driver.Service, err)
+
+	jobResult := getExistingJob(&jobSpec, jobclient)
+	if jobResult == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+		defer cancel()
+		jobResult, err = jobclient.Create(ctx, &jobSpec, metav1.CreateOptions{})
+		if err != nil {
+			log.Panicf("[%s] failed to create job %+v", driver.Service, err)
+		}
 	}
 
 	m.Reply <- dipper.Message{
