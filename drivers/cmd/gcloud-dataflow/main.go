@@ -90,26 +90,27 @@ func createJob(msg *dipper.Message) {
 		panic(errors.New("job spec required"))
 	}
 	var jobSpec dataflow.CreateJobFromTemplateRequest
-	err := mapstructure.Decode(job, &jobSpec)
-	if err != nil {
-		panic(err)
-	}
+	dipper.PanicError(mapstructure.Decode(job, &jobSpec))
 
 	var dataflowService = getDataflowService(serviceAccountBytes)
 
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
-	var result *dataflow.Job
-	func() {
-		defer cancel()
-		if len(location) == 0 {
-			result, err = dataflowService.Projects.Templates.Create(project, &jobSpec).Context(execContext).Do()
-		} else {
-			result, err = dataflowService.Projects.Locations.Templates.Create(project, location, &jobSpec).Context(execContext).Do()
-		}
-	}()
-	if err != nil {
-		panic(err)
+	result := getExistingJob(project, location, jobSpec.JobName, dataflowService)
+	if result == nil {
+		execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
+		func() {
+			defer cancel()
+			if len(location) == 0 {
+				result = dipper.Must(
+					dataflowService.Projects.Templates.Create(project, &jobSpec).Context(execContext).Do(),
+				).(*dataflow.Job)
+			} else {
+				result = dipper.Must(
+					dataflowService.Projects.Locations.Templates.Create(project, location, &jobSpec).Context(execContext).Do(),
+				).(*dataflow.Job)
+			}
+		}()
 	}
+
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
 			"job": *result,
@@ -168,18 +169,7 @@ func getJob(msg *dipper.Message) {
 	}
 }
 
-func findJobByName(msg *dipper.Message) {
-	msg = dipper.DeserializePayload(msg)
-	params := msg.Payload
-	serviceAccountBytes, project, location := getCommonParams(params)
-
-	jobName, ok := dipper.GetMapDataStr(params, "name")
-	if !ok {
-		panic(errors.New("name required"))
-	}
-
-	var dataflowService = getDataflowService(serviceAccountBytes)
-
+func getExistingJob(project, location, jobName string, dataflowService *dataflow.Service) *dataflow.Job {
 	listJobCall := dataflowService.Projects.Jobs.List(project)
 	fieldList := []googleapi.Field{
 		"nextPageToken",
@@ -193,26 +183,22 @@ func findJobByName(msg *dipper.Message) {
 
 	var (
 		result *dataflow.ListJobsResponse
-		err    error
 		job    *dataflow.Job
 	)
 
+found:
 	for job == nil {
 		execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 		func() {
 			defer cancel()
-			result, err = listJobCall.Context(execContext).Do()
+			result = dipper.Must(listJobCall.Context(execContext).Do()).(*dataflow.ListJobsResponse)
 		}()
-
-		if err != nil {
-			panic(err)
-		}
 
 		if len(result.Jobs) > 0 {
 			for _, j := range result.Jobs {
 				if j.Name == jobName {
 					job = j
-					break
+					break found
 				}
 			}
 		}
@@ -223,6 +209,21 @@ func findJobByName(msg *dipper.Message) {
 			break
 		}
 	}
+
+	return job
+}
+
+func findJobByName(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+	serviceAccountBytes, project, location := getCommonParams(params)
+	jobName, ok := dipper.GetMapDataStr(params, "name")
+	if !ok {
+		panic(errors.New("missing name"))
+	}
+	dataflowService := getDataflowService(serviceAccountBytes)
+
+	job := getExistingJob(project, location, jobName, dataflowService)
 
 	if job != nil {
 		msg.Reply <- dipper.Message{
