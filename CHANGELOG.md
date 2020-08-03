@@ -1,3 +1,19 @@
+# [1.7.0](https://github.com/honeydipper/honeydipper/compare/v1.6.1...v1.7.0) (2020-08-03)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 123391f ([#301](https://github.com/honeydipper/honeydipper/issues/301)) ([c99884a](https://github.com/honeydipper/honeydipper/commit/c99884a4bc1129727d0315154fd9f301fd7d83f4))
+* **deps:** update google.golang.org/genproto commit hash to 8145dea ([#302](https://github.com/honeydipper/honeydipper/issues/302)) ([754306e](https://github.com/honeydipper/honeydipper/commit/754306e3e898c82fb5835b4d6bd3bb1deeae7c7f))
+* **deps:** update module cloud.google.com/go to v0.62.0 ([#305](https://github.com/honeydipper/honeydipper/issues/305)) ([d782200](https://github.com/honeydipper/honeydipper/commit/d782200ce55008c7ed7edc85ac031dc96f4308b0))
+* **deps:** update module golang/mock to v1.4.4 ([#306](https://github.com/honeydipper/honeydipper/issues/306)) ([5f03653](https://github.com/honeydipper/honeydipper/commit/5f036536b33a3910cc1c69fcf63e24b0dcf8c7f9))
+
+
+### Features
+
+* **dipper:** helper error handling function Must ([408796b](https://github.com/honeydipper/honeydipper/commit/408796bebb77241deddfd4ca001b05c3162ca5a0))
+* **drivers:** spanner and k8s createJob allows retry ([5d391b1](https://github.com/honeydipper/honeydipper/commit/5d391b1039a2f0ed3274dbcb4d3ddeafc037e554))
+
 ## [1.6.1](https://github.com/honeydipper/honeydipper/compare/v1.6.0...v1.6.1) (2020-07-20)
 
 
