@@ -3,10 +3,10 @@ module github.com/honeydipper/honeydipper
 go 1.13
 
 require (
-	cloud.google.com/go v0.60.0
+	cloud.google.com/go v0.62.0
 	cloud.google.com/go/pubsub v1.3.1
 	cloud.google.com/go/spanner v1.6.0
-	cloud.google.com/go/storage v1.8.0
+	cloud.google.com/go/storage v1.10.0
 	github.com/DataDog/datadog-go v3.7.2+incompatible
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
@@ -26,7 +26,7 @@ require (
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/crypto v0.0.0-20200728195943-123391ffb6de
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
-	google.golang.org/api v0.28.0
+	google.golang.org/api v0.29.0
 	google.golang.org/genproto v0.0.0-20200731012542-8145dea6a485
 	google.golang.org/protobuf v1.25.0
 	gopkg.in/h2non/gock.v1 v1.0.15
