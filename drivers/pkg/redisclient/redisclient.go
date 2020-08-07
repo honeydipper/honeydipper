@@ -4,7 +4,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
 )

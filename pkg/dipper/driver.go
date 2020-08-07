@@ -7,6 +7,7 @@
 package dipper
 
 import (
+	"context"
 	"io"
 	"os"
 	"strconv"
@@ -205,4 +206,9 @@ func (d *Driver) EmitEvent(payload map[string]interface{}) string {
 		},
 	})
 	return id.String()
+}
+
+// GetContext creates a context with APITimeout.
+func (d *Driver) GetContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), d.APITimeout*time.Second)
 }

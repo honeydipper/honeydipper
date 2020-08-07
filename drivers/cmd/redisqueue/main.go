@@ -8,12 +8,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
@@ -97,7 +98,9 @@ func start(msg *dipper.Message) {
 	case "receiver":
 		client := redis.NewClient(redisOptions)
 		defer client.Close()
-		if err := client.Ping().Err(); err != nil {
+		ctx, cancel := driver.GetContext()
+		defer cancel()
+		if err := client.Ping(ctx).Err(); err != nil {
 			log.Panicf("[%s] redis error: %v", driver.Service, err)
 		}
 	}
@@ -132,10 +135,12 @@ func relayToRedis(msg *dipper.Message) {
 	buf := dipper.SerializeContent(payload)
 	client := redis.NewClient(redisOptions)
 	defer client.Close()
-	if err := client.RPush(topic, string(buf)).Err(); err != nil {
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	if err := client.RPush(ctx, topic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
-	client.Expire(topic, time.Second*1800)
+	client.Expire(ctx, topic, time.Second*1800)
 }
 
 func subscribe(topic string, subject string) {
@@ -150,7 +155,7 @@ func subscribe(topic string, subject string) {
 			}
 			log.Infof("[%s] start receiving messages on topic: %s", driver.Service, realTopic)
 			for {
-				messages, err := client.BLPop(time.Second, realTopic).Result()
+				messages, err := client.BLPop(context.Background(), time.Second, realTopic).Result()
 				if err != nil && err != redis.Nil {
 					log.Panicf("[%s] redis error: %v", driver.Service, err)
 				}
