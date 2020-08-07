@@ -8,12 +8,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
@@ -86,7 +87,9 @@ func broadcastToRedis(msg *dipper.Message) {
 	buf := dipper.SerializeContent(payload)
 	client := redis.NewClient(redisOptions)
 	defer client.Close()
-	if err := client.Publish(broadcastTopic, string(buf)).Err(); err != nil {
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	if err := client.Publish(ctx, broadcastTopic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
 	msg.Reply <- dipper.Message{}
@@ -109,7 +112,9 @@ func sendBroadcast(msg *dipper.Message) {
 	buf := dipper.SerializeContent(payload)
 	client := redis.NewClient(redisOptions)
 	defer client.Close()
-	if err := client.Publish(broadcastTopic, string(buf)).Err(); err != nil {
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	if err := client.Publish(ctx, broadcastTopic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
 	msg.Reply <- dipper.Message{}
@@ -121,9 +126,14 @@ func subscribe() {
 			defer dipper.SafeExitOnError("[%s] re-subscribing to redis pubsub %s", driver.Service, broadcastTopic)
 			client := redis.NewClient(redisOptions)
 			defer client.Close()
-			pubsub := client.Subscribe(broadcastTopic)
+			var pubsub *redis.PubSub
+			ctx, cancel := driver.GetContext()
+			func() {
+				defer cancel()
+				pubsub = client.Subscribe(ctx, broadcastTopic)
+			}()
 
-			_, err = pubsub.Receive()
+			_, err = pubsub.Receive(context.Background())
 			if err != nil {
 				panic(err)
 			}
