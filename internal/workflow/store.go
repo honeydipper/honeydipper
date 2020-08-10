@@ -112,3 +112,14 @@ func (s *SessionStore) ByEventID(eventID string) []SessionHandler {
 	}
 	return ret
 }
+
+// GetEvents retrieves all sessions that are directly triggered through events.
+func (s *SessionStore) GetEvents() []SessionHandler {
+	var ret []SessionHandler
+	for _, sh := range s.sessions {
+		if sh.GetParent() == "" {
+			ret = append(ret, sh)
+		}
+	}
+	return ret
+}

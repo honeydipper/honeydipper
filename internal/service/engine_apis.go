@@ -13,6 +13,7 @@ import (
 
 func setupEngineAPIs() {
 	engine.APIs["eventWait"] = handleEventWait
+	engine.APIs["eventList"] = handleEventList
 }
 
 func handleEventWait(resp *api.Response) {
@@ -40,6 +41,24 @@ func handleEventWait(resp *api.Response) {
 			"event":       session.GetEventName(),
 			"status":      status,
 			"reason":      reason,
+		}
+	}
+	resp.Return(map[string]interface{}{
+		"sessions": ret,
+	})
+}
+
+func handleEventList(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	sessions := sessionStore.GetEvents()
+	ret := make([]interface{}, len(sessions))
+	for i, session := range sessions {
+		ret[i] = map[string]interface{}{
+			"name":        session.GetName(),
+			"description": session.GetDescription(),
+			"exported":    session.GetExported(),
+			"eventID":     session.GetEventID(),
+			"event":       session.GetEventName(),
 		}
 	}
 	resp.Return(map[string]interface{}{
