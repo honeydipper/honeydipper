@@ -26,6 +26,7 @@ func StartReceiver(cfg *config.Config) {
 	receiver.DiscoverFeatures = ReceiverFeatures
 	receiver.EmitMetrics = receiverMetrics
 	Services["receiver"] = receiver
+	setupReceiverAPIs()
 	receiver.start()
 }
 
