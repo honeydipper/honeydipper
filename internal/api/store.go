@@ -28,6 +28,9 @@ const (
 
 	// DefaultAPIWriteTimeout is the default timeout in seconds for responding to the request
 	DefaultAPIWriteTimeout time.Duration = 10
+
+	// ACLAllow reprensts allowing the subject to access the API
+	ACLAllow = "allow"
 )
 
 // Store stores the live API calls in memory.
@@ -157,10 +160,11 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 				fn = parts[1]
 			}
 
-			_, err := l.caller.Call("driver:"+provider, fn, dipper.ExtractWebRequestExceptBody(c.Request))
-			if err != nil {
+			subject, err := l.caller.Call("driver:"+provider, fn, dipper.ExtractWebRequestExceptBody(c.Request))
+			if err != nil || subject == nil {
 				allErrors[p.(string)] = err.Error()
 			} else {
+				c.Set("subject", dipper.DeserializeContent(subject))
 				c.Next()
 				return
 			}
@@ -169,10 +173,50 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+// Authorize determines if a subject is allowed to call a API.
+func (l *Store) Authorize(c *gin.Context, def Def) bool {
+	subject, ok := c.Get("subject")
+	if !ok {
+		return false
+	}
+
+	rulesObj, ok := dipper.GetMapData(l.config, "acls."+def.name)
+	if !ok {
+		return false
+	}
+
+	rules, ok := rulesObj.([]interface{})
+	if !ok {
+		return false
+	}
+
+	defaultAction := ACLAllow
+	for _, ruleObj := range rules {
+		rule := ruleObj.(map[string]interface{})
+		switch v := rule["subjects"].(type) {
+		case string:
+			defaultAction = v
+		case []interface{}:
+			if dipper.CompareAll(subject, v) {
+				return rule["type"] == ACLAllow
+			}
+		default:
+			return false
+		}
+	}
+
+	return defaultAction == ACLAllow
+}
+
 // CreateHTTPHandlerFunc return a handler function for GET method.
 func (l *Store) CreateHTTPHandlerFunc(def Def) gin.HandlerFunc {
 	// create and return the function
 	return func(c *gin.Context) {
+		if !l.Authorize(c, def) {
+			c.AbortWithStatusJSON(http.StatusForbidden, map[string]interface{}{"errors": "not allowed"})
+			return
+		}
+
 		// create or find the original request
 		r := l.GetRequest(def, c)
 		r.Dispatch()
