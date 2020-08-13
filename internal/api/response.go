@@ -9,7 +9,7 @@ package api
 import (
 	"fmt"
 	"io"
-	"time"
+	"strconv"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
@@ -17,8 +17,8 @@ import (
 // DefaultAPILockAttemptMS is the time for attempting to acquire a lock.
 const DefaultAPILockAttemptMS = 10
 
-// DefaultAPILockExpire is the API candidate lock to expire.
-const DefaultAPILockExpire time.Duration = 1000
+// DefaultAPILockExpireMS is the API candidate lock to expire.
+const DefaultAPILockExpireMS = 1000
 
 // Response is used for responding to the api service.
 type Response struct {
@@ -74,7 +74,7 @@ func (resp *Response) Lock(caller *dipper.RPCCaller, def Def) bool {
 	_, err := caller.Call("locker", "lock", map[string]interface{}{
 		"name":       fmt.Sprintf("api_candidate:%s", resp.Request.Labels["uuid"]),
 		"attempt_ms": DefaultAPILockAttemptMS,
-		"expire":     DefaultAPILockExpire * time.Millisecond,
+		"expire":     strconv.Itoa(DefaultAPILockExpireMS) + "ms",
 	})
 
 	return err == nil

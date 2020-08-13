@@ -27,6 +27,8 @@ var (
 	ErrInvalidBasicAuth = errors.New("the basic auth header is invalid")
 	// ErrInvalidBasicCreds means the basic auth user and password is invalid
 	ErrInvalidBasicCreds = errors.New("the basic auth credential is invalid")
+	// ErrInvalidUserEntry means user entry in the config is invalid
+	ErrInvalidUserEntry = errors.New("the user entry is invalid")
 	// ErrSkipped means skipping the current scheme
 	ErrSkipped = errors.New("skipped")
 )
@@ -62,20 +64,19 @@ func authWebRequest(m *dipper.Message) {
 	}
 
 	var err error
+	var subject map[string]interface{}
 	for _, scheme := range schemes {
 		switch scheme.(string) {
 		case "basic":
-			err = basicAuth(m)
+			subject, err = basicAuth(m)
 		case "token":
-			err = tokenAuth(m)
+			subject, err = tokenAuth(m)
 		default:
 			panic(ErrUnsupportedScheme)
 		}
 		if err == nil {
 			m.Reply <- dipper.Message{
-				Payload: map[string]interface{}{
-					"auth": "true",
-				},
+				Payload: subject,
 			}
 			return
 		} else if !errors.Is(err, ErrSkipped) {
@@ -85,33 +86,38 @@ func authWebRequest(m *dipper.Message) {
 	panic(err)
 }
 
-func tokenAuth(m *dipper.Message) error {
+func tokenAuth(m *dipper.Message) (map[string]interface{}, error) {
 	const prefix = "bearer "
 	authHash, ok := dipper.GetMapDataStr(m.Payload, "headers.Authorization.0")
 	if !ok {
 		authHash, ok = dipper.GetMapDataStr(m.Payload, "headers.authorization.0")
 		if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
-			return ErrSkipped
+			return nil, ErrSkipped
 		}
 	}
 	if _, ok = driver.GetOption("decrypted"); !ok {
 		dipper.DecryptAll(&driver.RPCCaller, driver.Options)
 		driver.Options.(map[string]interface{})["decrypted"] = true
 	}
-	if !dipper.CompareAll(authHash, dipper.MustGetMapData(driver.Options, "data.tokens")) {
-		return ErrInvalidBearerToken
+	found, ok := dipper.GetMapData(driver.Options, "data.tokens."+authHash)
+	if !ok {
+		return nil, ErrInvalidBearerToken
+	}
+	subject, ok := found.(map[string]interface{})["subject"]
+	if !ok || subject == nil || len(subject.(map[string]interface{})) == 0 {
+		return nil, ErrInvalidUserEntry
 	}
 
-	return nil
+	return subject.(map[string]interface{}), nil
 }
 
-func basicAuth(m *dipper.Message) error {
+func basicAuth(m *dipper.Message) (map[string]interface{}, error) {
 	const prefix = "basic "
 	authHash, ok := dipper.GetMapDataStr(m.Payload, "headers.Authorization.0")
 	if !ok {
 		authHash, ok = dipper.GetMapDataStr(m.Payload, "headers.authorization.0")
 		if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
-			return ErrSkipped
+			return nil, ErrSkipped
 		}
 	}
 	req := &http.Request{
@@ -121,19 +127,27 @@ func basicAuth(m *dipper.Message) error {
 	}
 	user, pass, ok := req.BasicAuth()
 	if !ok {
-		return ErrInvalidBasicAuth
+		return nil, ErrInvalidBasicAuth
 	}
 	if _, ok = driver.GetOption("decrypted"); !ok {
 		dipper.DecryptAll(&driver.RPCCaller, driver.Options)
 		driver.Options.(map[string]interface{})["decrypted"] = true
 	}
 
-	if !dipper.CompareAll(map[string]interface{}{
-		"name": user,
-		"pass": pass,
-	}, dipper.MustGetMapData(driver.Options, "data.users")) {
-		return ErrInvalidBasicCreds
+	knownUsers, ok := dipper.GetMapData(driver.Options, "data.users")
+	if !ok || knownUsers == nil {
+		return nil, ErrInvalidBasicCreds
+	}
+	for _, k := range knownUsers.([]interface{}) {
+		ku := k.(map[string]interface{})
+		if ku["name"].(string) == user && ku["pass"].(string) == pass {
+			subject, ok := ku["subject"]
+			if !ok || subject == nil || len(subject.(map[string]interface{})) == 0 {
+				return nil, ErrInvalidUserEntry
+			}
+			return subject.(map[string]interface{}), nil
+		}
 	}
 
-	return nil
+	return nil, ErrInvalidBasicCreds
 }
