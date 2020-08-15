@@ -36,7 +36,7 @@ func (p *CommandProvider) Init(channel string, subject string, defaultWriter io.
 	p.Subject = subject
 }
 
-// ReturnError: send an error message return to caller and create an error
+// ReturnError : send an error message return to caller and create an error
 func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...interface{}) error {
 	errText := fmt.Sprintf(pattern, args...)
 	p.Return(call, &Message{
@@ -139,7 +139,7 @@ func (p *CommandProvider) Router(msg *Message) {
 }
 
 // UnpackLabels loads necessary variables out of the labels
-func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backoff_ms time.Duration) {
+func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backoffMs time.Duration) {
 	var err error
 
 	retryStr, _ := msg.Labels["retry"]
@@ -156,9 +156,9 @@ func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backof
 		if err != nil {
 			panic(p.ReturnError(msg, "[operator] invalid backoff_ms: %s", backoffStr))
 		}
-		backoff_ms = time.Duration(backoffVal)
+		backoffMs = time.Duration(backoffVal)
 	} else {
-		backoff_ms = 1000
+		backoffMs = 1000
 	}
 
 	timeoutStr, _ := msg.Labels["timeout"]
@@ -172,5 +172,5 @@ func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backof
 		timeout = 30
 	}
 
-	return retry, timeout, backoff_ms
+	return retry, timeout, backoffMs
 }
