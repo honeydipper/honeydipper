@@ -28,8 +28,8 @@ func TestRunConfigCheck(t *testing.T) {
 			&config.Config{
 				DataSet: &config.DataSet{},
 				Loaded: map[config.RepoInfo]*config.Repo{
-					config.RepoInfo{Repo: "good one"}: &config.Repo{Errors: nil},
-					config.RepoInfo{Repo: "bad one"}:  &config.Repo{Errors: []config.Error{config.Error{Error: fmt.Errorf("error converting YAML to JSON: yaml: %s", "test.yaml"), File: "test"}}},
+					{Repo: "good one"}: {Errors: nil},
+					{Repo: "bad one"}:  {Errors: []config.Error{{Error: fmt.Errorf("error converting YAML to JSON: yaml: %s", "test.yaml"), File: "test"}}},
 				},
 			},
 			1,
@@ -58,7 +58,7 @@ func TestRunConfigCheck(t *testing.T) {
 		[]interface{}{
 			&config.Config{
 				DataSet: &config.DataSet{
-					Workflows: map[string]config.Workflow{"test-workflow": config.Workflow{Workflow: "dne"}},
+					Workflows: map[string]config.Workflow{"test-workflow": {Workflow: "dne"}},
 				},
 			},
 			1,
@@ -77,7 +77,7 @@ func TestRunConfigCheck(t *testing.T) {
 func TestCheckObjectExistsWorkFlowDoesNotExist(t *testing.T) {
 	defer recoverAssertion(`workflow "test-fail" not defined`, t)
 	workflows := map[string]config.Workflow{
-		"test-wf": config.Workflow{
+		"test-wf": {
 			Name: "test",
 		},
 	}
@@ -87,7 +87,7 @@ func TestCheckObjectExistsWorkFlowDoesNotExist(t *testing.T) {
 func TestCheckObjectExists(t *testing.T) {
 	defer recoverAssertion("", t)
 	workflows := map[string]config.Workflow{
-		"test-wf": config.Workflow{
+		"test-wf": {
 			Name: "test",
 		},
 	}
@@ -129,42 +129,42 @@ var wfFunctionTestCases = []struct {
 	{
 		config.Workflow{Name: "test", CallFunction: "test_system.test_function"},
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
-			"test_system": config.System{Functions: map[string]config.Function{"test_function": config.Function{Driver: "web"}}},
+			"test_system": {Functions: map[string]config.Function{"test_function": {Driver: "web"}}},
 		}}},
 		"",
 	},
 	{
 		config.Workflow{Name: "test", CallFunction: "test_system.test_function"},
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
-			"system_does_not_exist": config.System{Functions: map[string]config.Function{"test_function": config.Function{Driver: "web"}}},
+			"system_does_not_exist": {Functions: map[string]config.Function{"test_function": {Driver: "web"}}},
 		}}},
 		`system "test_system" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", CallFunction: "test_system.test_function"},
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
-			"test_system": config.System{Functions: map[string]config.Function{"test_function_does_not_exist": config.Function{Driver: "web"}}},
+			"test_system": {Functions: map[string]config.Function{"test_function_does_not_exist": {Driver: "web"}}},
 		}}},
 		`test_system function "test_function" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", Function: config.Function{Target: config.Action{System: "test_system", Function: "test_function"}}},
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
-			"test_system": config.System{Functions: map[string]config.Function{"test_function": config.Function{Driver: "web"}}},
+			"test_system": {Functions: map[string]config.Function{"test_function": {Driver: "web"}}},
 		}}},
 		"",
 	},
 	{
 		config.Workflow{Name: "test", Function: config.Function{Target: config.Action{System: "test_system", Function: "test_function"}}},
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
-			"not_exist": config.System{Functions: map[string]config.Function{"test_function": config.Function{Driver: "web"}}},
+			"not_exist": {Functions: map[string]config.Function{"test_function": {Driver: "web"}}},
 		}}},
 		`system "test_system" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", Function: config.Function{Target: config.Action{System: "test_system", Function: "test_function"}}},
 		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
-			"test_system": config.System{Functions: map[string]config.Function{"not_exist": config.Function{Driver: "web"}}},
+			"test_system": {Functions: map[string]config.Function{"not_exist": {Driver: "web"}}},
 		}}},
 		`test_system function "test_function" not defined`,
 	},
@@ -195,7 +195,7 @@ var wfActionTestCases = []struct {
 		`cannot define both "call_workflow" and "call_function"`,
 	},
 	{
-		config.Workflow{Name: "test", Workflow: "test_workflow", Steps: []config.Workflow{config.Workflow{}}},
+		config.Workflow{Name: "test", Workflow: "test_workflow", Steps: []config.Workflow{{}}},
 		`cannot define both "call_workflow" and "steps"`,
 	},
 	{

@@ -130,7 +130,7 @@ func TestDeepCopy(t *testing.T) {
 func TestMerge(t *testing.T) {
 
 	testCases := []map[string]interface{}{
-		map[string]interface{}{
+		{
 			"name": "append modifier with nil in src",
 			"dst": map[string]interface{}{
 				"f1": "d1",
