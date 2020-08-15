@@ -66,9 +66,9 @@ func startAPIListener() {
 		addr = ":9000"
 	}
 	APIServer = &http.Server{
-		Addr:    addr,
-		Handler: APIRequestStore.GetEngine(APICfg),
+		Addr: addr,
 	}
+	APIRequestStore.PrepareHTTPServer(APIServer, APICfg)
 	go func() {
 		dipper.Logger.Infof("[api] start listening for webhook requests")
 		dipper.Logger.Warningf("[api] listener stopped: %+v", APIServer.ListenAndServe())
