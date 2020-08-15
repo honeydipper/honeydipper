@@ -60,11 +60,11 @@ contexts:
 
 	w = s.newSession("", "uuid2", &config.Workflow{Name: "workflow1"}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
-	assert.Equal(t, "bar_context", w.ctx["foo"], "inheriting from default context targetted to 'workflow1'")
+	assert.Equal(t, "bar_context", w.ctx["foo"], "inheriting from default context targeted to 'workflow1'")
 
 	w = s.newSession("", "uuid3", &config.Workflow{Name: "workflow2"}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
-	assert.Equal(t, "bar_event", w.ctx["foo"], "inheriting from event context targetted to 'workflow2'")
+	assert.Equal(t, "bar_event", w.ctx["foo"], "inheriting from event context targeted to 'workflow2'")
 
 	w = s.newSession("", "uuid4", &config.Workflow{Name: "workflow1", Context: "override"}).(*Session)
 	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})

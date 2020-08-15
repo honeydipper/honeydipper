@@ -208,7 +208,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 					Channel: "test",
 					Subject: "noerror",
 				}:
-					dipper.Logger.Infof("writen msg no. %+v", i)
+					dipper.Logger.Infof("written msg no. %+v", i)
 					time.Sleep(10 * time.Millisecond)
 				default:
 					dipper.Logger.Infof("unable to write, server shutdown")
@@ -305,7 +305,7 @@ func TestServiceEmitterCrashing(t *testing.T) {
 					Channel: "test",
 					Subject: "noerror",
 				}:
-					dipper.Logger.Infof("writen msg no. %+v", i)
+					dipper.Logger.Infof("written msg no. %+v", i)
 					time.Sleep(10 * time.Millisecond)
 				default:
 					dipper.Logger.Infof("unable to write, server shutdown")
@@ -382,7 +382,7 @@ func TestServiceReplaceEmitter(t *testing.T) {
 					Channel: "test",
 					Subject: "noerror",
 				}:
-					dipper.Logger.Infof("writen msg no. %+v", i)
+					dipper.Logger.Infof("written msg no. %+v", i)
 					time.Sleep(10 * time.Millisecond)
 				default:
 					dipper.Logger.Infof("unable to write, server shutdown")
