@@ -123,8 +123,8 @@ func NewStore(c *dipper.RPCCaller) *Store {
 	return store
 }
 
-// GetEngine returns a router for the http server.
-func (l *Store) GetEngine(cfg interface{}) *gin.Engine {
+// PrepareHTTPServer prepares the provided http server.
+func (l *Store) PrepareHTTPServer(s *http.Server, cfg interface{}) {
 	gin.DefaultWriter = dipper.LoggingWriter
 	l.config = cfg
 	l.engine = gin.New()
@@ -138,8 +138,7 @@ func (l *Store) GetEngine(cfg interface{}) *gin.Engine {
 	}
 
 	l.setupRoutes()
-
-	return l.engine
+	s.Handler = l.engine
 }
 
 // AuthMiddleware is a middleware handles auth.
@@ -174,7 +173,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 }
 
 // Authorize determines if a subject is allowed to call a API.
-func (l *Store) Authorize(c *gin.Context, def Def) bool {
+func (l *Store) Authorize(c RequestContext, def Def) bool {
 	subject, ok := c.Get("subject")
 	if !ok {
 		return false
@@ -208,38 +207,43 @@ func (l *Store) Authorize(c *gin.Context, def Def) bool {
 	return defaultAction == ACLAllow
 }
 
+// HandleHTTPRequest handles http requests.
+func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
+	if !l.Authorize(c, def) {
+		c.AbortWithStatusJSON(http.StatusForbidden, map[string]interface{}{"errors": "not allowed"})
+		return
+	}
+
+	// create or find the original request
+	r := l.GetRequest(def, c)
+	r.Dispatch()
+
+	// wait for the results
+	select {
+	case <-r.ready:
+		if r.err != nil {
+			if errors.Is(r.err, APIErrorNoAck) {
+				c.AbortWithStatusJSON(http.StatusNotFound, map[string]interface{}{"error": "object not found"})
+			} else {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": r.err.Error()})
+			}
+		} else {
+			c.IndentedJSON(http.StatusOK, r.getResults())
+		}
+	case <-time.After(l.writeTimeout - time.Millisecond):
+		if r.method == http.MethodGet && (r.timeout == InfiniteDuration || r.timeout > l.writeTimeout) {
+			c.IndentedJSON(http.StatusAccepted, map[string]interface{}{"uuid": r.uuid, "results": r.getResults()})
+		} else {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": dipper.TimeoutError.Error()})
+		}
+	}
+}
+
 // CreateHTTPHandlerFunc return a handler function for GET method.
 func (l *Store) CreateHTTPHandlerFunc(def Def) gin.HandlerFunc {
 	// create and return the function
 	return func(c *gin.Context) {
-		if !l.Authorize(c, def) {
-			c.AbortWithStatusJSON(http.StatusForbidden, map[string]interface{}{"errors": "not allowed"})
-			return
-		}
-
-		// create or find the original request
-		r := l.GetRequest(def, c)
-		r.Dispatch()
-
-		// wait for the results
-		select {
-		case <-r.ready:
-			if r.err != nil {
-				if errors.Is(r.err, APIErrorNoAck) {
-					c.AbortWithStatusJSON(http.StatusNotFound, map[string]interface{}{"error": "object not found"})
-				} else {
-					c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": r.err.Error()})
-				}
-			} else {
-				c.IndentedJSON(http.StatusOK, r.getResults())
-			}
-		case <-time.After(l.writeTimeout - time.Millisecond):
-			if r.method == http.MethodGet && (r.timeout == InfiniteDuration || r.timeout > l.writeTimeout) {
-				c.IndentedJSON(http.StatusAccepted, map[string]interface{}{"uuid": r.uuid, "results": r.getResults()})
-			} else {
-				c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": dipper.TimeoutError.Error()})
-			}
-		}
+		l.HandleHTTPRequest(&GinRequestContext{gin: c}, def)
 	}
 }
 
@@ -276,35 +280,20 @@ func (l *Store) SaveRequest(r *Request) {
 }
 
 // GetRequest creates a new Request with the given definition and parameters or return an existing one based on uuid.
-func (l *Store) GetRequest(def Def, c *gin.Context) *Request {
+func (l *Store) GetRequest(def Def, c RequestContext) *Request {
 	if def.method == http.MethodGet {
-		if req, ok := l.requestsByInput.Load(c.Request.URL.Path); ok && req != nil {
+		if req, ok := l.requestsByInput.Load(c.GetPath()); ok && req != nil {
 			return req.(*Request)
 		}
 	}
 
 	// prepare the parameters
-	payload := map[string]interface{}{}
-	if def.method == http.MethodPost || def.method == http.MethodPut {
-		payload["body"] = string(dipper.Must(c.GetRawData()).([]byte))
-	}
-
-	for _, p := range c.Params {
-		payload[p.Key] = p.Value
-	}
-
-	for k, varr := range c.Request.Form {
-		if len(varr) > 1 {
-			payload[k] = varr
-		} else {
-			payload[k] = varr[0]
-		}
-	}
+	payload := c.GetPayload(def.method)
 
 	return &Request{
 		store:       l,
 		uuid:        dipper.Must(uuid.NewRandom()).(uuid.UUID).String(),
-		urlPath:     c.Request.URL.Path,
+		urlPath:     c.GetPath(),
 		method:      def.method,
 		fn:          def.name,
 		params:      payload,
