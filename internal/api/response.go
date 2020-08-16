@@ -70,7 +70,7 @@ func (resp *Response) ReturnError(err error) {
 }
 
 // Lock is to compete for the right to handle a API call.
-func (resp *Response) Lock(caller *dipper.RPCCaller, def Def) bool {
+func (resp *Response) Lock(caller dipper.RPCCaller, def Def) bool {
 	_, err := caller.Call("locker", "lock", map[string]interface{}{
 		"name":       fmt.Sprintf("api_candidate:%s", resp.Request.Labels["uuid"]),
 		"attempt_ms": DefaultAPILockAttemptMS,
@@ -81,10 +81,10 @@ func (resp *Response) Lock(caller *dipper.RPCCaller, def Def) bool {
 }
 
 // ResponseFactory provides functions to create new api Response.
-func ResponseFactory() func(*dipper.RPCCaller, io.Writer, *dipper.Message) *Response {
+func ResponseFactory() func(dipper.RPCCaller, io.Writer, *dipper.Message) *Response {
 	DefsByName := GetDefsByName()
 
-	return func(caller *dipper.RPCCaller, eventbus io.Writer, m *dipper.Message) *Response {
+	return func(caller dipper.RPCCaller, eventbus io.Writer, m *dipper.Message) *Response {
 		resp := &Response{
 			EventBus: eventbus,
 			Request:  m,

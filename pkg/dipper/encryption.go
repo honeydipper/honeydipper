@@ -12,9 +12,9 @@ import (
 )
 
 // DecryptAll find and decrypt all eyaml style encrypted data in the given data structure.
-func DecryptAll(rpc *RPCCaller, from interface{}) {
+func DecryptAll(rpc RPCCaller, from interface{}) {
 	Recursive(from, func(key string, val interface{}) (interface{}, bool) {
-		Logger.Debugf("[%s] decrypting %s", rpc.Parent.GetName(), key)
+		Logger.Debugf("[%s] decrypting %s", rpc.GetName(), key)
 		if str, ok := val.(string); ok {
 			if strings.HasPrefix(str, "ENC[") {
 				parts := strings.SplitN(str[4:len(str)-1], ",", 2)

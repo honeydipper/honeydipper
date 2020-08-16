@@ -28,7 +28,7 @@ func TestRPCCallRaw(t *testing.T) {
 	mockStub := mock_dipper.NewMockRPCCallerStub(ctrl)
 
 	var b bytes.Buffer
-	c := RPCCaller{}
+	c := RPCCallerBase{}
 
 	mockStub.EXPECT().GetName().AnyTimes().Return("mockCaller")
 	mockStub.EXPECT().GetStream(gomock.Any()).Return(&b)

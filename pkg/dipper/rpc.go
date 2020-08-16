@@ -33,8 +33,17 @@ type RPCCallerStub interface {
 	GetStream(feature string) io.Writer
 }
 
-// RPCCaller : an object that makes RPC calls.
-type RPCCaller struct {
+// RPCCaller defines all method required for making rpc alls.
+type RPCCaller interface {
+	Call(feature string, method string, params interface{}) ([]byte, error)
+	CallNoWait(feature string, method string, params interface{}) error
+	CallRaw(feature string, method string, params []byte) ([]byte, error)
+	CallRawNoWait(feature string, method string, params []byte, rpcID string) (ret error)
+	GetName() string
+}
+
+// RPCCallerBase : an object that makes RPC calls.
+type RPCCallerBase struct {
 	Parent  RPCCallerStub
 	Channel string
 	Subject string
@@ -44,7 +53,7 @@ type RPCCaller struct {
 }
 
 // Init : initializing rpc caller.
-func (c *RPCCaller) Init(parent RPCCallerStub, channel string, subject string) {
+func (c *RPCCallerBase) Init(parent RPCCallerStub, channel string, subject string) {
 	c.Result = map[string]chan interface{}{}
 	InitIDMap(&c.Result)
 	c.Counter = 0
@@ -53,19 +62,24 @@ func (c *RPCCaller) Init(parent RPCCallerStub, channel string, subject string) {
 	c.Parent = parent
 }
 
+// GetName returns the name of the call for logging purpose.
+func (c *RPCCallerBase) GetName() string {
+	return c.Parent.GetName()
+}
+
 // Call : making a RPC call to another driver with structured data.
-func (c *RPCCaller) Call(feature string, method string, params interface{}) ([]byte, error) {
+func (c *RPCCallerBase) Call(feature string, method string, params interface{}) ([]byte, error) {
 	ret, err := c.CallRaw(feature, method, SerializeContent(params))
 	return ret, err
 }
 
 // CallNoWait : making a RPC call to another driver with structured data not expecting any return.
-func (c *RPCCaller) CallNoWait(feature string, method string, params interface{}) error {
+func (c *RPCCallerBase) CallNoWait(feature string, method string, params interface{}) error {
 	return c.CallRawNoWait(feature, method, SerializeContent(params), "skip")
 }
 
 // CallRaw : making a RPC call to another driver with raw data.
-func (c *RPCCaller) CallRaw(feature string, method string, params []byte) ([]byte, error) {
+func (c *RPCCallerBase) CallRaw(feature string, method string, params []byte) ([]byte, error) {
 	// keep track the call in the map
 	result := make(chan interface{}, 1)
 	rpcID := IDMapPut(&c.Result, result)
@@ -90,7 +104,7 @@ func (c *RPCCaller) CallRaw(feature string, method string, params []byte) ([]byt
 }
 
 // CallRawNoWait : making a RPC call to another driver with raw data not expecting return.
-func (c *RPCCaller) CallRawNoWait(feature string, method string, params []byte, rpcID string) (ret error) {
+func (c *RPCCallerBase) CallRawNoWait(feature string, method string, params []byte, rpcID string) (ret error) {
 	defer func() {
 		if r := recover(); r != nil {
 			ret = r.(error)
@@ -124,7 +138,7 @@ func (c *RPCCaller) CallRawNoWait(feature string, method string, params []byte, 
 }
 
 // HandleReturn : receiving return of a RPC call.
-func (c *RPCCaller) HandleReturn(m *Message) {
+func (c *RPCCallerBase) HandleReturn(m *Message) {
 	rpcID := m.Labels["rpcID"]
 	result := IDMapGet(&c.Result, rpcID).(chan interface{})
 

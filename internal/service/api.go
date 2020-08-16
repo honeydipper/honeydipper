@@ -42,7 +42,7 @@ func StartAPI(cfg *config.Config) {
 	API.ServiceReload = reloadAPI
 	Services["api"] = API
 	loadAPIConfig(cfg)
-	APIRequestStore = api.NewStore(&API.RPCCaller)
+	APIRequestStore = api.NewStore(API)
 	API.addResponder("eventbus:api", handleAPIMessage)
 	API.DiscoverFeatures = APIFeatures
 	startAPIListener()
