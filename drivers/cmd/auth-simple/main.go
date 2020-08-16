@@ -96,7 +96,7 @@ func tokenAuth(m *dipper.Message) (map[string]interface{}, error) {
 		}
 	}
 	if _, ok = driver.GetOption("decrypted"); !ok {
-		dipper.DecryptAll(&driver.RPCCaller, driver.Options)
+		dipper.DecryptAll(driver, driver.Options)
 		driver.Options.(map[string]interface{})["decrypted"] = true
 	}
 	found, ok := dipper.GetMapData(driver.Options, "data.tokens."+authHash)
@@ -130,7 +130,7 @@ func basicAuth(m *dipper.Message) (map[string]interface{}, error) {
 		return nil, ErrInvalidBasicAuth
 	}
 	if _, ok = driver.GetOption("decrypted"); !ok {
-		dipper.DecryptAll(&driver.RPCCaller, driver.Options)
+		dipper.DecryptAll(driver, driver.Options)
 		driver.Options.(map[string]interface{})["decrypted"] = true
 	}
 

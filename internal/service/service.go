@@ -59,7 +59,7 @@ type RoutedMessage struct {
 
 // Service is a collection of daemon's feature.
 type Service struct {
-	dipper.RPCCaller
+	dipper.RPCCallerBase
 	name               string
 	config             *config.Config
 	driverRuntimes     map[string]*driver.Runtime
@@ -75,7 +75,7 @@ type Service struct {
 	ServiceReload      func(*config.Config)
 	EmitMetrics        func()
 	APIs               map[string]func(*api.Response)
-	CreateAPIResponse  func(*dipper.RPCCaller, io.Writer, *dipper.Message) *api.Response
+	CreateAPIResponse  func(dipper.RPCCaller, io.Writer, *dipper.Message) *api.Response
 }
 
 // Services holds a catalog of running services in this daemon process.
@@ -90,7 +90,7 @@ func NewService(cfg *config.Config, name string) *Service {
 		expects:        map[string][]ExpectHandler{},
 		responders:     map[string][]MessageResponder{},
 	}
-	svc.RPCCaller.Init(svc, "rpc", "call")
+	svc.RPCCallerBase.Init(svc, "rpc", "call")
 
 	svc.responders["state:cold"] = []MessageResponder{coldReloadDriverRuntime}
 	svc.responders["rpc:call"] = []MessageResponder{handleRPCCall}
@@ -676,7 +676,7 @@ func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
 func handleAPI(from *driver.Runtime, m *dipper.Message) {
 	s := Services[from.Service]
 	dipper.DeserializePayload(m)
-	resp := s.CreateAPIResponse(&s.RPCCaller, s.getDriverRuntime("eventbus").Output, m)
+	resp := s.CreateAPIResponse(s, s.getDriverRuntime("eventbus").Output, m)
 	if resp == nil {
 		dipper.Logger.Debugf("[%s] skipping handling API: %+v", s.name, m.Labels)
 		return

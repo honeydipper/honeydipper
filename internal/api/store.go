@@ -37,7 +37,7 @@ const (
 type Store struct {
 	requests        *sync.Map
 	requestsByInput *sync.Map
-	caller          *dipper.RPCCaller
+	caller          dipper.RPCCaller
 	engine          *gin.Engine
 	config          interface{}
 	apiDef          map[string]map[string]Def
@@ -113,7 +113,7 @@ func (l *Store) HandleAPIReturn(m *dipper.Message) {
 }
 
 // NewStore creates a new Store.
-func NewStore(c *dipper.RPCCaller) *Store {
+func NewStore(c dipper.RPCCaller) *Store {
 	store := &Store{
 		caller:          c,
 		requests:        &sync.Map{},
@@ -281,8 +281,9 @@ func (l *Store) SaveRequest(r *Request) {
 
 // GetRequest creates a new Request with the given definition and parameters or return an existing one based on uuid.
 func (l *Store) GetRequest(def Def, c RequestContext) *Request {
+	path := c.GetPath()
 	if def.method == http.MethodGet {
-		if req, ok := l.requestsByInput.Load(c.GetPath()); ok && req != nil {
+		if req, ok := l.requestsByInput.Load(path); ok && req != nil {
 			return req.(*Request)
 		}
 	}
@@ -293,7 +294,7 @@ func (l *Store) GetRequest(def Def, c RequestContext) *Request {
 	return &Request{
 		store:       l,
 		uuid:        dipper.Must(uuid.NewRandom()).(uuid.UUID).String(),
-		urlPath:     c.GetPath(),
+		urlPath:     path,
 		method:      def.method,
 		fn:          def.name,
 		params:      payload,
