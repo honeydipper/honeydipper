@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
@@ -41,6 +40,7 @@ type Store struct {
 	engine          *gin.Engine
 	config          interface{}
 	apiDef          map[string]map[string]Def
+	newUUID         dipper.UUIDSource
 
 	writeTimeout time.Duration
 }
@@ -120,6 +120,7 @@ func NewStore(c dipper.RPCCaller) *Store {
 		requestsByInput: &sync.Map{},
 	}
 	store.apiDef = GetDefs()
+	store.newUUID = dipper.NewUUID
 	return store
 }
 
@@ -293,7 +294,7 @@ func (l *Store) GetRequest(def Def, c RequestContext) *Request {
 
 	return &Request{
 		store:       l,
-		uuid:        dipper.Must(uuid.NewRandom()).(uuid.UUID).String(),
+		uuid:        l.newUUID(),
 		urlPath:     path,
 		method:      def.method,
 		fn:          def.name,
