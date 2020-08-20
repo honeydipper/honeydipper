@@ -81,35 +81,43 @@ func (resp *Response) Lock(caller dipper.RPCCaller, def Def) bool {
 }
 
 // ResponseFactory provides functions to create new api Response.
-func ResponseFactory() func(dipper.RPCCaller, io.Writer, *dipper.Message) *Response {
-	DefsByName := GetDefsByName()
+type ResponseFactory struct {
+	DefsByName map[string]Def
+}
 
-	return func(caller dipper.RPCCaller, eventbus io.Writer, m *dipper.Message) *Response {
-		resp := &Response{
-			EventBus: eventbus,
-			Request:  m,
-		}
+// NewResponseFactory creates a new response factory.
+func NewResponseFactory() *ResponseFactory {
+	r := &ResponseFactory{}
+	r.DefsByName = GetDefsByName()
+	return r
+}
 
-		method := m.Labels["fn"]
-		def, ok := DefsByName[method]
-		if !ok {
-			dipper.Logger.Warningf("Unknown API method: %s", method)
+// NewResponse provides a function to create new api Response.
+func (rf *ResponseFactory) NewResponse(caller dipper.RPCCaller, eventbus io.Writer, m *dipper.Message) *Response {
+	resp := &Response{
+		EventBus: eventbus,
+		Request:  m,
+	}
+
+	method := m.Labels["fn"]
+	def, ok := rf.DefsByName[method]
+	if !ok {
+		dipper.Logger.Warningf("Unknown API method: %s", method)
+		return nil
+	}
+	switch def.reqType {
+	case TypeAll:
+		go func() {
+			defer dipper.SafeExitOnError("failed to send ack for api [%s]", method)
+			resp.Ack()
+		}()
+	case TypeFirst:
+		if !resp.Lock(caller, def) {
 			return nil
 		}
-		switch def.reqType {
-		case TypeAll:
-			go func() {
-				defer dipper.SafeExitOnError("failed to send ack for api [%s]", method)
-				resp.Ack()
-			}()
-		case TypeFirst:
-			if !resp.Lock(caller, def) {
-				return nil
-			}
-		case TypeMatch:
-			// leave it to the function to send ack
-		}
-
-		return resp
+	case TypeMatch:
+		// leave it to the function to send ack
 	}
+
+	return resp
 }

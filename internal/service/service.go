@@ -75,7 +75,7 @@ type Service struct {
 	ServiceReload      func(*config.Config)
 	EmitMetrics        func()
 	APIs               map[string]func(*api.Response)
-	CreateAPIResponse  func(dipper.RPCCaller, io.Writer, *dipper.Message) *api.Response
+	ResponseFactory    *api.ResponseFactory
 }
 
 // Services holds a catalog of running services in this daemon process.
@@ -98,7 +98,7 @@ func NewService(cfg *config.Config, name string) *Service {
 	svc.responders["broadcast:reload"] = []MessageResponder{handleReload}
 	svc.responders["api:call"] = []MessageResponder{handleAPI}
 
-	svc.CreateAPIResponse = api.ResponseFactory()
+	svc.ResponseFactory = api.NewResponseFactory()
 	svc.APIs = map[string]func(*api.Response){}
 
 	return svc
@@ -676,7 +676,7 @@ func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
 func handleAPI(from *driver.Runtime, m *dipper.Message) {
 	s := Services[from.Service]
 	dipper.DeserializePayload(m)
-	resp := s.CreateAPIResponse(s, s.getDriverRuntime("eventbus").Output, m)
+	resp := s.ResponseFactory.NewResponse(s, s.getDriverRuntime("eventbus").Output, m)
 	if resp == nil {
 		dipper.Logger.Debugf("[%s] skipping handling API: %+v", s.name, m.Labels)
 		return
