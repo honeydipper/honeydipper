@@ -6,3 +6,6 @@ mockgen -copyright_file=COPYRIGHT -source=internal/workflow/store.go -destinatio
 
 mkdir -p pkg/dipper/mock_dipper
 mockgen -copyright_file=COPYRIGHT -source=pkg/dipper/rpc.go -destination=pkg/dipper/mock_dipper/rpc.go
+
+mkdir -p internal/api/mock_api
+mockgen -copyright_file=COPYRIGHT -source=internal/api/request_context.go -destination=internal/api/mock_api/request_context.go
