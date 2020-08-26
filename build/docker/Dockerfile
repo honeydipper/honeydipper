@@ -12,13 +12,14 @@ WORKDIR /build
 
 RUN apk add --no-cache git gcc libc-dev
 COPY ./ ./
-RUN go install -v ./drivers/cmd/gcloud-pubsub && \
-    go install -v ./drivers/cmd/redisqueue && \
-    go install -v ./drivers/cmd/redispubsub && \
-    go install -v ./drivers/cmd/gcloud-storage && \
-    go install -v ./drivers/cmd/kubernetes && \
-    go install -v ./cmd/... && \
-    go install -v ./drivers/...
+RUN go install -v ./drivers/cmd/gcloud-pubsub
+RUN go install -v ./drivers/cmd/gcloud-spanner
+RUN go install -v ./drivers/cmd/gcloud-storage
+RUN go install -v ./drivers/cmd/kubernetes
+RUN go install -v ./drivers/cmd/redisqueue
+RUN go install -v ./drivers/cmd/redispubsub
+RUN go install -v ./cmd/...
+RUN go install -v ./drivers/...
 
 FROM alpine:3.12
 
