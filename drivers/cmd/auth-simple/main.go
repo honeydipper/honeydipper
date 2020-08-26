@@ -16,21 +16,23 @@ import (
 	"strings"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	// ErrUnsupportedScheme means the auth scheme is not supported
+	// ErrUnsupportedScheme means the auth scheme is not supported.
 	ErrUnsupportedScheme = errors.New("the auth scheme is not supported")
-	// ErrInvalidBearerToken means the bearer token is invalid
+	// ErrInvalidBearerToken means the bearer token is invalid.
 	ErrInvalidBearerToken = errors.New("the bearer token is invalid")
-	// ErrInvalidBasicAuth means the basic auth header is invalid
+	// ErrInvalidBasicAuth means the basic auth header is invalid.
 	ErrInvalidBasicAuth = errors.New("the basic auth header is invalid")
-	// ErrInvalidBasicCreds means the basic auth user and password is invalid
+	// ErrInvalidBasicCreds means the basic auth user and password is invalid.
 	ErrInvalidBasicCreds = errors.New("the basic auth credential is invalid")
-	// ErrInvalidUserEntry means user entry in the config is invalid
-	ErrInvalidUserEntry = errors.New("the user entry is invalid")
-	// ErrSkipped means skipping the current scheme
+	// ErrSkipped means skipping the current scheme.
 	ErrSkipped = errors.New("skipped")
+
+	// EmptySubject is used for an authenticated user without a defined subject.
+	_EmptySubject = map[string]interface{}{}
 )
 
 func initFlags() {
@@ -95,20 +97,27 @@ func tokenAuth(m *dipper.Message) (map[string]interface{}, error) {
 			return nil, ErrSkipped
 		}
 	}
+	token := []byte(authHash[len(prefix):])
+
 	if _, ok = driver.GetOption("decrypted"); !ok {
 		dipper.DecryptAll(driver, driver.Options)
 		driver.Options.(map[string]interface{})["decrypted"] = true
 	}
-	found, ok := dipper.GetMapData(driver.Options, "data.tokens."+authHash)
-	if !ok {
-		return nil, ErrInvalidBearerToken
-	}
-	subject, ok := found.(map[string]interface{})["subject"]
-	if !ok || subject == nil || len(subject.(map[string]interface{})) == 0 {
-		return nil, ErrInvalidUserEntry
+	knownTokens, ok := dipper.GetMapData(driver.Options, "data.tokens")
+	if ok && knownTokens != nil {
+		for _, t := range knownTokens.([]interface{}) {
+			kt := t.(map[string]interface{})
+			if bcrypt.CompareHashAndPassword([]byte(kt["token"].(string)), token) == nil {
+				subject, ok := kt["subject"]
+				if !ok || subject == nil {
+					return _EmptySubject, nil
+				}
+				return subject.(map[string]interface{}), nil
+			}
+		}
 	}
 
-	return subject.(map[string]interface{}), nil
+	return nil, ErrInvalidBearerToken
 }
 
 func basicAuth(m *dipper.Message) (map[string]interface{}, error) {
@@ -129,23 +138,23 @@ func basicAuth(m *dipper.Message) (map[string]interface{}, error) {
 	if !ok {
 		return nil, ErrInvalidBasicAuth
 	}
+	passBytes := []byte(pass)
+
 	if _, ok = driver.GetOption("decrypted"); !ok {
 		dipper.DecryptAll(driver, driver.Options)
 		driver.Options.(map[string]interface{})["decrypted"] = true
 	}
-
 	knownUsers, ok := dipper.GetMapData(driver.Options, "data.users")
-	if !ok || knownUsers == nil {
-		return nil, ErrInvalidBasicCreds
-	}
-	for _, k := range knownUsers.([]interface{}) {
-		ku := k.(map[string]interface{})
-		if ku["name"].(string) == user && ku["pass"].(string) == pass {
-			subject, ok := ku["subject"]
-			if !ok || subject == nil || len(subject.(map[string]interface{})) == 0 {
-				return nil, ErrInvalidUserEntry
+	if ok && knownUsers != nil {
+		for _, k := range knownUsers.([]interface{}) {
+			ku := k.(map[string]interface{})
+			if ku["name"].(string) == user && bcrypt.CompareHashAndPassword([]byte(ku["pass"].(string)), passBytes) == nil {
+				subject, ok := ku["subject"]
+				if !ok || subject == nil {
+					return _EmptySubject, nil
+				}
+				return subject.(map[string]interface{}), nil
 			}
-			return subject.(map[string]interface{}), nil
 		}
 	}
 
