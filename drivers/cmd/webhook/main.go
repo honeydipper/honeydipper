@@ -134,8 +134,12 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 			"data":   eventData,
 		})
 
-		w.Header().Set("content-type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
+		if _, ok := dipper.GetMapDataStr(eventData, "form.accept_uuid.0"); ok {
+			w.Header().Set("content-type", "application/json")
+			_, _ = w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
 		return
 	}
 
