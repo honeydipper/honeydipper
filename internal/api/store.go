@@ -30,6 +30,9 @@ const (
 
 	// ACLAllow reprensts allowing the subject to access the API
 	ACLAllow = "allow"
+
+	// ACLDeny reprensts denying the subject to access the API
+	ACLDeny = "deny"
 )
 
 // Store stores the live API calls in memory.
@@ -190,22 +193,25 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 		return false
 	}
 
-	defaultAction := ACLAllow
+	action := ACLDeny
 	for _, ruleObj := range rules {
 		rule := ruleObj.(map[string]interface{})
 		switch v := rule["subjects"].(type) {
 		case string:
-			defaultAction = v
+			if v != "all" {
+				panic(fmt.Errorf("%w: unknown subjects: %s", APIError, v))
+			}
+			action = rule["type"].(string)
 		case []interface{}:
 			if dipper.CompareAll(subject, v) {
-				return rule["type"] == ACLAllow
+				return rule["type"].(string) == ACLAllow
 			}
 		default:
-			return false
+			panic(fmt.Errorf("%w: unknown subjects: %+v", APIError, v))
 		}
 	}
 
-	return defaultAction == ACLAllow
+	return action == ACLAllow
 }
 
 // HandleHTTPRequest handles http requests.
