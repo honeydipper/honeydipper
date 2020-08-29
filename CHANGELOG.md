@@ -1,3 +1,48 @@
+# [2.0.0](https://github.com/honeydipper/honeydipper/compare/v1.7.0...v2.0.0) (2020-08-29)
+
+
+### Bug Fixes
+
+* **api:** deny API access when no ACL matches ([1ea0bea](https://github.com/honeydipper/honeydipper/commit/1ea0beaa022a72480fe270491ad2ba4c083d4ecf))
+* **dipper:** rpc handles returns with nil payload ([860c5cf](https://github.com/honeydipper/honeydipper/commit/860c5cff076b6d882e809dc52f559694c6cf829c))
+* **drivers:** auth-simple uses bcrypt on password and token ([e830c6e](https://github.com/honeydipper/honeydipper/commit/e830c6e43979cb766018716783858c3e3f79a8be))
+* **drivers:** webhook only return uuid when requested ([0f08057](https://github.com/honeydipper/honeydipper/commit/0f080574e60e4130eecbec513f7c918359461f3f))
+
+
+### Code Refactoring
+
+* **drivers:** redispubsub payload structuring ([6c572e3](https://github.com/honeydipper/honeydipper/commit/6c572e3dd5509ea941fc098fbcaa8968a84286d1))
+
+
+### Features
+
+* **api:** a simple authorization framework ([c4e2a56](https://github.com/honeydipper/honeydipper/commit/c4e2a56a276db6d4eb1d5ee18730ec6391ecea06))
+* **drivers:** adding lock driver ([fe2b254](https://github.com/honeydipper/honeydipper/commit/fe2b254af7d2a739c86dec7c80eb6b49b0169b03))
+* **drivers:** broadcast allow targetting to a service using labels ([067b491](https://github.com/honeydipper/honeydipper/commit/067b49141ac4a74ae428f6a19d2d9f839c0cc597))
+* **drivers:** broadcast support RPC in addition to Command ([1a01f92](https://github.com/honeydipper/honeydipper/commit/1a01f928b59619cee778439d2039ba69a94a5d67))
+* **drivers:** make broadcast channel configurable ([0d6f70e](https://github.com/honeydipper/honeydipper/commit/0d6f70e9ee2203b8a86d27b35c4bbda1b37da019))
+* **drivers:** redispubsub/redisqueue adding from label ([cd80a25](https://github.com/honeydipper/honeydipper/commit/cd80a250504c370346afef8dfc76c7068861b005))
+* **drivers:** redisqueue to support future api service ([0ea6e20](https://github.com/honeydipper/honeydipper/commit/0ea6e2009848534b85d42b2e5600f8b58aba60f1))
+* **services:** add eventAdd api to receiver service ([7c11081](https://github.com/honeydipper/honeydipper/commit/7c1108158e93104d65e1a8c7b6a8ca21feff4343))
+* **services:** add eventList api in engine service ([a859993](https://github.com/honeydipper/honeydipper/commit/a8599933ced0d4db825d0cd8527137c10ccf1030))
+* **services:** add eventWait api in engine service ([82af37b](https://github.com/honeydipper/honeydipper/commit/82af37bf566fc53ad61f80084a0877741e24307d))
+* **services:** establishing a new service for API ([1a38cdd](https://github.com/honeydipper/honeydipper/commit/1a38cdd70db8ecb6c6228157a04e76e91e4feb37))
+* **services:** use a uuid to track event/workflow lifecycle ([cd3b0a4](https://github.com/honeydipper/honeydipper/commit/cd3b0a4d02860238ffff03a6e5e9f0fbd33a3f20))
+* **workflow:** exposes workflow session information ([df551bb](https://github.com/honeydipper/honeydipper/commit/df551bb695958d36f616d975c67a8311564f731c))
+
+
+### Styles
+
+* **drivers:** use backupOpID instead of backupOpId in google-spanner ([246f5f2](https://github.com/honeydipper/honeydipper/commit/246f5f24e6e7e5fd3aeb7b70ed59711d66fb9215))
+
+
+### BREAKING CHANGES
+
+* **drivers:** needs to update the spanner native backup related system/workflows.
+* **drivers:** the payload structure is slightly changed so that the three piece of information
+can be fetched from the right place. The existing `reload` function in `honeydipper-config-essentials`
+requires corresponding change to function. So is the slack `resume_session`.
+
 # [1.7.0](https://github.com/honeydipper/honeydipper/compare/v1.6.1...v1.7.0) (2020-08-03)
 
 
