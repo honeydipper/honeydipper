@@ -13,20 +13,20 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-// SessionStoreHelper enables SessionStore to actually drive the workflows and load configs
+// SessionStoreHelper enables SessionStore to actually drive the workflows and load configs.
 type SessionStoreHelper interface {
 	GetConfig() *config.Config
 	SendMessage(msg *dipper.Message)
 }
 
-// SessionStore stores session in memory and provides helper function for session to perform
+// SessionStore stores session in memory and provides helper function for session to perform.
 type SessionStore struct {
 	sessions          map[string]SessionHandler
 	suspendedSessions map[string]string
 	Helper            SessionStoreHelper
 }
 
-// NewSessionStore initialize the session store
+// NewSessionStore initialize the session store.
 func NewSessionStore(helper SessionStoreHelper) *SessionStore {
 	s := &SessionStore{
 		sessions:          map[string]SessionHandler{},
@@ -37,16 +37,17 @@ func NewSessionStore(helper SessionStoreHelper) *SessionStore {
 	return s
 }
 
-// Len returns the length of the sessions list
+// Len returns the length of the sessions list.
 func (s *SessionStore) Len() int {
 	return len(s.sessions)
 }
 
-// newSession creates the workflow session
-func (s *SessionStore) newSession(parent string, wf *config.Workflow) SessionHandler {
-	var w = &Session{
+// newSession creates the workflow session.
+func (s *SessionStore) newSession(parent string, eventUUID string, wf *config.Workflow) SessionHandler {
+	w := &Session{
 		parent:   parent,
 		store:    s,
+		EventID:  eventUUID,
 		workflow: wf,
 	}
 
@@ -56,23 +57,24 @@ func (s *SessionStore) newSession(parent string, wf *config.Workflow) SessionHan
 	return w
 }
 
-// StartSession starts a workflow session
+// StartSession starts a workflow session.
 func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session")
-	w := s.newSession("", wf)
+	eventUUID := msg.Labels["eventID"]
+	w := s.newSession("", eventUUID, wf)
 	w.prepare(msg, nil, ctx)
 	w.execute(msg)
 }
 
-// ContinueSession resume a session with given dipper message
-func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, exports []map[string]interface{}) {
+// ContinueSession resume a session with given dipper message.
+func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, exports map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when continuing workflow session %s", sessionID)
 	w := dipper.IDMapGet(&s.sessions, sessionID).(SessionHandler)
 	defer w.onError()
 	w.continueExec(msg, exports)
 }
 
-// ResumeSession resume a session that is in waiting state
+// ResumeSession resume a session that is in waiting state.
 func (s *SessionStore) ResumeSession(key string, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[workflow] error when resuming session for key %s", key)
 	sessionID, ok := s.suspendedSessions[key]
@@ -98,4 +100,26 @@ func (s *SessionStore) ResumeSession(key string, msg *dipper.Message) {
 			}, nil)
 		}()
 	}
+}
+
+// ByEventID retrieves all sessions that match the given EventID.
+func (s *SessionStore) ByEventID(eventID string) []SessionHandler {
+	var ret []SessionHandler
+	for _, sh := range s.sessions {
+		if sh.GetParent() == "" && sh.GetEventID() == eventID {
+			ret = append(ret, sh)
+		}
+	}
+	return ret
+}
+
+// GetEvents retrieves all sessions that are directly triggered through events.
+func (s *SessionStore) GetEvents() []SessionHandler {
+	var ret []SessionHandler
+	for _, sh := range s.sessions {
+		if sh.GetParent() == "" {
+			ret = append(ret, sh)
+		}
+	}
+	return ret
 }

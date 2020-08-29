@@ -48,7 +48,7 @@ func intTestDaemonStartup(t *testing.T) {
 	}
 	workingBranch, ok := os.LookupEnv("CIRCLE_BRANCH")
 	if !ok {
-		repo, err := git.PlainOpen("..")
+		repo, err := git.PlainOpen("../..")
 		if err != nil {
 			panic(err)
 		}
@@ -61,9 +61,9 @@ func intTestDaemonStartup(t *testing.T) {
 	}
 	cfg := config.Config{
 		InitRepo: config.RepoInfo{
-			Repo:   "..",
+			Repo:   "../..",
 			Branch: workingBranch,
-			Path:   "/test/test_fixtures/bootstrap",
+			Path:   "/cmd/honeydipper/test_fixtures/bootstrap",
 		},
 	}
 	go func() {
@@ -90,23 +90,29 @@ func intTestServices(t *testing.T) {
 }
 
 func intTestProcesses(t *testing.T) {
-	func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		defer cancel()
-		pidstr, err := exec.CommandContext(ctx, "pgrep", "test.test").Output()
-		fmt.Printf("pids %+v", string(pidstr))
-		fmt.Printf("error %+v\n", err)
-		assert.Nil(t, err, "should be able to run pgrep to find honeydipper process")
-		ppid := strings.Split(string(pidstr), "\n")[0]
-		pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid).Output()
-		assert.Nil(t, err, "should be able to run pgrep to find all child processes")
-		pids := strings.Split(string(pidstr), "\n")
-		assert.Lenf(t, pids, 11, "expecting 10 child processes for honeydipper process")
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	var (
+		pidstr []byte
+		err    error
+	)
+	if runtime.GOOS == "darwin" {
+		pidstr, err = exec.CommandContext(ctx, "pgrep", "-a", "honeydipper.test").Output()
+	} else {
+		pidstr, err = exec.CommandContext(ctx, "pgrep", "honeydipper.test").Output()
+	}
+	fmt.Printf("pids %+v", string(pidstr))
+	fmt.Printf("error %+v\n", err)
+	assert.Nil(t, err, "should be able to run pgrep to find honeydipper process")
+	ppid := strings.Split(string(pidstr), "\n")[0]
+	pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid).Output()
+	assert.Nil(t, err, "should be able to run pgrep to find all child processes")
+	pids := strings.Split(string(pidstr), "\n")
+	assert.Lenf(t, pids, 11, "expecting 10 child processes for honeydipper process")
 }
 
 func intTestDaemonShutdown(t *testing.T) {
-	var graceful = make(chan bool)
+	graceful := make(chan bool)
 	go func() {
 		daemon.ShutDown()
 		graceful <- true
@@ -121,7 +127,15 @@ func intTestDaemonShutdown(t *testing.T) {
 func intTestDriverCrash(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	pidstr, err := exec.CommandContext(ctx, "pgrep", "test.test").Output()
+	var (
+		pidstr []byte
+		err    error
+	)
+	if runtime.GOOS == "darwin" {
+		pidstr, err = exec.CommandContext(ctx, "pgrep", "-a", "honeydipper.test").Output()
+	} else {
+		pidstr, err = exec.CommandContext(ctx, "pgrep", "honeydipper.test").Output()
+	}
 	assert.Nil(t, err, "should be able to run pgrep to find honeydipper process")
 	ppid := strings.Split(string(pidstr), "\n")[0]
 	pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid, "gcloud-dataflow").Output()

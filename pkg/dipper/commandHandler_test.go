@@ -19,7 +19,7 @@ import (
 )
 
 func TestCommandRetrySuccess(t *testing.T) {
-	var b = bytes.Buffer{}
+	b := bytes.Buffer{}
 	counter := 0
 
 	subject := CommandProvider{
@@ -65,7 +65,7 @@ func TestCommandRetrySuccess(t *testing.T) {
 }
 
 func TestCommandRetryFailure(t *testing.T) {
-	var b = bytes.Buffer{}
+	b := bytes.Buffer{}
 	counter := 0
 
 	b.Reset()
@@ -114,7 +114,7 @@ func TestCommandRetryFailure(t *testing.T) {
 }
 
 func TestCommandRetryRougueFunction(t *testing.T) {
-	var b = bytes.Buffer{}
+	b := bytes.Buffer{}
 	counter := 0
 
 	b.Reset()

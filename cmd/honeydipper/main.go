@@ -110,7 +110,7 @@ func start() {
 
 	services := cfg.Services
 	if len(services) == 0 {
-		services = []string{"engine", "receiver", "operator"}
+		services = []string{"engine", "receiver", "operator", "api"}
 	}
 	for _, s := range services {
 		switch s {
@@ -120,6 +120,8 @@ func start() {
 			service.StartReceiver(&cfg)
 		case "operator":
 			service.StartOperator(&cfg)
+		case "api":
+			service.StartAPI(&cfg)
 		default:
 			dipper.Logger.Fatalf("'%v' service is not implemented", s)
 		}
@@ -143,7 +145,7 @@ func getLogger() {
 	dipper.Logger = nil
 	if cfg.IsConfigCheck {
 		// suppress logging for less cluttered output for configcheck
-		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0777)
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 		dipper.GetLogger("daemon", levelstr, f, f)
 	} else {
 		dipper.GetLogger("daemon", levelstr)

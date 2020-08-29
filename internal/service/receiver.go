@@ -13,9 +13,11 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-var receiver *Service
-var numCollapsedEvents int
-var numDynamicFeatures int
+var (
+	receiver           *Service
+	numCollapsedEvents int
+	numDynamicFeatures int
+)
 
 // StartReceiver starts the receiver service.
 func StartReceiver(cfg *config.Config) {
@@ -24,6 +26,7 @@ func StartReceiver(cfg *config.Config) {
 	receiver.DiscoverFeatures = ReceiverFeatures
 	receiver.EmitMetrics = receiverMetrics
 	Services["receiver"] = receiver
+	setupReceiverAPIs()
 	receiver.start()
 }
 
@@ -39,7 +42,7 @@ func receiverRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	return ret
 }
 
-// ReceiverFeatures goes through the config data to figure out what driver/feature to start for receiving events
+// ReceiverFeatures goes through the config data to figure out what driver/feature to start for receiving events.
 func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 	dynamicData := map[string]interface{}{}
 

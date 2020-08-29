@@ -17,8 +17,18 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2/jwt"
 	"google.golang.org/api/container/v1"
 	"google.golang.org/api/option"
+)
+
+var (
+	// ErrMissingProject means missing project
+	ErrMissingProject = errors.New("project required")
+	// ErrMissingLocation means missing location
+	ErrMissingLocation = errors.New("location required")
+	// ErrMissingCluster means missing location
+	ErrMissingCluster = errors.New("cluster required")
 )
 
 func initFlags() {
@@ -45,34 +55,25 @@ func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Toke
 	var (
 		containerService *container.Service
 		token            *oauth2.Token
-		err              error
 	)
 	if len(serviceAccountBytes) > 0 {
-		containerService, err = container.NewService(context.Background(), option.WithCredentialsJSON([]byte(serviceAccountBytes)))
-		if err != nil {
-			panic(err)
-		}
-		conf, err := google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")
-		if err != nil {
-			panic(errors.New("invalid service account"))
-		}
-		token, err = conf.TokenSource(context.Background()).Token()
-		if err != nil {
-			panic(errors.New("failed to fetch a access_token"))
-		}
+		containerService = dipper.Must(
+			container.NewService(
+				context.Background(),
+				option.WithCredentialsJSON([]byte(serviceAccountBytes)),
+			),
+		).(*container.Service)
+		conf := dipper.Must(google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")).(*jwt.Config)
+		token = dipper.Must(conf.TokenSource(context.Background()).Token()).(*oauth2.Token)
 	} else {
-		containerService, err = container.NewService(context.Background())
-		if err != nil {
-			panic(err)
-		}
-		tokenSource, err := google.DefaultTokenSource(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
-		if err != nil {
-			panic(errors.New("failed to get a token source"))
-		}
-		token, err = tokenSource.Token()
-		if err != nil {
-			panic(errors.New("failed to fetch a access_token"))
-		}
+		containerService = dipper.Must(container.NewService(context.Background())).(*container.Service)
+		tokenSource := dipper.Must(
+			google.DefaultTokenSource(
+				context.Background(),
+				"https://www.googleapis.com/auth/cloud-platform",
+			),
+		).(oauth2.TokenSource)
+		token = dipper.Must(tokenSource.Token()).(*oauth2.Token)
 	}
 
 	return containerService, token
@@ -84,11 +85,11 @@ func getKubeCfg(msg *dipper.Message) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
-		panic(errors.New("project required"))
+		panic(ErrMissingProject)
 	}
 	location, ok := dipper.GetMapDataStr(params, "location")
 	if !ok {
-		panic(errors.New("location required"))
+		panic(ErrMissingLocation)
 	}
 	regional := false
 	if regionalData, ok := dipper.GetMapData(params, "regional"); ok {
@@ -96,7 +97,7 @@ func getKubeCfg(msg *dipper.Message) {
 	}
 	cluster, ok := dipper.GetMapDataStr(params, "cluster")
 	if !ok {
-		panic(errors.New("cluster required"))
+		panic(ErrMissingCluster)
 	}
 	var name string
 	if regional {
@@ -117,7 +118,7 @@ func getKubeCfg(msg *dipper.Message) {
 		clusterObj, err = containerService.Projects.Locations.Clusters.Get(name).Context(execContext).Do()
 	}()
 	if err != nil {
-		panic(errors.New("failed to fetch cluster info from gcloud"))
+		panic(err)
 	}
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{

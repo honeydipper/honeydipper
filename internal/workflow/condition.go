@@ -13,13 +13,13 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-// isTruthy is a helper function to check if string represents Truey value
+// isTruthy is a helper function to check if string represents Truey value.
 func isTruthy(c string) bool {
 	c = strings.ToLower(strings.TrimSpace(c))
 	return len(c) != 0 && c != "false" && c != "nil" && c != "0" && c != "{}" && c != "[]" && c != "<no value>"
 }
 
-// checkCondition check if meet the condition to execute the workflow
+// checkCondition check if meet the condition to execute the workflow.
 func (w *Session) checkCondition() bool {
 	switch {
 	case len(w.workflow.If) > 0:
@@ -61,7 +61,7 @@ func (w *Session) checkCondition() bool {
 	return true
 }
 
-// checkLoopCondition check the looping conditions to see if we should continue the loop
+// checkLoopCondition check the looping conditions to see if we should continue the loop.
 func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 	switch {
 	case w.workflow.WhileMatch != nil:

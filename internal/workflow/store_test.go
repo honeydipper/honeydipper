@@ -50,7 +50,7 @@ func TestNewSession(t *testing.T) {
 	var previous *Session
 
 	testFunc := func() {
-		session = s.newSession(testcase["parent"].(string), testcase["workflow"].(*config.Workflow)).(*Session)
+		session = s.newSession(testcase["parent"].(string), "uuid", testcase["workflow"].(*config.Workflow)).(*Session)
 	}
 
 	testCases := []map[string]interface{}{

@@ -7,6 +7,7 @@
 package dipper
 
 import (
+	"io"
 	"os"
 	"strings"
 
@@ -15,26 +16,31 @@ import (
 )
 
 // Logger provides methods to log to the configured logger backend.
-var Logger *logging.Logger
-var logBackends []logging.Backend
+var (
+	Logger      *logging.Logger
+	logBackends []logging.Backend
+)
+
+// LoggingWriter is the writer used for sending logs.
+var LoggingWriter io.Writer
 
 func initLogBackend(level logging.Level, logFile *os.File) logging.Backend {
-	var backend = logging.NewLogBackend(logFile, "", 0)
+	backend := logging.NewLogBackend(logFile, "", 0)
 
-	var formatStr = `%{time:15:04:05.000} %{module}.%{shortfunc} ▶ %{level:.4s} %{id:03x} %{message}`
+	formatStr := `%{time:15:04:05.000} %{module}.%{shortfunc} ▶ %{level:.4s} %{id:03x} %{message}`
 	if terminal.IsTerminal(int(logFile.Fd())) {
 		formatStr = `%{color}` + formatStr + `%{color:reset}`
 	}
-	var format = logging.MustStringFormatter(formatStr)
+	format := logging.MustStringFormatter(formatStr)
 
-	var backendFormatter = logging.NewBackendFormatter(backend, format)
-	var backendLeveled = logging.AddModuleLevel(backendFormatter)
+	backendFormatter := logging.NewBackendFormatter(backend, format)
+	backendLeveled := logging.AddModuleLevel(backendFormatter)
 	backendLeveled.SetLevel(level, "")
 
 	return backendLeveled
 }
 
-// GetLogger : getting a logger for the module
+// GetLogger : getting a logger for the module.
 func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.Logger {
 	if debug, ok := os.LookupEnv("DEBUG"); ok {
 		if debug == "*" || strings.Contains(","+debug+",", ","+module+",") {
@@ -55,6 +61,7 @@ func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.L
 	if len(logFiles) > 0 {
 		log = logFiles[0]
 	}
+	LoggingWriter = log
 	if level > logging.WARNING {
 		logBackends = append(logBackends, initLogBackend(level, log))
 	}

@@ -17,52 +17,54 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-// execute is the entry point of the workflow
+// execute is the entry point of the workflow.
 func (w *Session) execute(msg *dipper.Message) {
 	w.fireHook("on_session", msg)
-	if w.currentHook == "" {
-		switch {
-		case w.checkCondition() && w.checkLoopCondition(msg):
-			if !w.isIteration() || w.lenOfIterate() > 0 {
-				w.loopCount = 0
-				if w.ID == "" {
-					daemon.Children.Add(1)
-					go func() {
-						defer daemon.Children.Done()
-						defer dipper.SafeExitOnError("Failed in execute %+v", *w.workflow)
-						w.save()
-						defer w.onError()
-						w.executeRound(msg)
-					}()
-				} else {
+	if w.currentHook != "" {
+		return
+	}
+
+	switch {
+	case w.checkCondition() && w.checkLoopCondition(msg):
+		if !w.isIteration() || w.lenOfIterate() > 0 {
+			w.loopCount = 0
+			if w.ID == "" {
+				daemon.Children.Add(1)
+				go func() {
+					defer daemon.Children.Done()
+					defer dipper.SafeExitOnError("Failed in execute %+v", *w.workflow)
+					w.save()
+					defer w.onError()
 					w.executeRound(msg)
-				}
-			} else if w.parent != "" {
-				w.noop(msg)
+				}()
+			} else {
+				w.executeRound(msg)
 			}
-		case w.workflow.Else != nil:
-			var elseBranch config.Workflow
-			err := mapstructure.Decode(w.workflow.Else, &elseBranch)
-			if err != nil {
-				panic(err)
-			}
-			w.elseBranch = &elseBranch
-			daemon.Children.Add(1)
-			go func() {
-				defer daemon.Children.Done()
-				defer dipper.SafeExitOnError("Failed in execute else branch %+v", elseBranch)
-				w.save()
-				defer w.onError()
-				child := w.createChildSession(w.elseBranch, msg)
-				child.execute(msg)
-			}()
-		case w.parent != "":
+		} else if w.parent != "" {
 			w.noop(msg)
 		}
+	case w.workflow.Else != nil:
+		var elseBranch config.Workflow
+		err := mapstructure.Decode(w.workflow.Else, &elseBranch)
+		if err != nil {
+			panic(err)
+		}
+		w.elseBranch = &elseBranch
+		daemon.Children.Add(1)
+		go func() {
+			defer daemon.Children.Done()
+			defer dipper.SafeExitOnError("Failed in execute else branch %+v", elseBranch)
+			w.save()
+			defer w.onError()
+			child := w.createChildSession(w.elseBranch, msg)
+			child.execute(msg)
+		}()
+	case w.parent != "":
+		w.noop(msg)
 	}
 }
 
-// noop continues the workflow as doing nothing
+// noop continues the workflow as doing nothing.
 func (w *Session) noop(msg *dipper.Message) {
 	if msg.Labels["status"] != "success" {
 		msg = &dipper.Message{
@@ -82,7 +84,7 @@ func (w *Session) noop(msg *dipper.Message) {
 	}
 }
 
-// executeRound takes actions for a single round of a loop
+// executeRound takes actions for a single round of a loop.
 func (w *Session) executeRound(msg *dipper.Message) {
 	if w.isLoop() {
 		w.ctx["loop_count"] = w.loopCount
@@ -110,62 +112,72 @@ func (w *Session) executeRound(msg *dipper.Message) {
 	w.executeIteration(msg)
 }
 
-// executeIteration takes actions for items in iteration list
-func (w *Session) executeIteration(msg *dipper.Message) {
-	if w.isIteration() {
-		w.current = 0
-		if w.workflow.Iterate != nil {
-			w.ctx["current"] = reflect.ValueOf(w.workflow.Iterate).Index(int(w.iteration)).Interface()
-			if w.workflow.IterateAs != "" {
-				w.ctx[w.workflow.IterateAs] = w.ctx["current"]
-			}
-			if w.loopCount == 0 && int(w.iteration) == 0 {
-				w.fireHook("on_first_item", msg)
-				if w.currentHook != "" {
-					return
-				}
-			}
-			w.fireHook("on_item", msg)
-			if w.currentHook == "" {
-				w.executeAction(msg)
-			}
-		} else {
-			iter := reflect.ValueOf(w.workflow.IterateParallel)
-			l := iter.Len()
-			single := config.Workflow{
-				Workflow:     w.workflow.Workflow,
-				Function:     w.workflow.Function,
-				CallFunction: w.workflow.CallFunction,
-				CallDriver:   w.workflow.CallDriver,
-				Switch:       w.workflow.Switch,
-				Cases:        w.workflow.Cases,
-				Default:      w.workflow.Default,
-				Steps:        w.workflow.Steps,
-				Threads:      w.workflow.Threads,
-			}
-			for i := 0; i < l; i++ {
-				child := w.createChildSession(&single, msg)
-				child.ctx["current"] = iter.Index(i).Interface()
-				if w.workflow.IterateAs != "" {
-					child.ctx[w.workflow.IterateAs] = child.ctx["current"]
-				}
-				delete(child.ctx, "resume_token")
-
-				daemon.Children.Add(1)
-				go func(child *Session) {
-					defer daemon.Children.Done()
-					defer dipper.SafeExitOnError("Failed in execute child thread with %+v", single)
-					defer w.onError()
-					child.execute(msg)
-				}(child)
-			}
+// launchIteration starts one round of iteration.
+func (w *Session) launchIteration(msg *dipper.Message) {
+	w.ctx["current"] = reflect.ValueOf(w.workflow.Iterate).Index(int(w.iteration)).Interface()
+	if w.workflow.IterateAs != "" {
+		w.ctx[w.workflow.IterateAs] = w.ctx["current"]
+	}
+	if w.loopCount == 0 && int(w.iteration) == 0 {
+		w.fireHook("on_first_item", msg)
+		if w.currentHook != "" {
+			return
 		}
-	} else {
+	}
+	w.fireHook("on_item", msg)
+	if w.currentHook == "" {
 		w.executeAction(msg)
 	}
 }
 
-// startWait puts a session into waiting state
+// launchParallelIterations starts all parallel iterations.
+func (w *Session) launchParallelIterations(msg *dipper.Message) {
+	iter := reflect.ValueOf(w.workflow.IterateParallel)
+	l := iter.Len()
+	single := config.Workflow{
+		Workflow:     w.workflow.Workflow,
+		Function:     w.workflow.Function,
+		CallFunction: w.workflow.CallFunction,
+		CallDriver:   w.workflow.CallDriver,
+		Switch:       w.workflow.Switch,
+		Cases:        w.workflow.Cases,
+		Default:      w.workflow.Default,
+		Steps:        w.workflow.Steps,
+		Threads:      w.workflow.Threads,
+	}
+	for i := 0; i < l; i++ {
+		child := w.createChildSession(&single, msg)
+		child.ctx["current"] = iter.Index(i).Interface()
+		if w.workflow.IterateAs != "" {
+			child.ctx[w.workflow.IterateAs] = child.ctx["current"]
+		}
+		delete(child.ctx, "resume_token")
+
+		daemon.Children.Add(1)
+		go func(child *Session) {
+			defer daemon.Children.Done()
+			defer dipper.SafeExitOnError("Failed in execute child thread with %+v", single)
+			defer w.onError()
+			child.execute(msg)
+		}(child)
+	}
+}
+
+// executeIteration takes actions for items in iteration list.
+func (w *Session) executeIteration(msg *dipper.Message) {
+	if !w.isIteration() {
+		w.executeAction(msg)
+		return
+	}
+	w.current = 0
+	if w.workflow.Iterate != nil {
+		w.launchIteration(msg)
+	} else {
+		w.launchParallelIterations(msg)
+	}
+}
+
+// startWait puts a session into waiting state.
 func (w *Session) startWait() {
 	resumeToken, ok := w.ctx["resume_token"].(string)
 	if !ok || resumeToken == "" {
@@ -216,7 +228,7 @@ func (w *Session) startWait() {
 	}
 }
 
-// executeSwitch will select branch to execute based on the given string
+// executeSwitch will select branch to execute based on the given string.
 func (w *Session) executeSwitch(msg *dipper.Message) {
 	envData := w.buildEnvData(msg)
 	match := dipper.InterpolateStr(w.workflow.Switch, envData)
@@ -247,7 +259,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 	w.noop(msg)
 }
 
-// executeAction takes actions for a single iteration in a single loop round
+// executeAction takes actions for a single iteration in a single loop round.
 func (w *Session) executeAction(msg *dipper.Message) {
 	switch {
 	case w.workflow.Workflow != "":
@@ -318,7 +330,7 @@ func (w *Session) executeAction(msg *dipper.Message) {
 	}
 }
 
-// interpolateFunction interplotes the system name and function names in the target
+// interpolateFunction interplotes the system name and function names in the target.
 func (w *Session) interpolateFunction(f *config.Function, msg *dipper.Message) *config.Function {
 	envData := w.buildEnvData(msg)
 	interpolatedFunc := *f
@@ -328,7 +340,7 @@ func (w *Session) interpolateFunction(f *config.Function, msg *dipper.Message) *
 	return &interpolatedFunc
 }
 
-// callDriver makes a call to a driver function defined in short hand fashion
+// callDriver makes a call to a driver function defined in short hand fashion.
 func (w *Session) callDriver(f string, msg *dipper.Message) {
 	interpolatedNames := strings.Split(f, ".")
 	driverName, rawActionName := interpolatedNames[0], interpolatedNames[1]
@@ -346,7 +358,7 @@ func (w *Session) callDriver(f string, msg *dipper.Message) {
 	}, msg)
 }
 
-// callShorthandFunction makes a call to a function defined in short hand fashion
+// callShorthandFunction makes a call to a function defined in short hand fashion.
 func (w *Session) callShorthandFunction(f string, msg *dipper.Message) {
 	interpolatedNames := strings.SplitN(f, ".", 2)
 	systemName, funcName := interpolatedNames[0], interpolatedNames[1]
@@ -359,7 +371,7 @@ func (w *Session) callShorthandFunction(f string, msg *dipper.Message) {
 	}, msg)
 }
 
-// callFunction makes a call to a function
+// callFunction makes a call to a function.
 func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 	// stored for doing export context later
 	w.inFlyFunction = f
@@ -386,7 +398,7 @@ func (w *Session) callFunction(f *config.Function, msg *dipper.Message) {
 	w.store.Helper.SendMessage(cmdmsg)
 }
 
-// executeStep run a step in a workflow
+// executeStep run a step in a workflow.
 func (w *Session) executeStep(msg *dipper.Message) {
 	wf := w.workflow.Steps[w.current]
 	child := w.createChildSession(&wf, msg)
@@ -394,7 +406,7 @@ func (w *Session) executeStep(msg *dipper.Message) {
 	child.execute(msg)
 }
 
-// executeThreads start all threads of the workflow
+// executeThreads start all threads of the workflow.
 func (w *Session) executeThreads(msg *dipper.Message) {
 	for i := range w.workflow.Threads {
 		daemon.Children.Add(1)

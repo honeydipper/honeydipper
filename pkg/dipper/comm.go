@@ -17,7 +17,7 @@ import (
 	"sync"
 )
 
-// channel names and subject names
+// channel names and subject names.
 const (
 	ChannelEventbus = "eventbus"
 	ChannelState    = "state"
@@ -27,13 +27,13 @@ const (
 	EventbusReturn  = "return"
 )
 
-// CommLocks : comm channels are protected with locks
+// CommLocks : comm channels are protected with locks.
 var CommLocks = map[io.Writer]*sync.Mutex{}
 
-// MasterCommLock : the lock used to protect the comm locks
+// MasterCommLock : the lock used to protect the comm locks.
 var MasterCommLock = sync.Mutex{}
 
-// Message : the message passed between components of the system
+// Message : the message passed between components of the system.
 type Message struct {
 	// on the wire
 	Channel string
@@ -48,10 +48,10 @@ type Message struct {
 	ReturnTo io.Writer
 }
 
-// MessageHandler : a type of functions that take a pointer to a message and handle it
+// MessageHandler : a type of functions that take a pointer to a message and handle it.
 type MessageHandler func(*Message)
 
-// SerializeContent : encode payload content into bytes
+// SerializeContent : encode payload content into bytes.
 func SerializeContent(content interface{}) (ret []byte) {
 	var err error
 	if content != nil {
@@ -66,7 +66,7 @@ func SerializeContent(content interface{}) (ret []byte) {
 	return []byte{}
 }
 
-// SerializePayload : encode a message payload return the modified message
+// SerializePayload : encode a message payload return the modified message.
 func SerializePayload(msg *Message) *Message {
 	if !msg.IsRaw {
 		if msg.Payload != nil {
@@ -79,7 +79,7 @@ func SerializePayload(msg *Message) *Message {
 	return msg
 }
 
-// DeserializeContent : decode the content into interface
+// DeserializeContent : decode the content into interface.
 func DeserializeContent(content []byte) (ret interface{}) {
 	ret = map[string]interface{}{}
 
@@ -94,7 +94,7 @@ func DeserializeContent(content []byte) (ret interface{}) {
 	return nil
 }
 
-// DeserializePayload : decode a message payload from bytes
+// DeserializePayload : decode a message payload from bytes.
 func DeserializePayload(msg *Message) *Message {
 	if msg.IsRaw {
 		if msg.Payload != nil {
@@ -107,14 +107,14 @@ func DeserializePayload(msg *Message) *Message {
 	return msg
 }
 
-// FetchMessage : fetch message from input from daemon service
-//   may block or throw io.EOF based on the fcntl setting
+// FetchMessage : fetch message from input from daemon service.
+//   may block or throw io.EOF based on the fcntl setting.
 func FetchMessage(in io.Reader) (msg *Message) {
 	return DeserializePayload(FetchRawMessage(in))
 }
 
-// FetchRawMessage : fetch encoded message from input from daemon service
-//   may block or throw io.EOF based on the fcntl setting
+// FetchRawMessage : fetch encoded message from input from daemon service.
+//   may block or throw io.EOF based on the fcntl setting.
 func FetchRawMessage(in io.Reader) (msg *Message) {
 	var (
 		channel   string
@@ -131,7 +131,7 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 		if strings.Contains(errMsg, "file already closed") {
 			panic(io.EOF)
 		}
-		panic(fmt.Errorf("invalid message envelope: %+v", err))
+		panic(fmt.Errorf("invalid message envelope: %w", err))
 	}
 
 	msg = &Message{
@@ -141,28 +141,26 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 		Size:    size,
 	}
 
-	if numLabels > 0 {
-		msg.Labels = map[string]string{}
-		for ; numLabels > 0; numLabels-- {
-			var (
-				lname string
-				vl    int
-			)
+	msg.Labels = map[string]string{}
+	for ; numLabels > 0; numLabels-- {
+		var (
+			lname string
+			vl    int
+		)
 
-			_, err := fmt.Fscanln(in, &lname, &vl)
-			if err != nil {
-				panic(fmt.Errorf("unable to fetch message label name: %+v", err))
+		_, err := fmt.Fscanln(in, &lname, &vl)
+		if err != nil {
+			panic(fmt.Errorf("unable to fetch message label name: %w", err))
+		}
+		if vl > 0 {
+			lvalue := make([]byte, vl)
+			if _, err = io.ReadFull(in, lvalue); err != nil {
+				panic(fmt.Errorf("unable to fetch value for label %s: %w", lname, err))
 			}
-			if vl > 0 {
-				lvalue := make([]byte, vl)
-				if _, err = io.ReadFull(in, lvalue); err != nil {
-					panic(fmt.Errorf("unable to fetch value for label %s: %+v", lname, err))
-				}
 
-				msg.Labels[lname] = string(lvalue)
-			} else {
-				msg.Labels[lname] = ""
-			}
+			msg.Labels[lname] = string(lvalue)
+		} else {
+			msg.Labels[lname] = ""
 		}
 	}
 
@@ -178,7 +176,7 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 	return msg
 }
 
-// SendMessage : send a message to the io.Writer, may change the message to raw
+// SendMessage : send a message to the io.Writer, may change the message to raw.
 func SendMessage(out io.Writer, msg *Message) {
 	payload := []byte{}
 	if msg.Payload != nil {
@@ -212,7 +210,7 @@ func SendMessage(out io.Writer, msg *Message) {
 	}
 }
 
-// LockComm : Lock the comm channel
+// LockComm : Lock the comm channel.
 func LockComm(out io.Writer) {
 	var lock *sync.Mutex
 	func() {
@@ -228,7 +226,7 @@ func LockComm(out io.Writer) {
 	lock.Lock()
 }
 
-// UnlockComm : unlock the comm channel
+// UnlockComm : unlock the comm channel.
 func UnlockComm(out io.Writer) {
 	var lock *sync.Mutex
 	func() {
@@ -243,7 +241,7 @@ func UnlockComm(out io.Writer) {
 	lock.Unlock()
 }
 
-// RemoveComm : remove the lock when the comm channel is closed
+// RemoveComm : remove the lock when the comm channel is closed.
 func RemoveComm(out io.Writer) {
 	MasterCommLock.Lock()
 	defer MasterCommLock.Unlock()

@@ -16,9 +16,14 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+const (
+	// OperatorError is the base for all operator related error
+	OperatorError dipper.Error = "operator error"
+)
+
 var operator *Service
 
-// StartOperator starts the operator service
+// StartOperator starts the operator service.
 func StartOperator(cfg *config.Config) {
 	operator = NewService(cfg, "operator")
 	operator.Route = operatorRoute
@@ -26,123 +31,129 @@ func StartOperator(cfg *config.Config) {
 	operator.start()
 }
 
-func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
-	dipper.Logger.Infof("[operator] routing message %s.%s", msg.Channel, msg.Subject)
-	defer dipper.SafeExitOnError("[operator] continue on processing messages")
-	if msg.Channel == dipper.ChannelEventbus && msg.Subject == "command" {
-		defer func() {
-			if r := recover(); r != nil {
-				if sessionID, ok := msg.Labels["sessionID"]; ok && sessionID != "" {
-					newLabels := msg.Labels
-					newLabels["status"] = "error"
-					newLabels["reason"] = fmt.Sprintf("%+v", r)
-					eventbus := operator.getDriverRuntime(dipper.ChannelEventbus)
-					dipper.SendMessage(eventbus.Output, &dipper.Message{
-						Channel: dipper.ChannelEventbus,
-						Subject: dipper.EventbusReturn,
-						Labels:  newLabels,
-					})
-				}
-				panic(r)
+// handleEventbusCommand.
+func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
+	defer func() {
+		if r := recover(); r != nil {
+			if sessionID, ok := msg.Labels["sessionID"]; ok && sessionID != "" {
+				newLabels := msg.Labels
+				newLabels["status"] = "error"
+				newLabels["reason"] = fmt.Sprintf("%+v", r)
+				eventbus := operator.getDriverRuntime(dipper.ChannelEventbus)
+				dipper.SendMessage(eventbus.Output, &dipper.Message{
+					Channel: dipper.ChannelEventbus,
+					Subject: dipper.EventbusReturn,
+					Labels:  newLabels,
+				})
 			}
-		}()
+			panic(r)
+		}
+	}()
 
-		var driver string
-		var params map[string]interface{}
-		msg = dipper.DeserializePayload(msg)
-		dipper.Logger.Debugf("[operator] function call payload %+v", msg.Payload)
-		function := config.Function{}
-		data, _ := dipper.GetMapData(msg.Payload, "data")
-		if data == nil {
-			data = map[string]interface{}{}
-		}
-		event, _ := dipper.GetMapData(msg.Payload, "event")
-		ctx, _ := dipper.GetMapData(msg.Payload, "ctx")
-		funcDef, ok := dipper.GetMapData(msg.Payload, "function")
-		if !ok {
-			dipper.Logger.Panicf("[operator] no function received")
-		}
-		err := mapstructure.Decode(funcDef, &function)
-		if err != nil {
-			dipper.Logger.Panicf("[operator] invalid function received")
-		}
+	msg = dipper.DeserializePayload(msg)
+	dipper.Logger.Debugf("[operator] function call payload %+v", msg.Payload)
+	function := config.Function{}
+	data, _ := dipper.GetMapData(msg.Payload, "data")
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+	event, _ := dipper.GetMapData(msg.Payload, "event")
+	ctx, _ := dipper.GetMapData(msg.Payload, "ctx")
+	funcDef, ok := dipper.GetMapData(msg.Payload, "function")
+	if !ok {
+		dipper.Logger.Panicf("[operator] no function received")
+	}
+	err := mapstructure.Decode(funcDef, &function)
+	if err != nil {
+		dipper.Logger.Panicf("[operator] invalid function received")
+	}
 
-		dipper.Logger.Debugf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
-		driver, rawaction, params, sysData := collapseFunction(nil, &function)
-		dipper.Logger.Debugf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
+	var driver string
+	var params map[string]interface{}
+	dipper.Logger.Debugf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
+	driver, rawaction, params, sysData := collapseFunction(nil, &function)
+	dipper.Logger.Debugf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
 
-		worker := operator.getDriverRuntime("driver:" + driver)
-		if worker == nil {
-			panic(fmt.Errorf("driver %s not defined", driver))
-		}
-		finalParams := params
-		if params != nil {
-			// interpolate twice for giving an chance for using sysData in ctx
-			if ctx != nil {
-				ctx = dipper.Interpolate(ctx, map[string]interface{}{
-					"sysData": sysData,
-					"data":    data,
-					"event":   event,
-					"labels":  msg.Labels,
-					"wfdata":  ctx,
-					"ctx":     ctx,
-					"params":  params,
-				}).(map[string]interface{})
-			}
-			// use interpolated ctx to assemble final params
-			finalParams = dipper.Interpolate(params, map[string]interface{}{
+	worker := operator.getDriverRuntime("driver:" + driver)
+	if worker == nil {
+		panic(fmt.Errorf("not defined: %s: %w", driver, OperatorError))
+	}
+	finalParams := params
+	if params != nil {
+		// interpolate twice for giving an chance for using sysData in ctx
+		if ctx != nil {
+			ctx = dipper.Interpolate(ctx, map[string]interface{}{
 				"sysData": sysData,
 				"data":    data,
 				"event":   event,
 				"labels":  msg.Labels,
-				"ctx":     ctx,
 				"wfdata":  ctx,
+				"ctx":     ctx,
 				"params":  params,
 			}).(map[string]interface{})
 		}
-		dipper.Logger.Debugf("[operator] interpolated function call %+v", finalParams)
-		dipper.Recursive(finalParams, operator.decryptDriverData)
+		// use interpolated ctx to assemble final params
+		finalParams = dipper.Interpolate(params, map[string]interface{}{
+			"sysData": sysData,
+			"data":    data,
+			"event":   event,
+			"labels":  msg.Labels,
+			"ctx":     ctx,
+			"wfdata":  ctx,
+			"params":  params,
+		}).(map[string]interface{})
+	}
+	dipper.Logger.Debugf("[operator] interpolated function call %+v", finalParams)
+	dipper.Recursive(finalParams, operator.decryptDriverData)
 
-		msg.Payload = finalParams
-		if msg.Labels == nil {
-			msg.Labels = map[string]string{}
-		}
-		msg.Labels["method"] = rawaction
-		retry := dipper.InterpolateStr("$?ctx.retry,params.retry", map[string]interface{}{
-			"ctx":    ctx,
-			"params": finalParams,
-		})
-		if retry != "" {
-			msg.Labels["retry"] = retry
-		} else {
-			delete(msg.Labels, "retry")
-		}
-		backoff := dipper.InterpolateStr("$?ctx.backoff_ms,params.backoff_ms", map[string]interface{}{
-			"ctx":    ctx,
-			"params": finalParams,
-		})
-		if backoff != "" {
-			msg.Labels["backoff_ms"] = backoff
-		} else {
-			delete(msg.Labels, "backoff_ms")
-		}
-		timeout := dipper.InterpolateStr("$?ctx.timeout,params.timeout", map[string]interface{}{
-			"ctx":    ctx,
-			"params": finalParams,
-		})
-		if timeout != "" {
-			msg.Labels["timeout"] = timeout
-		} else {
-			delete(msg.Labels, "timeout")
-		}
+	msg.Payload = finalParams
+	if msg.Labels == nil {
+		msg.Labels = map[string]string{}
+	}
+	msg.Labels["method"] = rawaction
+	retry := dipper.InterpolateStr("$?ctx.retry,params.retry", map[string]interface{}{
+		"ctx":    ctx,
+		"params": finalParams,
+	})
+	if retry != "" {
+		msg.Labels["retry"] = retry
+	} else {
+		delete(msg.Labels, "retry")
+	}
+	backoff := dipper.InterpolateStr("$?ctx.backoff_ms,params.backoff_ms", map[string]interface{}{
+		"ctx":    ctx,
+		"params": finalParams,
+	})
+	if backoff != "" {
+		msg.Labels["backoff_ms"] = backoff
+	} else {
+		delete(msg.Labels, "backoff_ms")
+	}
+	timeout := dipper.InterpolateStr("$?ctx.timeout,params.timeout", map[string]interface{}{
+		"ctx":    ctx,
+		"params": finalParams,
+	})
+	if timeout != "" {
+		msg.Labels["timeout"] = timeout
+	} else {
+		delete(msg.Labels, "timeout")
+	}
 
-		ret = []RoutedMessage{
-			{
-				driverRuntime: worker,
-				message:       msg,
-			},
-		}
-	} else if msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturn {
+	return []RoutedMessage{
+		{
+			driverRuntime: worker,
+			message:       msg,
+		},
+	}
+}
+
+func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
+	dipper.Logger.Infof("[operator] routing message %s.%s", msg.Channel, msg.Subject)
+	defer dipper.SafeExitOnError("[operator] continue on processing messages")
+	switch {
+	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusCommand:
+		ret = handleEventbusCommand(msg)
+	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturn:
 		ret = []RoutedMessage{
 			{
 				driverRuntime: operator.getDriverRuntime(dipper.ChannelEventbus),

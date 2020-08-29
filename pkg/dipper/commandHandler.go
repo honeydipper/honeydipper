@@ -7,7 +7,6 @@
 package dipper
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -15,12 +14,15 @@ import (
 )
 
 const (
+	// SUCCESS means the workflow finished successfully.
 	SUCCESS = "success"
+	// FAILURE means the workflow finished with failure status.
 	FAILURE = "failure"
-	ERROR   = "error"
+	// ERROR means the workflow run into errors and could not complete.
+	ERROR = "error"
 )
 
-// CommandProvider : an interface for providing Command handling feature
+// CommandProvider : an interface for providing Command handling feature.
 type CommandProvider struct {
 	Commands     map[string]MessageHandler
 	ReturnWriter io.Writer
@@ -28,7 +30,7 @@ type CommandProvider struct {
 	Subject      string
 }
 
-// Init : initializing rpc provider
+// Init : initializing rpc provider.
 func (p *CommandProvider) Init(channel string, subject string, defaultWriter io.Writer) {
 	p.Commands = map[string]MessageHandler{}
 	p.ReturnWriter = defaultWriter
@@ -36,7 +38,7 @@ func (p *CommandProvider) Init(channel string, subject string, defaultWriter io.
 	p.Subject = subject
 }
 
-// ReturnError: send an error message return to caller and create an error
+// ReturnError sends an error message return to caller and create an error.
 func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...interface{}) error {
 	errText := fmt.Sprintf(pattern, args...)
 	p.Return(call, &Message{
@@ -45,41 +47,46 @@ func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...int
 		},
 	})
 	Logger.Warningf("[operator] %s", errText)
-	return errors.New(errText)
+	return Error(errText)
 }
 
-// Return : return a value to rpc caller
+// Return : return a value to rpc caller.
 func (p *CommandProvider) Return(call *Message, retval *Message) {
-	if _, ok := call.Labels["sessionID"]; ok {
-		retMsg := &Message{
-			Channel: p.Channel,
-			Subject: p.Subject,
-			Labels:  call.Labels,
-		}
-		delete(retMsg.Labels, "backoff_ms")
-		delete(retMsg.Labels, "retry")
-		delete(retMsg.Labels, "timeout")
-		if status, ok := retval.Labels["status"]; ok {
-			retMsg.Labels["status"] = status
-			if status != SUCCESS {
-				retMsg.Labels["reason"] = retval.Labels["reason"]
-			}
-		} else {
-			if reason, ok := retval.Labels["error"]; ok {
-				retMsg.Labels["status"] = "error"
-				retMsg.Labels["reason"] = reason
-			} else {
-				retMsg.Labels["status"] = SUCCESS
-			}
-		}
-		retMsg.Payload = retval.Payload
-		retMsg.IsRaw = retval.IsRaw
-		SendMessage(p.ReturnWriter, retMsg)
+	defer func() {
+		call.Reply = nil
+	}()
+
+	if _, ok := call.Labels["sessionID"]; !ok {
+		return
 	}
-	call.Reply = nil
+
+	retMsg := &Message{
+		Channel: p.Channel,
+		Subject: p.Subject,
+		Labels:  call.Labels,
+	}
+	delete(retMsg.Labels, "backoff_ms")
+	delete(retMsg.Labels, "retry")
+	delete(retMsg.Labels, "timeout")
+	if status, ok := retval.Labels["status"]; ok {
+		retMsg.Labels["status"] = status
+		if status != SUCCESS {
+			retMsg.Labels["reason"] = retval.Labels["reason"]
+		}
+	} else {
+		if reason, ok := retval.Labels["error"]; ok {
+			retMsg.Labels["status"] = "error"
+			retMsg.Labels["reason"] = reason
+		} else {
+			retMsg.Labels["status"] = SUCCESS
+		}
+	}
+	retMsg.Payload = retval.Payload
+	retMsg.IsRaw = retval.IsRaw
+	SendMessage(p.ReturnWriter, retMsg)
 }
 
-// Router : route the message to rpc handlers
+// Router : route the message to rpc handlers.
 func (p *CommandProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
 	f, ok := p.Commands[method]
@@ -138,11 +145,11 @@ func (p *CommandProvider) Router(msg *Message) {
 	attempt(make(chan Message, 1))
 }
 
-// UnpackLabels loads necessary variables out of the labels
-func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backoff_ms time.Duration) {
+// UnpackLabels loads necessary variables out of the labels.
+func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backoffms time.Duration) {
 	var err error
 
-	retryStr, _ := msg.Labels["retry"]
+	retryStr := msg.Labels["retry"]
 	if retryStr != "" {
 		retry, err = strconv.Atoi(retryStr)
 		if err != nil {
@@ -150,18 +157,18 @@ func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backof
 		}
 	}
 
-	backoffStr, _ := msg.Labels["backoff_ms"]
+	backoffStr := msg.Labels["backoff_ms"]
 	if backoffStr != "" {
 		backoffVal, err := strconv.Atoi(backoffStr)
 		if err != nil {
 			panic(p.ReturnError(msg, "[operator] invalid backoff_ms: %s", backoffStr))
 		}
-		backoff_ms = time.Duration(backoffVal)
+		backoffms = time.Duration(backoffVal)
 	} else {
-		backoff_ms = 1000
+		backoffms = 1000
 	}
 
-	timeoutStr, _ := msg.Labels["timeout"]
+	timeoutStr := msg.Labels["timeout"]
 	if timeoutStr != "" {
 		timeoutVal, err := strconv.Atoi(timeoutStr)
 		if err != nil {
@@ -172,5 +179,5 @@ func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backof
 		timeout = 30
 	}
 
-	return retry, timeout, backoff_ms
+	return retry, timeout, backoffms
 }

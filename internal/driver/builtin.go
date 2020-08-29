@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// BuiltinDriver are compiled and delivered with daemon binary in the same container image
+// BuiltinDriver are compiled and delivered with daemon binary in the same container image.
 type BuiltinDriver struct {
 	meta *Meta
 }
@@ -37,21 +37,21 @@ func builtinPath() string {
 	return BuiltinPath
 }
 
-// Acquire function is used for getting the driver from sources and validate, for
+// Acquire function is used for getting the driver from sources and validate, for.
 // builtin drivers, just make sure the name is valid.
 func (d *BuiltinDriver) Acquire() {
 	shortName, ok := d.meta.HandlerData["shortName"].(string)
 	if !ok || shortName == "" {
-		panic(fmt.Errorf("shortName is missing for builtin driver %s", d.meta.Name))
+		panic(fmt.Errorf("shortName is missing for builtin driver: %s: %w", d.meta.Name, DriverError))
 	}
 	if strings.ContainsRune(shortName, os.PathSeparator) {
-		panic(fmt.Errorf("shortName has path separator in driver %s", d.meta.Name))
+		panic(fmt.Errorf("shortName has path separator in driver: %s: %w", d.meta.Name, DriverError))
 	}
 
 	d.meta.Executable = filepath.Join(builtinPath(), shortName)
 }
 
-// Prepare function is used for preparing the arguments when calling the executable
+// Prepare function is used for preparing the arguments when calling the executable.
 // for the driver.
 func (d *BuiltinDriver) Prepare() {
 	var argsList []interface{}
@@ -65,7 +65,7 @@ func (d *BuiltinDriver) Prepare() {
 	}
 
 	if !ok {
-		panic(fmt.Errorf("arguments in driver %s should be a list of strings", d.meta.Name))
+		panic(fmt.Errorf("arguments in driver %s should be a list of strings: %w", d.meta.Name, DriverError))
 	}
 
 	for _, v := range argsList {
@@ -73,7 +73,7 @@ func (d *BuiltinDriver) Prepare() {
 	}
 }
 
-// Meta function exposes the metadata used for this driver handler
+// Meta function exposes the metadata used for this driver handler.
 func (d *BuiltinDriver) Meta() *Meta {
 	return d.meta
 }

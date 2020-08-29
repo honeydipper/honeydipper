@@ -23,6 +23,24 @@ import (
 	"google.golang.org/api/option"
 )
 
+const (
+	// DefaultJobWaitTimeout is the default timeout in seconds for waiting for a job to finish.
+	DefaultJobWaitTimeout time.Duration = 1800
+)
+
+var (
+	// ErrMissingProject means missing project
+	ErrMissingProject = errors.New("project required")
+	// ErrMissingJobSpec means missing location
+	ErrMissingJobSpec = errors.New("job spec required")
+	// ErrMissingJobID means missing jobid
+	ErrMissingJobID = errors.New("jobid required")
+	// ErrMissingName means missing name
+	ErrMissingName = errors.New("name required")
+	// ErrJobNotFound means job not found
+	ErrJobNotFound = errors.New("job not found")
+)
+
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -68,7 +86,7 @@ func getCommonParams(params interface{}) (string, string, string) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
-		panic(errors.New("project required"))
+		panic(ErrMissingProject)
 	}
 	location, ok := dipper.GetMapDataStr(params, "location")
 	if ok {
@@ -87,12 +105,12 @@ func createJob(msg *dipper.Message) {
 
 	job, ok := dipper.GetMapData(params, "job")
 	if !ok {
-		panic(errors.New("job spec required"))
+		panic(ErrMissingJobSpec)
 	}
 	var jobSpec dataflow.CreateJobFromTemplateRequest
-	dipper.PanicError(mapstructure.Decode(job, &jobSpec))
+	dipper.Must(mapstructure.Decode(job, &jobSpec))
 
-	var dataflowService = getDataflowService(serviceAccountBytes)
+	dataflowService := getDataflowService(serviceAccountBytes)
 
 	result := getExistingJob(project, location, jobSpec.JobName, dataflowService)
 	if result == nil {
@@ -125,7 +143,7 @@ func getJob(msg *dipper.Message) {
 
 	jobID, ok := dipper.GetMapDataStr(params, "jobID")
 	if !ok {
-		panic(errors.New("jobID required"))
+		panic(ErrMissingJobID)
 	}
 
 	var fieldList []googleapi.Field
@@ -135,7 +153,7 @@ func getJob(msg *dipper.Message) {
 		}
 	}
 
-	var dataflowService = getDataflowService(serviceAccountBytes)
+	dataflowService := getDataflowService(serviceAccountBytes)
 
 	var (
 		result *dataflow.Job
@@ -219,7 +237,7 @@ func findJobByName(msg *dipper.Message) {
 	serviceAccountBytes, project, location := getCommonParams(params)
 	jobName, ok := dipper.GetMapDataStr(params, "name")
 	if !ok {
-		panic(errors.New("missing name"))
+		panic(ErrMissingName)
 	}
 	dataflowService := getDataflowService(serviceAccountBytes)
 
@@ -232,7 +250,7 @@ func findJobByName(msg *dipper.Message) {
 			},
 		}
 	} else {
-		panic(errors.New("job not found"))
+		panic(ErrJobNotFound)
 	}
 }
 
@@ -243,21 +261,21 @@ func waitForJob(msg *dipper.Message) {
 
 	jobID, ok := dipper.GetMapDataStr(params, "jobID")
 	if !ok {
-		panic(errors.New("jobID required"))
+		panic(ErrMissingJobID)
 	}
 	interval := 10
 	intervalStr, ok := dipper.GetMapDataStr(msg.Payload, "interval")
 	if ok {
 		interval, _ = strconv.Atoi(intervalStr)
 	}
-	timeout := time.Duration(1800)
+	timeout := DefaultJobWaitTimeout
 	timeoutStr, ok := msg.Labels["timeout"]
 	if ok {
 		timeoutInt, _ := strconv.Atoi(timeoutStr)
 		timeout = time.Duration(timeoutInt)
 	}
 
-	var dataflowService = getDataflowService(serviceAccountBytes)
+	dataflowService := getDataflowService(serviceAccountBytes)
 
 	terminatedStates := map[string]string{
 		"JOB_STATE_DONE":      "success",
@@ -323,7 +341,7 @@ func updateJob(msg *dipper.Message) {
 
 	job, ok := dipper.GetMapData(params, "jobSpec")
 	if !ok {
-		panic(errors.New("job spec required"))
+		panic(ErrMissingJobSpec)
 	}
 	var jobSpec dataflow.Job
 	err := mapstructure.Decode(job, &jobSpec)
@@ -332,7 +350,7 @@ func updateJob(msg *dipper.Message) {
 	}
 	jobID := dipper.MustGetMapDataStr(params, "jobID")
 
-	var dataflowService = getDataflowService(serviceAccountBytes)
+	dataflowService := getDataflowService(serviceAccountBytes)
 
 	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	var result *dataflow.Job

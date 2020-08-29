@@ -9,14 +9,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
@@ -32,11 +29,13 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
-var server *http.Server
-var hooks map[string]interface{}
+var (
+	driver *dipper.Driver
+	server *http.Server
+	hooks  map[string]interface{}
+)
 
-// Addr : listening address and port of the webhook
+// Addr : listening address and port of the webhook.
 var Addr string
 
 func main() {
@@ -53,7 +52,7 @@ func main() {
 }
 
 func stopWebhook(*dipper.Message) {
-	dipper.PanicError(server.Shutdown(context.Background()))
+	dipper.Must(server.Shutdown(context.Background()))
 }
 
 func loadOptions(m *dipper.Message) {
@@ -97,90 +96,68 @@ func startWebhook(m *dipper.Message) {
 func hookHandler(w http.ResponseWriter, r *http.Request) {
 	eventData := extractEventData(w, r)
 
-	if eventData["url"] != "/hz/alive" {
-		log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
+	if eventData["url"] == "/hz/alive" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
-		matched := false
-		for _, hook := range hooks {
-			for _, collapsed := range hook.([]interface{}) {
-				condition, _ := dipper.GetMapData(collapsed, "match")
-				auth, ok := dipper.GetMapData(condition, ":auth:")
-				if ok {
-					authDriver := dipper.MustGetMapDataStr(auth, "driver")
-					authResult, err := driver.Call("driver:"+authDriver, "webhookAuth", map[string]interface{}{
-						"event":     eventData,
-						"condition": auth,
-					})
-					if err != nil || string(authResult) != "authenticated" {
-						log.Warningf("[%s] failed to authenticate webhook request with %s error %+v", driver.Service, authDriver, err)
-						continue
-					}
-				}
-				if dipper.CompareAll(eventData, condition) {
-					matched = true
-					break
+	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
+	matched := false
+	for _, hook := range hooks {
+		for _, collapsed := range hook.([]interface{}) {
+			condition, _ := dipper.GetMapData(collapsed, "match")
+			auth, ok := dipper.GetMapData(condition, ":auth:")
+			if ok {
+				authDriver := dipper.MustGetMapDataStr(auth, "driver")
+				authResult, err := driver.Call("driver:"+authDriver, "webhookAuth", map[string]interface{}{
+					"event":     eventData,
+					"condition": auth,
+				})
+				if err != nil || string(authResult) != "authenticated" {
+					log.Warningf("[%s] failed to authenticate webhook request with %s error %+v", driver.Service, authDriver, err)
+					continue
 				}
 			}
-			if matched {
+			if dipper.CompareAll(eventData, condition) {
+				matched = true
 				break
 			}
 		}
-
 		if matched {
-			driver.SendMessage(&dipper.Message{
-				Channel: "eventbus",
-				Subject: "message",
-				Payload: map[string]interface{}{
-					"events": []interface{}{"webhook."},
-					"data":   eventData,
-				},
-			})
-
-			w.WriteHeader(http.StatusOK)
-			return
+			break
 		}
-
-		http.NotFound(w, r)
-	} else {
-		w.WriteHeader(http.StatusOK)
 	}
+
+	if matched {
+		id := driver.EmitEvent(map[string]interface{}{
+			"events": []interface{}{"webhook."},
+			"data":   eventData,
+		})
+
+		if _, ok := dipper.GetMapDataStr(eventData, "form.accept_uuid.0"); ok {
+			w.Header().Set("content-type", "application/json")
+			_, _ = w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+		return
+	}
+
+	http.NotFound(w, r)
 }
 
 func badRequest(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusBadRequest)
-	dipper.PanicError(io.WriteString(w, "Bad Request\n"))
+	dipper.Must(io.WriteString(w, "Bad Request\n"))
 }
 
 func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interface{} {
-	dipper.PanicError(r.ParseForm())
-
-	eventData := map[string]interface{}{
-		"url":        r.URL.Path,
-		"method":     r.Method,
-		"form":       r.Form,
-		"headers":    r.Header,
-		"host":       r.Host,
-		"remoteAddr": r.RemoteAddr,
-	}
-
-	if r.Method == http.MethodPost {
-		bodyBytes, err := ioutil.ReadAll(r.Body)
-		if err != nil {
+	defer func() {
+		if r := recover(); r != nil {
 			badRequest(w)
-			log.Panicf("[%s] unable to read post body", driver.Service)
+			log.Panicf("[%s] invalid json in post body", driver.Service)
 		}
-		contentType := r.Header.Get("Content-type")
-		eventData["body"] = string(bodyBytes)
-		if len(contentType) > 0 && strings.HasPrefix(contentType, "application/json") {
-			bodyObj := map[string]interface{}{}
-			err := json.Unmarshal(bodyBytes, &bodyObj)
-			if err != nil {
-				badRequest(w)
-				log.Panicf("[%s] invalid json in post body", driver.Service)
-			}
-			eventData["json"] = bodyObj
-		}
-	}
+	}()
 
-	return eventData
+	return dipper.ExtractWebRequest(r)
 }

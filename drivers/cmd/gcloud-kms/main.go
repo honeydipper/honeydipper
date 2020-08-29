@@ -20,6 +20,9 @@ import (
 	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
+// ErrKeyNameMissing means the key used for decrypting is not configured.
+var ErrKeyNameMissing = errors.New("key name not configured")
+
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -43,7 +46,7 @@ func main() {
 func decrypt(msg *dipper.Message) {
 	name, ok := driver.GetOptionStr("data.keyname")
 	if !ok {
-		panic(errors.New("key not configured"))
+		panic(ErrKeyNameMissing)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	defer cancel()

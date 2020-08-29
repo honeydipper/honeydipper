@@ -22,6 +22,19 @@ import (
 	"google.golang.org/api/option"
 )
 
+var (
+	// ErrCreateClient means failed to create gs client.
+	ErrCreateClient = errors.New("failed to create gs client")
+	// ErrMissingProject means missing project.
+	ErrMissingProject = errors.New("missing project")
+	// ErrMissingBucketSpec means missing bucket spec.
+	ErrMissingBucketSpec = errors.New("missing bucket spec")
+	// ErrMissingFileSpec means missing file spec.
+	ErrMissingFileSpec = errors.New("missing file spec")
+	// ErrNotMatchingFileType means the file and file type not matching.
+	ErrNotMatchingFileType = errors.New("file content not matching fileType")
+)
+
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -57,7 +70,7 @@ func getStorageClient(serviceAccountBytes string) *storage.Client {
 		client, err = storage.NewClient(ctx)
 	}
 	if err != nil {
-		panic(errors.New("unable to create gcloud pubsub client"))
+		panic(ErrCreateClient)
 	}
 	return client
 }
@@ -66,17 +79,17 @@ func getCommonParams(params interface{}) (string, string) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
-		panic(errors.New("project required"))
+		panic(ErrMissingProject)
 	}
 	return serviceAccountBytes, project
 }
 
-// BucketIterator is an interface for iterate BucketAttrs
+// BucketIterator is an interface for iterate BucketAttrs.
 type BucketIterator interface {
 	Next() (*storage.BucketAttrs, error)
 }
 
-// ObjectIterator is an interface for iterate ObjectAttrs
+// ObjectIterator is an interface for iterate ObjectAttrs.
 type ObjectIterator interface {
 	Next() (*storage.ObjectAttrs, error)
 }
@@ -86,7 +99,7 @@ func listBuckets(msg *dipper.Message) {
 	params := msg.Payload
 	serviceAccountBytes, project := getCommonParams(params)
 
-	var client = getStorageClient(serviceAccountBytes)
+	client := getStorageClient(serviceAccountBytes)
 
 	it := client.Buckets(context.Background(), project)
 	listBucketsHelper(msg, it)
@@ -97,7 +110,7 @@ func listBucketsHelper(msg *dipper.Message, it BucketIterator) {
 
 	for {
 		battrs, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -120,12 +133,12 @@ func listFiles(msg *dipper.Message) {
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
-		panic(errors.New("bucket spec required"))
+		panic(ErrMissingBucketSpec)
 	}
 	prefix, _ := dipper.GetMapDataStr(params, "prefix")
 	delim, _ := dipper.GetMapDataStr(params, "delimiter")
 
-	var client = getStorageClient(serviceAccountBytes)
+	client := getStorageClient(serviceAccountBytes)
 	query := &storage.Query{
 		Prefix:    prefix,
 		Delimiter: delim,
@@ -141,7 +154,7 @@ func listFilesHelper(msg *dipper.Message, it ObjectIterator) {
 
 	for {
 		attrs, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -170,15 +183,15 @@ func fetchFile(msg *dipper.Message) {
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
-		panic(errors.New("bucket spec required"))
+		panic(ErrMissingBucketSpec)
 	}
 	fileObj, ok := dipper.GetMapDataStr(params, "fileObject")
 	if !ok {
-		panic(errors.New("fileObject spec required"))
+		panic(ErrMissingFileSpec)
 	}
 	fileType, _ := dipper.GetMapDataStr(params, "fileType")
 
-	var client = getStorageClient(serviceAccountBytes)
+	client := getStorageClient(serviceAccountBytes)
 	ctx := context.Background()
 	rc, err := client.Bucket(bucket).Object(fileObj).NewReader(ctx)
 	if err != nil {
@@ -194,7 +207,7 @@ func fetchFile(msg *dipper.Message) {
 	if fileType != "" {
 		contentType := http.DetectContentType(content)
 		if contentType != fileType {
-			panic(errors.New("file content type and specified fileType mismatch"))
+			panic(ErrNotMatchingFileType)
 		}
 	}
 

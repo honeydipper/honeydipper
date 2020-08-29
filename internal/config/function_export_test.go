@@ -18,7 +18,7 @@ func TestFunctionExport(t *testing.T) {
 	cfg := Config{
 		DataSet: &DataSet{
 			Systems: map[string]System{
-				"test": System{
+				"test": {
 					Data: map[string]interface{}{
 						"key1": "value1",
 						"key2": map[string]interface{}{
@@ -26,7 +26,7 @@ func TestFunctionExport(t *testing.T) {
 						},
 					},
 					Functions: map[string]Function{
-						"testFunc1": Function{
+						"testFunc1": {
 							Driver:    "testDriver",
 							RawAction: "action",
 							Export: map[string]interface{}{
@@ -74,7 +74,7 @@ func TestFunctionExportWithParameters(t *testing.T) {
 	cfg := Config{
 		DataSet: &DataSet{
 			Systems: map[string]System{
-				"test": System{
+				"test": {
 					Data: map[string]interface{}{
 						"key1": "value1",
 						"key2": map[string]string{
@@ -82,7 +82,7 @@ func TestFunctionExportWithParameters(t *testing.T) {
 						},
 					},
 					Functions: map[string]Function{
-						"testFunc1": Function{
+						"testFunc1": {
 							Driver:    "testDriver",
 							RawAction: "action",
 							Parameters: map[string]interface{}{
@@ -129,7 +129,7 @@ func TestFunctionExportWithSquashedParameters(t *testing.T) {
 	cfg := Config{
 		DataSet: &DataSet{
 			Systems: map[string]System{
-				"test": System{
+				"test": {
 					Data: map[string]interface{}{
 						"key1": "this_should_not_be_used",
 						"key2": map[string]string{
@@ -137,7 +137,7 @@ func TestFunctionExportWithSquashedParameters(t *testing.T) {
 						},
 					},
 					Functions: map[string]Function{
-						"testFunc1": Function{
+						"testFunc1": {
 							Driver:    "testDriver",
 							RawAction: "action",
 							Parameters: map[string]interface{}{
@@ -147,7 +147,7 @@ func TestFunctionExportWithSquashedParameters(t *testing.T) {
 						},
 					},
 				},
-				"test2": System{
+				"test2": {
 					Data: map[string]interface{}{
 						"key1": "value1",
 						"key2": map[string]string{
@@ -155,7 +155,7 @@ func TestFunctionExportWithSquashedParameters(t *testing.T) {
 						},
 					},
 					Functions: map[string]Function{
-						"testFunc2": Function{
+						"testFunc2": {
 							Target: Action{
 								System:   "test",
 								Function: "testFunc1",
@@ -189,12 +189,12 @@ func TestFunctionExportWithSquashedSysData(t *testing.T) {
 	cfg := Config{
 		DataSet: &DataSet{
 			Systems: map[string]System{
-				"test": System{
+				"test": {
 					Data: map[string]interface{}{
 						"key4": "value4",
 					},
 					Functions: map[string]Function{
-						"testFunc1": Function{
+						"testFunc1": {
 							Driver:    "testDriver",
 							RawAction: "action",
 							Parameters: map[string]interface{}{
@@ -203,7 +203,7 @@ func TestFunctionExportWithSquashedSysData(t *testing.T) {
 						},
 					},
 				},
-				"test2": System{
+				"test2": {
 					Data: map[string]interface{}{
 						"key1": "value1",
 						"key2": map[string]string{
@@ -212,7 +212,7 @@ func TestFunctionExportWithSquashedSysData(t *testing.T) {
 						"key4": "this_should_not_be_used",
 					},
 					Functions: map[string]Function{
-						"testFunc2": Function{
+						"testFunc2": {
 							Target: Action{
 								System:   "test",
 								Function: "testFunc1",
@@ -242,7 +242,7 @@ func TestFunctionExportWithSubsystem(t *testing.T) {
 	cfg := Config{
 		DataSet: &DataSet{
 			Systems: map[string]System{
-				"outter": System{
+				"outter": {
 					Extends: []string{
 						"inner=test",
 					},
@@ -250,7 +250,7 @@ func TestFunctionExportWithSubsystem(t *testing.T) {
 						"key1": "should-not-be-used",
 					},
 				},
-				"test": System{
+				"test": {
 					Data: map[string]interface{}{
 						"key1": "value1",
 						"key2": map[string]interface{}{
@@ -258,7 +258,7 @@ func TestFunctionExportWithSubsystem(t *testing.T) {
 						},
 					},
 					Functions: map[string]Function{
-						"testFunc1": Function{
+						"testFunc1": {
 							Driver:    "testDriver",
 							RawAction: "action",
 							Export: map[string]interface{}{
@@ -288,7 +288,7 @@ func TestFunctionExportWithSubsystemParameters(t *testing.T) {
 	cfg := Config{
 		DataSet: &DataSet{
 			Systems: map[string]System{
-				"outter": System{
+				"outter": {
 					Extends: []string{
 						"inner=test",
 					},
@@ -296,7 +296,7 @@ func TestFunctionExportWithSubsystemParameters(t *testing.T) {
 						"key1": "should-not-be-used",
 					},
 				},
-				"test": System{
+				"test": {
 					Data: map[string]interface{}{
 						"key1": "value1",
 						"key2": map[string]interface{}{
@@ -305,7 +305,7 @@ func TestFunctionExportWithSubsystemParameters(t *testing.T) {
 						"key5": "internal-data",
 					},
 					Functions: map[string]Function{
-						"testFunc1": Function{
+						"testFunc1": {
 							Driver:    "testDriver",
 							RawAction: "action",
 							Parameters: map[string]interface{}{
@@ -338,7 +338,7 @@ func TestFunctionExportWithSubsystemParentData(t *testing.T) {
 	cfg := Config{
 		DataSet: &DataSet{
 			Systems: map[string]System{
-				"outter": System{
+				"outter": {
 					Extends: []string{
 						"inner=test",
 					},
@@ -347,7 +347,7 @@ func TestFunctionExportWithSubsystemParentData(t *testing.T) {
 						"key2": "belong-to-parent",
 					},
 				},
-				"test": System{
+				"test": {
 					Data: map[string]interface{}{
 						"key1": "value1",
 						"key2": map[string]interface{}{
@@ -356,7 +356,7 @@ func TestFunctionExportWithSubsystemParentData(t *testing.T) {
 						"key5": "internal-data",
 					},
 					Functions: map[string]Function{
-						"testFunc1": Function{
+						"testFunc1": {
 							Driver:    "testDriver",
 							RawAction: "action",
 							Export: map[string]interface{}{

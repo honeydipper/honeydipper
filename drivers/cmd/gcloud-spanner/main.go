@@ -18,6 +18,29 @@ import (
 	spannerAdminSchema "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
 )
 
+const (
+	// DefaultBackupOpWaitTimeout is the default timeout in seconds for waiting for the backup to complete
+	DefaultBackupOpWaitTimeout time.Duration = 1800
+
+	// DefaultBackupExpireDuration is the default duration before a backup is expired and removed
+	DefaultBackupExpireDuration time.Duration = time.Hour * 24 * 180
+)
+
+var (
+	// ErrMissingProject means missing project
+	ErrMissingProject = errors.New("project required")
+	// ErrMissingLocation means missing location
+	ErrMissingLocation = errors.New("location required")
+	// ErrMissingDB means missing db
+	ErrMissingDB = errors.New("db required")
+	// ErrMissingBackupOpID means missing backupOpID
+	ErrMissingBackupOpID = errors.New("backupOpID required")
+	// ErrCreateClient means failure when creating API client
+	ErrCreateClient = errors.New("fail to create client")
+	// ErrBackupOpNotFound means the backup operation not found
+	ErrBackupOpNotFound = errors.New("backup op not found")
+)
+
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -26,8 +49,10 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
-var lro *sync.Map
+var (
+	driver *dipper.Driver
+	lro    *sync.Map
+)
 
 func main() {
 	initFlags()
@@ -47,17 +72,17 @@ func backup(m *dipper.Message) {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
 	project, ok := dipper.GetMapDataStr(params, "project")
 	if !ok {
-		panic(errors.New("project required"))
+		panic(ErrMissingProject)
 	}
 	instance, ok := dipper.GetMapDataStr(params, "instance")
 	if !ok {
-		panic(errors.New("location required"))
+		panic(ErrMissingLocation)
 	}
 	db, ok := dipper.GetMapDataStr(params, "db")
 	if !ok {
-		panic(errors.New("db required"))
+		panic(ErrMissingDB)
 	}
-	expireDuration := time.Hour * 24 * 180
+	expireDuration := DefaultBackupExpireDuration
 	expireStr, ok := dipper.GetMapDataStr(params, "expires")
 	if ok && len(expireStr) > 0 {
 		var err error
@@ -66,7 +91,7 @@ func backup(m *dipper.Message) {
 			panic(err)
 		}
 	}
-	timeout := time.Duration(1800)
+	timeout := DefaultBackupOpWaitTimeout
 	timeoutStr, ok := m.Labels["timeout"]
 	if ok {
 		timeoutInt, _ := strconv.Atoi(timeoutStr)
@@ -85,11 +110,11 @@ func backup(m *dipper.Message) {
 	}
 
 	if err != nil {
-		panic(errors.New("unable to create gcloud spanner admin client"))
+		panic(ErrCreateClient)
 	}
 
 	t := time.Now().Add(expireDuration)
-	expireTime := &timestamp.Timestamp{Seconds: int64(t.Unix()), Nanos: int32(t.Nanosecond())}
+	expireTime := &timestamp.Timestamp{Seconds: t.Unix(), Nanos: int32(t.Nanosecond())}
 	req := &spannerAdminSchema.CreateBackupRequest{
 		Parent:   fmt.Sprintf("projects/%s/instances/%s", project, instance),
 		BackupId: time.Now().Format("b20060102030405"),
@@ -105,20 +130,20 @@ func backup(m *dipper.Message) {
 		dipper.Logger.Panicf("[%s] unable to start the backup %s/%s/%s: %+v", driver.Service, project, instance, db, err)
 	}
 
-	backupOpId := strings.Join([]string{"backup", project, instance, db, req.BackupId}, "_")
+	backupOpID := strings.Join([]string{"backup", project, instance, db, req.BackupId}, "_")
 	waitCtx, cancelWait := context.WithTimeout(context.Background(), timeout*time.Second)
-	lro.Store(backupOpId, []interface{}{op, waitCtx})
+	lro.Store(backupOpID, []interface{}{op, waitCtx})
 
 	go func() {
 		defer cancelWait()
-		defer lro.Delete(backupOpId)
+		defer lro.Delete(backupOpID)
 
-		op.Wait(waitCtx)
+		_, _ = op.Wait(waitCtx)
 	}()
 
 	m.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
-			"backupOpId": backupOpId,
+			"backupOpID": backupOpID,
 		},
 	}
 }
@@ -126,17 +151,16 @@ func backup(m *dipper.Message) {
 func waitForBackup(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	params := m.Payload
-	backupOpId, ok := dipper.GetMapDataStr(params, "backupOpId")
+	backupOpID, ok := dipper.GetMapDataStr(params, "backupOpID")
 	if !ok {
-		panic(errors.New("backupOpId required"))
+		panic(ErrMissingBackupOpID)
 	}
 
-	obj, ok := lro.Load(backupOpId)
+	obj, ok := lro.Load(backupOpID)
 	if ok {
 		op := obj.([]interface{})[0].(*spannerAdmin.CreateBackupOperation)
 		waitCtx := obj.([]interface{})[1].(context.Context)
 		backup, err := op.Wait(waitCtx)
-
 		if err != nil {
 			panic(err)
 		}
@@ -147,6 +171,6 @@ func waitForBackup(m *dipper.Message) {
 			},
 		}
 	} else {
-		panic(errors.New("backup operation not exists"))
+		panic(ErrBackupOpNotFound)
 	}
 }

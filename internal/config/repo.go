@@ -21,7 +21,7 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-// Error represents a configuration error
+// Error represents a configuration error.
 type Error struct {
 	Error error
 	File  string
@@ -47,7 +47,7 @@ func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*
 		}
 	}
 
-	dipper.PanicError(mergeDataSet(assembled, c.DataSet))
+	dipper.Must(mergeDataSet(assembled, c.DataSet))
 	return assembled, assembledList
 }
 
@@ -58,106 +58,89 @@ func (c *Repo) isFileLoaded(filename string) bool {
 func (c *Repo) loadFile(filename string) {
 	defer c.recovering(filename, "")
 
-	if !c.isFileLoaded(filename) {
-		yamlFile, err := ioutil.ReadFile(path.Join(c.root, filename[1:]))
-		if err != nil {
-			panic(err)
-		}
-		var content DataSet
-		err = yaml.Unmarshal(yamlFile, &content)
-		if err != nil {
-			panic(err)
-		}
-
-		if content.Repos != nil {
-			if !c.parent.IsDocGen && (c.parent.CheckRemote || !c.parent.IsConfigCheck) {
-				for _, referredRepo := range content.Repos {
-					if !c.parent.isRepoLoaded(referredRepo) {
-						c.parent.loadRepo(referredRepo)
-					}
-				}
-			}
-		}
-
-		if content.Includes != nil {
-			cwd := path.Dir(filename)
-			for _, include := range content.Includes {
-				absname := path.Clean(path.Join(cwd, include))
-				if !c.isFileLoaded(absname) {
-					c.loadFile(absname)
-				}
-			}
-		}
-
-		c.normalizeFilePaths(filename, &content)
-		dipper.PanicError(mergeDataSet(&(c.DataSet), content))
-		c.files[filename] = true
-		dipper.Logger.Infof("config file [%v] loaded", filename)
+	if c.isFileLoaded(filename) {
+		return
 	}
+
+	var content DataSet
+	yamlFile := dipper.Must(ioutil.ReadFile(path.Join(c.root, filename[1:]))).([]byte)
+	dipper.Must(yaml.Unmarshal(yamlFile, &content))
+
+	if content.Repos != nil {
+		if !c.parent.IsDocGen && (c.parent.CheckRemote || !c.parent.IsConfigCheck) {
+			for _, referredRepo := range content.Repos {
+				if !c.parent.isRepoLoaded(referredRepo) {
+					c.parent.loadRepo(referredRepo)
+				}
+			}
+		}
+	}
+
+	if content.Includes != nil {
+		cwd := path.Dir(filename)
+		for _, include := range content.Includes {
+			absname := path.Clean(path.Join(cwd, include))
+			if !c.isFileLoaded(absname) {
+				c.loadFile(absname)
+			}
+		}
+	}
+
+	c.normalizeFilePaths(filename, &content)
+	dipper.Must(mergeDataSet(&(c.DataSet), content))
+	c.files[filename] = true
+	dipper.Logger.Infof("config file [%v] loaded", filename)
 }
 
 func newRepo(c *Config, repo RepoInfo) *Repo {
 	return &(Repo{c, &repo, DataSet{}, map[string]bool{}, "", []Error{}})
 }
 
+func (c *Repo) cloneFetchRepo() {
+	dipper.Logger.Infof("cloning repo [%v]", c.repo.Repo)
+	var err error
+	if c.root, err = ioutil.TempDir(c.parent.WorkingDir, "git"); err != nil {
+		dipper.Logger.Errorf("%v", err)
+		dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
+	}
+
+	opts := &git.CloneOptions{URL: c.repo.Repo}
+	if strings.HasPrefix(c.repo.Repo, "git@") {
+		if auth := GetGitSSHAuth(); auth != nil {
+			opts.Auth = auth
+		}
+	}
+	repoObj := dipper.Must(git.PlainClone(c.root, false, opts)).(*git.Repository)
+
+	dipper.Logger.Infof("fetching repo [%v]", c.repo.Repo)
+	branch := "master"
+	if c.repo.Branch != "" {
+		branch = c.repo.Branch
+	}
+	dipper.Must(repoObj.Fetch(&git.FetchOptions{
+		RefSpecs: []gitCfg.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
+		Auth:     opts.Auth,
+	}))
+
+	dipper.Logger.Infof("using branch [%v] in repo [%v]", branch, c.repo.Repo)
+	tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
+	dipper.Must(tree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
+	}))
+}
+
 func (c *Repo) loadRepo() {
 	defer c.recovering("", c.repo.Repo)
 
-	var err error
 	if c.parent.IsConfigCheck && *c.repo == c.parent.InitRepo {
-		c.root, err = filepath.Abs(c.repo.Repo)
-		if err != nil {
-			panic(err)
-		}
+		c.root = dipper.Must(filepath.Abs(c.repo.Repo)).(string)
 		dipper.Logger.Infof("using working copy of repo [%v]", c.root)
 		// uncomment below to ensure the working copy is a repo
 		// if _, err = git.PlainOpen(c.root); err != nil {
 		//   panic(err)
 		// }
 	} else {
-		dipper.Logger.Infof("cloning repo [%v]", c.repo.Repo)
-		var repoObj *git.Repository
-		opts := &git.CloneOptions{URL: c.repo.Repo}
-		if c.root, err = ioutil.TempDir(c.parent.WorkingDir, "git"); err != nil {
-			dipper.Logger.Errorf("%v", err)
-			dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
-		}
-
-		if strings.HasPrefix(c.repo.Repo, "git@") {
-			if auth := GetGitSSHAuth(); auth != nil {
-				opts.Auth = auth
-			}
-		}
-
-		repoObj, err = git.PlainClone(c.root, false, opts)
-		if err != nil {
-			panic(err)
-		}
-
-		dipper.Logger.Infof("fetching repo [%v]", c.repo.Repo)
-		branch := "master"
-		if c.repo.Branch != "" {
-			branch = c.repo.Branch
-		}
-		err = repoObj.Fetch(&git.FetchOptions{
-			RefSpecs: []gitCfg.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
-			Auth:     opts.Auth,
-		})
-		if err != nil {
-			panic(err)
-		}
-
-		dipper.Logger.Infof("using branch [%v] in repo [%v]", branch, c.repo.Repo)
-		if tree, err := repoObj.Worktree(); err != nil {
-			panic(err)
-		} else {
-			err = tree.Checkout(&git.CheckoutOptions{
-				Branch: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
-			})
-			if err != nil {
-				panic(err)
-			}
-		}
+		c.cloneFetchRepo()
 	}
 
 	dipper.Logger.Infof("start loading repo [%v]", c.repo.Repo)
@@ -181,31 +164,29 @@ func (c *Repo) refreshRepo() bool {
 		panic(err)
 	}
 
-	if tree, err := repoObj.Worktree(); err != nil {
+	tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
+
+	branch := "master"
+	if c.repo.Branch != "" {
+		branch = c.repo.Branch
+	}
+
+	opts := &git.PullOptions{
+		RemoteName:    "origin",
+		ReferenceName: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
+	}
+	if strings.HasPrefix(c.repo.Repo, "git@") {
+		if auth := GetGitSSHAuth(); auth != nil {
+			opts.Auth = auth
+		}
+	}
+
+	err = tree.Pull(opts)
+	if errors.Is(err, git.NoErrAlreadyUpToDate) {
+		dipper.Logger.Infof("no changes skip repo [%s]", c.repo.Repo)
+		return false
+	} else if err != nil {
 		panic(err)
-	} else {
-		branch := "master"
-		if c.repo.Branch != "" {
-			branch = c.repo.Branch
-		}
-
-		opts := &git.PullOptions{
-			RemoteName:    "origin",
-			ReferenceName: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
-		}
-		if strings.HasPrefix(c.repo.Repo, "git@") {
-			if auth := GetGitSSHAuth(); auth != nil {
-				opts.Auth = auth
-			}
-		}
-
-		err = tree.Pull(opts)
-		if err == git.NoErrAlreadyUpToDate {
-			dipper.Logger.Infof("no changes skip repo [%s]", c.repo.Repo)
-			return false
-		} else if err != nil {
-			panic(err)
-		}
 	}
 
 	c.DataSet = DataSet{}

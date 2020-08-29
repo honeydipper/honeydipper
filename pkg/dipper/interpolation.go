@@ -17,7 +17,12 @@ import (
 	"github.com/ghodss/yaml"
 )
 
-// FuncMap : used to add functions to the go templates
+const (
+	// InterpolationError represents all errors thrown due to failure to interpolate
+	InterpolationError Error = "config error"
+)
+
+// FuncMap : used to add functions to the go templates.
 var FuncMap = template.FuncMap{
 	"fromPath": MustGetMapData,
 	"now":      time.Now,
@@ -32,7 +37,7 @@ var FuncMap = template.FuncMap{
 	},
 }
 
-// InterpolateStr : interpolate a string and return a string
+// InterpolateStr : interpolate a string and return a string.
 func InterpolateStr(pattern string, data interface{}) string {
 	ret := Interpolate(pattern, data)
 	if ret != nil {
@@ -41,7 +46,7 @@ func InterpolateStr(pattern string, data interface{}) string {
 	return ""
 }
 
-// InterpolateGoTemplate : parse the string as go template
+// InterpolateGoTemplate : parse the string as go template.
 func InterpolateGoTemplate(pattern string, data interface{}) string {
 	if strings.Contains(pattern, "{{") {
 		tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
@@ -55,66 +60,70 @@ func InterpolateGoTemplate(pattern string, data interface{}) string {
 	return pattern
 }
 
-// ParseYaml : load the data in the string as yaml
+// ParseYaml : load the data in the string as yaml.
 func ParseYaml(pattern string) interface{} {
 	var data interface{}
 	err := yaml.Unmarshal([]byte(pattern), &data)
-
 	if err != nil {
 		panic(err)
 	}
 	return data
 }
 
-// Interpolate : go through the map data structure to find and parse all the templates
+// InterpolateDollarStr handles dollar interpolation.
+func InterpolateDollarStr(v string, data interface{}) interface{} {
+	allowNull := (v[1] == '?')
+	var parsed string
+	if allowNull {
+		parsed = InterpolateStr(v[2:], data)
+	} else {
+		parsed = InterpolateStr(v[1:], data)
+	}
+
+	quote := strings.IndexAny(parsed, "\"'`")
+	if allowNull && quote >= 0 {
+		panic(fmt.Errorf("allow nil combine with default value: %s: %w", v, InterpolationError))
+	}
+
+	var keys []string
+	if quote > 0 {
+		if parsed[quote-1] != ',' {
+			panic(fmt.Errorf("missing comma: %s: %w", v, InterpolationError))
+		}
+		keys = strings.Split(parsed[:quote-1], ",")
+	} else if quote < 0 {
+		keys = strings.Split(parsed, ",")
+	}
+
+	for _, key := range keys {
+		ret, _ := GetMapData(data, key)
+		if ret != nil {
+			if strings.HasPrefix(key, "sysData.") {
+				return Interpolate(ret, data)
+			}
+			return ret
+		}
+	}
+
+	if quote >= 0 {
+		if parsed[quote] != parsed[len(parsed)-1] {
+			panic(fmt.Errorf("quotes not matching: %s: %w", parsed, InterpolationError))
+		}
+		return parsed[quote+1 : len(parsed)-1]
+	}
+
+	if allowNull {
+		return nil
+	}
+	panic(fmt.Errorf("invalid path: %s: %w", v[1:], InterpolationError))
+}
+
+// Interpolate : go through the map data structure to find and parse all the templates.
 func Interpolate(source interface{}, data interface{}) interface{} {
 	switch v := source.(type) {
 	case string:
 		if strings.HasPrefix(v, "$") {
-			allowNull := (v[1] == '?')
-			var parsed string
-			if allowNull {
-				parsed = InterpolateStr(v[2:], data)
-			} else {
-				parsed = InterpolateStr(v[1:], data)
-			}
-
-			quote := strings.IndexAny(parsed, "\"'`")
-			if allowNull && quote >= 0 {
-				panic(fmt.Errorf("no need to allow null with default value %s", v))
-			}
-
-			var keys []string
-			if quote > 0 {
-				if parsed[quote-1] != ',' {
-					panic(fmt.Errorf("default value should be separated from the key with comma %s", v))
-				}
-				keys = strings.Split(parsed[:quote-1], ",")
-			} else if quote < 0 {
-				keys = strings.Split(parsed, ",")
-			}
-
-			for _, key := range keys {
-				ret, _ := GetMapData(data, key)
-				if ret != nil {
-					if strings.HasPrefix(key, "sysData.") {
-						return Interpolate(ret, data)
-					}
-					return ret
-				}
-			}
-
-			if quote >= 0 {
-				if parsed[quote] != parsed[len(parsed)-1] {
-					panic(fmt.Errorf("quotes not matching for default value %s", parsed))
-				}
-				return parsed[quote+1 : len(parsed)-1]
-			}
-
-			if allowNull {
-				return nil
-			}
-			panic(fmt.Errorf("invalid path %s", v[1:]))
+			return InterpolateDollarStr(v, data)
 		}
 
 		ret := InterpolateGoTemplate(v, data)

@@ -17,14 +17,22 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-// Handler provides common functions for handling a driver
+const (
+	// DriverError is the base for all driver related error
+	DriverError dipper.Error = "driver error"
+
+	// DriverMessageBuffer is the size of the driver message buffer
+	DriverMessageBuffer = 10
+)
+
+// Handler provides common functions for handling a driver.
 type Handler interface {
 	Acquire()
 	Prepare()
 	Meta() *Meta
 }
 
-// replace the func variable with mock during testing
+// replace the func variable with mock during testing.
 var execCommand = exec.Command
 
 // NewDriver creates a driver object to represent a child process.
@@ -32,11 +40,11 @@ func NewDriver(data map[string]interface{}) Handler {
 	var meta Meta
 	err := mapstructure.Decode(data, &meta)
 	if err != nil {
-		panic(fmt.Errorf("malformat driver meta %+v %+v", data, err))
+		panic(fmt.Errorf("malformat driver meta: %+v: %w", data, err))
 	}
 
 	if meta.Name == "" {
-		panic(fmt.Errorf("driver name missing %+v", meta))
+		panic(fmt.Errorf("driver name missing: %+v: %w", meta, DriverError))
 	}
 
 	var dh Handler
@@ -45,14 +53,14 @@ func NewDriver(data map[string]interface{}) Handler {
 	case "builtin":
 		dh = NewBuiltinDriver(&meta)
 	default:
-		panic(fmt.Errorf("unsupported driver type %s", meta.Type))
+		panic(fmt.Errorf("unsupported driver type: %s: %w", meta.Type, DriverError))
 	}
 
 	dh.Acquire()
 	dh.Prepare()
 
 	if meta.Executable == "" {
-		panic(fmt.Errorf("executable not defined for driver %s", meta.Name))
+		panic(fmt.Errorf("executable not defined for driver: %s: %w", meta.Name, DriverError))
 	}
 	return dh
 }
@@ -82,7 +90,7 @@ func (runtime *Runtime) Start(service string) {
 		dipper.Logger.Panicf("[%s] Unable to link to driver stdout %v", service, err)
 	} else {
 		runtime.Input = input
-		runtime.Stream = make(chan dipper.Message, 10)
+		runtime.Stream = make(chan dipper.Message, DriverMessageBuffer)
 		go runtime.fetchMessages()
 	}
 

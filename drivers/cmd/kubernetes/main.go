@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -31,20 +32,27 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// DefaultNamespace is the name of the default space in kubernetes cluster
-const DefaultNamespace string = "default"
+const (
+	// DefaultNamespace is the name of the default space in kubernetes cluster.
+	DefaultNamespace string = "default"
 
-// StatusSuccess is the status when the job finished successfully
-const StatusSuccess = "success"
+	// StatusSuccess is the status when the job finished successfully.
+	StatusSuccess = "success"
 
-// StatusFailure is the status when the job finished with error or not finished within time limit
-const StatusFailure = "failure"
+	// StatusFailure is the status when the job finished with error or not finished within time limit.
+	StatusFailure = "failure"
 
-// LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
-const LabelHoneydipperUniqueIdentifier = "honeydipper-unique-identifier"
+	// DefaultJobWaitTimeout is the default timeout in seconds for waiting a job to be complete.
+	DefaultJobWaitTimeout time.Duration = 10
 
-var log *logging.Logger
-var err error
+	// LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
+	LabelHoneydipperUniqueIdentifier = "honeydipper-unique-identifier"
+)
+
+var (
+	log *logging.Logger
+	err error
+)
 
 func initFlags() {
 	flag.Usage = func() {
@@ -140,8 +148,8 @@ func getJobLog(m *dipper.Message) {
 				ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
 				defer cancel()
 				stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream(ctx)
-				defer stream.Close()
 				if err != nil {
+					defer stream.Close()
 					podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
 					messages = append(messages, podlogs[container.Name])
 					log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
@@ -188,7 +196,7 @@ func waitForJob(m *dipper.Message) {
 
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
 
-	timeout := time.Duration(10)
+	timeout := DefaultJobWaitTimeout
 	if timeoutStr, ok := m.Labels["timeout"]; ok {
 		timeoutInt, _ := strconv.Atoi(timeoutStr)
 		timeout = time.Duration(timeoutInt)
@@ -262,7 +270,7 @@ func waitForJob(m *dipper.Message) {
 					switch evt.Type {
 					case watch.Error:
 						e := evt.Object.(*metav1.Status)
-						if e.Code == 410 {
+						if e.Code == http.StatusGone {
 							log.Warningf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
 							break loop
 						} else {
@@ -386,9 +394,9 @@ func recycleDeployment(m *dipper.Message) {
 
 		for k, v := range deployment.Spec.Selector.MatchLabels {
 			if len(labels) > 0 {
-				labels = labels + ","
+				labels += ","
 			}
-			labels = labels + k + "=" + v
+			labels += k + "=" + v
 		}
 	}
 

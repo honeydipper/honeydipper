@@ -49,7 +49,7 @@ func TestRegexParsing(t *testing.T) {
 	config := &Config{
 		DataSet: &DataSet{
 			Workflows: map[string]Workflow{
-				"test-workflow": Workflow{
+				"test-workflow": {
 					Match: map[string]interface{}{
 						"key1": ":regex:test1",
 						"key2": "non regex",
@@ -61,7 +61,7 @@ func TestRegexParsing(t *testing.T) {
 				},
 			},
 			Rules: []Rule{
-				Rule{
+				{
 					When: Trigger{
 						Match: map[string]interface{}{
 							"key5": ":regex:test3",

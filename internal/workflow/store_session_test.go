@@ -128,7 +128,7 @@ func TestCallDriver(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -176,7 +176,7 @@ func TestCallFunction(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -237,7 +237,7 @@ func TestWorkflowSteps(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 						Channel: "eventbus",
@@ -276,7 +276,7 @@ func TestWorkflowSteps(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}
@@ -337,7 +337,7 @@ func TestWorkflowResumeWithTimeout(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 				},
@@ -402,7 +402,7 @@ func TestWorkflowResume(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 				},
@@ -450,7 +450,7 @@ func TestContinueNonexistSession(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 				},
@@ -514,7 +514,7 @@ func TestWorkflowResumeCrash(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 				},
@@ -593,7 +593,7 @@ func TestWorkflowIterate(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 						Channel: "eventbus",
@@ -634,7 +634,7 @@ func TestWorkflowIterate(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 				"asserts": func() {
 					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 						Channel: "eventbus",
@@ -675,7 +675,7 @@ func TestWorkflowIterate(t *testing.T) {
 						"status":    "success",
 					},
 				},
-				"ctx": []map[string]interface{}{},
+				"ctx": map[string]interface{}{},
 			},
 		},
 	}

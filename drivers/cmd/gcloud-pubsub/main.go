@@ -14,7 +14,10 @@ import (
 	"google.golang.org/api/option"
 )
 
-// SubscriberConfig stores all gcloud pubsub subscriber information
+// ErrFailedCreateClient means failure during create client.
+var ErrFailedCreateClient = errors.New("unable to create gcloud pubsub client")
+
+// SubscriberConfig stores all gcloud pubsub subscriber information.
 type SubscriberConfig struct {
 	Project          string
 	ServiceAccount   string
@@ -30,9 +33,11 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
-var subscriberConfigs map[string]*SubscriberConfig
-var serviceAccount string
+var (
+	driver            *dipper.Driver
+	subscriberConfigs map[string]*SubscriberConfig
+	serviceAccount    string
+)
 
 func main() {
 	initFlags()
@@ -55,7 +60,7 @@ func getPubsubClient(serviceAccountBytes, project string) *pubsub.Client {
 		client, err = pubsub.NewClient(context.Background(), project)
 	}
 	if err != nil {
-		panic(errors.New("unable to create gcloud pubsub client"))
+		panic(ErrFailedCreateClient)
 	}
 	return client
 }
@@ -147,13 +152,9 @@ func msgHandlerBuilder(config *SubscriberConfig) msgHandler {
 		}
 
 		if matched {
-			driver.SendMessage(&dipper.Message{
-				Channel: "eventbus",
-				Subject: "message",
-				Payload: map[string]interface{}{
-					"events": []interface{}{"gcloud-pubsub."},
-					"data":   actual,
-				},
+			driver.EmitEvent(map[string]interface{}{
+				"events": []interface{}{"gcloud-pubsub."},
+				"data":   actual,
 			})
 		} else {
 			dipper.Logger.Debugf("Incoming message [%v] does not match with any gcloud-pubsub subscriber rule", data)
@@ -184,7 +185,7 @@ func subscribeAll() {
 						msgFunc(ctx, msg)
 						msg.Ack()
 					})
-					if err != context.Canceled {
+					if !errors.Is(err, context.Canceled) {
 						dipper.Logger.Warningf("Failed to receive message from pubsub [%s]", subscriptionName)
 					}
 				}()

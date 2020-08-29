@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -19,13 +20,19 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/ghodss/yaml"
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-// DocItem describe a item or a group of items in the document output
+const (
+	// DefaultHTTPRequestTimeout is the default timeout for a HTTP request
+	DefaultHTTPRequestTimeout time.Duration = time.Second * 10
+)
+
+// DocItem describe a item or a group of items in the document output.
 type DocItem struct {
 	ForEach  string `json:"for_each"`
 	Template string
@@ -34,16 +41,18 @@ type DocItem struct {
 	Children []string
 }
 
-// DocGenConfig is the schema for config how to generate the documents
+// DocGenConfig is the schema for config how to generate the documents.
 type DocGenConfig struct {
 	Repos    []config.RepoInfo
 	Items    []DocItem
 	Sections []DocGenConfig
 }
 
-// IncludePattern is used for find all include statements
-var IncludePattern = regexp.MustCompile(`\{\{\s*include\s+"([\w\.\/-]+)"\s+\}\}`)
-var tmplCache = map[string]string{}
+// IncludePattern is used for find all include statements.
+var (
+	IncludePattern = regexp.MustCompile(`\{\{\s*include\s+"([\w\.\/-]+)"\s+\}\}`)
+	tmplCache      = map[string]string{}
+)
 
 func runDocGen(cfg *config.Config) {
 	var dgCfg DocGenConfig
@@ -103,13 +112,16 @@ func fetchItem(item DocItem, cfg *config.Config) {
 	case strings.HasPrefix(item.Source, "http://"):
 		fallthrough
 	case strings.HasPrefix(item.Source, "https://"):
-		resp, err := http.Get(item.Source)
+		ctx, cancel := context.WithTimeout(context.Background(), DefaultHTTPRequestTimeout)
+		defer cancel()
+		req := dipper.Must(http.NewRequestWithContext(ctx, http.MethodGet, item.Source, nil)).(*http.Request)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			panic(err)
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode > 299 {
+		if resp.StatusCode >= http.StatusMultipleChoices {
 			dipper.Logger.Warningf("Received status code %d when fetching file %s", resp.StatusCode, item.Source)
 		} else {
 			content, err := ioutil.ReadAll(resp.Body)
@@ -119,7 +131,8 @@ func fetchItem(item DocItem, cfg *config.Config) {
 
 			file := path.Join(cfg.DocDst, item.Name)
 			ensureDirExists(file)
-			err = ioutil.WriteFile(file, content, 0644)
+			//nolint:gosec
+			err = ioutil.WriteFile(file, content, 0o644)
 			if err != nil {
 				panic(err)
 			}
@@ -146,7 +159,7 @@ func fetchItem(item DocItem, cfg *config.Config) {
 
 func ensureDirExists(file string) {
 	dir := filepath.Dir(file)
-	err := os.MkdirAll(dir, 0755)
+	err := os.MkdirAll(dir, 0o755)
 	if err != nil {
 		panic(err)
 	}
@@ -198,7 +211,8 @@ func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config
 
 	file := path.Join(cfg.DocDst, name)
 	ensureDirExists(file)
-	err := ioutil.WriteFile(file, []byte(doc), 0644)
+	//nolint:gosec
+	err := ioutil.WriteFile(file, []byte(doc), 0o644)
 	if err != nil {
 		panic(err)
 	}
