@@ -9,8 +9,8 @@
 package api
 
 import (
-	"bytes"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -36,25 +36,23 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 	defer ctrl.Finish()
 	mockRPCCaller := mock_dipper.NewMockRPCCaller(ctrl)
 
-	eventbus := &bytes.Buffer{}
-	waitForMsg := func(delay time.Duration) bool {
-		cancel := false
+	eventbusO, eventbusI := io.Pipe()
+	defer eventbusO.Close()
+	defer eventbusI.Close()
+	waitForMsg := func(delay time.Duration) *dipper.Message {
+		var m *dipper.Message
 		msgAvailable := make(chan byte)
 		go func() {
+			defer recover()
 			defer close(msgAvailable)
-			for !cancel {
-				if eventbus.Len() > 20 {
-					break
-				}
-				time.Sleep(time.Millisecond)
-			}
+			m = dipper.FetchMessage(eventbusO)
+			m.Size = 0 // ignore Size property, only used for raw msg
 		}()
 		select {
 		case <-msgAvailable:
 		case <-time.After(delay):
-			cancel = true
 		}
-		return !cancel
+		return m
 	}
 
 	if c.shouldLock {
@@ -68,17 +66,14 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 	factory := NewResponseFactory()
 	factory.DefsByName = c.defsByName
 
-	resp := factory.NewResponse(mockRPCCaller, eventbus, c.msg)
+	resp := factory.NewResponse(mockRPCCaller, eventbusI, c.msg)
 	if c.noResponse {
 		assert.Nil(t, resp)
 	} else {
 		go c.mockAPI(resp, c)
 
 		for i, st := range c.returnMessages {
-			if waitForMsg(st.delay) {
-				m := dipper.FetchMessage(eventbus)
-				m.Size = 0 // ignore Size property, only used for raw msg
-				eventbus.Reset()
+			if m := waitForMsg(st.delay); m != nil {
 				assert.Equal(t, st.msg, m)
 			} else {
 				assert.Fail(t, fmt.Sprintf("timeout at step %d", i))
@@ -111,7 +106,7 @@ func TestTypeAllAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				delay: 5 * time.Millisecond,
+				delay: 30 * time.Millisecond,
 				msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -123,7 +118,7 @@ func TestTypeAllAPIResponse(t *testing.T) {
 				},
 			},
 			{
-				delay: 5 * time.Millisecond,
+				delay: 30 * time.Millisecond,
 				msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -168,7 +163,7 @@ func TestTypeFirstAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				delay: 10 * time.Millisecond,
+				delay: 30 * time.Millisecond,
 				msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -214,7 +209,7 @@ func TestTypeMatchAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				delay: 5 * time.Millisecond,
+				delay: 30 * time.Millisecond,
 				msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -226,7 +221,7 @@ func TestTypeMatchAPIResponse(t *testing.T) {
 				},
 			},
 			{
-				delay: 5 * time.Millisecond,
+				delay: 30 * time.Millisecond,
 				msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -270,7 +265,7 @@ func TestTypeMatchAPIResponseReturnError(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				delay: 5 * time.Millisecond,
+				delay: 30 * time.Millisecond,
 				msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -282,7 +277,7 @@ func TestTypeMatchAPIResponseReturnError(t *testing.T) {
 				},
 			},
 			{
-				delay: 5 * time.Millisecond,
+				delay: 30 * time.Millisecond,
 				msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
