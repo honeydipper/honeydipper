@@ -37,10 +37,10 @@ const (
 // GetDefs return definition for all known API calls.
 func GetDefs() map[string]map[string]Def {
 	return map[string]map[string]Def{
-		"/events/:eventID/wait": {
+		"events/:eventID/wait": {
 			http.MethodGet: {name: "eventWait", reqType: TypeMatch, service: "engine", timeout: InfiniteDuration},
 		},
-		"/events": {
+		"events": {
 			http.MethodGet:  {name: "eventList", reqType: TypeAll, service: "engine"},
 			http.MethodPost: {name: "eventAdd", reqType: TypeFirst, service: "receiver"},
 		},

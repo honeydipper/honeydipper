@@ -65,10 +65,27 @@ func startAPIListener() {
 	if !ok {
 		addr = ":9000"
 	}
-	APIServer = &http.Server{
-		Addr: addr,
+	prefix, ok := dipper.GetMapDataStr(APICfg, "api_prefix")
+	if !ok || prefix == "" {
+		prefix = "/api/"
 	}
-	APIRequestStore.PrepareHTTPServer(APIServer, APICfg)
+	healthcheckPrefix, ok := dipper.GetMapDataStr(APICfg, "healthcheck_prefix")
+	if !ok || healthcheckPrefix == "" {
+		healthcheckPrefix = "/healthz"
+	}
+	mux := http.NewServeMux()
+	mux.Handle(prefix, APIRequestStore.GetAPIHandler(prefix, APICfg))
+	mux.HandleFunc(healthcheckPrefix, func(w http.ResponseWriter, r *http.Request) {
+		if API.CheckHealth() {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
+	APIServer = &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
 	go func() {
 		dipper.Logger.Infof("[api] start listening for webhook requests")
 		dipper.Logger.Warningf("[api] listener stopped: %+v", APIServer.ListenAndServe())
