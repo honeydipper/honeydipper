@@ -127,8 +127,8 @@ func NewStore(c dipper.RPCCaller) *Store {
 	return store
 }
 
-// PrepareHTTPServer prepares the provided http server.
-func (l *Store) PrepareHTTPServer(s *http.Server, cfg interface{}) {
+// GetAPIHandler prepares and returns the gin Engine for API.
+func (l *Store) GetAPIHandler(prefix string, cfg interface{}) http.Handler {
 	gin.DefaultWriter = dipper.LoggingWriter
 	l.config = cfg
 	l.engine = gin.New()
@@ -141,8 +141,8 @@ func (l *Store) PrepareHTTPServer(s *http.Server, cfg interface{}) {
 		l.writeTimeout = dipper.Must(time.ParseDuration(writeTimeoutStr)).(time.Duration)
 	}
 
-	l.setupRoutes()
-	s.Handler = l.engine
+	l.setupRoutes(prefix)
+	return l.engine
 }
 
 // AuthMiddleware is a middleware handles auth.
@@ -255,16 +255,20 @@ func (l *Store) CreateHTTPHandlerFunc(def Def) gin.HandlerFunc {
 }
 
 // setupRoutes sets up the routes.
-func (l *Store) setupRoutes() {
+func (l *Store) setupRoutes(prefix string) {
+	var group *gin.RouterGroup = &l.engine.RouterGroup
+	if prefix != "" {
+		group = group.Group(prefix)
+	}
 	for path, defs := range l.apiDef {
 		for method, def := range defs {
 			def.method = method
 			def.path = path
 			switch method {
 			case http.MethodGet:
-				l.engine.GET(path, l.CreateHTTPHandlerFunc(def))
+				group.GET(path, l.CreateHTTPHandlerFunc(def))
 			case http.MethodPost:
-				l.engine.POST(path, l.CreateHTTPHandlerFunc(def))
+				group.POST(path, l.CreateHTTPHandlerFunc(def))
 			}
 		}
 	}
