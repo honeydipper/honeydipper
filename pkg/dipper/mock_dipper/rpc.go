@@ -12,9 +12,10 @@
 package mock_dipper
 
 import (
-	gomock "github.com/golang/mock/gomock"
 	io "io"
 	reflect "reflect"
+
+	gomock "github.com/golang/mock/gomock"
 )
 
 // MockRPCCallerStub is a mock of RPCCallerStub interface.

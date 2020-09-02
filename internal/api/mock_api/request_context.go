@@ -12,8 +12,9 @@
 package mock_api
 
 import (
-	gomock "github.com/golang/mock/gomock"
 	reflect "reflect"
+
+	gomock "github.com/golang/mock/gomock"
 )
 
 // MockRequestContext is a mock of RequestContext interface.
