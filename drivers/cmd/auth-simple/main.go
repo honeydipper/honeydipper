@@ -93,9 +93,9 @@ func tokenAuth(m *dipper.Message) (map[string]interface{}, error) {
 	authHash, ok := dipper.GetMapDataStr(m.Payload, "headers.Authorization.0")
 	if !ok {
 		authHash, ok = dipper.GetMapDataStr(m.Payload, "headers.authorization.0")
-		if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
-			return nil, ErrSkipped
-		}
+	}
+	if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
+		return nil, ErrSkipped
 	}
 	token := []byte(authHash[len(prefix):])
 
@@ -125,9 +125,9 @@ func basicAuth(m *dipper.Message) (map[string]interface{}, error) {
 	authHash, ok := dipper.GetMapDataStr(m.Payload, "headers.Authorization.0")
 	if !ok {
 		authHash, ok = dipper.GetMapDataStr(m.Payload, "headers.authorization.0")
-		if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
-			return nil, ErrSkipped
-		}
+	}
+	if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
+		return nil, ErrSkipped
 	}
 	req := &http.Request{
 		Header: http.Header{
