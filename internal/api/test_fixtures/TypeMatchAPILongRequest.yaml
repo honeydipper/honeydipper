@@ -1,0 +1,54 @@
+---
+# mock api definition to be tested
+def:
+  path: /test_type_match
+  name: test_type_match
+  method: GET
+  # TypeMatch
+  reqType: 2
+  service: foo
+  object: event
+  timeout: 0
+
+# test config
+config:
+  writeTimeout: 6
+
+# mock incoming call
+path: /test_type_match
+
+# exepected messages sent to services
+steps:
+  - feature: api-broadcast
+    method: send
+    expectedMessage:
+      broadcastSubject: call
+      labels:
+        fn: test_type_match
+        uuid: 34ik-ijo3i4jt84932-aiau3kegkjrl
+        service: foo
+        content-type: application/json
+      data: {}
+
+# mock return messages received from services
+returns:
+  - delay: 1
+    msg:
+      labels:
+        type: ack
+        uuid: 34ik-ijo3i4jt84932-aiau3kegkjrl
+        from: bar
+  - delay: 11000
+    msg:
+      labels:
+        type: result
+        uuid: 34ik-ijo3i4jt84932-aiau3kegkjrl
+        from: bar
+      payload:
+        result: matched
+
+# expected end result
+expectedCode: 202
+expectedContent:
+  results: {}
+  uuid: 34ik-ijo3i4jt84932-aiau3kegkjrl

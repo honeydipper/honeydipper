@@ -73,8 +73,8 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 		go c.mockAPI(resp, c)
 
 		for i, st := range c.returnMessages {
-			if m := waitForMsg(st.delay); m != nil {
-				assert.Equal(t, st.msg, m)
+			if m := waitForMsg(st.Delay); m != nil {
+				assert.Equal(t, st.Msg, m)
 			} else {
 				assert.Fail(t, fmt.Sprintf("timeout at step %d", i))
 			}
@@ -85,7 +85,7 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 func TestTypeAllAPIResponse(t *testing.T) {
 	c := &ResponseTestCase{
 		defsByName: map[string]Def{
-			"test": {name: "test", reqType: TypeAll},
+			"test": {Name: "test", ReqType: TypeAll},
 		},
 		msg: &dipper.Message{
 			Labels: map[string]string{
@@ -106,8 +106,8 @@ func TestTypeAllAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				delay: 30 * time.Millisecond,
-				msg: &dipper.Message{
+				Delay: 30 * time.Millisecond,
+				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
 					Labels: map[string]string{
@@ -118,8 +118,8 @@ func TestTypeAllAPIResponse(t *testing.T) {
 				},
 			},
 			{
-				delay: 30 * time.Millisecond,
-				msg: &dipper.Message{
+				Delay: 30 * time.Millisecond,
+				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
 					Labels: map[string]string{
@@ -141,7 +141,7 @@ func TestTypeAllAPIResponse(t *testing.T) {
 func TestTypeFirstAPIResponse(t *testing.T) {
 	c := &ResponseTestCase{
 		defsByName: map[string]Def{
-			"test": {name: "test", reqType: TypeFirst},
+			"test": {Name: "test", ReqType: TypeFirst},
 		},
 		shouldLock: true,
 		msg: &dipper.Message{
@@ -163,8 +163,8 @@ func TestTypeFirstAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				delay: 30 * time.Millisecond,
-				msg: &dipper.Message{
+				Delay: 30 * time.Millisecond,
+				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
 					Labels: map[string]string{
@@ -186,7 +186,7 @@ func TestTypeFirstAPIResponse(t *testing.T) {
 func TestTypeMatchAPIResponse(t *testing.T) {
 	c := &ResponseTestCase{
 		defsByName: map[string]Def{
-			"test": {name: "test", reqType: TypeMatch},
+			"test": {Name: "test", ReqType: TypeMatch},
 		},
 		msg: &dipper.Message{
 			Labels: map[string]string{
@@ -209,8 +209,8 @@ func TestTypeMatchAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				delay: 30 * time.Millisecond,
-				msg: &dipper.Message{
+				Delay: 30 * time.Millisecond,
+				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
 					Labels: map[string]string{
@@ -221,8 +221,8 @@ func TestTypeMatchAPIResponse(t *testing.T) {
 				},
 			},
 			{
-				delay: 30 * time.Millisecond,
-				msg: &dipper.Message{
+				Delay: 30 * time.Millisecond,
+				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
 					Labels: map[string]string{
@@ -244,7 +244,7 @@ func TestTypeMatchAPIResponse(t *testing.T) {
 func TestTypeMatchAPIResponseReturnError(t *testing.T) {
 	c := &ResponseTestCase{
 		defsByName: map[string]Def{
-			"test": {name: "test", reqType: TypeMatch},
+			"test": {Name: "test", ReqType: TypeMatch},
 		},
 		msg: &dipper.Message{
 			Labels: map[string]string{
@@ -265,8 +265,8 @@ func TestTypeMatchAPIResponseReturnError(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				delay: 30 * time.Millisecond,
-				msg: &dipper.Message{
+				Delay: 30 * time.Millisecond,
+				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
 					Labels: map[string]string{
@@ -277,8 +277,8 @@ func TestTypeMatchAPIResponseReturnError(t *testing.T) {
 				},
 			},
 			{
-				delay: 30 * time.Millisecond,
-				msg: &dipper.Message{
+				Delay: 30 * time.Millisecond,
+				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
 					Labels: map[string]string{
@@ -298,7 +298,7 @@ func TestTypeMatchAPIResponseReturnError(t *testing.T) {
 func TestAPIResponseUnknownAPI(t *testing.T) {
 	c := &ResponseTestCase{
 		defsByName: map[string]Def{
-			"test": {name: "test", reqType: TypeMatch},
+			"test": {Name: "test", ReqType: TypeMatch},
 		},
 		msg: &dipper.Message{
 			Labels: map[string]string{
@@ -319,7 +319,7 @@ func TestAPIResponseUnknownAPI(t *testing.T) {
 func TestAPIResponseLockFailure(t *testing.T) {
 	c := &ResponseTestCase{
 		defsByName: map[string]Def{
-			"test": {name: "test", reqType: TypeFirst},
+			"test": {Name: "test", ReqType: TypeFirst},
 		},
 		shouldLock:   true,
 		lockingError: fmt.Errorf("busy"),

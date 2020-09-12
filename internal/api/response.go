@@ -105,7 +105,7 @@ func (rf *ResponseFactory) NewResponse(caller dipper.RPCCaller, eventbus io.Writ
 		dipper.Logger.Warningf("Unknown API method: %s", method)
 		return nil
 	}
-	switch def.reqType {
+	switch def.ReqType {
 	case TypeAll:
 		go func() {
 			defer dipper.SafeExitOnError("failed to send ack for api [%s]", method)

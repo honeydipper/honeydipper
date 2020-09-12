@@ -1,0 +1,34 @@
+---
+# mock api definition to be tested
+def:
+  path: /test_type_match
+  name: test_type_match
+  method: GET
+  # TypeMatch
+  reqType: 2
+  service: foo
+  object: event
+
+# mock incoming call
+path: /test_type_match
+
+# exepected messages sent to services
+steps:
+  - feature: api-broadcast
+    method: send
+    expectedMessage:
+      broadcastSubject: call
+      labels:
+        fn: test_type_match
+        uuid: 34ik-ijo3i4jt84932-aiau3kegkjrl
+        service: foo
+        content-type: application/json
+      data: {}
+
+# mock return messages received from services
+returns: []
+
+# expected end result
+expectedCode: 404
+expectedContent:
+  error: object not found
