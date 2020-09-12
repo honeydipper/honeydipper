@@ -13,13 +13,14 @@ import (
 
 // Def is a structure defines how an API should be handled in api service.
 type Def struct {
-	path       string
-	name       string
-	method     string
-	reqType    int
-	service    string
-	ackTimeout time.Duration
-	timeout    time.Duration
+	Path       string
+	Object     string
+	Name       string
+	Method     string
+	ReqType    int
+	Service    string
+	AckTimeout time.Duration
+	Timeout    time.Duration
 }
 
 const (
@@ -38,11 +39,11 @@ const (
 func GetDefs() map[string]map[string]Def {
 	return map[string]map[string]Def{
 		"events/:eventID/wait": {
-			http.MethodGet: {name: "eventWait", reqType: TypeMatch, service: "engine", timeout: InfiniteDuration},
+			http.MethodGet: {Object: "event", Name: "eventWait", ReqType: TypeMatch, Service: "engine", Timeout: InfiniteDuration},
 		},
 		"events": {
-			http.MethodGet:  {name: "eventList", reqType: TypeAll, service: "engine"},
-			http.MethodPost: {name: "eventAdd", reqType: TypeFirst, service: "receiver"},
+			http.MethodGet:  {Object: "event", Name: "eventList", ReqType: TypeAll, Service: "engine"},
+			http.MethodPost: {Object: "event", Name: "eventAdd", ReqType: TypeFirst, Service: "receiver"},
 		},
 	}
 }
@@ -52,9 +53,9 @@ func GetDefsByName() map[string]Def {
 	ret := map[string]Def{}
 	for path, defs := range GetDefs() {
 		for method, def := range defs {
-			def.path = path
-			def.method = method
-			ret[def.name] = def
+			def.Path = path
+			def.Method = method
+			ret[def.Name] = def
 		}
 	}
 	return ret

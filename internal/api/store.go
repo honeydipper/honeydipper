@@ -14,8 +14,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/casbin/casbin/v2"
+	"github.com/casbin/casbin/v2/model"
 	"github.com/gin-gonic/gin"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
+	scas "github.com/qiangmzsx/string-adapter/v2"
 )
 
 const (
@@ -44,6 +47,7 @@ type Store struct {
 	config          interface{}
 	apiDef          map[string]map[string]Def
 	newUUID         dipper.UUIDSource
+	enforcer        *casbin.Enforcer
 
 	writeTimeout time.Duration
 }
@@ -142,7 +146,27 @@ func (l *Store) GetAPIHandler(prefix string, cfg interface{}) http.Handler {
 	}
 
 	l.setupRoutes(prefix)
+	l.setupAuthorization()
+
 	return l.engine
+}
+
+// setupAuthorization sets up authorization enforcer.
+func (l *Store) setupAuthorization() {
+	modelList := dipper.MustGetMapData(l.config, "auth.casbin.models").([]interface{})
+	modelText := make([]string, len(modelList))
+	for i, line := range modelList {
+		modelText[i] = line.(string)
+	}
+	policyList := dipper.MustGetMapData(l.config, "auth.casbin.policies").([]interface{})
+	policyText := make([]string, len(policyList))
+	for i, line := range dipper.MustGetMapData(l.config, "auth.casbin.policies").([]interface{}) {
+		policyText[i] = line.(string)
+	}
+	models := model.NewModel()
+	dipper.Must(models.LoadModelFromText(strings.Join(modelText, "\n")))
+	policies := scas.NewAdapter(strings.Join(policyText, "\n"))
+	l.enforcer = dipper.Must(casbin.NewEnforcer(models, policies)).(*casbin.Enforcer)
 }
 
 // AuthMiddleware is a middleware handles auth.
@@ -183,35 +207,13 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 		return false
 	}
 
-	rulesObj, ok := dipper.GetMapData(l.config, "acls."+def.name)
-	if !ok {
-		return false
+	dipper.Logger.Warningf("'%s' , '%s', '%s'", subject, def.Object, def.Method)
+	if res, err := l.enforcer.Enforce(subject.(string), def.Object, def.Method); res && err == nil {
+		return true
+	} else if err != nil {
+		dipper.Logger.Warningf("[api] denied access with enforcer error: %+v", err)
 	}
-
-	rules, ok := rulesObj.([]interface{})
-	if !ok {
-		return false
-	}
-
-	action := ACLDeny
-	for _, ruleObj := range rules {
-		rule := ruleObj.(map[string]interface{})
-		switch v := rule["subjects"].(type) {
-		case string:
-			if v != "all" {
-				panic(fmt.Errorf("%w: unknown subjects: %s", APIError, v))
-			}
-			action = rule["type"].(string)
-		case []interface{}:
-			if dipper.CompareAll(subject, v) {
-				return rule["type"].(string) == ACLAllow
-			}
-		default:
-			panic(fmt.Errorf("%w: unknown subjects: %+v", APIError, v))
-		}
-	}
-
-	return action == ACLAllow
+	return false
 }
 
 // HandleHTTPRequest handles http requests.
@@ -262,8 +264,8 @@ func (l *Store) setupRoutes(prefix string) {
 	}
 	for path, defs := range l.apiDef {
 		for method, def := range defs {
-			def.method = method
-			def.path = path
+			def.Method = method
+			def.Path = path
 			switch method {
 			case http.MethodGet:
 				group.GET(path, l.CreateHTTPHandlerFunc(def))
@@ -293,24 +295,24 @@ func (l *Store) SaveRequest(r *Request) {
 // GetRequest creates a new Request with the given definition and parameters or return an existing one based on uuid.
 func (l *Store) GetRequest(def Def, c RequestContext) *Request {
 	path := c.GetPath()
-	if def.method == http.MethodGet {
+	if def.Method == http.MethodGet {
 		if req, ok := l.requestsByInput.Load(path); ok && req != nil {
 			return req.(*Request)
 		}
 	}
 
 	// prepare the parameters
-	payload := c.GetPayload(def.method)
+	payload := c.GetPayload(def.Method)
 
 	return &Request{
 		store:       l,
 		uuid:        l.newUUID(),
 		urlPath:     path,
-		method:      def.method,
-		fn:          def.name,
+		method:      def.Method,
+		fn:          def.Name,
 		params:      payload,
-		reqType:     def.reqType,
-		service:     def.service,
+		reqType:     def.ReqType,
+		service:     def.Service,
 		ackTimeout:  l.getAckTimeout(def),
 		timeout:     l.getTimeout(def),
 		contentType: c.ContentType(),
@@ -319,8 +321,8 @@ func (l *Store) GetRequest(def Def, c RequestContext) *Request {
 
 // get the ackTimeout with default value.
 func (l *Store) getAckTimeout(d Def) time.Duration {
-	if d.ackTimeout != 0 {
-		return d.ackTimeout
+	if d.AckTimeout != 0 {
+		return d.AckTimeout
 	}
 
 	timeoutStr, ok := dipper.GetMapDataStr(l.config, "ack_timeout")
@@ -333,8 +335,8 @@ func (l *Store) getAckTimeout(d Def) time.Duration {
 
 // get the timeout with default value.
 func (l *Store) getTimeout(d Def) time.Duration {
-	if d.timeout != 0 {
-		return d.timeout
+	if d.Timeout != 0 {
+		return d.Timeout
 	}
 
 	timeoutStr, ok := dipper.GetMapDataStr(l.config, "timeout")

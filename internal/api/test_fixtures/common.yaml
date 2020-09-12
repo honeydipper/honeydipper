@@ -1,0 +1,35 @@
+---
+# test config
+config:
+  auth:
+    casbin:
+      models:
+        - |-
+          [request_definition]
+          r = sub, obj, act
+
+          [policy_definition]
+          p = sub, obj, act
+
+          [policy_effect]
+          e = some(where (p.eft == allow))
+
+          [matchers]
+          m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
+
+      policies:
+        - |-
+          p, test, event, GET
+
+# mock uuids
+uuids:
+  - 34ik-ijo3i4jt84932-aiau3kegkjrl
+
+# mock incoming call
+subject: test
+content-type: application/json
+payload: {}
+
+# should pass the authorization or not
+shouldAuthorize: true
+

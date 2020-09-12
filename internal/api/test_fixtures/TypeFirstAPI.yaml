@@ -1,0 +1,44 @@
+---
+# mock api definition to be tested
+def:
+  path: /test_type_first
+  name: test_type_first
+  method: GET
+  # TypeFirst
+  reqType: 0
+  service: foo
+  object: event
+
+# mock incoming call
+path: /test_type_first
+
+# expected messages sent to services
+steps:
+  - feature: api-broadcast
+    method: send
+    expectedMessage:
+      broadcastSubject: call
+      labels:
+        fn: test_type_first
+        uuid: 34ik-ijo3i4jt84932-aiau3kegkjrl
+        service: foo
+        content-type: application/json
+      data: {}
+
+# mock return messages received from services
+returns:
+  # no ack
+  - delay: 2
+    msg:
+      labels:
+        type: result
+        uuid: 34ik-ijo3i4jt84932-aiau3kegkjrl
+        from: bar
+      payload:
+        result: all
+
+# expected end result
+expectedCode: 200
+expectedContent:
+  bar:
+    result: all
