@@ -169,6 +169,11 @@ func (l *Store) setupAuthorization() {
 	l.enforcer = dipper.Must(casbin.NewEnforcer(models, policies)).(*casbin.Enforcer)
 }
 
+// Enforce checks if the action is allowed based on rules.
+func (l *Store) Enforce(args ...interface{}) (bool, error) {
+	return l.enforcer.Enforce(args...)
+}
+
 // AuthMiddleware is a middleware handles auth.
 func (l *Store) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
