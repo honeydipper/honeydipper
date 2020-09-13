@@ -13,7 +13,10 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/ghodss/yaml"
+	"github.com/honeydipper/honeydipper/internal/api"
 	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/logrusorgru/aurora"
 	"github.com/mitchellh/mapstructure"
 )
@@ -108,7 +111,125 @@ func runConfigCheck(cfg *config.Config) int {
 		}
 	}
 
+	if checkAuthRules(cfg) > 0 {
+		ret = 1
+	}
+
 	return ret
+}
+
+func checkAuthRules(cfg *config.Config) int {
+	repo, ok := cfg.Loaded[cfg.InitRepo]
+	if !ok {
+		// no init repo during tests
+		return 0
+	}
+	b, e := repo.ReadFile("/tests/api_auth_tests.yaml")
+	if e != nil {
+		return 0
+	}
+
+	type AuthTests struct {
+		Models   []interface{}
+		Policies []interface{}
+		Tests    []struct {
+			Name    string
+			Subject string
+			Object  string
+			Action  string
+			Result  bool
+		}
+	}
+	var tests AuthTests
+	e = yaml.Unmarshal(b, &tests)
+	if e != nil {
+		fmt.Printf("\nFound errors loading authorization tests definition:\n")
+		fmt.Println("─────────────────────────────────────────────────────────────")
+		fmt.Printf("%+v\n", aurora.Red(e))
+		return 1
+	}
+
+	var apiCfg map[string]interface{}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				e = r.(error)
+				fmt.Printf("\nFound errors injecting tests into authorization rules:\n")
+				fmt.Println("─────────────────────────────────────────────────────────────")
+				fmt.Printf("%+v\n", aurora.Red(e))
+			}
+		}()
+		apiCfg = dipper.MustGetMapData(cfg.DataSet.Drivers, "daemon.services.api").(map[string]interface{})
+		casbinCfg := dipper.MustGetMapData(apiCfg, "auth.casbin").(map[string]interface{})
+		casbinCfg["models"] = append(casbinCfg["models"].([]interface{}), tests.Models...)
+		casbinCfg["policies"] = append(casbinCfg["policies"].([]interface{}), tests.Policies...)
+	}()
+	if e != nil {
+		return 1
+	}
+
+	l := api.NewStore(nil)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				e = r.(error)
+				fmt.Printf("\nFound errors loading authorization rules:\n")
+				fmt.Println("─────────────────────────────────────────────────────────────")
+				fmt.Printf("%+v\n", aurora.Red(e))
+			}
+		}()
+		l.GetAPIHandler("/api", apiCfg)
+	}()
+	if e != nil {
+		return 1
+	}
+
+	failedTests := []int{}
+	processed := 0
+	for i, test := range tests.Tests {
+		ok, err := l.Enforce(test.Subject, test.Object, test.Action)
+		if err != nil {
+			e = err
+			processed = i
+			break
+		}
+		if ok != test.Result {
+			failedTests = append(failedTests, i)
+		}
+	}
+
+	if e != nil || len(failedTests) > 0 {
+		fmt.Printf("\nFound errors running authorization tests:\n")
+		fmt.Println("─────────────────────────────────────────────────────────────")
+		for _, num := range failedTests {
+			test := tests.Tests[num]
+			fmt.Printf(
+				"%s: Sub: %s, Obj: %s, Act: %s, Expected: %t, Found: %t\n",
+				aurora.Yellow(test.Name),
+				test.Subject,
+				test.Object,
+				test.Action,
+				aurora.BrightYellow(test.Result),
+				aurora.Red(!test.Result),
+			)
+		}
+		if e != nil {
+			test := tests.Tests[processed]
+			fmt.Printf(
+				"%s: Sub: %s, Obj: %s, Act: %s, Expected: %t, Error: %+v\n",
+				aurora.Yellow(test.Name),
+				test.Subject,
+				test.Object,
+				test.Action,
+				test.Result,
+				aurora.Red(e),
+			)
+		}
+		fmt.Println()
+		return 1
+	}
+
+	return 0
 }
 
 func checkContext(cfg *config.Config, ctxWorkflowName string) (msg string) {
