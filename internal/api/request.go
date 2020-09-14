@@ -47,6 +47,10 @@ type Request struct {
 // Dispatch sends the call to the intended services.
 func (a *Request) Dispatch() {
 	if a.ready == nil {
+		a.ready = make(chan byte)
+		a.results = map[string]interface{}{}
+		a.store.SaveRequest(a)
+
 		dipper.Must(a.store.caller.Call("api-broadcast", "send", map[string]interface{}{
 			"broadcastSubject": "call",
 			"labels": map[string]interface{}{
@@ -57,9 +61,6 @@ func (a *Request) Dispatch() {
 			},
 			"data": a.params,
 		}))
-		a.ready = make(chan byte)
-		a.results = map[string]interface{}{}
-		a.store.SaveRequest(a)
 
 		go func() {
 			defer dipper.SafeExitOnError("error waiting on acks for API call [%s]", a.uuid)
