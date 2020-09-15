@@ -1,3 +1,21 @@
+# [2.1.0](https://github.com/honeydipper/honeydipper/compare/v2.0.0...v2.1.0) (2020-09-15)
+
+
+### Bug Fixes
+
+* **api:** timing issue in tests ([3297f17](https://github.com/honeydipper/honeydipper/commit/3297f17eb5f927fd4a8850d658d0edddfb5b6bf5))
+* **deps:** update golang.org/x/crypto commit hash to 5c72a88 ([#314](https://github.com/honeydipper/honeydipper/issues/314)) ([7ce1fa4](https://github.com/honeydipper/honeydipper/commit/7ce1fa4b44c3eb9e38e804e30070c9774b4aae4a))
+* **deps:** update golang.org/x/oauth2 commit hash to 5d25da1 ([#315](https://github.com/honeydipper/honeydipper/issues/315)) ([8cc3ca8](https://github.com/honeydipper/honeydipper/commit/8cc3ca8d60ed58b1e1321a303d387718b0a3b8a6))
+* **deps:** update google.golang.org/genproto commit hash to 0bd0a95 ([#316](https://github.com/honeydipper/honeydipper/issues/316)) ([b5133eb](https://github.com/honeydipper/honeydipper/commit/b5133ebbe203a4f8511b75afbfd7eb91bec3beef))
+* **drivers:** auth-simple handling authorization header ([baf5894](https://github.com/honeydipper/honeydipper/commit/baf589426bea7d803137873347d734c9dc2022ef))
+
+
+### Features
+
+* **api:** healthcheck and configurable prefix ([f694ce1](https://github.com/honeydipper/honeydipper/commit/f694ce16a1bff08c1e5c33c5260efc9d6ae71e16))
+* **api:** use casbin authorization library ([a85976e](https://github.com/honeydipper/honeydipper/commit/a85976eb0d06aac12a7ec9d4e6711d16ddbfcab5))
+* **configcheck:** run tests against auth rules in configcheck ([dde3d4c](https://github.com/honeydipper/honeydipper/commit/dde3d4cbdeec915c49e08ed727194d93045d16e7))
+
 # [2.0.0](https://github.com/honeydipper/honeydipper/compare/v1.7.0...v2.0.0) (2020-08-29)
 
 
