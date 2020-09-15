@@ -1,0 +1,22 @@
+---
+# mock api definition to be tested
+def:
+  path: /test_type_match
+  name: test_type_match
+  method: GET
+  # TypeMatch
+  reqType: 2
+  service: foo
+  object: event
+
+# mock incoming call
+subject: someone
+path: /test_type_match
+
+# should pass the authorization or not
+shouldAuthorize: false
+
+# expected end result
+expectedCode: 403
+expectedContent:
+  errors: not allowed

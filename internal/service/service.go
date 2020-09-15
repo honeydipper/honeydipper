@@ -76,6 +76,7 @@ type Service struct {
 	EmitMetrics        func()
 	APIs               map[string]func(*api.Response)
 	ResponseFactory    *api.ResponseFactory
+	healthy            bool
 }
 
 // Services holds a catalog of running services in this daemon process.
@@ -102,6 +103,11 @@ func NewService(cfg *config.Config, name string) *Service {
 	svc.APIs = map[string]func(*api.Response){}
 
 	return svc
+}
+
+// CheckHealth is a http handler for healthcheck.
+func (s *Service) CheckHealth() bool {
+	return s.healthy
 }
 
 // GetName returns the name of the service.
@@ -268,6 +274,7 @@ func (s *Service) start() {
 		go s.serviceLoop()
 		time.Sleep(time.Second)
 		s.loadAdditionalFeatures(featureList)
+		s.healthy = true
 		go s.metricsLoop()
 	}()
 }
@@ -280,6 +287,7 @@ func (s *Service) Reload() {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
+				s.healthy = false
 				dipper.Logger.Errorf("[%s] reverting config due to fatal failure %v", s.name, r)
 				s.config.RollBack()
 			}
@@ -292,6 +300,7 @@ func (s *Service) Reload() {
 	}()
 
 	s.loadAdditionalFeatures(featureList)
+	s.healthy = true
 	s.removeUnusedFeatures(featureList)
 }
 
@@ -483,6 +492,8 @@ func (s *Service) serviceLoop() {
 			}
 		}
 	}
+
+	s.healthy = false
 
 	for fname, runtime := range s.driverRuntimes {
 		func() {

@@ -27,14 +27,14 @@ func TestMain(m *testing.M) {
 }
 
 type TestStep struct {
-	feature         string
-	method          string
-	expectedMessage interface{}
-	returnMessage   interface{}
-	err             error
+	Feature         string
+	Method          string
+	ExpectedMessage interface{}
+	ReturnMessage   interface{}
+	Err             error
 }
 
 type ReturnMessage struct {
-	delay time.Duration
-	msg   *dipper.Message
+	Delay time.Duration
+	Msg   *dipper.Message
 }

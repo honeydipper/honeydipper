@@ -32,7 +32,7 @@ var (
 	ErrSkipped = errors.New("skipped")
 
 	// EmptySubject is used for an authenticated user without a defined subject.
-	_EmptySubject = map[string]interface{}{}
+	_EmptySubject = ""
 )
 
 func initFlags() {
@@ -66,7 +66,7 @@ func authWebRequest(m *dipper.Message) {
 	}
 
 	var err error
-	var subject map[string]interface{}
+	var subject string
 	for _, scheme := range schemes {
 		switch scheme.(string) {
 		case "basic":
@@ -88,14 +88,14 @@ func authWebRequest(m *dipper.Message) {
 	panic(err)
 }
 
-func tokenAuth(m *dipper.Message) (map[string]interface{}, error) {
+func tokenAuth(m *dipper.Message) (string, error) {
 	const prefix = "bearer "
 	authHash, ok := dipper.GetMapDataStr(m.Payload, "headers.Authorization.0")
 	if !ok {
 		authHash, ok = dipper.GetMapDataStr(m.Payload, "headers.authorization.0")
-		if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
-			return nil, ErrSkipped
-		}
+	}
+	if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
+		return _EmptySubject, ErrSkipped
 	}
 	token := []byte(authHash[len(prefix):])
 
@@ -112,22 +112,22 @@ func tokenAuth(m *dipper.Message) (map[string]interface{}, error) {
 				if !ok || subject == nil {
 					return _EmptySubject, nil
 				}
-				return subject.(map[string]interface{}), nil
+				return subject.(string), nil
 			}
 		}
 	}
 
-	return nil, ErrInvalidBearerToken
+	return _EmptySubject, ErrInvalidBearerToken
 }
 
-func basicAuth(m *dipper.Message) (map[string]interface{}, error) {
+func basicAuth(m *dipper.Message) (string, error) {
 	const prefix = "basic "
 	authHash, ok := dipper.GetMapDataStr(m.Payload, "headers.Authorization.0")
 	if !ok {
 		authHash, ok = dipper.GetMapDataStr(m.Payload, "headers.authorization.0")
-		if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
-			return nil, ErrSkipped
-		}
+	}
+	if !ok || len(authHash) < len(prefix) || !strings.EqualFold(authHash[:len(prefix)], prefix) {
+		return _EmptySubject, ErrSkipped
 	}
 	req := &http.Request{
 		Header: http.Header{
@@ -136,7 +136,7 @@ func basicAuth(m *dipper.Message) (map[string]interface{}, error) {
 	}
 	user, pass, ok := req.BasicAuth()
 	if !ok {
-		return nil, ErrInvalidBasicAuth
+		return _EmptySubject, ErrInvalidBasicAuth
 	}
 	passBytes := []byte(pass)
 
@@ -153,10 +153,10 @@ func basicAuth(m *dipper.Message) (map[string]interface{}, error) {
 				if !ok || subject == nil {
 					return _EmptySubject, nil
 				}
-				return subject.(map[string]interface{}), nil
+				return subject.(string), nil
 			}
 		}
 	}
 
-	return nil, ErrInvalidBasicCreds
+	return _EmptySubject, ErrInvalidBasicCreds
 }

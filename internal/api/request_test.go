@@ -9,48 +9,69 @@
 package api
 
 import (
+	"fmt"
+	"io/ioutil"
 	"testing"
 	"time"
 
+	"github.com/ghodss/yaml"
 	"github.com/golang/mock/gomock"
 	"github.com/honeydipper/honeydipper/internal/api/mock_api"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/honeydipper/honeydipper/pkg/dipper/mock_dipper"
+	"github.com/imdario/mergo"
+	"github.com/mitchellh/mapstructure"
 	"github.com/stretchr/testify/assert"
 )
 
 type RequestTestCase struct {
-	subject         map[string]interface{}
-	contentType     string
-	path            string
-	payload         map[string]interface{}
-	steps           []TestStep
-	returns         []ReturnMessage
-	expectedCode    int
-	expectedContent map[string]interface{}
-	config          interface{}
-	def             Def
-	uuids           []string
-	shouldAuthorize bool
+	Subject         string
+	ContentType     string `json:"content-type" mapstructure:"content-type"`
+	Path            string
+	Payload         map[string]interface{}
+	Steps           []TestStep
+	Returns         []ReturnMessage
+	ExpectedCode    int
+	ExpectedContent map[string]interface{}
+	Config          interface{}
+	Def             Def
+	UUIDs           []string `json:"uuids" mapstructure:"uuids"`
+	ShouldAuthorize bool
 }
 
-func requestTest(t *testing.T, c *RequestTestCase) *Store {
+func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
+	var buffer, delta map[string]interface{}
+	dipper.Must(yaml.Unmarshal(dipper.Must(ioutil.ReadFile("test_fixtures/common.yaml")).([]byte), &buffer))
+	dipper.Must(yaml.Unmarshal(dipper.Must(ioutil.ReadFile(fmt.Sprintf("test_fixtures/%s.yaml", caseName))).([]byte), &delta))
+	dipper.Must(mergo.Merge(&buffer, delta, mergo.WithOverride))
+
+	c := &RequestTestCase{}
+	dipper.Must(mapstructure.Decode(buffer, c))
+
+	// convert all times from test definition to milliseconds
+	c.Def.AckTimeout = c.Def.AckTimeout * time.Millisecond
+	c.Def.Timeout = c.Def.Timeout * time.Millisecond
+	for i := range c.Returns {
+		c.Returns[i].Delay = c.Returns[i].Delay * time.Millisecond
+	}
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockReqCtx := mock_api.NewMockRequestContext(ctrl)
-	mockReqCtx.EXPECT().Get(gomock.Eq("subject")).Times(1).Return(c.subject, c.subject != nil)
-	if c.shouldAuthorize {
-		mockReqCtx.EXPECT().GetPath().Times(1).Return(c.path)
-		mockReqCtx.EXPECT().GetPayload(gomock.Eq(c.def.method)).Times(1).Return(c.payload)
-		mockReqCtx.EXPECT().ContentType().Times(1).Return(c.contentType)
+	mockReqCtx.EXPECT().Get(gomock.Eq("subject")).Times(1).Return(c.Subject, c.Subject != "")
+	if c.ShouldAuthorize {
+		mockReqCtx.EXPECT().GetPath().Times(1).Return(c.Path)
+		mockReqCtx.EXPECT().GetPayload(gomock.Eq(c.Def.Method)).Times(1).Return(c.Payload)
+		mockReqCtx.EXPECT().ContentType().Times(1).Return(c.ContentType)
 	}
 
 	mockRPCCaller := mock_dipper.NewMockRPCCaller(ctrl)
 	l := NewStore(mockRPCCaller)
-	l.config = c.config
+	l.config = c.Config
+	l.setupAuthorization()
 
-	uuids := c.uuids
+	uuids := c.UUIDs
 	nextUUID := func() string {
 		uuid := uuids[0]
 		uuids = uuids[1:]
@@ -58,559 +79,82 @@ func requestTest(t *testing.T, c *RequestTestCase) *Store {
 	}
 	l.newUUID = nextUUID
 
-	if wt, ok := dipper.GetMapData(c.config, "writeTimeout"); ok {
-		l.writeTimeout = wt.(time.Duration)
+	if wt, ok := dipper.GetMapData(c.Config, "writeTimeout"); ok {
+		l.writeTimeout = time.Millisecond * time.Duration(wt.(float64))
 	} else {
 		l.writeTimeout = time.Millisecond * 100
 	}
 
-	for _, st := range c.steps {
-		mockRPCCaller.EXPECT().Call(gomock.Eq(st.feature), gomock.Eq(st.method), gomock.Eq(st.expectedMessage)).Times(1).Return(st.returnMessage, st.err)
+	startSignal := make(chan struct{})
+	started := false
+	for _, st := range c.Steps {
+		mockRPCCaller.EXPECT().Call(gomock.Eq(st.Feature), gomock.Eq(st.Method), gomock.Eq(st.ExpectedMessage)).Times(1).DoAndReturn(func(_, _ string, _ map[string]interface{}) (interface{}, error) {
+			if !started {
+				started = true
+				close(startSignal)
+			}
+			return st.ReturnMessage, st.Err
+		})
 	}
 
-	if c.expectedCode >= 400 {
-		mockReqCtx.EXPECT().AbortWithStatusJSON(gomock.Eq(c.expectedCode), gomock.Eq(c.expectedContent)).Times(1)
+	if c.ExpectedCode >= 400 {
+		mockReqCtx.EXPECT().AbortWithStatusJSON(gomock.Eq(c.ExpectedCode), gomock.Eq(c.ExpectedContent)).Times(1)
 	} else {
-		mockReqCtx.EXPECT().IndentedJSON(gomock.Eq(c.expectedCode), gomock.Eq(c.expectedContent)).Times(1)
+		mockReqCtx.EXPECT().IndentedJSON(gomock.Eq(c.ExpectedCode), gomock.Eq(c.ExpectedContent)).Times(1)
 	}
 
 	go func() {
-		for _, st := range c.returns {
-			time.Sleep(st.delay)
-			switch st.msg.Labels["type"] {
+		<-startSignal
+		for _, st := range c.Returns {
+			dipper.Logger.Warning("delaying %d ms", st.Delay)
+			time.Sleep(st.Delay)
+			switch st.Msg.Labels["type"] {
 			case "ack":
-				l.HandleAPIACK(st.msg)
+				l.HandleAPIACK(st.Msg)
 			case "result":
-				l.HandleAPIReturn(st.msg)
+				l.HandleAPIReturn(st.Msg)
 			}
 		}
 	}()
 
-	l.HandleHTTPRequest(mockReqCtx, c.def)
-	return l
+	l.HandleHTTPRequest(mockReqCtx, c.Def)
+	return l, c
 }
 
 func TestTypeAllAPI(t *testing.T) {
-	uuids := []string{"34ik-ijo3i4jt84932-aiau3kegkjrl"}
-	c := &RequestTestCase{
-		// cfg and api definition
-		config: map[string]interface{}{
-			"acls": map[string]interface{}{
-				"test_type_all": []interface{}{
-					map[string]interface{}{
-						"subjects": []interface{}{
-							map[string]interface{}{"role": "any"},
-						},
-						"type": "allow",
-					},
-				},
-			},
-		},
-		def: Def{
-			path:    "/test_type_all",
-			name:    "test_type_all",
-			method:  "GET",
-			reqType: TypeAll,
-			service: "foo",
-		},
-		shouldAuthorize: true,
-
-		// input
-		uuids:       uuids,
-		subject:     map[string]interface{}{"role": "any"},
-		contentType: "application/json",
-		path:        "/test_type_all",
-		payload:     map[string]interface{}{},
-
-		steps: []TestStep{
-			{
-				feature: "api-broadcast",
-				method:  "send",
-				expectedMessage: map[string]interface{}{
-					"broadcastSubject": "call",
-					"labels": map[string]interface{}{
-						"fn":           "test_type_all",
-						"uuid":         uuids[0],
-						"service":      "foo",
-						"content-type": "application/json",
-					},
-					"data": map[string]interface{}{},
-				},
-				returnMessage: nil,
-			},
-		},
-
-		// returned message from service
-		returns: []ReturnMessage{
-			{
-				delay: time.Millisecond,
-				msg: &dipper.Message{
-					Labels: map[string]string{
-						"type": "ack",
-						"uuid": uuids[0],
-						"from": "bar",
-					},
-				},
-			},
-			{
-				delay: time.Millisecond,
-				msg: &dipper.Message{
-					Labels: map[string]string{
-						"type": "result",
-						"uuid": uuids[0],
-						"from": "bar",
-					},
-					Payload: map[string]interface{}{
-						"result": "all",
-					},
-				},
-			},
-		},
-
-		// expected result
-		expectedCode:    200,
-		expectedContent: map[string]interface{}{"bar": map[string]interface{}{"result": "all"}},
-	}
-
-	requestTest(t, c)
+	requestTest(t, "TypeAllAPI")
 }
 
 func TestTypeFirstAPI(t *testing.T) {
-	uuids := []string{"34ik-ijo3i4jt84932-aiau3kegkjrl"}
-	c := &RequestTestCase{
-		// cfg and api definition
-		config: map[string]interface{}{
-			"acls": map[string]interface{}{
-				"test_type_first": []interface{}{
-					map[string]interface{}{
-						"subjects": []interface{}{
-							map[string]interface{}{"role": "any"},
-						},
-						"type": "allow",
-					},
-				},
-			},
-		},
-		def: Def{
-			path:    "/test_type_first",
-			name:    "test_type_first",
-			method:  "GET",
-			reqType: TypeFirst,
-			service: "foo",
-		},
-		shouldAuthorize: true,
-
-		// input
-		uuids:       uuids,
-		subject:     map[string]interface{}{"role": "any"},
-		contentType: "application/json",
-		path:        "/test_type_first",
-		payload:     map[string]interface{}{},
-
-		steps: []TestStep{
-			{
-				feature: "api-broadcast",
-				method:  "send",
-				expectedMessage: map[string]interface{}{
-					"broadcastSubject": "call",
-					"labels": map[string]interface{}{
-						"fn":           "test_type_first",
-						"uuid":         uuids[0],
-						"service":      "foo",
-						"content-type": "application/json",
-					},
-					"data": map[string]interface{}{},
-				},
-				returnMessage: nil,
-			},
-		},
-
-		// returned message from service
-		returns: []ReturnMessage{
-			{
-				delay: 2 * time.Millisecond,
-				msg: &dipper.Message{
-					Labels: map[string]string{
-						"type": "result",
-						"uuid": uuids[0],
-						"from": "bar",
-					},
-					Payload: map[string]interface{}{
-						"result": "all",
-					},
-				},
-			},
-		},
-
-		// expected result
-		expectedCode:    200,
-		expectedContent: map[string]interface{}{"bar": map[string]interface{}{"result": "all"}},
-	}
-
-	requestTest(t, c)
+	requestTest(t, "TypeFirstAPI")
 }
 
 func TestTypeMatchAPI(t *testing.T) {
-	uuids := []string{"34ik-ijo3i4jt84932-aiau3kegkjrl"}
-	c := &RequestTestCase{
-		// cfg and api definition
-		config: map[string]interface{}{
-			"acls": map[string]interface{}{
-				"test_type_match": []interface{}{
-					map[string]interface{}{
-						"subjects": []interface{}{
-							map[string]interface{}{"role": "any"},
-						},
-						"type": "allow",
-					},
-				},
-			},
-		},
-		def: Def{
-			path:    "/test_type_match",
-			name:    "test_type_match",
-			method:  "GET",
-			reqType: TypeMatch,
-			service: "foo",
-		},
-		shouldAuthorize: true,
-
-		// input
-		uuids:       uuids,
-		subject:     map[string]interface{}{"role": "any"},
-		contentType: "application/json",
-		path:        "/test_type_match",
-		payload:     map[string]interface{}{},
-
-		steps: []TestStep{
-			{
-				feature: "api-broadcast",
-				method:  "send",
-				expectedMessage: map[string]interface{}{
-					"broadcastSubject": "call",
-					"labels": map[string]interface{}{
-						"fn":           "test_type_match",
-						"uuid":         uuids[0],
-						"service":      "foo",
-						"content-type": "application/json",
-					},
-					"data": map[string]interface{}{},
-				},
-				returnMessage: nil,
-			},
-		},
-
-		// returned message from service
-		returns: []ReturnMessage{
-			{
-				delay: time.Millisecond,
-				msg: &dipper.Message{
-					Labels: map[string]string{
-						"type": "ack",
-						"uuid": uuids[0],
-						"from": "bar",
-					},
-				},
-			},
-			{
-				delay: time.Millisecond,
-				msg: &dipper.Message{
-					Labels: map[string]string{
-						"type": "result",
-						"uuid": uuids[0],
-						"from": "bar",
-					},
-					Payload: map[string]interface{}{
-						"result": "all",
-					},
-				},
-			},
-		},
-
-		// expected result
-		expectedCode:    200,
-		expectedContent: map[string]interface{}{"bar": map[string]interface{}{"result": "all"}},
-	}
-
-	requestTest(t, c)
+	requestTest(t, "TypeMatchAPI")
 }
 
 func TestTypeMatchAPINoMatch(t *testing.T) {
-	uuids := []string{"34ik-ijo3i4jt84932-aiau3kegkjrl"}
-	c := &RequestTestCase{
-		// cfg and api definition
-		config: map[string]interface{}{
-			"acls": map[string]interface{}{
-				"test_type_match": []interface{}{
-					map[string]interface{}{
-						"subjects": []interface{}{
-							map[string]interface{}{"role": "any"},
-						},
-						"type": "allow",
-					},
-				},
-			},
-		},
-		def: Def{
-			path:    "/test_type_match",
-			name:    "test_type_match",
-			method:  "GET",
-			reqType: TypeMatch,
-			service: "foo",
-		},
-		shouldAuthorize: true,
-
-		// input
-		uuids:       uuids,
-		subject:     map[string]interface{}{"role": "any"},
-		contentType: "application/json",
-		path:        "/test_type_match",
-		payload:     map[string]interface{}{},
-
-		steps: []TestStep{
-			{
-				feature: "api-broadcast",
-				method:  "send",
-				expectedMessage: map[string]interface{}{
-					"broadcastSubject": "call",
-					"labels": map[string]interface{}{
-						"fn":           "test_type_match",
-						"uuid":         uuids[0],
-						"service":      "foo",
-						"content-type": "application/json",
-					},
-					"data": map[string]interface{}{},
-				},
-				returnMessage: nil,
-			},
-		},
-
-		// returned message from service
-		returns: []ReturnMessage{},
-
-		// expected result
-		expectedCode:    404,
-		expectedContent: map[string]interface{}{"error": "object not found"},
-	}
-
-	requestTest(t, c)
+	requestTest(t, "TypeMatchAPINoMatch")
 }
 
 func TestTypeAllAPITimeout(t *testing.T) {
-	uuids := []string{"34ik-ijo3i4jt84932-aiau3kegkjrl"}
-	c := &RequestTestCase{
-		// cfg and api definition
-		config: map[string]interface{}{
-			"acls": map[string]interface{}{
-				"test_type_all": []interface{}{
-					map[string]interface{}{
-						"subjects": []interface{}{
-							map[string]interface{}{"role": "any"},
-						},
-						"type": "allow",
-					},
-				},
-			},
-		},
-		def: Def{
-			path:    "/test_type_all",
-			name:    "test_type_all",
-			method:  "GET",
-			reqType: TypeAll,
-			service: "foo",
-			timeout: time.Millisecond,
-		},
-		shouldAuthorize: true,
-
-		// input
-		uuids:       uuids,
-		subject:     map[string]interface{}{"role": "any"},
-		contentType: "application/json",
-		path:        "/test_type_all",
-		payload:     map[string]interface{}{},
-
-		steps: []TestStep{
-			{
-				feature: "api-broadcast",
-				method:  "send",
-				expectedMessage: map[string]interface{}{
-					"broadcastSubject": "call",
-					"labels": map[string]interface{}{
-						"fn":           "test_type_all",
-						"uuid":         uuids[0],
-						"service":      "foo",
-						"content-type": "application/json",
-					},
-					"data": map[string]interface{}{},
-				},
-				returnMessage: nil,
-			},
-		},
-
-		// returned message from service
-		returns: []ReturnMessage{
-			{
-				delay: time.Millisecond,
-				msg: &dipper.Message{
-					Labels: map[string]string{
-						"type": "ack",
-						"uuid": uuids[0],
-						"from": "bar",
-					},
-				},
-			},
-		},
-
-		// expected result
-		expectedCode:    500,
-		expectedContent: map[string]interface{}{"error": "timeout"},
-	}
-
-	requestTest(t, c)
+	requestTest(t, "TypeAllAPITimeout")
 }
 
 func TestTypeMatchAPILongRequest(t *testing.T) {
-	uuids := []string{"34ik-ijo3i4jt84932-aiau3kegkjrl"}
-	c := &RequestTestCase{
-		// cfg and api definition
-		config: map[string]interface{}{
-			"acls": map[string]interface{}{
-				"test_type_match": []interface{}{
-					map[string]interface{}{
-						"subjects": []interface{}{
-							map[string]interface{}{"role": "any"},
-						},
-						"type": "allow",
-					},
-				},
-			},
-			"writeTimeout": time.Millisecond * 6,
-		},
-		def: Def{
-			path:    "/test_type_match",
-			name:    "test_type_match",
-			method:  "GET",
-			reqType: TypeMatch,
-			service: "foo",
-			timeout: InfiniteDuration,
-		},
-		shouldAuthorize: true,
-
-		// input
-		uuids:       uuids,
-		subject:     map[string]interface{}{"role": "any"},
-		contentType: "application/json",
-		path:        "/test_type_match",
-		payload:     map[string]interface{}{},
-
-		steps: []TestStep{
-			{
-				feature: "api-broadcast",
-				method:  "send",
-				expectedMessage: map[string]interface{}{
-					"broadcastSubject": "call",
-					"labels": map[string]interface{}{
-						"fn":           "test_type_match",
-						"uuid":         uuids[0],
-						"service":      "foo",
-						"content-type": "application/json",
-					},
-					"data": map[string]interface{}{},
-				},
-				returnMessage: nil,
-			},
-		},
-
-		// returned message from service
-		returns: []ReturnMessage{
-			{
-				delay: time.Millisecond,
-				msg: &dipper.Message{
-					Labels: map[string]string{
-						"type": "ack",
-						"uuid": uuids[0],
-						"from": "bar",
-					},
-				},
-			},
-			{
-				delay: 20 * time.Millisecond,
-				msg: &dipper.Message{
-					Labels: map[string]string{
-						"type": "result",
-						"uuid": uuids[0],
-						"from": "bar",
-					},
-					Payload: map[string]interface{}{
-						"result": "all",
-					},
-				},
-			},
-		},
-
-		// expected result
-		expectedCode:    202,
-		expectedContent: map[string]interface{}{"results": map[string]interface{}{}, "uuid": uuids[0]},
-	}
-
-	l := requestTest(t, c)
+	l, c := requestTest(t, "TypeMatchAPILongRequest")
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockReqCtx := mock_api.NewMockRequestContext(ctrl)
-	mockReqCtx.EXPECT().GetPath().Times(1).Return(c.def.path)
-	req := l.GetRequest(c.def, mockReqCtx)
-	assert.Equal(t, uuids[0], req.uuid)
+	mockReqCtx.EXPECT().GetPath().Times(1).Return(c.Def.Path)
+	req := l.GetRequest(c.Def, mockReqCtx)
+	assert.Equal(t, c.UUIDs[0], req.uuid)
 
 	assert.NotPanics(t, func() { l.ClearRequest(req) })
 }
 
 func TestUnauthorizedAPI(t *testing.T) {
-	uuids := []string{"34ik-ijo3i4jt84932-aiau3kegkjrl"}
-	c := &RequestTestCase{
-		// cfg and api definition
-		config: map[string]interface{}{
-			"acls": map[string]interface{}{
-				"test_type_match": []interface{}{
-					map[string]interface{}{
-						"subjects": "all",
-						"type":     "deny",
-					},
-					map[string]interface{}{
-						"subjects": []interface{}{
-							map[string]interface{}{"role": "privileged"},
-						},
-						"type": "allow",
-					},
-				},
-			},
-		},
-		def: Def{
-			path:    "/test_type_match",
-			name:    "test_type_match",
-			method:  "GET",
-			reqType: TypeFirst,
-			service: "foo",
-		},
-		shouldAuthorize: false,
-
-		// input
-		uuids:       uuids,
-		subject:     map[string]interface{}{"role": "someone"},
-		contentType: "application/json",
-		path:        "/test_type_match",
-		payload:     map[string]interface{}{},
-
-		steps: []TestStep{},
-
-		// returned message from service
-		returns: []ReturnMessage{},
-
-		// expected result
-		expectedCode:    403,
-		expectedContent: map[string]interface{}{"errors": "not allowed"},
-	}
-
-	requestTest(t, c)
+	requestTest(t, "UnauthorizedAPI")
 }
