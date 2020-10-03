@@ -8,7 +8,7 @@ defaults: &defaults
 
 license_finder: &license_finder
   docker:
-    - image: licensefinder/license_finder:6.7.0
+    - image: licensefinder/license_finder:6.8.2
       environment:
         - GO111MODULE=auto
   working_directory: /root/src/honeydipper
