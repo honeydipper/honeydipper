@@ -84,6 +84,8 @@ github.com/casbin/casbin/v2 v2.1.0 h1:FqE47qR7PNFrhh/mQFRqlXWdAM0lObvn/cl8ydyxi1
 github.com/casbin/casbin/v2 v2.1.0/go.mod h1:YcPU1XXisHhLzuxH9coDNf2FbKpjGlbCg3n9yuLkIJQ=
 github.com/casbin/casbin/v2 v2.11.3 h1:nGpcPrD8KVhKjla29qGqe6ijKGD3Qkn+jP3S5hvgZ9U=
 github.com/casbin/casbin/v2 v2.11.3/go.mod h1:XXtYGrs/0zlOsJMeRteEdVi/FsB0ph7KgNfjoCoJUD8=
+github.com/casbin/casbin/v2 v2.13.1 h1:K2ChfTOlEgCd9H6J3efOCatqLPyBj2ZCKwyhVRq4XSg=
+github.com/casbin/casbin/v2 v2.13.1/go.mod h1:XXtYGrs/0zlOsJMeRteEdVi/FsB0ph7KgNfjoCoJUD8=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/xxhash/v2 v2.1.1 h1:6MnRN8NT7+YBpUIWxHtefFZOKTAPgGjpQSxqLNn0+qY=
 github.com/cespare/xxhash/v2 v2.1.1/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
