@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	// TimeoutError indicates a timeout error
+	// TimeoutError indicates a timeout error.
 	TimeoutError Error = "timeout"
 
-	// RPCError indicates errors happened during RPC call
+	// RPCError indicates errors happened during RPC call.
 	RPCError Error = "rpc error"
 
-	// DefaultRPCTimeout is the default timeout in seconds for RPC calls
+	// DefaultRPCTimeout is the default timeout in seconds for RPC calls.
 	DefaultRPCTimeout time.Duration = 10
 )
 
@@ -70,6 +70,7 @@ func (c *RPCCallerBase) GetName() string {
 // Call : making a RPC call to another driver with structured data.
 func (c *RPCCallerBase) Call(feature string, method string, params interface{}) ([]byte, error) {
 	ret, err := c.CallRaw(feature, method, SerializeContent(params))
+
 	return ret, err
 }
 
@@ -97,6 +98,7 @@ func (c *RPCCallerBase) CallRaw(feature string, method string, params []byte) ([
 		} else if e, ok := msg.(error); ok {
 			return nil, e
 		}
+
 		return msg.([]byte), nil
 	case <-time.After(time.Second * DefaultRPCTimeout):
 		return nil, TimeoutError

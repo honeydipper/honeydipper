@@ -16,18 +16,18 @@ import (
 )
 
 const (
-	// WorkflowNextComplete starts the list of statuses used for determine how to handle a session
+	// WorkflowNextComplete starts the list of statuses used for determine how to handle a session.
 	WorkflowNextComplete = iota
-	// WorkflowNextStep means the workflow will continue with next step in a multi-step workflow
+	// WorkflowNextStep means the workflow will continue with next step in a multi-step workflow.
 	WorkflowNextStep
-	// WorkflowNextThread means the workflow will continue waiting for the next threa to finish
+	// WorkflowNextThread means the workflow will continue waiting for the next threa to finish.
 	WorkflowNextThread
-	// WorkflowNextIteration means the workflow will continue process next item in the iteration list
+	// WorkflowNextIteration means the workflow will continue process next item in the iteration list.
 	WorkflowNextIteration
 	// WorkflowNextParallelIteration means the workflow will continue waiting for the next item
-	// to be processed in the iteration list
+	// to be processed in the iteration list.
 	WorkflowNextParallelIteration
-	// WorkflowNextRound means the workflow will continue with the next round of the loop
+	// WorkflowNextRound means the workflow will continue with the next round of the loop.
 	WorkflowNextRound
 )
 
@@ -74,6 +74,7 @@ func (w *Session) routeNext(msg *dipper.Message) int {
 		if w.workflow.Iterate != nil {
 			return WorkflowNextIteration
 		}
+
 		return WorkflowNextParallelIteration
 	}
 
@@ -98,6 +99,7 @@ func (w *Session) processNoExport(exported map[string]interface{}) {
 			for k := range exported {
 				delete(exported, k)
 			}
+
 			break
 		}
 		delete(exported, key)
@@ -179,6 +181,7 @@ func (w *Session) isInCompleteHooks() bool {
 	case WorkflowHookExit:
 		return true
 	}
+
 	return false
 }
 
@@ -287,6 +290,7 @@ func (w *Session) continueExec(msg *dipper.Message, exports map[string]interface
 	w.mergeContext(exports)
 	if w.currentHook != "" {
 		w.continueAfterHook(msg)
+
 		return
 	}
 	route := w.routeNext(msg)

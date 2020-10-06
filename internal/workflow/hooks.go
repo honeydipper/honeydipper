@@ -19,6 +19,7 @@ func (w *Session) fireHook(name string, msg *dipper.Message) {
 		if w.currentHook == name {
 			// hook is cleared when called again
 			w.currentHook = ""
+
 			return
 		}
 		// this line might be unreachable but leave it here for safety

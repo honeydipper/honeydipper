@@ -21,18 +21,18 @@ import (
 )
 
 const (
-	// APIServerGracefulTimeout is the timeout in seconds for waiting for a http.Server to shutdown gracefully
+	// APIServerGracefulTimeout is the timeout in seconds for waiting for a http.Server to shutdown gracefully.
 	APIServerGracefulTimeout time.Duration = 10
 )
 
 var (
-	// API is the service object for api service
+	// API is the service object for api service.
 	API *Service
-	// APIServer is the http server listening for api calls
+	// APIServer is the http server listening for api calls.
 	APIServer *http.Server
-	// APICfg contains configuration for the api service from driver.daemon.services.api
+	// APICfg contains configuration for the api service from driver.daemon.services.api.
 	APICfg interface{}
-	// APIRequestStore is the object holds and handles all live api calls
+	// APIRequestStore is the object holds and handles all live api calls.
 	APIRequestStore *api.Store
 )
 
@@ -54,8 +54,10 @@ func loadAPIConfig(cfg *config.Config) bool {
 	apiCfg, _ := dipper.GetMapData(cfg.DataSet.Drivers, "daemon.services.api")
 	if !reflect.DeepEqual(apiCfg, APICfg) {
 		APICfg = apiCfg
+
 		return true
 	}
+
 	return false
 }
 
@@ -128,5 +130,6 @@ func APIFeatures(s *config.DataSet) map[string]interface{} {
 			}
 		}
 	}
+
 	return features
 }

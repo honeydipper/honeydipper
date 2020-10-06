@@ -29,15 +29,15 @@ const (
 )
 
 var (
-	// ErrMissingProject means missing project
+	// ErrMissingProject means missing project.
 	ErrMissingProject = errors.New("project required")
-	// ErrMissingJobSpec means missing location
+	// ErrMissingJobSpec means missing location.
 	ErrMissingJobSpec = errors.New("job spec required")
-	// ErrMissingJobID means missing jobid
+	// ErrMissingJobID means missing jobid.
 	ErrMissingJobID = errors.New("jobid required")
-	// ErrMissingName means missing name
+	// ErrMissingName means missing name.
 	ErrMissingName = errors.New("name required")
-	// ErrJobNotFound means job not found
+	// ErrJobNotFound means job not found.
 	ErrJobNotFound = errors.New("job not found")
 )
 
@@ -95,6 +95,7 @@ func getCommonParams(params interface{}) (string, string, string) {
 			location = location[:len(location)-2]
 		}
 	}
+
 	return serviceAccountBytes, project, location
 }
 
@@ -216,6 +217,7 @@ found:
 			for _, j := range result.Jobs {
 				if j.Name == jobName {
 					job = j
+
 					break found
 				}
 			}
@@ -314,6 +316,7 @@ loop:
 						"error": fmt.Sprintf("failed to call polling method: %+v", err),
 					},
 				}
+
 				break loop
 			}
 
@@ -327,6 +330,7 @@ loop:
 						"reason": result.CurrentState,
 					},
 				}
+
 				break loop
 			}
 			time.Sleep(time.Duration(interval) * time.Second)

@@ -89,6 +89,7 @@ type ResponseFactory struct {
 func NewResponseFactory() *ResponseFactory {
 	r := &ResponseFactory{}
 	r.DefsByName = GetDefsByName()
+
 	return r
 }
 
@@ -103,6 +104,7 @@ func (rf *ResponseFactory) NewResponse(caller dipper.RPCCaller, eventbus io.Writ
 	def, ok := rf.DefsByName[method]
 	if !ok {
 		dipper.Logger.Warningf("Unknown API method: %s", method)
+
 		return nil
 	}
 	switch def.ReqType {

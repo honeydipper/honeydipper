@@ -48,6 +48,7 @@ func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*
 	}
 
 	dipper.Must(mergeDataSet(assembled, c.DataSet))
+
 	return assembled, assembledList
 }
 
@@ -189,6 +190,7 @@ func (c *Repo) refreshRepo() bool {
 	err = tree.Pull(opts)
 	if errors.Is(err, git.NoErrAlreadyUpToDate) {
 		dipper.Logger.Infof("no changes skip repo [%s]", c.repo.Repo)
+
 		return false
 	} else if err != nil {
 		panic(err)
@@ -202,6 +204,7 @@ func (c *Repo) refreshRepo() bool {
 	}
 	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
 	dipper.Logger.Warningf("repo [%v] reloaded", c.repo.Repo)
+
 	return true
 }
 

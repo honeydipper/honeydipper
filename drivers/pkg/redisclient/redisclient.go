@@ -26,5 +26,6 @@ func GetRedisOps(driver *dipper.Driver) *redis.Options {
 	if DB, ok := driver.GetOptionStr("data.connection.DB"); ok {
 		opts.DB = dipper.Must(strconv.Atoi(DB)).(int)
 	}
+
 	return opts
 }

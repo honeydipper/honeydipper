@@ -143,6 +143,7 @@ func (c *Config) parseWorkflowRegex() {
 			dipper.Recursive(v.Else, processor)
 			dipper.Recursive(v.Cases, processor)
 		}
+
 		return nil, false
 	}
 
@@ -153,6 +154,7 @@ func (c *Config) parseWorkflowRegex() {
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
 	_, ok := c.Loaded[repo]
+
 	return ok
 }
 
@@ -174,6 +176,7 @@ func (c *Config) GetDriverData(path string) (ret interface{}, ok bool) {
 	if c.DataSet == nil || c.DataSet.Drivers == nil {
 		return nil, false
 	}
+
 	return dipper.GetMapData(c.DataSet.Drivers, path)
 }
 
@@ -185,6 +188,7 @@ func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {
 	if c.DataSet == nil || c.DataSet.Drivers == nil {
 		return "", false
 	}
+
 	return dipper.GetMapDataStr(c.DataSet.Drivers, path)
 }
 
@@ -245,6 +249,7 @@ func SystemCopy(s *System) (*System, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &scopy, nil
 }
 
@@ -266,6 +271,7 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 	s.Contexts = dipper.MustDeepCopyMap(s.Contexts)
 	s.Drivers = dipper.MustDeepCopyMap(s.Drivers)
 	err := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
+
 	return err
 }
 

@@ -58,5 +58,6 @@ func GetDefsByName() map[string]Def {
 			ret[def.Name] = def
 		}
 	}
+
 	return ret
 }

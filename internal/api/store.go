@@ -22,19 +22,19 @@ import (
 )
 
 const (
-	// DefaultAPIAckTimeout is the number of milliseconds to wait for acks
+	// DefaultAPIAckTimeout is the number of milliseconds to wait for acks.
 	DefaultAPIAckTimeout time.Duration = 10
 
-	// APIError is the base for all API related error
+	// APIError is the base for all API related error.
 	APIError dipper.Error = "API error"
 
-	// DefaultAPIWriteTimeout is the default timeout in seconds for responding to the request
+	// DefaultAPIWriteTimeout is the default timeout in seconds for responding to the request.
 	DefaultAPIWriteTimeout time.Duration = 10
 
-	// ACLAllow reprensts allowing the subject to access the API
+	// ACLAllow reprensts allowing the subject to access the API.
 	ACLAllow = "allow"
 
-	// ACLDeny reprensts denying the subject to access the API
+	// ACLDeny reprensts denying the subject to access the API.
 	ACLDeny = "deny"
 )
 
@@ -104,12 +104,14 @@ func (l *Store) HandleAPIReturn(m *dipper.Message) {
 	if errmsg, ok := m.Labels["error"]; ok {
 		api.err = fmt.Errorf("%w: from [%s]: %s", APIError, responder, errmsg)
 		api.received <- 1
+
 		return
 	}
 
 	if api.reqType == TypeFirst {
 		api.results[responder] = m.Payload
 		api.received <- 1
+
 		return
 	}
 
@@ -128,6 +130,7 @@ func NewStore(c dipper.RPCCaller) *Store {
 	}
 	store.apiDef = GetDefs()
 	store.newUUID = dipper.NewUUID
+
 	return store
 }
 
@@ -180,6 +183,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 		providers, ok := dipper.GetMapData(l.config, "auth-providers")
 		if !ok || providers == nil || len(providers.([]interface{})) == 0 {
 			c.Next()
+
 			return
 		}
 
@@ -198,6 +202,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 			} else {
 				c.Set("subject", dipper.DeserializeContent(subject))
 				c.Next()
+
 				return
 			}
 		}
@@ -218,6 +223,7 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 	} else if err != nil {
 		dipper.Logger.Warningf("[api] denied access with enforcer error: %+v", err)
 	}
+
 	return false
 }
 
@@ -225,6 +231,7 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
 	if !l.Authorize(c, def) {
 		c.AbortWithStatusJSON(http.StatusForbidden, map[string]interface{}{"errors": "not allowed"})
+
 		return
 	}
 

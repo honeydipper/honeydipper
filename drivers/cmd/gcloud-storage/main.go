@@ -72,6 +72,7 @@ func getStorageClient(serviceAccountBytes string) *storage.Client {
 	if err != nil {
 		panic(ErrCreateClient)
 	}
+
 	return client
 }
 
@@ -81,6 +82,7 @@ func getCommonParams(params interface{}) (string, string) {
 	if !ok {
 		panic(ErrMissingProject)
 	}
+
 	return serviceAccountBytes, project
 }
 
