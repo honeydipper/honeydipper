@@ -39,6 +39,7 @@ func receiverRoute(msg *dipper.Message) (ret []RoutedMessage) {
 		}
 		ret = append(ret, rtmsg)
 	}
+
 	return ret
 }
 
@@ -88,6 +89,7 @@ func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 	}
 	numDynamicFeatures = len(dynamicData)
 	dipper.Logger.Debugf("[receiver] dynamicData return: %+v", dynamicData)
+
 	return dynamicData
 }
 

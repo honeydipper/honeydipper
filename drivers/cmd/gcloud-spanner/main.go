@@ -19,25 +19,25 @@ import (
 )
 
 const (
-	// DefaultBackupOpWaitTimeout is the default timeout in seconds for waiting for the backup to complete
+	// DefaultBackupOpWaitTimeout is the default timeout in seconds for waiting for the backup to complete.
 	DefaultBackupOpWaitTimeout time.Duration = 1800
 
-	// DefaultBackupExpireDuration is the default duration before a backup is expired and removed
+	// DefaultBackupExpireDuration is the default duration before a backup is expired and removed.
 	DefaultBackupExpireDuration time.Duration = time.Hour * 24 * 180
 )
 
 var (
-	// ErrMissingProject means missing project
+	// ErrMissingProject means missing project.
 	ErrMissingProject = errors.New("project required")
-	// ErrMissingLocation means missing location
+	// ErrMissingLocation means missing location.
 	ErrMissingLocation = errors.New("location required")
-	// ErrMissingDB means missing db
+	// ErrMissingDB means missing db.
 	ErrMissingDB = errors.New("db required")
-	// ErrMissingBackupOpID means missing backupOpID
+	// ErrMissingBackupOpID means missing backupOpID.
 	ErrMissingBackupOpID = errors.New("backupOpID required")
-	// ErrCreateClient means failure when creating API client
+	// ErrCreateClient means failure when creating API client.
 	ErrCreateClient = errors.New("fail to create client")
-	// ErrBackupOpNotFound means the backup operation not found
+	// ErrBackupOpNotFound means the backup operation not found.
 	ErrBackupOpNotFound = errors.New("backup op not found")
 )
 

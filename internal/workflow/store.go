@@ -34,6 +34,7 @@ func NewSessionStore(helper SessionStoreHelper) *SessionStore {
 		Helper:            helper,
 	}
 	dipper.InitIDMap(&s.sessions)
+
 	return s
 }
 
@@ -110,6 +111,7 @@ func (s *SessionStore) ByEventID(eventID string) []SessionHandler {
 			ret = append(ret, sh)
 		}
 	}
+
 	return ret
 }
 
@@ -121,5 +123,6 @@ func (s *SessionStore) GetEvents() []SessionHandler {
 			ret = append(ret, sh)
 		}
 	}
+
 	return ret
 }

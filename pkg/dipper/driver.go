@@ -23,7 +23,7 @@ const (
 	// the ExtraFiles list, this is always 3.
 	DriverLogDescriptor uintptr = 3
 
-	// DefaultAPITimeout is the default timeout for making an outbound API call
+	// DefaultAPITimeout is the default timeout for making an outbound API call.
 	DefaultAPITimeout time.Duration = 10
 )
 
@@ -71,6 +71,7 @@ func NewDriver(service string, name string) *Driver {
 	}
 
 	driver.GetLogger()
+
 	return &driver
 }
 
@@ -186,8 +187,10 @@ func (d *Driver) GetLogger() *logging.Logger {
 		if logFile == nil {
 			logFile = os.NewFile(DriverLogDescriptor, "log")
 		}
+
 		return GetLogger(d.Name, levelstr, logFile)
 	}
+
 	return Logger
 }
 
@@ -215,6 +218,7 @@ func (d *Driver) EmitEvent(payload map[string]interface{}) string {
 			"eventID": id.String(),
 		},
 	})
+
 	return id.String()
 }
 

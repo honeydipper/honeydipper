@@ -16,6 +16,7 @@ import (
 // isTruthy is a helper function to check if string represents Truey value.
 func isTruthy(c string) bool {
 	c = strings.ToLower(strings.TrimSpace(c))
+
 	return len(c) != 0 && c != "false" && c != "nil" && c != "0" && c != "{}" && c != "[]" && c != "<no value>"
 }
 
@@ -28,6 +29,7 @@ func (w *Session) checkCondition() bool {
 				return false
 			}
 		}
+
 		return true
 	case len(w.workflow.IfAny) > 0:
 		for _, c := range w.workflow.IfAny {
@@ -35,6 +37,7 @@ func (w *Session) checkCondition() bool {
 				return true
 			}
 		}
+
 		return false
 	case len(w.workflow.Unless) > 0:
 		for _, c := range w.workflow.Unless {
@@ -42,6 +45,7 @@ func (w *Session) checkCondition() bool {
 				return false
 			}
 		}
+
 		return true
 	case len(w.workflow.UnlessAll) > 0:
 		for _, c := range w.workflow.UnlessAll {
@@ -49,6 +53,7 @@ func (w *Session) checkCondition() bool {
 				return true
 			}
 		}
+
 		return false
 	case w.workflow.Match != nil:
 		return dipper.CompareAll(w.ctx, w.workflow.Match)
@@ -56,8 +61,10 @@ func (w *Session) checkCondition() bool {
 		if reflect.ValueOf(w.workflow.UnlessMatch).Len() > 0 {
 			return !dipper.CompareAll(w.ctx, w.workflow.UnlessMatch)
 		}
+
 		return true
 	}
+
 	return true
 }
 
@@ -67,6 +74,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 	case w.workflow.WhileMatch != nil:
 		envData := w.buildEnvData(msg)
 		scenario := dipper.Interpolate(w.workflow.WhileMatch, envData)
+
 		return dipper.CompareAll(w.ctx, scenario)
 	case w.workflow.UntilMatch != nil:
 		envData := w.buildEnvData(msg)
@@ -74,6 +82,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 		if scenario != nil && reflect.ValueOf(scenario).Len() > 0 {
 			return !dipper.CompareAll(w.ctx, scenario)
 		}
+
 		return true
 	case len(w.workflow.While) > 0:
 		envData := w.buildEnvData(msg)
@@ -83,6 +92,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 				return false
 			}
 		}
+
 		return true
 	case len(w.workflow.WhileAny) > 0:
 		envData := w.buildEnvData(msg)
@@ -92,6 +102,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 				return true
 			}
 		}
+
 		return false
 	case len(w.workflow.Until) > 0:
 		envData := w.buildEnvData(msg)
@@ -101,6 +112,7 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 				return false
 			}
 		}
+
 		return true
 	case len(w.workflow.UntilAll) > 0:
 		envData := w.buildEnvData(msg)
@@ -110,7 +122,9 @@ func (w *Session) checkLoopCondition(msg *dipper.Message) bool {
 				return true
 			}
 		}
+
 		return false
 	}
+
 	return true // not a loop
 }

@@ -71,6 +71,7 @@ loop:
 			if _, ok := os.LookupEnv("CHECK_REMOTE"); ok {
 				cfg.CheckRemote = true
 			}
+
 			break loop
 		case "docgen":
 			cfg.Services = []string{s}
@@ -85,6 +86,7 @@ loop:
 			} else {
 				cfg.DocDst = "docs/dst"
 			}
+
 			break loop
 		}
 	}

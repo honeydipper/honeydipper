@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	// DefaultHTTPRequestTimeout is the default timeout for a HTTP request
+	// DefaultHTTPRequestTimeout is the default timeout for a HTTP request.
 	DefaultHTTPRequestTimeout time.Duration = time.Second * 10
 )
 

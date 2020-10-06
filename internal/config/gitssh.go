@@ -57,5 +57,6 @@ func GetGitSSHAuth() transport.AuthMethod {
 	}
 
 	loadedSSHAuth = true
+
 	return currentSSHAuth
 }

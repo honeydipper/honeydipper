@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	// InterpolationError represents all errors thrown due to failure to interpolate
+	// InterpolationError represents all errors thrown due to failure to interpolate.
 	InterpolationError Error = "config error"
 )
 
@@ -33,6 +33,7 @@ var FuncMap = template.FuncMap{
 		if err != nil {
 			panic(err)
 		}
+
 		return string(s)
 	},
 }
@@ -43,6 +44,7 @@ func InterpolateStr(pattern string, data interface{}) string {
 	if ret != nil {
 		return fmt.Sprintf("%+v", ret)
 	}
+
 	return ""
 }
 
@@ -55,8 +57,10 @@ func InterpolateGoTemplate(pattern string, data interface{}) string {
 			Logger.Warningf("interpolation pattern failed: %+v", pattern)
 			Logger.Panicf("failed to interpolate: %+v", err)
 		}
+
 		return buf.String()
 	}
+
 	return pattern
 }
 
@@ -67,6 +71,7 @@ func ParseYaml(pattern string) interface{} {
 	if err != nil {
 		panic(err)
 	}
+
 	return data
 }
 
@@ -101,6 +106,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 			if strings.HasPrefix(key, "sysData.") {
 				return Interpolate(ret, data)
 			}
+
 			return ret
 		}
 	}
@@ -109,6 +115,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 		if parsed[quote] != parsed[len(parsed)-1] {
 			panic(fmt.Errorf("quotes not matching: %s: %w", parsed, InterpolationError))
 		}
+
 		return parsed[quote+1 : len(parsed)-1]
 	}
 
@@ -135,29 +142,34 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 					panic(r)
 				}
 			}()
+
 			return ParseYaml(ret[6:])
 		}
-
 		ret = strings.TrimPrefix(ret, "\\")
+
 		return ret
 	case map[string]interface{}:
 		ret := map[string]interface{}{}
 		for k, val := range v {
 			ret[k] = Interpolate(val, data)
 		}
+
 		return ret
 	case []string:
 		ret := []string{}
 		for _, val := range v {
 			ret = append(ret, InterpolateStr(val, data))
 		}
+
 		return ret
 	case []interface{}:
 		ret := []interface{}{}
 		for _, val := range v {
 			ret = append(ret, Interpolate(val, data))
 		}
+
 		return ret
 	}
+
 	return source
 }

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	// FileError is all errors when accessing a file
+	// FileError is all errors when accessing a file.
 	FileError dipper.Error = "file error"
 )
 
@@ -25,6 +25,7 @@ func (c *Repo) normalizeFilePath(cwd string, file string) string {
 	if !strings.HasPrefix(fullpath, c.root+"/") {
 		panic(fmt.Errorf("invalid path: %s: %w", fullpath, FileError))
 	}
+
 	return fullpath
 }
 
@@ -41,28 +42,34 @@ func (c *Repo) normalizeFilePaths(currentFile string, content *DataSet) {
 				if err != nil {
 					panic(err)
 				}
+
 				return string(text), true
 			}
+
 			return nil, false
 		case Trigger:
 			dipper.Recursive(v.Match, processor)
 			dipper.Recursive(v.Parameters, processor)
 			dipper.Recursive(v.Export, processor)
+
 			return nil, false
 		case Function:
 			dipper.Recursive(v.Parameters, processor)
 			dipper.Recursive(v.Export, processor)
 			dipper.Recursive(v.ExportOnSuccess, processor)
 			dipper.Recursive(v.ExportOnFailure, processor)
+
 			return nil, false
 		case System:
 			dipper.Recursive(v.Triggers, processor)
 			dipper.Recursive(v.Functions, processor)
 			dipper.Recursive(v.Data, processor)
+
 			return nil, false
 		case Rule:
 			dipper.Recursive(&v.Do, processor)
 			dipper.Recursive(&v.When, processor)
+
 			return nil, false
 		case Workflow:
 			dipper.Recursive(v.Match, processor)
@@ -79,6 +86,7 @@ func (c *Repo) normalizeFilePaths(currentFile string, content *DataSet) {
 
 			return nil, false
 		}
+
 		return nil, false
 	}
 

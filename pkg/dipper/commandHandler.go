@@ -47,6 +47,7 @@ func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...int
 		},
 	})
 	Logger.Warningf("[operator] %s", errText)
+
 	return Error(errText)
 }
 

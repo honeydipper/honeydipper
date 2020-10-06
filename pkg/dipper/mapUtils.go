@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	// MapError are all errors thrown in map manipulation
+	// MapError are all errors thrown in map manipulation.
 	MapError Error = "map error"
 
-	// MergeError are all errors throw during map merge and combin
+	// MergeError are all errors throw during map merge and combin.
 	MergeError Error = "merge error"
 )
 
@@ -57,6 +57,7 @@ func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 	if !current.IsValid() {
 		return nil, false
 	}
+
 	return current.Interface(), true
 }
 
@@ -66,6 +67,7 @@ func MustGetMapData(from interface{}, path string) interface{} {
 	if !ok {
 		panic(fmt.Errorf("path not valid: %s: %w", path, MapError))
 	}
+
 	return ret
 }
 
@@ -73,14 +75,17 @@ func MustGetMapData(from interface{}, path string) interface{} {
 func GetMapDataStr(from interface{}, path string) (ret string, ok bool) {
 	if data, ok := GetMapData(from, path); ok {
 		str, ok := data.(string)
+
 		return str, ok
 	}
+
 	return "", ok
 }
 
 // MustGetMapDataStr : get the data as string from the deep map following a KV path, may raise errors.
 func MustGetMapDataStr(from interface{}, path string) string {
 	ret := MustGetMapData(from, path)
+
 	return ret.(string)
 }
 
@@ -96,9 +101,11 @@ func GetMapDataBool(from interface{}, path string) (ret bool, ok bool) {
 			return (v != 0), true
 		case string:
 			flag, err := strconv.ParseBool(v)
+
 			return flag, (err == nil)
 		}
 	}
+
 	return false, false
 }
 
@@ -118,6 +125,7 @@ func MustGetMapDataBool(from interface{}, path string) bool {
 			if err != nil {
 				panic(err)
 			}
+
 			return flag
 		}
 	}
@@ -202,6 +210,7 @@ func LockGetMap(lock *sync.Mutex, resource interface{}, key interface{}) (ret in
 	if !retVal.IsValid() {
 		return nil, false
 	}
+
 	return retVal.Interface(), true
 }
 
@@ -221,6 +230,7 @@ func LockSetMap(lock *sync.Mutex, resource interface{}, key interface{}, val int
 	if retVal.IsValid() {
 		return retVal.Interface()
 	}
+
 	return nil
 }
 
@@ -248,6 +258,7 @@ func LockCheckDeleteMap(lock *sync.Mutex, resource interface{}, key interface{},
 	if retVal.IsValid() {
 		return retVal.Interface()
 	}
+
 	return nil
 }
 
@@ -264,6 +275,7 @@ func DeepCopyMap(m map[string]interface{}) (map[string]interface{}, error) {
 	if !ok {
 		return nil, fmt.Errorf("not a map: %w", MapError)
 	}
+
 	return retMap, nil
 }
 
@@ -279,6 +291,7 @@ func DeepCopy(m interface{}) (interface{}, error) {
 			}
 			ret[k] = vcopy
 		}
+
 		return ret, nil
 	case []interface{}:
 		ret := make([]interface{}, len(v))
@@ -289,8 +302,10 @@ func DeepCopy(m interface{}) (interface{}, error) {
 			}
 			ret[i] = vcopy
 		}
+
 		return ret, nil
 	}
+
 	return m, nil
 }
 
@@ -300,6 +315,7 @@ func MustDeepCopyMap(m map[string]interface{}) map[string]interface{} {
 	if err != nil {
 		panic(err)
 	}
+
 	return ret
 }
 
@@ -309,6 +325,7 @@ func MustDeepCopy(m interface{}) interface{} {
 	if err != nil {
 		panic(err)
 	}
+
 	return ret
 }
 
@@ -324,6 +341,7 @@ func CombineMap(dst map[string]interface{}, src interface{}) map[string]interfac
 	if err != nil {
 		panic(err)
 	}
+
 	return dst
 }
 

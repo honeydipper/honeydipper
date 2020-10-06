@@ -98,6 +98,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 
 	if eventData["url"] == "/hz/alive" {
 		w.WriteHeader(http.StatusOK)
+
 		return
 	}
 
@@ -115,11 +116,13 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 				})
 				if err != nil || string(authResult) != "authenticated" {
 					log.Warningf("[%s] failed to authenticate webhook request with %s error %+v", driver.Service, authDriver, err)
+
 					continue
 				}
 			}
 			if dipper.CompareAll(eventData, condition) {
 				matched = true
+
 				break
 			}
 		}
@@ -140,6 +143,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}
+
 		return
 	}
 

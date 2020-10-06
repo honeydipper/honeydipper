@@ -62,6 +62,7 @@ func getPubsubClient(serviceAccountBytes, project string) *pubsub.Client {
 	if err != nil {
 		panic(ErrFailedCreateClient)
 	}
+
 	return client
 }
 
@@ -88,11 +89,13 @@ func loadOptions() {
 			project, ok := dipper.GetMapDataStr(condition, "project")
 			if !ok {
 				dipper.Logger.Warningf("[%s] failed to get pubsub project in condition", driver.Service)
+
 				continue
 			}
 			subscriptionName, ok := dipper.GetMapDataStr(condition, "subscriptionName")
 			if !ok {
 				dipper.Logger.Warningf("[%s] failed to get pubsub subscription name in condition", driver.Service)
+
 				continue
 			}
 
@@ -147,6 +150,7 @@ func msgHandlerBuilder(config *SubscriberConfig) msgHandler {
 		for _, subCond := range conditions {
 			if dipper.CompareAll(actual, subCond) {
 				matched = true
+
 				break
 			}
 		}

@@ -167,6 +167,7 @@ func (w *Session) launchParallelIterations(msg *dipper.Message) {
 func (w *Session) executeIteration(msg *dipper.Message) {
 	if !w.isIteration() {
 		w.executeAction(msg)
+
 		return
 	}
 	w.current = 0
@@ -242,6 +243,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 			}
 			child := w.createChildSession(wf, msg)
 			child.execute(msg)
+
 			return
 		}
 	}
@@ -254,6 +256,7 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 		}
 		child := w.createChildSession(&defaultBranch, msg)
 		child.execute(msg)
+
 		return
 	}
 	w.noop(msg)

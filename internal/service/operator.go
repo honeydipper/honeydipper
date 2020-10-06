@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	// OperatorError is the base for all operator related error
+	// OperatorError is the base for all operator related error.
 	OperatorError dipper.Error = "operator error"
 )
 
@@ -161,6 +161,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 			},
 		}
 	}
+
 	return ret
 }
 

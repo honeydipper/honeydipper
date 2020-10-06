@@ -80,6 +80,7 @@ func authWebRequest(m *dipper.Message) {
 			m.Reply <- dipper.Message{
 				Payload: subject,
 			}
+
 			return
 		} else if !errors.Is(err, ErrSkipped) {
 			break
@@ -112,6 +113,7 @@ func tokenAuth(m *dipper.Message) (string, error) {
 				if !ok || subject == nil {
 					return _EmptySubject, nil
 				}
+
 				return subject.(string), nil
 			}
 		}
@@ -153,6 +155,7 @@ func basicAuth(m *dipper.Message) (string, error) {
 				if !ok || subject == nil {
 					return _EmptySubject, nil
 				}
+
 				return subject.(string), nil
 			}
 		}
