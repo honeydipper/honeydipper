@@ -3,7 +3,7 @@ module github.com/honeydipper/honeydipper
 go 1.13
 
 require (
-	cloud.google.com/go v0.65.0
+	cloud.google.com/go v0.68.0
 	cloud.google.com/go/pubsub v1.3.1
 	cloud.google.com/go/spanner v1.6.0
 	cloud.google.com/go/storage v1.10.0
@@ -31,7 +31,7 @@ require (
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
-	google.golang.org/api v0.30.0
+	google.golang.org/api v0.32.0
 	google.golang.org/genproto v0.0.0-20201002142447-3860012362da
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
