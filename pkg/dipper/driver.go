@@ -115,7 +115,7 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 	Logger = nil
 	d.GetLogger()
 	d.APITimeout = DefaultAPITimeout
-	apiTimeoutStr, ok := d.GetOptionStr("api_timeout")
+	apiTimeoutStr, ok := d.GetOptionStr("data.api_timeout")
 	if ok {
 		apiTimeout, e := strconv.Atoi(apiTimeoutStr)
 		if e != nil {
