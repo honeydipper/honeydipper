@@ -85,13 +85,23 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 		l.writeTimeout = time.Millisecond * 100
 	}
 
-	startSignal := make(chan struct{})
 	started := false
 	for _, st := range c.Steps {
 		mockRPCCaller.EXPECT().Call(gomock.Eq(st.Feature), gomock.Eq(st.Method), gomock.Eq(st.ExpectedMessage)).Times(1).DoAndReturn(func(_, _ string, _ map[string]interface{}) (interface{}, error) {
 			if !started {
 				started = true
-				close(startSignal)
+				go func() {
+					for _, st := range c.Returns {
+						dipper.Logger.Warning("delaying %d ms", st.Delay)
+						time.Sleep(st.Delay)
+						switch st.Msg.Labels["type"] {
+						case "ack":
+							l.HandleAPIACK(st.Msg)
+						case "result":
+							l.HandleAPIReturn(st.Msg)
+						}
+					}
+				}()
 			}
 			return st.ReturnMessage, st.Err
 		})
@@ -102,20 +112,6 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 	} else {
 		mockReqCtx.EXPECT().IndentedJSON(gomock.Eq(c.ExpectedCode), gomock.Eq(c.ExpectedContent)).Times(1)
 	}
-
-	go func() {
-		<-startSignal
-		for _, st := range c.Returns {
-			dipper.Logger.Warning("delaying %d ms", st.Delay)
-			time.Sleep(st.Delay)
-			switch st.Msg.Labels["type"] {
-			case "ack":
-				l.HandleAPIACK(st.Msg)
-			case "result":
-				l.HandleAPIReturn(st.Msg)
-			}
-		}
-	}()
 
 	l.HandleHTTPRequest(mockReqCtx, c.Def)
 	return l, c
