@@ -67,5 +67,6 @@ func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.L
 	}
 	logging.SetBackend(logBackends...)
 	Logger = logging.MustGetLogger(module)
+
 	return Logger
 }

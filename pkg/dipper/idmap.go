@@ -75,5 +75,6 @@ func IDMapGet(m IDMap, key string) interface{} {
 
 	mapValue := reflect.ValueOf(m).Elem()
 	ret := mapValue.MapIndex(reflect.ValueOf(key)).Interface()
+
 	return ret
 }

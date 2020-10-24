@@ -23,11 +23,11 @@ import (
 )
 
 var (
-	// ErrMissingProject means missing project
+	// ErrMissingProject means missing project.
 	ErrMissingProject = errors.New("project required")
-	// ErrMissingLocation means missing location
+	// ErrMissingLocation means missing location.
 	ErrMissingLocation = errors.New("location required")
-	// ErrMissingCluster means missing location
+	// ErrMissingCluster means missing location.
 	ErrMissingCluster = errors.New("cluster required")
 )
 

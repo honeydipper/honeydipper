@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	// WorkflowError is the base error for all workflow related errors
+	// WorkflowError is the base error for all workflow related errors.
 	WorkflowError dipper.Error = "workflow error"
 )
 
@@ -31,7 +31,7 @@ type Session struct {
 	parent         string
 	ctx            map[string]interface{}
 	event          map[string]interface{}
-	exported       map[string]interface{}
+	exported       []map[string]interface{}
 	elseBranch     *config.Workflow
 	inFlyFunction  *config.Function
 	store          *SessionStore
@@ -48,7 +48,7 @@ type Session struct {
 type SessionHandler interface {
 	prepare(msg *dipper.Message, parent interface{}, ctx map[string]interface{})
 	execute(msg *dipper.Message)
-	continueExec(msg *dipper.Message, exports map[string]interface{})
+	continueExec(msg *dipper.Message, exports []map[string]interface{})
 	onError()
 	GetName() string
 	GetDescription() string
@@ -56,23 +56,23 @@ type SessionHandler interface {
 	GetEventID() string
 	GetEventName() string
 	GetStatus() (string, string)
-	GetExported() map[string]interface{}
+	GetExported() []map[string]interface{}
 	Watch() <-chan struct{}
 }
 
 const (
-	// SessionStatusSuccess means the workflow executed successfully
+	// SessionStatusSuccess means the workflow executed successfully.
 	SessionStatusSuccess = "success"
-	// SessionStatusFailure means the workflow completed with failure
+	// SessionStatusFailure means the workflow completed with failure.
 	SessionStatusFailure = "failure"
-	// SessionStatusError means the workflow ran into error, and was not able to complete
+	// SessionStatusError means the workflow ran into error, and was not able to complete.
 	SessionStatusError = "error"
 
-	// SessionContextDefault is a builtin context for all workflows
+	// SessionContextDefault is a builtin context for all workflows.
 	SessionContextDefault = "_default"
-	// SessionContextEvents is a context with default values for all directly event triggered workflows
+	// SessionContextEvents is a context with default values for all directly event triggered workflows.
 	SessionContextEvents = "_events"
-	// SessionContextHooks is a context for all hooks workflows
+	// SessionContextHooks is a context for all hooks workflows.
 	SessionContextHooks = "_hooks"
 )
 
@@ -343,6 +343,7 @@ func (w *Session) inheritParentSettings(p *Session) {
 func (w *Session) createChildSession(wf *config.Workflow, msg *dipper.Message) *Session {
 	child := w.store.newSession(w.ID, w.EventID, wf)
 	child.prepare(msg, w, nil)
+
 	return child.(*Session)
 }
 
@@ -418,6 +419,7 @@ func (w *Session) createChildSessionWithName(name string, msg *dipper.Message) *
 		src.Name = name
 	}
 	wf := &src
+
 	return w.createChildSession(wf, msg)
 }
 
@@ -446,6 +448,7 @@ func (w *Session) Watch() <-chan struct{} {
 	if w.context == nil {
 		w.context, w.cancelFunc = context.WithCancel(context.Background())
 	}
+
 	return w.context.Done()
 }
 
@@ -459,11 +462,12 @@ func (w *Session) GetStatus() (string, string) {
 		status = SessionStatusSuccess
 	}
 	reason = w.savedMsg.Labels["reason"]
+
 	return status, reason
 }
 
 // GetExported returns the exported data from the session.
-func (w *Session) GetExported() map[string]interface{} {
+func (w *Session) GetExported() []map[string]interface{} {
 	return w.exported
 }
 
@@ -473,5 +477,6 @@ func (w *Session) GetEventName() string {
 	if ok {
 		return evn.(string)
 	}
+
 	return ""
 }

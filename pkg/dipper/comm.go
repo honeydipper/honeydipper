@@ -265,5 +265,6 @@ func MessageCopy(m *Message) (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &mcopy, nil
 }

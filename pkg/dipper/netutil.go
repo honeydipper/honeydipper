@@ -23,8 +23,10 @@ func GetIP() string {
 			if slash := strings.IndexByte(ip, '/'); slash >= 0 {
 				ip = ip[0:slash]
 			}
+
 			return ip
 		}
 	}
+
 	return ""
 }

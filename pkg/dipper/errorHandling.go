@@ -68,5 +68,6 @@ func Must(args ...interface{}) interface{} {
 	case 2:
 		return args[0]
 	}
+
 	return args[0 : l-1]
 }

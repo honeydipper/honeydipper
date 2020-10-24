@@ -150,6 +150,7 @@ func subscribe() {
 					for k, v := range labelMap.(map[string]interface{}) {
 						if k == "service" && v != nil && v.(string) != "" && v.(string) != driver.Service {
 							skip = true
+
 							break
 						}
 						labels[k] = v.(string)

@@ -249,6 +249,7 @@ func waitForJob(m *dipper.Message) {
 
 		if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
 			returnJobStatus(job)
+
 			break
 		}
 
@@ -265,6 +266,7 @@ func waitForJob(m *dipper.Message) {
 				select {
 				case <-ctxWatch.Done():
 					EOW = true
+
 					break loop
 				case evt := <-jobstatus.ResultChan():
 					switch evt.Type {
@@ -272,6 +274,7 @@ func waitForJob(m *dipper.Message) {
 						e := evt.Object.(*metav1.Status)
 						if e.Code == http.StatusGone {
 							log.Warningf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
+
 							break loop
 						} else {
 							log.Panicf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
@@ -285,6 +288,7 @@ func waitForJob(m *dipper.Message) {
 						if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
 							returnJobStatus(job)
 							EOW = true
+
 							break loop
 						}
 					}
@@ -313,6 +317,7 @@ func getExistingJob(jobSpec *batchv1.Job, jobclient batchv1client.JobInterface) 
 			return &job
 		}
 	}
+
 	return nil
 }
 
@@ -417,6 +422,7 @@ func recycleDeployment(m *dipper.Message) {
 	for _, currentRs := range rs.Items {
 		if currentRs.Annotations["deployment.kubernetes.io/revision"] == revision {
 			rsName = currentRs.Name
+
 			break
 		}
 	}
@@ -469,6 +475,7 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 	if err != nil {
 		log.Panicf("[%s] unable to create k8 client", driver.Service)
 	}
+
 	return k8client
 }
 

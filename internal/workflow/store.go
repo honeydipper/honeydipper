@@ -34,6 +34,7 @@ func NewSessionStore(helper SessionStoreHelper) *SessionStore {
 		Helper:            helper,
 	}
 	dipper.InitIDMap(&s.sessions)
+
 	return s
 }
 
@@ -67,7 +68,7 @@ func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ct
 }
 
 // ContinueSession resume a session with given dipper message.
-func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, exports map[string]interface{}) {
+func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, exports []map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when continuing workflow session %s", sessionID)
 	w := dipper.IDMapGet(&s.sessions, sessionID).(SessionHandler)
 	defer w.onError()
@@ -110,6 +111,7 @@ func (s *SessionStore) ByEventID(eventID string) []SessionHandler {
 			ret = append(ret, sh)
 		}
 	}
+
 	return ret
 }
 
@@ -121,5 +123,6 @@ func (s *SessionStore) GetEvents() []SessionHandler {
 			ret = append(ret, sh)
 		}
 	}
+
 	return ret
 }

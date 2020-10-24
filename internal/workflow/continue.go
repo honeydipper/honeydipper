@@ -16,18 +16,18 @@ import (
 )
 
 const (
-	// WorkflowNextComplete starts the list of statuses used for determine how to handle a session
+	// WorkflowNextComplete starts the list of statuses used for determine how to handle a session.
 	WorkflowNextComplete = iota
-	// WorkflowNextStep means the workflow will continue with next step in a multi-step workflow
+	// WorkflowNextStep means the workflow will continue with next step in a multi-step workflow.
 	WorkflowNextStep
-	// WorkflowNextThread means the workflow will continue waiting for the next threa to finish
+	// WorkflowNextThread means the workflow will continue waiting for the next threa to finish.
 	WorkflowNextThread
-	// WorkflowNextIteration means the workflow will continue process next item in the iteration list
+	// WorkflowNextIteration means the workflow will continue process next item in the iteration list.
 	WorkflowNextIteration
 	// WorkflowNextParallelIteration means the workflow will continue waiting for the next item
-	// to be processed in the iteration list
+	// to be processed in the iteration list.
 	WorkflowNextParallelIteration
-	// WorkflowNextRound means the workflow will continue with the next round of the loop
+	// WorkflowNextRound means the workflow will continue with the next round of the loop.
 	WorkflowNextRound
 )
 
@@ -74,6 +74,7 @@ func (w *Session) routeNext(msg *dipper.Message) int {
 		if w.workflow.Iterate != nil {
 			return WorkflowNextIteration
 		}
+
 		return WorkflowNextParallelIteration
 	}
 
@@ -85,10 +86,14 @@ func (w *Session) routeNext(msg *dipper.Message) int {
 }
 
 // mergeContext merges child workflow exported context to parent workflow.
-func (w *Session) mergeContext(exports map[string]interface{}) {
-	w.ctx = dipper.MergeMap(w.ctx, dipper.MustDeepCopy(exports))
-	w.processNoExport(exports)
-	w.exported = dipper.MergeMap(w.exported, exports)
+func (w *Session) mergeContext(exports []map[string]interface{}) {
+	for _, export := range exports {
+		w.ctx = dipper.MergeMap(w.ctx, export)
+		w.processNoExport(export)
+		if len(export) > 0 {
+			w.exported = append(w.exported, export)
+		}
+	}
 }
 
 // processNoExport prevent exporting the data into parent workflow session.
@@ -98,6 +103,7 @@ func (w *Session) processNoExport(exported map[string]interface{}) {
 			for k := range exported {
 				delete(exported, k)
 			}
+
 			break
 		}
 		delete(exported, key)
@@ -108,31 +114,40 @@ func (w *Session) processNoExport(exported map[string]interface{}) {
 
 // processExport export the data into parent workflow session.
 func (w *Session) processExport(msg *dipper.Message) {
-	if w.elseBranch == nil {
-		envData := w.buildEnvData(msg)
-		status := msg.Labels["status"]
+	if w.elseBranch != nil {
+		return
+	}
 
-		if w.inFlyFunction != nil && status != SessionStatusError {
-			exports := config.ExportFunctionContext(w.inFlyFunction, envData, w.store.Helper.GetConfig())
-			w.mergeContext(exports)
-			delete(envData, "sysData")
+	envData := w.buildEnvData(msg)
+	status := msg.Labels["status"]
+
+	if w.inFlyFunction != nil && status != SessionStatusError {
+		export := config.ExportFunctionContext(w.inFlyFunction, envData, w.store.Helper.GetConfig())
+		delete(envData, "sysData")
+		w.processNoExport(export)
+		if len(export) > 0 {
+			w.exported = append(w.exported, export)
 		}
-		if status != SessionStatusError {
-			w.postWorkflowExport(w.workflow.Export, envData)
-		}
-		if status == SessionStatusSuccess {
-			w.postWorkflowExport(w.workflow.ExportOnSuccess, envData)
-		}
-		if status == SessionStatusFailure {
-			w.postWorkflowExport(w.workflow.ExportOnFailure, envData)
-		}
+	}
+	if status != SessionStatusError {
+		w.postWorkflowExport(w.workflow.Export, envData)
+	}
+	if status == SessionStatusSuccess {
+		w.postWorkflowExport(w.workflow.ExportOnSuccess, envData)
+	}
+	if status == SessionStatusFailure {
+		w.postWorkflowExport(w.workflow.ExportOnFailure, envData)
 	}
 }
 
 func (w *Session) postWorkflowExport(exportMap map[string]interface{}, envData map[string]interface{}) {
 	delta := dipper.Interpolate(exportMap, envData).(map[string]interface{})
-	w.mergeContext(delta)
+	w.ctx = dipper.MergeMap(w.ctx, delta)
 	envData["ctx"] = w.ctx
+	w.processNoExport(delta)
+	if len(delta) > 0 {
+		w.exported = append(w.exported, delta)
+	}
 }
 
 // fireCompleteHooks fires all the hooks at completion time asychronously.
@@ -179,6 +194,7 @@ func (w *Session) isInCompleteHooks() bool {
 	case WorkflowHookExit:
 		return true
 	}
+
 	return false
 }
 
@@ -283,10 +299,11 @@ func (w *Session) continueAfterHook(msg *dipper.Message) {
 }
 
 // continueExec resume a session with given dipper message.
-func (w *Session) continueExec(msg *dipper.Message, exports map[string]interface{}) {
+func (w *Session) continueExec(msg *dipper.Message, exports []map[string]interface{}) {
 	w.mergeContext(exports)
 	if w.currentHook != "" {
 		w.continueAfterHook(msg)
+
 		return
 	}
 	route := w.routeNext(msg)

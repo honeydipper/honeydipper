@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	// TopicExpireTimeout is the timeout for a message in the topic to expire and be removed
+	// TopicExpireTimeout is the timeout for a message in the topic to expire and be removed.
 	TopicExpireTimeout time.Duration = time.Second * 1800
 )
 

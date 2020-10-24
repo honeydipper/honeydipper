@@ -25,9 +25,11 @@ func DecryptAll(rpc RPCCaller, from interface{}) {
 					Logger.Panicf("encrypted data shoud be base64 encoded")
 				}
 				decrypted, _ := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
+
 				return string(decrypted), true
 			}
 		}
+
 		return nil, false
 	})
 }

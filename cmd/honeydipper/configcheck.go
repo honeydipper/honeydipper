@@ -22,13 +22,13 @@ import (
 )
 
 var (
-	// ErrorFieldCollision is the error message when two conflicting fields are set
+	// ErrorFieldCollision is the error message when two conflicting fields are set.
 	ErrorFieldCollision = fmt.Errorf("cannot define both")
-	// ErrorNotDefined is the error message when an required asset is not defined
+	// ErrorNotDefined is the error message when an required asset is not defined.
 	ErrorNotDefined = fmt.Errorf("not defined")
-	// ErrorNotAllowed is the message when a field is not allowed due to missing pairing field
+	// ErrorNotAllowed is the message when a field is not allowed due to missing pairing field.
 	ErrorNotAllowed = fmt.Errorf("not allowed without pairing field")
-	// ErrorNotAList is the message when a field is supposed to be a list
+	// ErrorNotAList is the message when a field is supposed to be a list.
 	ErrorNotAList = fmt.Errorf("must be a list or something interpolated into a list")
 )
 
@@ -146,6 +146,7 @@ func checkAuthRules(cfg *config.Config) int {
 		fmt.Printf("\nFound errors loading authorization tests definition:\n")
 		fmt.Println("─────────────────────────────────────────────────────────────")
 		fmt.Printf("%+v\n", aurora.Red(e))
+
 		return 1
 	}
 
@@ -191,6 +192,7 @@ func checkAuthRules(cfg *config.Config) int {
 		if err != nil {
 			e = err
 			processed = i
+
 			break
 		}
 		if ok != test.Result {
@@ -226,6 +228,7 @@ func checkAuthRules(cfg *config.Config) int {
 			)
 		}
 		fmt.Println()
+
 		return 1
 	}
 
@@ -243,6 +246,7 @@ func checkContext(cfg *config.Config, ctxWorkflowName string) (msg string) {
 		}
 	}()
 	checkObjectExists("workflow", ctxWorkflowName, cfg.DataSet.Workflows)
+
 	return msg
 }
 
@@ -387,11 +391,13 @@ func checkObjectExists(t, name string, m interface{}) {
 
 func hasLiteral(param string) bool {
 	s := strings.TrimSpace(param)
+
 	return s != "" && s[0] != '$' && !(strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}")) && !strings.HasPrefix(s, ":yaml:")
 }
 
 func hasInterpolation(param string) bool {
 	s := strings.TrimSpace(param)
+
 	return s != "" && (s[0] == '$' || strings.Contains(s, "{{")) || strings.HasPrefix(s, ":yaml:")
 }
 

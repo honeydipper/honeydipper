@@ -29,19 +29,19 @@ import (
 const (
 	FeatureEmitter = "emitter"
 
-	// ServiceError indicates error condition when rendering service
+	// ServiceError indicates error condition when rendering service.
 	ServiceError dipper.Error = "service error"
 
-	// DriverGracefulTimeout is the timeout in milliseconds for a driver to gracefully shutdown
+	// DriverGracefulTimeout is the timeout in milliseconds for a driver to gracefully shutdown.
 	DriverGracefulTimeout time.Duration = 50
 
-	// DriverReadyTimeout is the timeout in seconds for the driver to be ready
+	// DriverReadyTimeout is the timeout in seconds for the driver to be ready.
 	DriverReadyTimeout time.Duration = 10
 
-	// DriverRetryBackoff is the interval in seconds before retry loading a driver
+	// DriverRetryBackoff is the interval in seconds before retry loading a driver.
 	DriverRetryBackoff time.Duration = 30
 
-	// DriverRetryCount is the number of attempts to load a driver
+	// DriverRetryCount is the number of attempts to load a driver.
 	DriverRetryCount = 3
 )
 
@@ -146,9 +146,11 @@ func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{
 				dipper.Logger.Panicf("encrypted data shoud be base64 encoded")
 			}
 			decrypted, _ := s.CallRaw("driver:"+encDriver, "decrypt", decoded)
+
 			return string(decrypted), true
 		}
 	}
+
 	return nil, false
 }
 
@@ -228,6 +230,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		affected = true
 		s.coldReload(&driverRuntime, oldRuntime)
 	}
+
 	return affected, driverName, nil
 }
 
@@ -325,6 +328,7 @@ func (s *Service) getFeatureList() map[string]bool {
 		}
 	}
 	dipper.Logger.Debugf("[%s] final feature list %+v", s.name, featureList)
+
 	return featureList
 }
 
@@ -571,6 +575,7 @@ func (s *Service) addExpect(expectKey string, processor ExpectHandler, timeout t
 					for i := range expects {
 						if &expects[i] == &processor {
 							expects = append(expects[:i], expects[i+1:]...)
+
 							break
 						}
 					}
@@ -588,6 +593,7 @@ func (s *Service) isExpecting(expectKey string) ([]ExpectHandler, bool) {
 	defer s.expectLock.Unlock()
 	s.expectLock.Lock()
 	ret, ok := s.expects[expectKey]
+
 	return ret, ok
 }
 
@@ -598,6 +604,7 @@ func (s *Service) deleteExpect(expectKey string) ([]ExpectHandler, bool) {
 	if ok {
 		delete(s.expects, expectKey)
 	}
+
 	return ret, ok
 }
 
@@ -606,6 +613,7 @@ func (s *Service) getDriverRuntime(feature string) *driver.Runtime {
 	if ok && runtime != nil {
 		return runtime.(*driver.Runtime)
 	}
+
 	return nil
 }
 
@@ -614,6 +622,7 @@ func (s *Service) setDriverRuntime(feature string, runtime *driver.Runtime) *dri
 	if oldone != nil {
 		return oldone.(*driver.Runtime)
 	}
+
 	return nil
 }
 
@@ -690,6 +699,7 @@ func handleAPI(from *driver.Runtime, m *dipper.Message) {
 	resp := s.ResponseFactory.NewResponse(s, s.getDriverRuntime("eventbus").Output, m)
 	if resp == nil {
 		dipper.Logger.Debugf("[%s] skipping handling API: %+v", s.name, m.Labels)
+
 		return
 	}
 	method := m.Labels["fn"]

@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	// DriverError is the base for all driver related error
+	// DriverError is the base for all driver related error.
 	DriverError dipper.Error = "driver error"
 
-	// DriverMessageBuffer is the size of the driver message buffer
+	// DriverMessageBuffer is the size of the driver message buffer.
 	DriverMessageBuffer = 10
 )
 
@@ -62,6 +62,7 @@ func NewDriver(data map[string]interface{}) Handler {
 	if meta.Executable == "" {
 		panic(fmt.Errorf("executable not defined for driver: %s: %w", meta.Name, DriverError))
 	}
+
 	return dh
 }
 

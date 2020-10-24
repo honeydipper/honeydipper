@@ -35,6 +35,7 @@ func Compare(actual string, criteria interface{}) bool {
 				return true
 			}
 		}
+
 		return false
 	}
 
@@ -54,6 +55,7 @@ func CompareMap(actual interface{}, criteria interface{}) bool {
 				return true
 			}
 		}
+
 		return false
 	case map[string]interface{}:
 		value := reflect.ValueOf(actual)
@@ -78,6 +80,7 @@ func CompareMap(actual interface{}, criteria interface{}) bool {
 				}
 			}
 		}
+
 		return true
 	}
 	// map value with an unsupported criteria
@@ -104,6 +107,7 @@ func CompareAll(actual interface{}, criteria interface{}) bool {
 					return false
 				}
 			}
+
 			return true
 		}
 
@@ -113,6 +117,7 @@ func CompareAll(actual interface{}, criteria interface{}) bool {
 				return true
 			}
 		}
+
 		return false
 
 	case reflect.Map:
@@ -132,7 +137,9 @@ func RegexParser(key string, val interface{}) (ret interface{}, replace bool) {
 			}
 			Logger.Warningf("skipping invalid regex pattern %s", str[7:])
 		}
+
 		return nil, false
 	}
+
 	return nil, false
 }
