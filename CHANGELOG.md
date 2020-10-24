@@ -1,3 +1,15 @@
+## [2.1.1](https://github.com/honeydipper/honeydipper/compare/v2.1.0...v2.1.1) (2020-10-24)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 7f63de1 ([#321](https://github.com/honeydipper/honeydipper/issues/321)) ([5fe6d9e](https://github.com/honeydipper/honeydipper/commit/5fe6d9ee30309863844d508b1871b4a9e44790ee))
+* **deps:** update google.golang.org/genproto commit hash to 3860012 ([#322](https://github.com/honeydipper/honeydipper/issues/322)) ([e292546](https://github.com/honeydipper/honeydipper/commit/e2925461102024260bd8b9d6a49df84da59f163e))
+* **deps:** update module casbin/casbin/v2 to v2.13.1 ([#326](https://github.com/honeydipper/honeydipper/issues/326)) ([bb1f2a7](https://github.com/honeydipper/honeydipper/commit/bb1f2a76007b93e8c4dae12ef9803046746f9ae1))
+* **deps:** update module cloud.google.com/go to v0.68.0 ([#327](https://github.com/honeydipper/honeydipper/issues/327)) ([48b20ec](https://github.com/honeydipper/honeydipper/commit/48b20ec06241aae3b059834dfae4c8893f1eba62))
+* **pkg:** driver api_timeout under data ([5a088c9](https://github.com/honeydipper/honeydipper/commit/5a088c9b8a549e3c856e71d1e4961c695d2188c9))
+* **workflow:** revert simplify export ([#329](https://github.com/honeydipper/honeydipper/issues/329)) ([4a5e195](https://github.com/honeydipper/honeydipper/commit/4a5e19571438c7756405f6eac4c5e31795e066c8))
+
 # [2.1.0](https://github.com/honeydipper/honeydipper/compare/v2.0.0...v2.1.0) (2020-09-15)
 
 
