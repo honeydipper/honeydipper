@@ -106,7 +106,7 @@ func syntheticTest(t *testing.T, configStr string, testcase map[string]interface
 			timeout = num.(time.Duration)
 		}
 		go func() {
-			store.ContinueSession(teststep["sessionID"].(string), teststep["msg"].(*dipper.Message), teststep["ctx"].(map[string]interface{}))
+			store.ContinueSession(teststep["sessionID"].(string), teststep["msg"].(*dipper.Message), []map[string]interface{}{teststep["ctx"].(map[string]interface{})})
 			daemon.Children.Wait()
 			signal <- 1
 		}()

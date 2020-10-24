@@ -31,7 +31,7 @@ type Session struct {
 	parent         string
 	ctx            map[string]interface{}
 	event          map[string]interface{}
-	exported       map[string]interface{}
+	exported       []map[string]interface{}
 	elseBranch     *config.Workflow
 	inFlyFunction  *config.Function
 	store          *SessionStore
@@ -48,7 +48,7 @@ type Session struct {
 type SessionHandler interface {
 	prepare(msg *dipper.Message, parent interface{}, ctx map[string]interface{})
 	execute(msg *dipper.Message)
-	continueExec(msg *dipper.Message, exports map[string]interface{})
+	continueExec(msg *dipper.Message, exports []map[string]interface{})
 	onError()
 	GetName() string
 	GetDescription() string
@@ -56,7 +56,7 @@ type SessionHandler interface {
 	GetEventID() string
 	GetEventName() string
 	GetStatus() (string, string)
-	GetExported() map[string]interface{}
+	GetExported() []map[string]interface{}
 	Watch() <-chan struct{}
 }
 
@@ -467,7 +467,7 @@ func (w *Session) GetStatus() (string, string) {
 }
 
 // GetExported returns the exported data from the session.
-func (w *Session) GetExported() map[string]interface{} {
+func (w *Session) GetExported() []map[string]interface{} {
 	return w.exported
 }
 
