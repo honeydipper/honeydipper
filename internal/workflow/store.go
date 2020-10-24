@@ -68,7 +68,7 @@ func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ct
 }
 
 // ContinueSession resume a session with given dipper message.
-func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, exports map[string]interface{}) {
+func (s *SessionStore) ContinueSession(sessionID string, msg *dipper.Message, exports []map[string]interface{}) {
 	defer dipper.SafeExitOnError("[workflow] error when continuing workflow session %s", sessionID)
 	w := dipper.IDMapGet(&s.sessions, sessionID).(SessionHandler)
 	defer w.onError()
