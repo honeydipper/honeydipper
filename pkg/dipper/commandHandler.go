@@ -11,6 +11,8 @@ import (
 	"io"
 	"strconv"
 	"time"
+
+	"github.com/go-errors/errors"
 )
 
 const (
@@ -133,6 +135,8 @@ func (p *CommandProvider) Router(msg *Message) {
 
 		defer func() {
 			if r := recover(); r != nil && replyChannel != nil {
+				Logger.Warningf("Resuming after command error: %v", r)
+				Logger.Warning(errors.Wrap(r, 1).ErrorStack())
 				replyChannel <- Message{
 					Labels: map[string]string{
 						"error": fmt.Sprintf("%+v", r),
