@@ -1,3 +1,10 @@
+## [2.1.2](https://github.com/honeydipper/honeydipper/compare/v2.1.1...v2.1.2) (2020-10-30)
+
+
+### Bug Fixes
+
+* **drivers:** k8s getJobLog misplaced Close statement ([#331](https://github.com/honeydipper/honeydipper/issues/331)) ([4f493b5](https://github.com/honeydipper/honeydipper/commit/4f493b5fb8b6f16c83fc6e1d4a3ae49bce1a8bd3))
+
 ## [2.1.1](https://github.com/honeydipper/honeydipper/compare/v2.1.0...v2.1.1) (2020-10-24)
 
 
