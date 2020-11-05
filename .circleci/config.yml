@@ -25,15 +25,6 @@ save_mod: &save_mod
 
 version: 2
 jobs:
-  lint:
-    <<: *defaults
-    steps:
-      - run: apk add git openssh-client
-      - checkout
-      - run: go get -u golang.org/x/lint/golint
-      - run: go get -u mvdan.cc/gofumpt
-      - run: gofumpt -s -w .
-      - run: golint
   golangci-lint:
     <<: *defaults
     docker:
@@ -94,10 +85,7 @@ workflows:
   version: 2
   run_tests:
     jobs:
-      - lint
-      - golangci-lint:
-          requires:
-            - lint
+      - golangci-lint
       - license_finder
       - test:
           requires:
