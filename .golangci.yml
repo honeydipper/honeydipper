@@ -1,16 +1,17 @@
 # golangci.com configuration
 # https://github.com/golangci/golangci/wiki/Configuration
 service:
-  golangci-lint-version: 1.29.x # use fixed version to not introduce new linters unexpectedly
+  golangci-lint-version: v1.32.x # use fixed version to not introduce new linters unexpectedly
 
 linters:
   enable-all: true
   disable:
+    - exhaustive
+    - exhaustivestruct
     # code to be refactored at some point
     # but seems necessary to have global variables
     - gochecknoglobals
     - wsl
-    - exhaustive
 
 linters-settings:
   lll:
