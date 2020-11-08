@@ -120,7 +120,7 @@ func TestCheckWorkflowDriverFunctionDriver(t *testing.T) {
 	checkWorkflowDriver(workflow, cfg)
 }
 
-// TestCheckWorkflowFunction
+// TestCheckWorkflowFunction.
 var wfFunctionTestCases = []struct {
 	wf  config.Workflow
 	cfg *config.Config
@@ -181,7 +181,7 @@ func testCheckWorkflowFunctionHelper(t *testing.T, wf config.Workflow, cfg *conf
 	checkWorkflowFunction(wf, cfg)
 }
 
-// TestCheckWorkflowActions
+// TestCheckWorkflowActions.
 var wfActionTestCases = []struct {
 	in  config.Workflow
 	out string
@@ -219,7 +219,7 @@ func testCheckWorkflowActionsHelper(t *testing.T, wf config.Workflow, out string
 	checkWorkflowActions(wf)
 }
 
-// TestWorkFlowConditions
+// TestWorkFlowConditions.
 var wfConditionsTestCases = []struct {
 	in  config.Workflow
 	out string
@@ -299,7 +299,7 @@ func TestHasInterpolation(t *testing.T) {
 	}
 }
 
-// helper func
+// helper func.
 func recoverAssertion(out string, t *testing.T) {
 	expected := out
 	var msg string

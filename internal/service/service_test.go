@@ -202,7 +202,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 		defer daemon.Children.Done()
 
 		assert.NotPanics(t, func() {
-			for i := 0; i < 50; i = i + 1 {
+			for i := 0; i < 50; i++ {
 				select {
 				case svc.driverRuntimes["driver:d1"].Stream <- dipper.Message{
 					Channel: "test",
@@ -299,7 +299,7 @@ func TestServiceEmitterCrashing(t *testing.T) {
 		defer daemon.Children.Done()
 
 		assert.NotPanics(t, func() {
-			for i := 0; i < 50; i = i + 1 {
+			for i := 0; i < 50; i++ {
 				select {
 				case svc.driverRuntimes["driver:d1"].Stream <- dipper.Message{
 					Channel: "test",
@@ -376,7 +376,7 @@ func TestServiceReplaceEmitter(t *testing.T) {
 		defer daemon.Children.Done()
 
 		assert.NotPanics(t, func() {
-			for i := 0; i < 50; i = i + 1 {
+			for i := 0; i < 50; i++ {
 				select {
 				case svc.driverRuntimes["driver:d1"].Stream <- dipper.Message{
 					Channel: "test",

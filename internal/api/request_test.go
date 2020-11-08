@@ -49,10 +49,10 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 	dipper.Must(mapstructure.Decode(buffer, c))
 
 	// convert all times from test definition to milliseconds
-	c.Def.AckTimeout = c.Def.AckTimeout * time.Millisecond
-	c.Def.Timeout = c.Def.Timeout * time.Millisecond
+	c.Def.AckTimeout *= time.Millisecond
+	c.Def.Timeout *= time.Millisecond
 	for i := range c.Returns {
-		c.Returns[i].Delay = c.Returns[i].Delay * time.Millisecond
+		c.Returns[i].Delay *= time.Millisecond
 	}
 
 	ctrl := gomock.NewController(t)
@@ -75,6 +75,7 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 	nextUUID := func() string {
 		uuid := uuids[0]
 		uuids = uuids[1:]
+
 		return uuid
 	}
 	l.newUUID = nextUUID
@@ -114,6 +115,7 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 	}
 
 	l.HandleHTTPRequest(mockReqCtx, c.Def)
+
 	return l, c
 }
 

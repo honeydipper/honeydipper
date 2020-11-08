@@ -16,7 +16,7 @@ func (e Error) Error() string {
 	return string(e)
 }
 
-// Is check if a given error matches this error.
+// Is : check whether the given error matches this error.
 func (e Error) Is(target error) bool {
 	if t, ok := target.(Error); ok {
 		return t == e
