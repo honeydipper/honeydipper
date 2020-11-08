@@ -17,7 +17,7 @@ import (
 	"github.com/honeydipper/honeydipper/internal/api"
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/logrusorgru/aurora"
+	"github.com/logrusorgru/aurora/v3"
 	"github.com/mitchellh/mapstructure"
 )
 
