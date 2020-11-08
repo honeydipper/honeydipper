@@ -11,6 +11,7 @@ package config
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"strings"
 	"time"
 
@@ -242,12 +243,12 @@ func SystemCopy(s *System) (*System, error) {
 	dec := gob.NewDecoder(&buf)
 	err := enc.Encode(*s)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w", err)
 	}
 	var scopy System
 	err = dec.Decode(&scopy)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return &scopy, nil
@@ -271,8 +272,11 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 	s.Contexts = dipper.MustDeepCopyMap(s.Contexts)
 	s.Drivers = dipper.MustDeepCopyMap(s.Drivers)
 	err := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
 
-	return err
+	return nil
 }
 
 func addSubsystem(d *System, s System, key string) {
@@ -304,7 +308,7 @@ func mergeSystem(d *System, s System) error {
 		if exist, ok := d.Triggers[name]; ok {
 			err := mergo.Merge(&exist, trigger, mergo.WithOverride, mergo.WithAppendSlice)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w", err)
 			}
 			if exist.Description == "" {
 				exist.Description = trigger.Description
@@ -326,7 +330,7 @@ func mergeSystem(d *System, s System) error {
 		if ok {
 			err := mergo.Merge(&exist, function, mergo.WithOverride, mergo.WithAppendSlice)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w", err)
 			}
 			if exist.Description == "" {
 				exist.Description = function.Description
@@ -342,7 +346,7 @@ func mergeSystem(d *System, s System) error {
 
 	err := mergo.Merge(&d.Data, s.Data, mergo.WithOverride, mergo.WithAppendSlice)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w", err)
 	}
 
 	d.Extends = append(d.Extends, s.Extends...)

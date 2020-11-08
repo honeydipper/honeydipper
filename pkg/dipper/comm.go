@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -124,7 +125,7 @@ func FetchRawMessage(in io.Reader) (msg *Message) {
 	)
 
 	_, err := fmt.Fscanln(in, &channel, &subject, &numLabels, &size)
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		panic(err)
 	} else if err != nil {
 		errMsg := fmt.Sprintf("%+v", err)
@@ -258,12 +259,12 @@ func MessageCopy(m *Message) (*Message, error) {
 	dec := gob.NewDecoder(&buf)
 	err := enc.Encode(*m)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w", err)
 	}
 	var mcopy Message
 	err = dec.Decode(&mcopy)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return &mcopy, nil
