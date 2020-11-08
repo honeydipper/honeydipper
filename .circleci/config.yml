@@ -28,7 +28,7 @@ jobs:
   golangci-lint:
     <<: *defaults
     docker:
-      - image: golangci/golangci-lint:v1.31.0-alpine
+      - image: golangci/golangci-lint:v1.33.0-alpine
     steps:
       - checkout
       - run: golangci-lint run

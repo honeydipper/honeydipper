@@ -52,6 +52,7 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 		case <-msgAvailable:
 		case <-time.After(delay):
 		}
+
 		return m
 	}
 
