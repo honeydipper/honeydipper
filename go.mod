@@ -22,7 +22,7 @@ require (
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/huandu/xstrings v1.3.1 // indirect
 	github.com/imdario/mergo v0.3.8
-	github.com/logrusorgru/aurora v0.0.0-20200102142835-e9ef32dff381
+	github.com/logrusorgru/aurora/v3 v3.0.0
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.3.2
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect

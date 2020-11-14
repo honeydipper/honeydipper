@@ -234,12 +234,6 @@
     :versions: []
     :when: 2020-05-18 22:08:50.941564000 Z
 - - :approve
-  - github.com/logrusorgru/aurora
-  - :who: 
-    :why: DWTFYWTPL
-    :versions: []
-    :when: 2020-05-18 22:16:03.105598000 Z
-- - :approve
   - github.com/hashicorp/golang-lru
   - :who: 
     :why: Allowing MPL 2.0 for now
@@ -251,3 +245,9 @@
     :why: 
     :versions: []
     :when: 2020-06-02 18:09:01.017874000 Z
+- - :approve
+  - github.com/logrusorgru/aurora/v3
+  - :who: wby
+    :why: Unlicense
+    :versions: []
+    :when: 2020-11-07 22:16:03.105598000 Z
