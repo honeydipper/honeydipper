@@ -8,6 +8,7 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -15,10 +16,8 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-const (
-	// WorkflowError is the base error for all workflow related errors.
-	WorkflowError dipper.Error = "workflow error"
-)
+// ErrWorkflowError is the base error for all workflow related errors.
+var ErrWorkflowError = errors.New("workflow error")
 
 // Session is the data structure about a running workflow and its definition.
 type Session struct {
@@ -222,7 +221,7 @@ func (w *Session) initCTX(msg *dipper.Message) {
 			}
 			name, ok := n.(string)
 			if !ok {
-				panic(fmt.Errorf("expected list of strings in contexts in workflow: %s: %w", w.workflow.Name, WorkflowError))
+				panic(fmt.Errorf("%w: expected list of strings in contexts in workflow: %s", ErrWorkflowError, w.workflow.Name))
 			}
 			if name != "" {
 				// at this stage the hooks flag is added only through `context` not `contexts`
@@ -413,7 +412,7 @@ func (w *Session) prepare(msg *dipper.Message, parent interface{}, ctx map[strin
 func (w *Session) createChildSessionWithName(name string, msg *dipper.Message) *Session {
 	src, ok := w.store.Helper.GetConfig().DataSet.Workflows[name]
 	if !ok {
-		panic(fmt.Errorf("not defined: %s: %w", name, WorkflowError))
+		panic(fmt.Errorf("%w: not defined: %s", ErrWorkflowError, name))
 	}
 	if src.Name == "" {
 		src.Name = name

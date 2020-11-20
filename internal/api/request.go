@@ -12,13 +12,8 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
-const (
-	// APIErrorNoAck means not able to receive ACK for the API call.
-	APIErrorNoAck dipper.Error = "no ack"
-
-	// DefaultAPIReapTimeout is the timeout in seconds before a API result is abandoned.
-	DefaultAPIReapTimeout time.Duration = 30
-)
+// DefaultAPIReapTimeout is the timeout in seconds before a API result is abandoned.
+const DefaultAPIReapTimeout time.Duration = 30
 
 // Request represents a live API call.
 type Request struct {
@@ -110,11 +105,11 @@ func (a *Request) postACK() {
 	defer close(a.received)
 	switch {
 	case a.reqType != TypeFirst && len(a.acks) == 0:
-		a.err = APIErrorNoAck
+		a.err = ErrAPINoACK
 	case a.timeout != InfiniteDuration:
 		select {
 		case <-time.After(a.timeout):
-			a.err = dipper.TimeoutError
+			a.err = dipper.ErrTimeout
 		case <-a.received:
 		}
 	default:
