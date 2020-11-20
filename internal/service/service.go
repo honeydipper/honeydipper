@@ -8,6 +8,7 @@ package service
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,9 +29,6 @@ import (
 // features known to the service for providing some functionalities.
 const (
 	FeatureEmitter = "emitter"
-
-	// ServiceError indicates error condition when rendering service.
-	ServiceError dipper.Error = "service error"
 
 	// DriverGracefulTimeout is the timeout in milliseconds for a driver to gracefully shutdown.
 	DriverGracefulTimeout time.Duration = 50
@@ -79,8 +77,13 @@ type Service struct {
 	healthy            bool
 }
 
-// Services holds a catalog of running services in this daemon process.
-var Services = map[string]*Service{}
+var (
+	// Services holds a catalog of running services in this daemon process.
+	Services = map[string]*Service{}
+
+	// ErrServiceError indicates error condition when rendering service.
+	ErrServiceError = errors.New("service error")
+)
 
 // NewService creates a service with given config and name.
 func NewService(cfg *config.Config, name string) *Service {
@@ -126,12 +129,12 @@ func (s *Service) GetStream(feature string) io.Writer {
 		}
 
 		if runtime.State != driver.DriverAlive {
-			panic(fmt.Errorf("feature failed or loading timeout: %s: %w", feature, ServiceError))
+			panic(fmt.Errorf("%w: feature failed or loading timeout: %s", ErrServiceError, feature))
 		}
 
 		return runtime.Output
 	}
-	panic(fmt.Errorf("feature not loaded: %s: %w", feature, ServiceError))
+	panic(fmt.Errorf("%w: feature not loaded: %s", ErrServiceError, feature))
 }
 
 func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{}, replace bool) {
@@ -166,7 +169,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			if err, ok := r.(error); ok {
 				rerr = err
 			} else {
-				rerr = fmt.Errorf("%+v: %w", r, ServiceError)
+				rerr = fmt.Errorf("%w: %+v", ErrServiceError, r)
 			}
 		}
 	}()
