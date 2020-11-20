@@ -42,10 +42,10 @@ func builtinPath() string {
 func (d *BuiltinDriver) Acquire() {
 	shortName, ok := d.meta.HandlerData["shortName"].(string)
 	if !ok || shortName == "" {
-		panic(fmt.Errorf("shortName is missing for builtin driver: %s: %w", d.meta.Name, DriverError))
+		panic(fmt.Errorf("%w: shortName is missing for builtin driver: %s", ErrDriverError, d.meta.Name))
 	}
 	if strings.ContainsRune(shortName, os.PathSeparator) {
-		panic(fmt.Errorf("shortName has path separator in driver: %s: %w", d.meta.Name, DriverError))
+		panic(fmt.Errorf("%w: shortName has path separator in driver: %s", ErrDriverError, d.meta.Name))
 	}
 
 	d.meta.Executable = filepath.Join(builtinPath(), shortName)
@@ -65,7 +65,7 @@ func (d *BuiltinDriver) Prepare() {
 	}
 
 	if !ok {
-		panic(fmt.Errorf("arguments in driver %s should be a list of strings: %w", d.meta.Name, DriverError))
+		panic(fmt.Errorf("%w: arguments in driver %s should be a list of strings", ErrDriverError, d.meta.Name))
 	}
 
 	for _, v := range argsList {

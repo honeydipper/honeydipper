@@ -7,6 +7,7 @@
 package dipper
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -16,13 +17,8 @@ import (
 	"github.com/imdario/mergo"
 )
 
-const (
-	// MapError are all errors thrown in map manipulation.
-	MapError Error = "map error"
-
-	// MergeError are all errors throw during map merge and combin.
-	MergeError Error = "merge error"
-)
+// ErrMapError are all errors thrown in map manipulation.
+var ErrMapError = errors.New("map error")
 
 // GetMapData : get the data from the deep map following a KV path.
 func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
@@ -65,7 +61,7 @@ func GetMapData(from interface{}, path string) (ret interface{}, ok bool) {
 func MustGetMapData(from interface{}, path string) interface{} {
 	ret, ok := GetMapData(from, path)
 	if !ok {
-		panic(fmt.Errorf("path not valid: %s: %w", path, MapError))
+		panic(fmt.Errorf("%w: path not valid: %s", ErrMapError, path))
 	}
 
 	return ret
@@ -129,7 +125,7 @@ func MustGetMapDataBool(from interface{}, path string) bool {
 			return flag
 		}
 	}
-	panic(fmt.Errorf("not a bool: %s: %w", path, MapError))
+	panic(fmt.Errorf("%w: not a bool: %s", ErrMapError, path))
 }
 
 // Recursive : enumerate all the data element deep into the map call the function provided.
@@ -192,7 +188,7 @@ func RecursiveWithPrefix(
 					vparent.Field(key.(int)).Set(vval)
 				}
 			default:
-				panic(fmt.Errorf("unable to change: %s in %s: %w", key, prefixes, MapError))
+				panic(fmt.Errorf("%w: unable to change: %s in %s", ErrMapError, key, prefixes))
 			}
 		}
 	}
@@ -273,7 +269,7 @@ func DeepCopyMap(m map[string]interface{}) (map[string]interface{}, error) {
 	}
 	retMap, ok := ret.(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("not a map: %w", MapError)
+		return nil, fmt.Errorf("%w: not a map", ErrMapError)
 	}
 
 	return retMap, nil
