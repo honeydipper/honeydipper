@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/op/go-logging"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 // Logger provides methods to log to the configured logger backend.
@@ -28,7 +28,7 @@ func initLogBackend(level logging.Level, logFile *os.File) logging.Backend {
 	backend := logging.NewLogBackend(logFile, "", 0)
 
 	formatStr := `%{time:15:04:05.000} %{module}.%{shortfunc} ▶ %{level:.4s} %{id:03x} %{message}`
-	if terminal.IsTerminal(int(logFile.Fd())) {
+	if term.IsTerminal(int(logFile.Fd())) {
 		formatStr = `%{color}` + formatStr + `%{color:reset}`
 	}
 	format := logging.MustStringFormatter(formatStr)
