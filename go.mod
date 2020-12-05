@@ -33,7 +33,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20201203001011-0b49973bad19
 	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
 	google.golang.org/api v0.32.0
-	google.golang.org/genproto v0.0.0-20201104152603-2e45c02ce95c
+	google.golang.org/genproto v0.0.0-20201204160425-06b3db808446
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.3.0 // indirect
