@@ -61,6 +61,9 @@ func initEnv() {
 	initFlags()
 	flag.Parse()
 	cfg = config.Config{InitRepo: config.RepoInfo{}, Services: flag.Args()}
+	if len(cfg.Services) == 0 {
+		cfg.Services = []string{"engine", "receiver", "operator", "api"}
+	}
 
 loop:
 	for _, s := range cfg.Services {
@@ -110,11 +113,7 @@ func start() {
 	// reset logging with configured loglevel
 	getLogger()
 
-	services := cfg.Services
-	if len(services) == 0 {
-		services = []string{"engine", "receiver", "operator", "api"}
-	}
-	for _, s := range services {
+	for _, s := range cfg.Services {
 		switch s {
 		case "engine":
 			service.StartEngine(&cfg)
@@ -140,7 +139,7 @@ func reload() {
 }
 
 func getLogger() {
-	levelstr, ok := cfg.GetDriverDataStr("daemon.loglevel")
+	levelstr, ok := cfg.GetStagedDriverDataStr("daemon.loglevel")
 	if !ok {
 		levelstr = "INFO"
 	}

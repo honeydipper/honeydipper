@@ -62,7 +62,6 @@ func StartEngine(cfg *config.Config) {
 	engine.addResponder("eventbus:return", continueSession)
 	setupEngineAPIs()
 
-	buildRuleMap(cfg)
 	engine.start()
 }
 
@@ -80,7 +79,6 @@ func createSessions(d *driver.Runtime, msg *dipper.Message) {
 		rules, ok := ruleMap[event]
 		if ok && rules != nil {
 			for _, rule := range rules {
-				dipper.Recursive(rule.Trigger.Match, engine.decryptDriverData)
 				if dipper.CompareAll(data, rule.Trigger.Match) {
 					dipper.Logger.Infof("[engine] raw event triggers an event %s.%s",
 						rule.OriginalRule.When.Source.System,

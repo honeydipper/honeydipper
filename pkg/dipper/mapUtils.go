@@ -128,8 +128,11 @@ func MustGetMapDataBool(from interface{}, path string) bool {
 	panic(fmt.Errorf("%w: not a bool: %s", ErrMapError, path))
 }
 
+// ItemProcessor is a function processing one of the items in a data structure.
+type ItemProcessor func(key string, val interface{}) (newval interface{}, ok bool)
+
 // Recursive : enumerate all the data element deep into the map call the function provided.
-func Recursive(from interface{}, process func(key string, val interface{}) (newval interface{}, ok bool)) {
+func Recursive(from interface{}, process ItemProcessor) {
 	RecursiveWithPrefix(nil, "", "", from, process)
 }
 
@@ -139,7 +142,7 @@ func RecursiveWithPrefix(
 	prefixes string,
 	key interface{},
 	from interface{},
-	process func(key string, val interface{}) (newval interface{}, ok bool),
+	process ItemProcessor,
 ) {
 	keyStr := fmt.Sprintf("%v", key)
 	newPrefixes := keyStr

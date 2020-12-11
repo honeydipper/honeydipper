@@ -239,8 +239,8 @@ func TestFunctionExportWithSquashedSysData(t *testing.T) {
 }
 
 func TestFunctionExportWithSubsystem(t *testing.T) {
-	cfg := Config{
-		DataSet: &DataSet{
+	cfg := &Config{
+		Staged: &DataSet{
 			Systems: map[string]System{
 				"outter": {
 					Extends: []string{
@@ -271,22 +271,23 @@ func TestFunctionExportWithSubsystem(t *testing.T) {
 		},
 	}
 
-	(&cfg).extendAllSystems()
+	cfg.extendAllSystems()
+	cfg.DataSet = cfg.Staged
 
 	result := ExportFunctionContext(
 		&Function{Target: Action{System: "outter", Function: "inner.testFunc1"}},
 		map[string]interface{}{
 			"ctx": map[string]interface{}{"path": "test/path1"},
 		},
-		&cfg,
+		cfg,
 	)
 
 	assert.Equal(t, "http://value1.value3/test/path1", result["url"])
 }
 
 func TestFunctionExportWithSubsystemParameters(t *testing.T) {
-	cfg := Config{
-		DataSet: &DataSet{
+	cfg := &Config{
+		Staged: &DataSet{
 			Systems: map[string]System{
 				"outter": {
 					Extends: []string{
@@ -321,22 +322,23 @@ func TestFunctionExportWithSubsystemParameters(t *testing.T) {
 		},
 	}
 
-	(&cfg).extendAllSystems()
+	cfg.extendAllSystems()
+	cfg.DataSet = cfg.Staged
 
 	result := ExportFunctionContext(
 		&Function{Target: Action{System: "outter", Function: "inner.testFunc1"}},
 		map[string]interface{}{
 			"ctx": map[string]interface{}{"path": "test/path1"},
 		},
-		&cfg,
+		cfg,
 	)
 
 	assert.Equal(t, "http://value1.value3/test/path1?internal-data", result["url"])
 }
 
 func TestFunctionExportWithSubsystemParentData(t *testing.T) {
-	cfg := Config{
-		DataSet: &DataSet{
+	cfg := &Config{
+		Staged: &DataSet{
 			Systems: map[string]System{
 				"outter": {
 					Extends: []string{
@@ -369,14 +371,15 @@ func TestFunctionExportWithSubsystemParentData(t *testing.T) {
 		},
 	}
 
-	(&cfg).extendAllSystems()
+	cfg.extendAllSystems()
+	cfg.DataSet = cfg.Staged
 
 	result := ExportFunctionContext(
 		&Function{Target: Action{System: "outter", Function: "inner.testFunc1"}},
 		map[string]interface{}{
 			"ctx": map[string]interface{}{"path": "test/path1"},
 		},
-		&cfg,
+		cfg,
 	)
 
 	assert.Equal(t, "http://value1.value3/test/path1?belong-to-parent", result["url"])
