@@ -88,7 +88,6 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 				"data":    data,
 				"event":   event,
 				"labels":  msg.Labels,
-				"wfdata":  ctx,
 				"ctx":     ctx,
 				"params":  params,
 			}).(map[string]interface{})
@@ -100,7 +99,6 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 			"event":   event,
 			"labels":  msg.Labels,
 			"ctx":     ctx,
-			"wfdata":  ctx,
 			"params":  params,
 		}).(map[string]interface{})
 	}

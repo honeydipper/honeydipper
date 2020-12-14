@@ -382,7 +382,7 @@ workflows:
                 system: lightswitch
                 function: turn_on
               parameters:
-                device_id: '{{ `{{ .wfdata.current }}` }}'
+                device_id: '{{ `{{ .ctx.current }}` }}'
 ```
 <!-- {% endraw %} -->
 
