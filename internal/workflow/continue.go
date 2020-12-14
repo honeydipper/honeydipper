@@ -87,6 +87,11 @@ func (w *Session) routeNext(msg *dipper.Message) int {
 
 // mergeContext merges child workflow exported context to parent workflow.
 func (w *Session) mergeContext(exports []map[string]interface{}) {
+	// for multi-thread workflows, we might have multiple child workflows
+	// complete at the same time, and try merging context back at the same
+	// time and causing concurrent map write, thus using lock to avoid that.
+	w.ctxLock.Lock()
+	defer w.ctxLock.Unlock()
 	for _, export := range exports {
 		w.ctx = dipper.MergeMap(w.ctx, export)
 		w.processNoExport(export)

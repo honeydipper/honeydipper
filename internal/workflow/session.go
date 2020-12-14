@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
@@ -29,6 +30,7 @@ type Session struct {
 	loopCount      int   // counter for looping
 	parent         string
 	ctx            map[string]interface{}
+	ctxLock        *sync.Mutex
 	event          map[string]interface{}
 	exported       []map[string]interface{}
 	elseBranch     *config.Workflow
