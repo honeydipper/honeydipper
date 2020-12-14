@@ -201,7 +201,9 @@ func (c *Config) AdvanceStage(service string, stage int, fns ...dipper.ItemProce
 	case c.Stage < stage-1:
 		panic(ErrConfigRollback)
 	default:
-		dipper.WaitGroupDone(stageWG)
+		if !dipper.WaitGroupDone(stageWG) {
+			panic(ErrConfigRollback)
+		}
 		locker.Unlock()
 		stageWG.Wait()
 		locker.Lock()

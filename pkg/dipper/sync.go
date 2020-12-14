@@ -10,12 +10,17 @@ package dipper
 import "sync"
 
 // WaitGroupDone is a way to safely decrement the counter for a WaitGroup.
-func WaitGroupDone(wg *sync.WaitGroup) {
+func WaitGroupDone(wg *sync.WaitGroup) (ok bool) {
 	defer func() {
-		_ = recover()
+		if recover() != nil {
+			ok = false
+		}
 	}()
 
 	wg.Done()
+	ok = true
+
+	return ok
 }
 
 // WaitGroupDoneAll is a way to safely release the whole WaitGroup.
