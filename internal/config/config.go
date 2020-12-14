@@ -273,15 +273,15 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 		return nil, false
 	}
 
-	dipper.Logger.Debugf("[config] recursive processing workflows ...")
+	dipper.Logger.Debugf("[config] recursively processing workflows ...")
 	dipper.Recursive(target.Workflows, processor)
-	dipper.Logger.Debugf("[config] recursive processing rules ...")
+	dipper.Logger.Debugf("[config] recursively processing rules ...")
 	dipper.Recursive(target.Rules, processor)
-	dipper.Logger.Debugf("[config] recursive processing systems ...")
+	dipper.Logger.Debugf("[config] recursively processing systems ...")
 	dipper.Recursive(target.Systems, processor)
-	dipper.Logger.Debugf("[config] recursive processing contexts ...")
+	dipper.Logger.Debugf("[config] recursively processing contexts ...")
 	dipper.Recursive(target.Contexts, f)
-	dipper.Logger.Debugf("[config] recursive processing drivers ...")
+	dipper.Logger.Debugf("[config] recursively processing drivers ...")
 	for k, v := range target.Drivers {
 		if k != "daemon" {
 			dipper.Recursive(v, f)
