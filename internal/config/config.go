@@ -120,7 +120,7 @@ func (c *Config) Bootstrap(wd string) {
 func (c *Config) Watch() {
 	for {
 		interval := time.Minute
-		if intervalStr, ok := c.GetDriverDataStr("daemon.configCheckInterval"); ok {
+		if intervalStr, ok := c.GetStagedDriverDataStr("daemon.configCheckInterval"); ok {
 			value, err := time.ParseDuration(intervalStr)
 			if err != nil {
 				dipper.Logger.Warningf("invalid drivers.daemon.configCheckInterval %v", err)
@@ -130,7 +130,7 @@ func (c *Config) Watch() {
 		}
 		time.Sleep(interval)
 
-		if watch, ok := dipper.GetMapDataBool(c.DataSet.Drivers, "daemon.watchConfig"); !ok || watch {
+		if watch, ok := dipper.GetMapDataBool(c.Staged.Drivers, "daemon.watchConfig"); !ok || watch {
 			c.Refresh()
 		}
 	}
