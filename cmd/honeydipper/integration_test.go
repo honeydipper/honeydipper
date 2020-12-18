@@ -60,6 +60,7 @@ func intTestDaemonStartup(t *testing.T) {
 		workingBranch = ref[len(ref)-1]
 	}
 	cfg := config.Config{
+		Services: []string{"engine", "receiver", "operator"},
 		InitRepo: config.RepoInfo{
 			Repo:   "../..",
 			Branch: workingBranch,

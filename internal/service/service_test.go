@@ -218,7 +218,8 @@ func TestServiceRemoveEmitter(t *testing.T) {
 	}()
 
 	newCfg := &config.Config{
-		DataSet: &config.DataSet{
+		Services: []string{"testsvc"},
+		Staged: &config.DataSet{
 			Drivers: map[string]interface{}{
 				"daemon": map[string]interface{}{
 					"features": map[string]interface{}{
@@ -239,6 +240,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 		},
 	}
 	svc.config = newCfg
+	svc.config.ResetStage()
 
 	time.Sleep(100 * time.Millisecond)
 	assert.NotPanics(t, svc.Reload, "service reload should not panic when emitter is removed")
@@ -392,7 +394,8 @@ func TestServiceReplaceEmitter(t *testing.T) {
 	}()
 
 	newCfg := &config.Config{
-		DataSet: &config.DataSet{
+		Services: []string{"testsvc"},
+		Staged: &config.DataSet{
 			Drivers: map[string]interface{}{
 				"daemon": map[string]interface{}{
 					"featureMap": map[string]interface{}{
@@ -421,6 +424,7 @@ func TestServiceReplaceEmitter(t *testing.T) {
 		},
 	}
 	svc.config = newCfg
+	svc.config.ResetStage()
 
 	time.Sleep(100 * time.Millisecond)
 	assert.NotPanics(t, svc.Reload, "service reload should not panic when emitter is changed")
