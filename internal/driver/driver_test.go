@@ -20,20 +20,20 @@ func TestDriverNewDriver(t *testing.T) {
 	// test new driver: table driven
 	testCases := map[string]interface{}{
 		"panic when driver name is missing": []interface{}{
-			map[string]interface{}{}, // driver meta
-			"driver name missing: ",  // error prefix
+			map[string]interface{}{},              // driver meta
+			"driver error: driver name missing: ", // error prefix
 		},
 		"panic when driver type is missing": []interface{}{
-			map[string]interface{}{"name": "test"}, // driver meta
-			"unsupported driver type: ",            // error prefix
+			map[string]interface{}{"name": "test"},    // driver meta
+			"driver error: unsupported driver type: ", // error prefix
 		},
 		"panic when driver type is unknown": []interface{}{
 			map[string]interface{}{"name": "test", "type": "faketype"}, // driver meta
-			"unsupported driver type: ",                                // error prefix
+			"driver error: unsupported driver type: ",                  // error prefix
 		},
 		"panic when builtin driver data missing": []interface{}{
 			map[string]interface{}{"name": "test", "type": "builtin"}, // driver meta
-			"shortName is missing for builtin driver: ",               // error prefix
+			"driver error: shortName is missing for builtin driver: ", // error prefix
 		},
 	}
 

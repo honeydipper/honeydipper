@@ -11,7 +11,9 @@ package config
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -19,10 +21,36 @@ import (
 	"github.com/imdario/mergo"
 )
 
+const (
+	// StageLoading means that the config is being loaded.
+	StageLoading = iota
+	// StageBooting means that the consumers are loading only essential config.
+	StageBooting
+	// StageDiscovering means discovering dynamic config data for drivers.
+	StageDiscovering
+	// StageServing means all config should be processed and serving.
+	StageServing
+)
+
+var (
+	// StageNames maps to the actual stage integers.
+	StageNames = []string{
+		"Loading",
+		"Booting",
+		"Discovering",
+		"Serving",
+	}
+
+	// ErrConfigRollback happens when daemon decides to rollback during reload.
+	ErrConfigRollback = errors.New("config rollback")
+)
+
 //nolint:gochecknoinits
 func init() {
 	gob.Register(map[string]interface{}{})
 	gob.Register([]interface{}{})
+	gob.Register(System{})
+	gob.Register(DataSet{})
 }
 
 // Config is a wrapper around the final complete configration of the daemon.
@@ -43,11 +71,45 @@ type Config struct {
 	IsDocGen      bool
 	DocSrc        string
 	DocDst        string
+	Locker        *sync.Mutex
+	RawData       *DataSet
+	Stage         int
+	Staged        *DataSet
+	StageWG       []*sync.WaitGroup
+}
+
+// ResetStage resets the stage of the config.
+func (c *Config) ResetStage() {
+	locker := &sync.Mutex{}
+	locker.Lock()
+	defer locker.Unlock()
+	if c.Locker != nil {
+		c.Locker.Lock()
+		defer c.Locker.Unlock()
+	}
+	c.Locker = locker
+	c.Stage = StageLoading
+
+	if c.StageWG != nil {
+		for _, wg := range c.StageWG {
+			dipper.WaitGroupDoneAll(wg)
+		}
+	}
+	c.StageWG = make([]*sync.WaitGroup, 3)
+	c.StageWG[StageLoading] = &sync.WaitGroup{}
+	c.StageWG[StageLoading].Add(len(c.Services))
+	c.StageWG[StageBooting] = &sync.WaitGroup{}
+	c.StageWG[StageBooting].Add(len(c.Services))
+	c.StageWG[StageDiscovering] = &sync.WaitGroup{}
+	c.StageWG[StageDiscovering].Add(len(c.Services))
 }
 
 // Bootstrap loads the configuration during daemon bootstrap.
 // WorkingDir is where git will clone remote repo into.
 func (c *Config) Bootstrap(wd string) {
+	if !c.IsConfigCheck && !c.IsDocGen {
+		c.ResetStage()
+	}
 	c.WorkingDir = wd
 	c.loadRepo(c.InitRepo)
 	c.assemble()
@@ -58,7 +120,7 @@ func (c *Config) Bootstrap(wd string) {
 func (c *Config) Watch() {
 	for {
 		interval := time.Minute
-		if intervalStr, ok := c.GetDriverDataStr("daemon.configCheckInterval"); ok {
+		if intervalStr, ok := c.GetStagedDriverDataStr("daemon.configCheckInterval"); ok {
 			value, err := time.ParseDuration(intervalStr)
 			if err != nil {
 				dipper.Logger.Warningf("invalid drivers.daemon.configCheckInterval %v", err)
@@ -68,7 +130,7 @@ func (c *Config) Watch() {
 		}
 		time.Sleep(interval)
 
-		if watch, ok := dipper.GetMapDataBool(c.DataSet.Drivers, "daemon.watchConfig"); !ok || watch {
+		if watch, ok := dipper.GetMapDataBool(c.Staged.Drivers, "daemon.watchConfig"); !ok || watch {
 			c.Refresh()
 		}
 	}
@@ -82,7 +144,8 @@ func (c *Config) Refresh() {
 		changeDetected = (repoRuntime.refreshRepo() || changeDetected)
 	}
 	if changeDetected {
-		c.LastRunningConfig.DataSet = c.DataSet
+		c.ResetStage()
+		c.LastRunningConfig.DataSet = c.RawData
 		c.LastRunningConfig.Loaded = map[RepoInfo]*Repo{}
 		for k, v := range c.Loaded {
 			c.LastRunningConfig.Loaded[k] = v
@@ -108,12 +171,13 @@ func (c *Config) Refresh() {
 // It requires that the OnChange variable is defined prior to invoking the function.
 func (c *Config) RollBack() {
 	if c.LastRunningConfig.DataSet != nil && c.LastRunningConfig.DataSet != c.DataSet {
-		c.DataSet = c.LastRunningConfig.DataSet
+		c.Staged = c.LastRunningConfig.DataSet
 		c.Loaded = map[RepoInfo]*Repo{}
 		for k, v := range c.LastRunningConfig.Loaded {
 			c.Loaded[k] = v
 		}
 		dipper.Logger.Warning("config rolled back to last running version")
+		c.ResetStage()
 		if c.OnChange != nil {
 			c.OnChange()
 		}
@@ -121,20 +185,73 @@ func (c *Config) RollBack() {
 }
 
 func (c *Config) assemble() {
-	c.DataSet, c.Loaded = c.Loaded[c.InitRepo].assemble(&(DataSet{}), map[RepoInfo]*Repo{})
-	c.extendAllSystems()
-	c.parseWorkflowRegex()
+	c.Staged, c.Loaded = c.Loaded[c.InitRepo].assemble(&(DataSet{}), map[RepoInfo]*Repo{})
 }
 
-func (c *Config) parseWorkflowRegex() {
-	var processor func(key string, val interface{}) (interface{}, bool)
+// AdvanceStage processes the config and advances the config into the new stage.
+func (c *Config) AdvanceStage(service string, stage int, fns ...dipper.ItemProcessor) {
+	c.Locker.Lock()
+	defer c.Locker.Unlock()
+	locker := c.Locker
+	stageWG := c.StageWG[c.Stage]
+
+	switch {
+	case c.Stage >= stage:
+		return
+	case c.Stage < stage-1:
+		panic(ErrConfigRollback)
+	default:
+		if !dipper.WaitGroupDone(stageWG) {
+			panic(ErrConfigRollback)
+		}
+		locker.Unlock()
+		stageWG.Wait()
+		locker.Lock()
+
+		if locker != c.Locker {
+			panic(ErrConfigRollback)
+		}
+
+		dipper.Logger.Infof("[%s] service reached stage %s", service, StageNames[stage])
+		for _, fn := range fns {
+			c.RecursiveStaged(fn)
+		}
+
+		switch stage {
+		case StageBooting:
+			c.RawData = &DataSet{}
+			dipper.Must(DeepCopy(c.Staged, c.RawData))
+		case StageDiscovering:
+			c.extendAllSystems()
+		case StageServing:
+			c.RecursiveStaged(dipper.RegexParser)
+
+			c.DataSet = c.Staged
+		}
+		c.Stage = stage
+	}
+}
+
+// recursive iterates all items and their children to parse the values with give processor.
+func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
+	var processor dipper.ItemProcessor
+	target := c.DataSet
+	if stage {
+		target = c.Staged
+	}
 
 	processor = func(name string, val interface{}) (interface{}, bool) {
 		switch v := val.(type) {
 		case string:
-			return dipper.RegexParser(name, val)
+			nv, ok := f(name, val)
+			if stage {
+				return nv, ok
+			}
+			// only staged data can be changed.
+			return nil, false
 		case Rule:
 			dipper.Recursive(&v.Do, processor)
+			dipper.Recursive(&v.When, processor)
 		case Workflow:
 			dipper.Recursive(v.Match, processor)
 			dipper.Recursive(v.UnlessMatch, processor)
@@ -142,14 +259,44 @@ func (c *Config) parseWorkflowRegex() {
 			dipper.Recursive(v.Threads, processor)
 			dipper.Recursive(v.Else, processor)
 			dipper.Recursive(v.Cases, processor)
+		case Trigger:
+			dipper.Recursive(v.Match, processor)
+			dipper.Recursive(v.Parameters, processor)
+		case Function:
+			dipper.Recursive(v.Parameters, processor)
+		case System:
+			dipper.Recursive(v.Data, processor)
+			dipper.Recursive(v.Triggers, processor)
+			dipper.Recursive(v.Functions, processor)
 		}
 
 		return nil, false
 	}
 
-	dipper.Recursive(c.DataSet.Workflows, processor)
-	dipper.Recursive(c.DataSet.Rules, processor)
-	dipper.Recursive(c.DataSet.Contexts, dipper.RegexParser)
+	dipper.Logger.Debugf("[config] recursively processing workflows ...")
+	dipper.Recursive(target.Workflows, processor)
+	dipper.Logger.Debugf("[config] recursively processing rules ...")
+	dipper.Recursive(target.Rules, processor)
+	dipper.Logger.Debugf("[config] recursively processing systems ...")
+	dipper.Recursive(target.Systems, processor)
+	dipper.Logger.Debugf("[config] recursively processing contexts ...")
+	dipper.Recursive(target.Contexts, f)
+	dipper.Logger.Debugf("[config] recursively processing drivers ...")
+	for k, v := range target.Drivers {
+		if k != "daemon" {
+			dipper.Recursive(v, f)
+		}
+	}
+}
+
+// RecursiveStaged recursively process staged data.
+func (c *Config) RecursiveStaged(f dipper.ItemProcessor) {
+	c.recursive(f, true)
+}
+
+// Recursive recursively process readonly config data.
+func (c *Config) Recursive(f dipper.ItemProcessor) {
+	c.recursive(f, false)
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
@@ -167,6 +314,29 @@ func (c *Config) loadRepo(repo RepoInfo) {
 		}
 		c.Loaded[repo] = repoRuntime
 	}
+}
+
+// GetStagedDriverData gets an item from a staged driver's data block.
+//   conn,ok := c.GetStagedDriverData("redis.connection")
+// The function returns an interface{} that could be anything.
+func (c *Config) GetStagedDriverData(path string) (ret interface{}, ok bool) {
+	if c.Staged == nil || c.Staged.Drivers == nil {
+		return nil, false
+	}
+
+	return dipper.GetMapData(c.Staged.Drivers, path)
+}
+
+// GetStagedDriverDataStr gets an item from a staged driver's data block.
+//   logLevel,ok := c.GetStagedDriverData("daemon.loglevel")
+// The function assume the return value is a string will do a type assertion.
+// upon returning.
+func (c *Config) GetStagedDriverDataStr(path string) (ret string, ok bool) {
+	if c.Staged == nil || c.Staged.Drivers == nil {
+		return "", false
+	}
+
+	return dipper.GetMapDataStr(c.Staged.Drivers, path)
 }
 
 // GetDriverData gets an item from a driver's data block.
@@ -194,7 +364,7 @@ func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {
 
 func (c *Config) extendSystem(processed map[string]bool, system string) {
 	var merged System
-	current := c.DataSet.Systems[system]
+	current := c.Staged.Systems[system]
 	for _, extend := range current.Extends {
 		parts := strings.Split(extend, "=")
 		var base, subKey string
@@ -209,8 +379,9 @@ func (c *Config) extendSystem(processed map[string]bool, system string) {
 			c.extendSystem(processed, base)
 		}
 
-		baseSys := c.DataSet.Systems[base]
-		baseCopy := dipper.Must(SystemCopy(&baseSys)).(*System)
+		baseSys := c.Staged.Systems[base]
+		baseCopy := &System{}
+		dipper.Must(DeepCopy(&baseSys, baseCopy))
 
 		if subKey == "" {
 			dipper.Must(mergeSystem(&merged, *baseCopy))
@@ -219,60 +390,62 @@ func (c *Config) extendSystem(processed map[string]bool, system string) {
 		}
 	}
 	dipper.Must(mergeSystem(&merged, current))
-	c.DataSet.Systems[system] = merged
+	c.Staged.Systems[system] = merged
 	processed[system] = true
 }
 
 func (c *Config) extendAllSystems() {
 	processed := map[string]bool{}
-	for name := range c.DataSet.Systems {
+	for name := range c.Staged.Systems {
 		if _, ok := processed[name]; !ok {
 			c.extendSystem(processed, name)
 		}
 	}
 }
 
-// SystemCopy performs a deep copy of the given system.
-func SystemCopy(s *System) (*System, error) {
-	var buf bytes.Buffer
+// DeepCopy performs a deep copy of the object.
+func DeepCopy(s interface{}, d interface{}) error {
 	if s == nil {
-		return nil, nil
-	}
-	enc := gob.NewEncoder(&buf)
-	dec := gob.NewDecoder(&buf)
-	err := enc.Encode(*s)
-	if err != nil {
-		return nil, err
-	}
-	var scopy System
-	err = dec.Decode(&scopy)
-	if err != nil {
-		return nil, err
+		return nil
 	}
 
-	return &scopy, nil
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	e := enc.Encode(s)
+	if e != nil {
+		return fmt.Errorf("failed to encode for deep copy: %w", e)
+	}
+
+	dec := gob.NewDecoder(&buf)
+	e = dec.Decode(d)
+	if e != nil {
+		return fmt.Errorf("failed to decode for deep copy: %w", e)
+	}
+
+	return nil
 }
 
 func mergeDataSet(d *DataSet, s DataSet) error {
-	for name, system := range s.Systems {
+	for name := range s.Systems {
+		system := s.Systems[name]
+		srcCopy := &System{}
+		dipper.Must(DeepCopy(&system, srcCopy))
 		exist, ok := d.Systems[name]
 		if ok {
-			dipper.Must(mergeSystem(&exist, system))
+			dipper.Must(mergeSystem(&exist, *srcCopy))
 		} else {
-			exist = system
+			exist = *srcCopy
 		}
 		if d.Systems == nil {
 			d.Systems = map[string]System{}
 		}
 		d.Systems[name] = exist
 	}
-
 	s.Systems = map[string]System{}
 	s.Contexts = dipper.MustDeepCopyMap(s.Contexts)
 	s.Drivers = dipper.MustDeepCopyMap(s.Drivers)
-	err := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
 
-	return err
+	return mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
 }
 
 func addSubsystem(d *System, s System, key string) {
@@ -304,7 +477,7 @@ func mergeSystem(d *System, s System) error {
 		if exist, ok := d.Triggers[name]; ok {
 			err := mergo.Merge(&exist, trigger, mergo.WithOverride, mergo.WithAppendSlice)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w", err)
 			}
 			if exist.Description == "" {
 				exist.Description = trigger.Description
@@ -326,7 +499,7 @@ func mergeSystem(d *System, s System) error {
 		if ok {
 			err := mergo.Merge(&exist, function, mergo.WithOverride, mergo.WithAppendSlice)
 			if err != nil {
-				return err
+				return fmt.Errorf("%w", err)
 			}
 			if exist.Description == "" {
 				exist.Description = function.Description
@@ -342,7 +515,7 @@ func mergeSystem(d *System, s System) error {
 
 	err := mergo.Merge(&d.Data, s.Data, mergo.WithOverride, mergo.WithAppendSlice)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w", err)
 	}
 
 	d.Extends = append(d.Extends, s.Extends...)

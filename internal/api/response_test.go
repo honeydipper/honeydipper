@@ -52,6 +52,7 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 		case <-msgAvailable:
 		case <-time.After(delay):
 		}
+
 		return m
 	}
 
@@ -106,7 +107,7 @@ func TestTypeAllAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				Delay: 30 * time.Millisecond,
+				Delay: 3000 * time.Millisecond,
 				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -118,7 +119,7 @@ func TestTypeAllAPIResponse(t *testing.T) {
 				},
 			},
 			{
-				Delay: 30 * time.Millisecond,
+				Delay: 3000 * time.Millisecond,
 				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -163,7 +164,7 @@ func TestTypeFirstAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				Delay: 30 * time.Millisecond,
+				Delay: 3000 * time.Millisecond,
 				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -209,7 +210,7 @@ func TestTypeMatchAPIResponse(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				Delay: 30 * time.Millisecond,
+				Delay: 3000 * time.Millisecond,
 				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -221,7 +222,7 @@ func TestTypeMatchAPIResponse(t *testing.T) {
 				},
 			},
 			{
-				Delay: 30 * time.Millisecond,
+				Delay: 3000 * time.Millisecond,
 				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -265,7 +266,7 @@ func TestTypeMatchAPIResponseReturnError(t *testing.T) {
 		},
 		returnMessages: []ReturnMessage{
 			{
-				Delay: 30 * time.Millisecond,
+				Delay: 3000 * time.Millisecond,
 				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",
@@ -277,7 +278,7 @@ func TestTypeMatchAPIResponseReturnError(t *testing.T) {
 				},
 			},
 			{
-				Delay: 30 * time.Millisecond,
+				Delay: 3000 * time.Millisecond,
 				Msg: &dipper.Message{
 					Channel: "eventbus",
 					Subject: "api",

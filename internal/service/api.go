@@ -40,12 +40,10 @@ var (
 func StartAPI(cfg *config.Config) {
 	API = NewService(cfg, "api")
 	API.ServiceReload = reloadAPI
-	Services["api"] = API
-	loadAPIConfig(cfg)
-	APIRequestStore = api.NewStore(API)
-	API.addResponder("eventbus:api", handleAPIMessage)
 	API.DiscoverFeatures = APIFeatures
-	startAPIListener()
+	API.addResponder("eventbus:api", handleAPIMessage)
+	Services["api"] = API
+	APIRequestStore = api.NewStore(API)
 	API.start()
 }
 
@@ -100,9 +98,13 @@ func startAPIListener() {
 // reloadAPI reloads config and restarts the listener.
 func reloadAPI(cfg *config.Config) {
 	if loadAPIConfig(cfg) {
-		ctx, cancel := context.WithTimeout(context.Background(), APIServerGracefulTimeout*time.Second)
-		defer cancel()
-		_ = APIServer.Shutdown(ctx)
+		if APIServer == nil {
+			startAPIListener()
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), APIServerGracefulTimeout*time.Second)
+			defer cancel()
+			_ = APIServer.Shutdown(ctx)
+		}
 	}
 }
 

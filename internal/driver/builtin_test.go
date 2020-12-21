@@ -32,15 +32,15 @@ func TestBuiltinAcquire(t *testing.T) {
 	testCases := map[string]interface{}{
 		"panic when shortName is missing": []interface{}{
 			&BuiltinDriver{meta: &Meta{HandlerData: map[string]interface{}{}}},
-			"shortName is missing ", // error prefix
+			"driver error: shortName is missing ", // error prefix
 		},
 		"panic when using relative path with / in shortName": []interface{}{
 			&BuiltinDriver{meta: &Meta{HandlerData: map[string]interface{}{"shortName": "../fakecmd"}}},
-			"shortName has path separator ", // error prefix
+			"driver error: shortName has path separator ", // error prefix
 		},
 		"panic when using absolute path with / in shortName": []interface{}{
 			&BuiltinDriver{meta: &Meta{HandlerData: map[string]interface{}{"shortName": "/usr/bin/fakecmd"}}},
-			"shortName has path separator ", // error prefix
+			"driver error: shortName has path separator ", // error prefix
 		},
 		"has full path in Executable": []interface{}{
 			&BuiltinDriver{meta: &Meta{HandlerData: map[string]interface{}{"shortName": "testDriver"}}},
@@ -88,7 +88,7 @@ func TestBuiltinPrepare(t *testing.T) {
 		},
 		"panic when arguments is not a list": []interface{}{
 			&BuiltinDriver{meta: &Meta{HandlerData: map[string]interface{}{"arguments": false}}},
-			"arguments in driver ", // error prefix
+			"driver error: arguments in driver ", // error prefix
 		},
 	}
 

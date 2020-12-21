@@ -7,6 +7,8 @@
 package workflow
 
 import (
+	"sync"
+
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
@@ -50,6 +52,7 @@ func (s *SessionStore) newSession(parent string, eventUUID string, wf *config.Wo
 		store:    s,
 		EventID:  eventUUID,
 		workflow: wf,
+		ctxLock:  &sync.Mutex{},
 	}
 
 	performing := w.setPerforming("")

@@ -22,17 +22,18 @@ require (
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/huandu/xstrings v1.3.1 // indirect
 	github.com/imdario/mergo v0.3.8
-	github.com/logrusorgru/aurora v0.0.0-20200102142835-e9ef32dff381
+	github.com/logrusorgru/aurora/v3 v3.0.0
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.3.2
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/qiangmzsx/string-adapter/v2 v2.1.0
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
-	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
+	golang.org/x/oauth2 v0.0.0-20201203001011-0b49973bad19
+	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
 	google.golang.org/api v0.32.0
-	google.golang.org/genproto v0.0.0-20201002142447-3860012362da
+	google.golang.org/genproto v0.0.0-20201204160425-06b3db808446
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.3.0 // indirect

@@ -8,7 +8,12 @@ def:
   reqType: 1
   service: foo
   object: event
+  ackTimeout: 1000
   timeout: 1
+
+# store config
+config:
+  writeTimeout: 2000
 
 # mock incoming call
 path: /test_type_all

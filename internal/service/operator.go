@@ -7,6 +7,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,12 +17,12 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-const (
-	// OperatorError is the base for all operator related error.
-	OperatorError dipper.Error = "operator error"
-)
+var (
+	// ErrOperatorError is the base for all operator related error.
+	ErrOperatorError = errors.New("operator error")
 
-var operator *Service
+	operator *Service
+)
 
 // StartOperator starts the operator service.
 func StartOperator(cfg *config.Config) {
@@ -76,7 +77,7 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 
 	worker := operator.getDriverRuntime("driver:" + driver)
 	if worker == nil {
-		panic(fmt.Errorf("not defined: %s: %w", driver, OperatorError))
+		panic(fmt.Errorf("%w: not defined: %s", ErrOperatorError, driver))
 	}
 	finalParams := params
 	if params != nil {
@@ -87,7 +88,6 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 				"data":    data,
 				"event":   event,
 				"labels":  msg.Labels,
-				"wfdata":  ctx,
 				"ctx":     ctx,
 				"params":  params,
 			}).(map[string]interface{})
@@ -99,12 +99,10 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 			"event":   event,
 			"labels":  msg.Labels,
 			"ctx":     ctx,
-			"wfdata":  ctx,
 			"params":  params,
 		}).(map[string]interface{})
 	}
 	dipper.Logger.Debugf("[operator] interpolated function call %+v", finalParams)
-	dipper.Recursive(finalParams, operator.decryptDriverData)
 
 	msg.Payload = finalParams
 	if msg.Labels == nil {
@@ -197,7 +195,6 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 	}
 
 	if s != nil && s.Data != nil {
-		dipper.Recursive(s.Data, operator.decryptDriverData)
 		currentSysDataCopy, _ := dipper.DeepCopy(s.Data)
 		if sysData == nil {
 			sysData = map[string]interface{}{}

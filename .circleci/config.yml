@@ -1,14 +1,14 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.15.2-alpine
+    - image: golang:1.15.5-alpine
       environment:
         - GO111MODULE=auto
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 license_finder: &license_finder
   docker:
-    - image: licensefinder/license_finder:6.8.2
+    - image: licensefinder/license_finder:6.10.0
       environment:
         - GO111MODULE=auto
   working_directory: /root/src/honeydipper
@@ -25,19 +25,10 @@ save_mod: &save_mod
 
 version: 2
 jobs:
-  lint:
-    <<: *defaults
-    steps:
-      - run: apk add git openssh-client
-      - checkout
-      - run: go get -u golang.org/x/lint/golint
-      - run: go get -u mvdan.cc/gofumpt
-      - run: gofumpt -s -w .
-      - run: golint
   golangci-lint:
     <<: *defaults
     docker:
-      - image: golangci/golangci-lint:v1.31.0-alpine
+      - image: golangci/golangci-lint:v1.33.0-alpine
     steps:
       - checkout
       - run: golangci-lint run
@@ -61,8 +52,8 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.15.2-alpine
-      - image: redis:5.0.9-alpine
+      - image: golang:1.15.5-alpine
+      - image: redis:5.0.10-alpine
     steps:
       - run:
           name: install dependencies
@@ -94,10 +85,7 @@ workflows:
   version: 2
   run_tests:
     jobs:
-      - lint
-      - golangci-lint:
-          requires:
-            - lint
+      - golangci-lint
       - license_finder
       - test:
           requires:

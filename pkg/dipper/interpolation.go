@@ -8,6 +8,7 @@ package dipper
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"text/template"
@@ -17,10 +18,8 @@ import (
 	"github.com/ghodss/yaml"
 )
 
-const (
-	// InterpolationError represents all errors thrown due to failure to interpolate.
-	InterpolationError Error = "config error"
-)
+// ErrInterpolationError represents all errors thrown due to failure to interpolate.
+var ErrInterpolationError = errors.New("config error")
 
 // FuncMap : used to add functions to the go templates.
 var FuncMap = template.FuncMap{
@@ -87,13 +86,13 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 
 	quote := strings.IndexAny(parsed, "\"'`")
 	if allowNull && quote >= 0 {
-		panic(fmt.Errorf("allow nil combine with default value: %s: %w", v, InterpolationError))
+		panic(fmt.Errorf("%w: allow nil combine with default value: %s", ErrInterpolationError, v))
 	}
 
 	var keys []string
 	if quote > 0 {
 		if parsed[quote-1] != ',' {
-			panic(fmt.Errorf("missing comma: %s: %w", v, InterpolationError))
+			panic(fmt.Errorf("%w: missing comma: %s", ErrInterpolationError, v))
 		}
 		keys = strings.Split(parsed[:quote-1], ",")
 	} else if quote < 0 {
@@ -113,7 +112,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 
 	if quote >= 0 {
 		if parsed[quote] != parsed[len(parsed)-1] {
-			panic(fmt.Errorf("quotes not matching: %s: %w", parsed, InterpolationError))
+			panic(fmt.Errorf("%w: quotes not matching: %s", ErrInterpolationError, parsed))
 		}
 
 		return parsed[quote+1 : len(parsed)-1]
@@ -122,7 +121,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 	if allowNull {
 		return nil
 	}
-	panic(fmt.Errorf("invalid path: %s: %w", v[1:], InterpolationError))
+	panic(fmt.Errorf("%w: invalid path: %s", ErrInterpolationError, v[1:]))
 }
 
 // Interpolate : go through the map data structure to find and parse all the templates.

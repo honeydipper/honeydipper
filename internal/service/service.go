@@ -8,6 +8,7 @@ package service
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,9 +29,6 @@ import (
 // features known to the service for providing some functionalities.
 const (
 	FeatureEmitter = "emitter"
-
-	// ServiceError indicates error condition when rendering service.
-	ServiceError dipper.Error = "service error"
 
 	// DriverGracefulTimeout is the timeout in milliseconds for a driver to gracefully shutdown.
 	DriverGracefulTimeout time.Duration = 50
@@ -79,8 +77,13 @@ type Service struct {
 	healthy            bool
 }
 
-// Services holds a catalog of running services in this daemon process.
-var Services = map[string]*Service{}
+var (
+	// Services holds a catalog of running services in this daemon process.
+	Services = map[string]*Service{}
+
+	// ErrServiceError indicates error condition when rendering service.
+	ErrServiceError = errors.New("service error")
+)
 
 // NewService creates a service with given config and name.
 func NewService(cfg *config.Config, name string) *Service {
@@ -126,18 +129,18 @@ func (s *Service) GetStream(feature string) io.Writer {
 		}
 
 		if runtime.State != driver.DriverAlive {
-			panic(fmt.Errorf("feature failed or loading timeout: %s: %w", feature, ServiceError))
+			panic(fmt.Errorf("%w: feature failed or loading timeout: %s", ErrServiceError, feature))
 		}
 
 		return runtime.Output
 	}
-	panic(fmt.Errorf("feature not loaded: %s: %w", feature, ServiceError))
+	panic(fmt.Errorf("%w: feature not loaded: %s", ErrServiceError, feature))
 }
 
 func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{}, replace bool) {
-	dipper.Logger.Debugf("[%s] decrypting %s", s.name, key)
 	if str, ok := val.(string); ok {
 		if strings.HasPrefix(str, "ENC[") {
+			dipper.Logger.Debugf("[%s] decrypting %s", s.name, key)
 			parts := strings.SplitN(str[4:len(str)-1], ",", 2)
 			encDriver := parts[0]
 			data := []byte(parts[1])
@@ -166,7 +169,7 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 			if err, ok := r.(error); ok {
 				rerr = err
 			} else {
-				rerr = fmt.Errorf("%+v: %w", r, ServiceError)
+				rerr = fmt.Errorf("%w: %+v", ErrServiceError, r)
 			}
 		}
 	}()
@@ -182,9 +185,9 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 	if strings.HasPrefix(feature, "driver:") {
 		driverName = feature[7:]
 	} else {
-		driverName, ok = s.config.GetDriverDataStr(fmt.Sprintf("daemon.featureMap.%s.%s", s.name, feature))
+		driverName, ok = s.config.GetStagedDriverDataStr(fmt.Sprintf("daemon.featureMap.%s.%s", s.name, feature))
 		if !ok {
-			driverName, ok = s.config.GetDriverDataStr(fmt.Sprintf("daemon.featureMap.global.%s", feature))
+			driverName, ok = s.config.GetStagedDriverDataStr(fmt.Sprintf("daemon.featureMap.global.%s", feature))
 		}
 		if !ok {
 			panic("driver not defined for the feature")
@@ -192,21 +195,18 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 	}
 	dipper.Logger.Infof("[%s] mapping feature %s to driver %s", s.name, feature, driverName)
 
-	driverData, _ := s.config.GetDriverData(driverName)
+	driverData, _ := s.config.GetStagedDriverData(driverName)
 	var dynamicData interface{}
 	if strings.HasPrefix(feature, "driver:") {
 		dynamicData = s.dynamicFeatureData[feature]
 	}
 
 	var driverHandler driver.Handler
-	if driverMeta, ok := s.config.GetDriverData(fmt.Sprintf("daemon.drivers.%s", driverName)); ok {
+	if driverMeta, ok := s.config.GetStagedDriverData(fmt.Sprintf("daemon.drivers.%s", driverName)); ok {
 		driverHandler = driver.NewDriver(driverMeta.(map[string]interface{}))
 	} else {
 		panic("unable to get driver metadata")
 	}
-
-	dipper.Recursive(driverData, s.decryptDriverData)
-	dipper.Recursive(dynamicData, s.decryptDriverData)
 
 	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverHandler.Meta())
 	driverRuntime := driver.Runtime{
@@ -272,11 +272,17 @@ func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.R
 func (s *Service) start() {
 	go func() {
 		dipper.Logger.Infof("[%s] starting service", s.name)
+		s.config.AdvanceStage(s.name, config.StageBooting)
 		featureList := s.getFeatureList()
 		s.loadRequiredFeatures(featureList, true)
 		go s.serviceLoop()
 		time.Sleep(time.Second)
+		s.config.AdvanceStage(s.name, config.StageDiscovering, s.decryptDriverData)
 		s.loadAdditionalFeatures(featureList)
+		s.config.AdvanceStage(s.name, config.StageServing)
+		if s.ServiceReload != nil {
+			s.ServiceReload(s.config)
+		}
 		s.healthy = true
 		go s.metricsLoop()
 	}()
@@ -284,50 +290,47 @@ func (s *Service) start() {
 
 // Reload the service when configuration changes are detected.
 func (s *Service) Reload() {
-	dipper.Logger.Infof("[%s] reloading service", s.name)
-	var featureList map[string]bool
+	defer func() {
+		if r := recover(); r != nil {
+			s.healthy = false
+			if errors.Is(r.(error), config.ErrConfigRollback) {
+				dipper.Logger.Errorf("[%s] reverting config initiated outside of the service", s.name)
 
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				s.healthy = false
-				dipper.Logger.Errorf("[%s] reverting config due to fatal failure %v", s.name, r)
-				s.config.RollBack()
+				return
 			}
-		}()
-		if s.ServiceReload != nil {
-			s.ServiceReload(s.config)
+			dipper.Logger.Errorf("[%s] reverting config due to fatal failure %v", s.name, r)
+			s.config.RollBack()
 		}
-		featureList = s.getFeatureList()
-		s.loadRequiredFeatures(featureList, false)
 	}()
-
+	dipper.Logger.Infof("[%s] reloading service", s.name)
+	s.config.AdvanceStage(s.name, config.StageBooting)
+	featureList := s.getFeatureList()
+	s.loadRequiredFeatures(featureList, false)
+	s.config.AdvanceStage(s.name, config.StageDiscovering, s.decryptDriverData)
 	s.loadAdditionalFeatures(featureList)
+	s.config.AdvanceStage(s.name, config.StageServing)
+	if s.ServiceReload != nil {
+		s.ServiceReload(s.config)
+	}
 	s.healthy = true
 	s.removeUnusedFeatures(featureList)
 }
 
 func (s *Service) getFeatureList() map[string]bool {
 	featureList := map[string]bool{}
-	if cfgItem, ok := s.config.GetDriverData("daemon.features.global"); ok {
+	if cfgItem, ok := s.config.GetStagedDriverData("daemon.features.global"); ok {
 		for _, feature := range cfgItem.([]interface{}) {
 			featureName := feature.(map[string]interface{})["name"].(string)
 			featureList[featureName], _ = dipper.GetMapDataBool(feature, "required")
 		}
 	}
-	if cfgItem, ok := s.config.GetDriverData("daemon.features." + s.name); ok {
+	if cfgItem, ok := s.config.GetStagedDriverData("daemon.features." + s.name); ok {
 		for _, feature := range cfgItem.([]interface{}) {
 			featureName := feature.(map[string]interface{})["name"].(string)
 			featureList[featureName], _ = dipper.GetMapDataBool(feature, "required")
 		}
 	}
-	if s.DiscoverFeatures != nil {
-		s.dynamicFeatureData = s.DiscoverFeatures(s.config.DataSet)
-		for name := range s.dynamicFeatureData {
-			featureList[name] = false
-		}
-	}
-	dipper.Logger.Debugf("[%s] final feature list %+v", s.name, featureList)
+	dipper.Logger.Debugf("[%s] preliminary feature list %+v", s.name, featureList)
 
 	return featureList
 }
@@ -394,6 +397,14 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 }
 
 func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
+	if s.DiscoverFeatures != nil {
+		s.dynamicFeatureData = s.DiscoverFeatures(s.config.Staged)
+		for name := range s.dynamicFeatureData {
+			featureList[name] = false
+		}
+	}
+	dipper.Logger.Debugf("[%s] final feature list %+v", s.name, featureList)
+
 	for feature, required := range featureList {
 		if !required {
 			affected, driverName, err := s.loadFeature(feature)
@@ -426,6 +437,7 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 func (s *Service) serviceLoop() {
 	daemon.Children.Add(1)
 	defer daemon.Children.Done()
+
 	for !daemon.ShuttingDown {
 		var cases []reflect.SelectCase
 		var orderedRuntimes []*driver.Runtime

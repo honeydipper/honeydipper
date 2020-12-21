@@ -25,9 +25,6 @@ const (
 	// DefaultAPIAckTimeout is the number of milliseconds to wait for acks.
 	DefaultAPIAckTimeout time.Duration = 10
 
-	// APIError is the base for all API related error.
-	APIError dipper.Error = "API error"
-
 	// DefaultAPIWriteTimeout is the default timeout in seconds for responding to the request.
 	DefaultAPIWriteTimeout time.Duration = 10
 
@@ -36,6 +33,14 @@ const (
 
 	// ACLDeny reprensts denying the subject to access the API.
 	ACLDeny = "deny"
+)
+
+var (
+	// ErrAPIError is the base for all API related error.
+	ErrAPIError = errors.New("API error")
+
+	// ErrAPINoACK means not able to receive ACK for the API call.
+	ErrAPINoACK = fmt.Errorf("%w: no ACK", ErrAPIError)
 )
 
 // Store stores the live API calls in memory.
@@ -58,17 +63,17 @@ func (l *Store) HandleAPIACK(m *dipper.Message) {
 
 	uuid, ok := m.Labels["uuid"]
 	if !ok {
-		panic(fmt.Errorf("uuid missing in ack: %w", APIError))
+		panic(fmt.Errorf("%w: uuid missing ACK", ErrAPIError))
 	}
-	dipper.Logger.Debugf("handling api ack for %s", uuid)
+	dipper.Logger.Debugf("handling api ACK for %s", uuid)
 	a, ok := l.requests.Load(uuid)
 	if !ok {
-		panic(fmt.Errorf("request not found: %w", APIError))
+		panic(fmt.Errorf("%w: request not found", ErrAPIError))
 	}
 	api := a.(*Request)
 	responder, ok := m.Labels["from"]
 	if !ok {
-		panic(fmt.Errorf("from label missing in ack: %w", APIError))
+		panic(fmt.Errorf("%w: missing from label in ACK", ErrAPIError))
 	}
 
 	switch api.reqType {
@@ -78,7 +83,7 @@ func (l *Store) HandleAPIACK(m *dipper.Message) {
 		api.acks = append(api.acks, responder)
 		api.firstACK <- 1
 	case TypeFirst:
-		panic(fmt.Errorf("TypeFirst APIs do not expect acks: %w", APIError))
+		panic(fmt.Errorf("%w: TypeFirst APIs do not expect ACKs", ErrAPIError))
 	}
 }
 
@@ -89,20 +94,20 @@ func (l *Store) HandleAPIReturn(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	uuid, ok := m.Labels["uuid"]
 	if !ok {
-		panic(fmt.Errorf("uuid missing in ack: %w", APIError))
+		panic(fmt.Errorf("%w: uuid missing return", ErrAPIError))
 	}
 	a, ok := l.requests.Load(uuid)
 	if !ok {
-		panic(fmt.Errorf("request not found: %w", APIError))
+		panic(fmt.Errorf("%w: request not found", ErrAPIError))
 	}
 	api := a.(*Request)
 	responder, ok := m.Labels["from"]
 	if !ok {
-		panic(fmt.Errorf("from label missing in ack: %w", APIError))
+		panic(fmt.Errorf("%w: missing from label in return", ErrAPIError))
 	}
 
 	if errmsg, ok := m.Labels["error"]; ok {
-		api.err = fmt.Errorf("%w: from [%s]: %s", APIError, responder, errmsg)
+		api.err = fmt.Errorf("%w: from [%s]: %s", ErrAPIError, responder, errmsg)
 		api.received <- 1
 
 		return
@@ -243,7 +248,7 @@ func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
 	select {
 	case <-r.ready:
 		if r.err != nil {
-			if errors.Is(r.err, APIErrorNoAck) {
+			if errors.Is(r.err, ErrAPINoACK) {
 				c.AbortWithStatusJSON(http.StatusNotFound, map[string]interface{}{"error": "object not found"})
 			} else {
 				c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": r.err.Error()})
@@ -255,7 +260,7 @@ func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
 		if r.method == http.MethodGet && (r.timeout == InfiniteDuration || r.timeout > l.writeTimeout) {
 			c.IndentedJSON(http.StatusAccepted, map[string]interface{}{"uuid": r.uuid, "results": r.getResults()})
 		} else {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": dipper.TimeoutError.Error()})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": dipper.ErrTimeout.Error()})
 		}
 	}
 }

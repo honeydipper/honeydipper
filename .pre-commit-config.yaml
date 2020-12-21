@@ -11,7 +11,7 @@ repos:
     - id: golangci-lint
 #   - id: go-critic
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v2.2.3
+  rev: v2.5.0
   hooks:
     - id: check-yaml
       exclude: ^deployments/helm/honeydipper/
