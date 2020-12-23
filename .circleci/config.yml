@@ -100,4 +100,4 @@ workflows:
           context: honeydipper
           filters:
             branches:
-              only: master
+              only: main
