@@ -11,7 +11,7 @@ steps:
     type: git-clone
     repo: honeydipper/honeydipper
     git: github
-    revision: master
+    revision: main
     stage: init
 
   strip_tag:

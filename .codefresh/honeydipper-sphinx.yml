@@ -6,7 +6,7 @@ steps:
     type: git-clone
     repo: honeydipper/honeydipper-sphinx
     git: github
-    revision: master
+    revision: main
   generate_doc:
     title: 'generate docs'
     image: honeydipper/honeydipper:1.0.2
