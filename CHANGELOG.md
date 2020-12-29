@@ -1,3 +1,18 @@
+## [2.1.3](https://github.com/honeydipper/honeydipper/compare/v2.1.2...v2.1.3) (2020-12-29)
+
+
+### Bug Fixes
+
+* **config:** avoid concurrent map write in config ([#358](https://github.com/honeydipper/honeydipper/issues/358)) ([d53b0e3](https://github.com/honeydipper/honeydipper/commit/d53b0e3a4e0d449655f816134d536e32e8b59ba7))
+* **deps:** update golang.org/x/crypto commit hash to 9e8e0b3 ([#333](https://github.com/honeydipper/honeydipper/issues/333)) ([1417aa8](https://github.com/honeydipper/honeydipper/commit/1417aa841c440c4f567f49b41d92e639b84e4482))
+* **deps:** update golang.org/x/oauth2 commit hash to 0b49973 ([#345](https://github.com/honeydipper/honeydipper/issues/345)) ([40df4a1](https://github.com/honeydipper/honeydipper/commit/40df4a154cf95d535423b088fe942f04c279c0a0))
+* **deps:** update google.golang.org/genproto commit hash to 06b3db8 ([#346](https://github.com/honeydipper/honeydipper/issues/346)) ([5918d0f](https://github.com/honeydipper/honeydipper/commit/5918d0f56cdca8058ae5689ad4d91f206f3ad898))
+* **deps:** update google.golang.org/genproto commit hash to 2e45c02 ([#334](https://github.com/honeydipper/honeydipper/issues/334)) ([13a2cb4](https://github.com/honeydipper/honeydipper/commit/13a2cb4613838b7d049ccdc8973a6ccbc200b143))
+* **deps:** update to aurora v3 ([#341](https://github.com/honeydipper/honeydipper/issues/341)) ([363dc85](https://github.com/honeydipper/honeydipper/commit/363dc8528c1fb249ee3448bef9fd13a70e5ac199))
+* **internal:** remove wfdata interpolation ([#355](https://github.com/honeydipper/honeydipper/issues/355)) ([6bc1b5d](https://github.com/honeydipper/honeydipper/commit/6bc1b5d41fab6fad289738b0de3ff608661e1464))
+* **logging:** switch to golang.org/x/term ([#350](https://github.com/honeydipper/honeydipper/issues/350)) ([81c9043](https://github.com/honeydipper/honeydipper/commit/81c9043afba3c820ffd4f096c05e1f4c91b20691))
+* **workflow:** avoid concurrent map write in mergeContext ([#357](https://github.com/honeydipper/honeydipper/issues/357)) ([a7b8380](https://github.com/honeydipper/honeydipper/commit/a7b8380c7382bdf49ec5c085e0fc93cea848c66f))
+
 ## [2.1.2](https://github.com/honeydipper/honeydipper/compare/v2.1.1...v2.1.2) (2020-10-30)
 
 
