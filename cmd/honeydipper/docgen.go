@@ -30,6 +30,9 @@ import (
 const (
 	// DefaultHTTPRequestTimeout is the default timeout for a HTTP request.
 	DefaultHTTPRequestTimeout time.Duration = time.Second * 10
+
+	// DocGenService is the name of the DocGen service.
+	DocGenService = "docgen"
 )
 
 // DocItem describe a item or a group of items in the document output.
@@ -201,9 +204,12 @@ func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config
 			currentRepo := &config.Config{
 				InitRepo:      v,
 				IsConfigCheck: false,
+				Services:      []string{DocGenService},
 			}
 			currentRepo.Bootstrap("/tmp")
-			envData["current_repo"] = currentRepo.DataSet
+			currentRepo.AdvanceStage(DocGenService, config.StageBooting)
+			currentRepo.AdvanceStage(DocGenService, config.StageDiscovering)
+			envData["current_repo"] = currentRepo.Staged
 		}
 	}
 
