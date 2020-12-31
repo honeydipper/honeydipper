@@ -20,14 +20,16 @@ func TestRunConfigCheck(t *testing.T) {
 	runConfigTestCases := []interface{}{
 		[]interface{}{
 			&config.Config{
-				DataSet: &config.DataSet{},
+				Staged:   &config.DataSet{},
+				Services: []string{ConfigCheckService},
 			},
 			0,
 			"runConfigCheck should return zero for empty config repo",
 		},
 		[]interface{}{
 			&config.Config{
-				DataSet: &config.DataSet{},
+				Staged:   &config.DataSet{},
+				Services: []string{ConfigCheckService},
 				Loaded: map[config.RepoInfo]*config.Repo{
 					{Repo: "good one"}: {Errors: nil},
 					{Repo: "bad one"}:  {Errors: []config.Error{{Error: fmt.Errorf("error converting YAML to JSON: yaml: %s", "test.yaml"), File: "test"}}},
@@ -38,29 +40,32 @@ func TestRunConfigCheck(t *testing.T) {
 		},
 		[]interface{}{
 			&config.Config{
-				DataSet: &config.DataSet{
+				Staged: &config.DataSet{
 					Contexts: map[string]interface{}{"_default": map[string]interface{}{"wf-not-exists": map[string]interface{}{"data": "value"}}},
 				},
+				Services: []string{ConfigCheckService},
 			},
 			1,
 			"runConfigCheck should return non-zero if a context is missing matching workflow",
 		},
 		[]interface{}{
 			&config.Config{
-				DataSet: &config.DataSet{
+				Staged: &config.DataSet{
 					Rules: []config.Rule{
 						{When: config.Trigger{Driver: "non-exist"}, Do: config.Workflow{Workflow: "non-exist"}},
 					},
 				},
+				Services: []string{ConfigCheckService},
 			},
 			1,
 			"runConfigCheck should return non-zero if a rule calls a missing workflow",
 		},
 		[]interface{}{
 			&config.Config{
-				DataSet: &config.DataSet{
+				Staged: &config.DataSet{
 					Workflows: map[string]config.Workflow{"test-workflow": {Workflow: "dne"}},
 				},
+				Services: []string{ConfigCheckService},
 			},
 			1,
 			"runConfigCheck should return non-zero if a workflow calls a missing workflow",
@@ -97,7 +102,7 @@ func TestCheckObjectExists(t *testing.T) {
 func TestCheckWorkflowDriverCallDriver(t *testing.T) {
 	defer recoverAssertion(`driver "test-driver" not defined`, t)
 	cfg := &config.Config{
-		DataSet: &config.DataSet{
+		Staged: &config.DataSet{
 			Drivers: map[string]interface{}{
 				"driver1": "",
 			},
@@ -110,7 +115,7 @@ func TestCheckWorkflowDriverCallDriver(t *testing.T) {
 func TestCheckWorkflowDriverFunctionDriver(t *testing.T) {
 	defer recoverAssertion(`driver "test-driver" not defined`, t)
 	cfg := &config.Config{
-		DataSet: &config.DataSet{
+		Staged: &config.DataSet{
 			Drivers: map[string]interface{}{
 				"driver1": "",
 			},
@@ -128,42 +133,42 @@ var wfFunctionTestCases = []struct {
 }{
 	{
 		config.Workflow{Name: "test", CallFunction: "test_system.test_function"},
-		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
+		&config.Config{Staged: &config.DataSet{Systems: map[string]config.System{
 			"test_system": {Functions: map[string]config.Function{"test_function": {Driver: "web"}}},
 		}}},
 		"",
 	},
 	{
 		config.Workflow{Name: "test", CallFunction: "test_system.test_function"},
-		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
+		&config.Config{Staged: &config.DataSet{Systems: map[string]config.System{
 			"system_does_not_exist": {Functions: map[string]config.Function{"test_function": {Driver: "web"}}},
 		}}},
 		`system "test_system" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", CallFunction: "test_system.test_function"},
-		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
+		&config.Config{Staged: &config.DataSet{Systems: map[string]config.System{
 			"test_system": {Functions: map[string]config.Function{"test_function_does_not_exist": {Driver: "web"}}},
 		}}},
 		`test_system function "test_function" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", Function: config.Function{Target: config.Action{System: "test_system", Function: "test_function"}}},
-		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
+		&config.Config{Staged: &config.DataSet{Systems: map[string]config.System{
 			"test_system": {Functions: map[string]config.Function{"test_function": {Driver: "web"}}},
 		}}},
 		"",
 	},
 	{
 		config.Workflow{Name: "test", Function: config.Function{Target: config.Action{System: "test_system", Function: "test_function"}}},
-		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
+		&config.Config{Staged: &config.DataSet{Systems: map[string]config.System{
 			"not_exist": {Functions: map[string]config.Function{"test_function": {Driver: "web"}}},
 		}}},
 		`system "test_system" not defined`,
 	},
 	{
 		config.Workflow{Name: "test", Function: config.Function{Target: config.Action{System: "test_system", Function: "test_function"}}},
-		&config.Config{DataSet: &config.DataSet{Systems: map[string]config.System{
+		&config.Config{Staged: &config.DataSet{Systems: map[string]config.System{
 			"test_system": {Functions: map[string]config.Function{"not_exist": {Driver: "web"}}},
 		}}},
 		`test_system function "test_function" not defined`,
