@@ -161,8 +161,7 @@ func main() {
 		defer func() {
 			os.Exit(exitCode)
 		}()
-		cfg.Bootstrap("/tmp")
-		exitCode = runConfigCheck(&cfg)
+		exitCode = loadAndRunConfigCheck(&cfg)
 	case cfg.IsDocGen:
 		runDocGen(&cfg)
 	default:

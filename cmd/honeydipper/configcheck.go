@@ -21,6 +21,9 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+// ConfigCheckService is the name of the configcheck service.
+const ConfigCheckService = "configcheck"
+
 var (
 	// ErrorFieldCollision is the error message when two conflicting fields are set.
 	ErrorFieldCollision = fmt.Errorf("cannot define both")
@@ -37,8 +40,17 @@ type dipperCLError struct {
 	msg      string
 }
 
+func loadAndRunConfigCheck(cfg *config.Config) int {
+	cfg.Bootstrap("/tmp")
+
+	return runConfigCheck(cfg)
+}
+
 func runConfigCheck(cfg *config.Config) int {
 	ret := 0
+	cfg.ResetStage()
+	cfg.AdvanceStage(ConfigCheckService, config.StageBooting)
+	cfg.AdvanceStage(ConfigCheckService, config.StageDiscovering)
 	for spec, repo := range cfg.Loaded {
 		if len(repo.Errors) > 0 {
 			ret = 1
@@ -62,7 +74,7 @@ func runConfigCheck(cfg *config.Config) int {
 	}
 
 	contextErrors := false
-	for contextName, contextValue := range cfg.DataSet.Contexts {
+	for contextName, contextValue := range cfg.Staged.Contexts {
 		for wfName := range contextValue.(map[string]interface{}) {
 			if !wildcardContexts[wfName] {
 				errMsg := checkContext(cfg, wfName)
@@ -81,7 +93,7 @@ func runConfigCheck(cfg *config.Config) int {
 
 	// flag to print the header
 	ruleErrors := false
-	for _, rule := range cfg.DataSet.Rules {
+	for _, rule := range cfg.Staged.Rules {
 		location, errMsg := checkWorkflow(rule.Do, cfg)
 		if len(errMsg) > 0 {
 			rule.When.Match = map[string]interface{}{
@@ -98,7 +110,7 @@ func runConfigCheck(cfg *config.Config) int {
 	}
 
 	workflowErrors := false
-	for name, workflow := range cfg.DataSet.Workflows {
+	for name, workflow := range cfg.Staged.Workflows {
 		location, errMsg := checkWorkflow(workflow, cfg)
 		if len(errMsg) > 0 {
 			if !workflowErrors {
@@ -160,7 +172,7 @@ func checkAuthRules(cfg *config.Config) int {
 				fmt.Printf("%+v\n", aurora.Red(e))
 			}
 		}()
-		apiCfg = dipper.MustGetMapData(cfg.DataSet.Drivers, "daemon.services.api").(map[string]interface{})
+		apiCfg = dipper.MustGetMapData(cfg.Staged.Drivers, "daemon.services.api").(map[string]interface{})
 		casbinCfg := dipper.MustGetMapData(apiCfg, "auth.casbin").(map[string]interface{})
 		casbinCfg["models"] = append(casbinCfg["models"].([]interface{}), tests.Models...)
 		casbinCfg["policies"] = append(casbinCfg["policies"].([]interface{}), tests.Policies...)
@@ -245,7 +257,7 @@ func checkContext(cfg *config.Config, ctxWorkflowName string) (msg string) {
 			}
 		}
 	}()
-	checkObjectExists("workflow", ctxWorkflowName, cfg.DataSet.Workflows)
+	checkObjectExists("workflow", ctxWorkflowName, cfg.Staged.Workflows)
 
 	return msg
 }
@@ -266,7 +278,7 @@ func checkWorkflow(w config.Workflow, cfg *config.Config) (location string, msg 
 
 	checkWorkflowActions(w)
 	checkWorkflowConditions(w)
-	checkObjectExists("workflow", w.Workflow, cfg.DataSet.Workflows)
+	checkObjectExists("workflow", w.Workflow, cfg.Staged.Workflows)
 	checkWorkflowFunction(w, cfg)
 	checkWorkflowDriver(w, cfg)
 
@@ -309,13 +321,13 @@ func checkChildWorkflow(prefix string, child interface{}, cfg *config.Config) {
 func checkWorkflowFunction(w config.Workflow, cfg *config.Config) {
 	if w.CallFunction != "" && !hasInterpolation(w.CallFunction) {
 		parts := strings.Split(w.CallFunction, ".")
-		checkObjectExists("system", parts[0], cfg.DataSet.Systems)
-		checkObjectExists(parts[0]+" function", parts[1], cfg.DataSet.Systems[parts[0]].Functions)
+		checkObjectExists("system", parts[0], cfg.Staged.Systems)
+		checkObjectExists(parts[0]+" function", parts[1], cfg.Staged.Systems[parts[0]].Functions)
 	} else if w.Function.Target.System != "" && !hasInterpolation(w.Function.Target.System) {
 		f := w.Function.Target
-		checkObjectExists("system", f.System, cfg.DataSet.Systems)
+		checkObjectExists("system", f.System, cfg.Staged.Systems)
 		if !hasInterpolation(f.Function) {
-			checkObjectExists(f.System+" function", f.Function, cfg.DataSet.Systems[f.System].Functions)
+			checkObjectExists(f.System+" function", f.Function, cfg.Staged.Systems[f.System].Functions)
 		}
 	}
 }
@@ -323,9 +335,9 @@ func checkWorkflowFunction(w config.Workflow, cfg *config.Config) {
 func checkWorkflowDriver(w config.Workflow, cfg *config.Config) {
 	if w.CallDriver != "" && !hasInterpolation(w.CallDriver) {
 		parts := strings.Split(w.CallDriver, ".")
-		checkObjectExists("driver", parts[0], cfg.DataSet.Drivers)
+		checkObjectExists("driver", parts[0], cfg.Staged.Drivers)
 	} else if w.Function.Driver != "" && !hasInterpolation(w.Function.Driver) {
-		checkObjectExists("driver", w.Function.Driver, cfg.DataSet.Drivers)
+		checkObjectExists("driver", w.Function.Driver, cfg.Staged.Drivers)
 	}
 }
 
