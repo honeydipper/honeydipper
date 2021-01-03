@@ -205,7 +205,7 @@ func (c *Config) AdvanceStage(service string, stage int, fns ...dipper.ItemProce
 			panic(ErrConfigRollback)
 		}
 		locker.Unlock()
-		stageWG.Wait()
+		dipper.WaitGroupWait(stageWG)
 		locker.Lock()
 
 		if locker != c.Locker {
