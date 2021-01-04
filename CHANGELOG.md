@@ -1,3 +1,14 @@
+## [2.1.4](https://github.com/honeydipper/honeydipper/compare/v2.1.3...v2.1.4) (2021-01-04)
+
+
+### Bug Fixes
+
+* **cmd:** configcheck should use staged dataset ([52dc879](https://github.com/honeydipper/honeydipper/commit/52dc879ee04b80b8b11cc418df895e795b5ec11f)), closes [#358](https://github.com/honeydipper/honeydipper/issues/358)
+* **cmd:** docgen should use staged dataset ([6472801](https://github.com/honeydipper/honeydipper/commit/6472801e3bf761e5dfacc284d6663f7567087f4f)), closes [#358](https://github.com/honeydipper/honeydipper/issues/358)
+* **config:** safely wrap WaitGroup.Wait ([9f3ebe4](https://github.com/honeydipper/honeydipper/commit/9f3ebe40de57e3313414a8b309e891480d27b07c))
+* **deps:** update golang.org/x/crypto commit hash to eec23a3 ([#366](https://github.com/honeydipper/honeydipper/issues/366)) ([4ee8d5c](https://github.com/honeydipper/honeydipper/commit/4ee8d5c488caf954da4bd16cb9fc003b2a7b237a))
+* **deps:** update golang.org/x/oauth2 commit hash to 08078c5 ([#367](https://github.com/honeydipper/honeydipper/issues/367)) ([8caa327](https://github.com/honeydipper/honeydipper/commit/8caa327cdbbff0b460f562579f5915ec9e260908))
+
 ## [2.1.3](https://github.com/honeydipper/honeydipper/compare/v2.1.2...v2.1.3) (2020-12-29)
 
 
