@@ -1,4 +1,4 @@
-// Copyright 2019 Honey Science Corporation
+// Copyright 2020 Honey Science Corporation
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -32,4 +32,13 @@ func WaitGroupDoneAll(wg *sync.WaitGroup) {
 	for {
 		wg.Done()
 	}
+}
+
+// WaitGroupWait is a wrapper for safely waiting for a WaitGroup.
+func WaitGroupWait(wg *sync.WaitGroup) {
+	defer func() {
+		_ = recover()
+	}()
+
+	wg.Wait()
 }
