@@ -3,7 +3,18 @@ drivers:
   redisqueue:
     connection:
       Addr: localhost:6379
+  api-broadcast:
+    topic: honeydipper:api-broadcast
+    channel: api
+    connection:
+      Addr: 127.0.0.1:6379
   webhook:
     Addr: "127.0.0.1:8081"
   gcloud-kms:
     keyname: projects/test-project/locations/us-central1/keyRings/secure_config/cryptoKeys/kube_secrets
+  auth-simple:
+    schemes:
+      - token
+    tokens:
+      - token: '$2y$05$3XXyVmdtvdLS1i2gV4qPZO0EPDwEL8BiVlTWQM4fYXEz4UysQaixu'
+        subject: admin
