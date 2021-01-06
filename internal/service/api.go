@@ -124,7 +124,7 @@ func handleAPIMessage(d *driver.Runtime, m *dipper.Message) {
 // APIFeatures figures out what features need to be loaded for API services.
 func APIFeatures(s *config.DataSet) map[string]interface{} {
 	features := map[string]interface{}{}
-	if providers, ok := dipper.GetMapData(APICfg, "auth-providers"); ok && providers != nil {
+	if providers, ok := dipper.GetMapData(s.Drivers, "daemon.services.api.auth-providers"); ok && providers != nil {
 		if len(providers.([]interface{})) > 0 {
 			for _, p := range providers.([]interface{}) {
 				parts := strings.Split(p.(string), ".")

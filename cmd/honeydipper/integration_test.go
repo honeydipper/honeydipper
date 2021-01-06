@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
@@ -35,6 +36,7 @@ func TestIntegrationStart(t *testing.T) {
 	defer t.Run("shutting down daemon", intTestDaemonShutdown)
 	t.Run("checking services", intTestServices)
 	t.Run("checking processes", intTestProcesses)
+	t.Run("checking processes", intTestMakingAPICall)
 	t.Run("checking crashed driver", intTestDriverCrash)
 }
 
@@ -60,7 +62,7 @@ func intTestDaemonStartup(t *testing.T) {
 		workingBranch = ref[len(ref)-1]
 	}
 	cfg := config.Config{
-		Services: []string{"engine", "receiver", "operator"},
+		Services: []string{"engine", "receiver", "operator", "api"},
 		InitRepo: config.RepoInfo{
 			Repo:   "../..",
 			Branch: workingBranch,
@@ -72,6 +74,7 @@ func intTestDaemonStartup(t *testing.T) {
 			service.StartEngine(&cfg)
 			service.StartReceiver(&cfg)
 			service.StartOperator(&cfg)
+			service.StartAPI(&cfg)
 		}
 		daemon.Run(&cfg)
 	}()
@@ -87,7 +90,9 @@ func intTestServices(t *testing.T) {
 	assert.True(t, ok, "engine service should be running")
 	_, ok = service.Services["operator"]
 	assert.True(t, ok, "operator service should be running")
-	assert.True(t, len(service.Services) == 3, "there should be 3 services running")
+	_, ok = service.Services["api"]
+	assert.True(t, ok, "api service should be running")
+	assert.True(t, len(service.Services) == 4, "there should be 4 services running")
 }
 
 func intTestProcesses(t *testing.T) {
@@ -109,7 +114,28 @@ func intTestProcesses(t *testing.T) {
 	pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid).Output()
 	assert.Nil(t, err, "should be able to run pgrep to find all child processes")
 	pids := strings.Split(string(pidstr), "\n")
-	assert.Lenf(t, pids, 11, "expecting 10 child processes for honeydipper process")
+	assert.Lenf(t, pids, 18, "expecting 17 child processes for honeydipper process")
+}
+
+func intTestMakingAPICall(t *testing.T) {
+	// making an api call with wrong credentials
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", "http://localhost:9000/api/events", nil)
+	assert.NoErrorf(t, err, "creating http request should not receive error")
+	req.Header.Add("Authorization", "bearer wrongcredentials")
+	resp, err := client.Do(req)
+	defer resp.Body.Close()
+	assert.NoErrorf(t, err, "api call should not receive error")
+	assert.Equalf(t, 401, resp.StatusCode, "api call should fail with bad creds")
+
+	// making an api call with correct credentials
+	req, err = http.NewRequest("GET", "http://localhost:9000/api/events", nil)
+	assert.NoErrorf(t, err, "creating http request should not receive error")
+	req.Header.Add("Authorization", "bearer abcdefg")
+	resp, err = client.Do(req)
+	defer resp.Body.Close()
+	assert.NoErrorf(t, err, "api call should not receive error")
+	assert.Equalf(t, 200, resp.StatusCode, "api call should succeed with correct creds")
 }
 
 func intTestDaemonShutdown(t *testing.T) {

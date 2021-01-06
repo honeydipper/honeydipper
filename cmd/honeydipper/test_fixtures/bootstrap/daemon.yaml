@@ -5,12 +5,14 @@ drivers:
     featureMap:
       global:
         eventbus: redisqueue
+        api-broadcast: api-broadcast
     features:
       global:
         - name: "driver:gcloud-kms"
           required: true
         - name: "eventbus"
           required: true
+        - name: api-broadcast
       operator:
         - name: "driver:gcloud-gke"
         - name: "driver:gcloud-dataflow"
@@ -46,4 +48,38 @@ drivers:
         type: builtin
         handlerData:
           shortName: kubernetes
+      auth-simple:
+        name: auth-simple
+        type: builtin
+        handlerData:
+          shortName: auth-simple
+      api-broadcast:
+        name: api-broadcast
+        type: builtin
+        handlerData:
+          shortName: redispubsub
 
+    services:
+      api:
+        auth-providers:
+          - auth-simple
+        auth:
+          casbin:
+            models:
+              - |
+                [request_definition]
+                r = sub, obj, act
+
+                [policy_definition]
+                p = sub, obj, act
+
+                [policy_effect]
+                e = some(where (p.eft == allow))
+
+                [matchers]
+                m = r.sub == p.sub && (r.obj == p.obj || p.obj == "*") && (r.act == p.act || p.act == "*")
+
+            policies:
+              - |
+                # define basic policy effects
+                p, admin, *, *
