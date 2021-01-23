@@ -93,3 +93,19 @@ data:
 	assert.Equal(t, "decrypted aabbccdd", MustGetMapDataStr(data, "data.item2"), "data.item2 should container decrypted data")
 	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
 }
+
+func TestDecryptAllWithDeferred(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item3:
+    item4: ENC[deferred,driver1,YWFiYmNjZGQ=]
+`
+
+	expect := func(O io.Reader, c *RPCCallerBase) {
+	}
+
+	data := wrapDecryptAll(t, doc, expect)
+	assert.Equal(t, "ENC[driver1,YWFiYmNjZGQ=]", MustGetMapDataStr(data, "data.item3.item4"), "item4 should be stripped off one deferred flag")
+	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
+}
