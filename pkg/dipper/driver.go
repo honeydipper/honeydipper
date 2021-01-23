@@ -111,6 +111,7 @@ func (d *Driver) Ping(msg *Message) {
 func (d *Driver) ReceiveOptions(msg *Message) {
 	msg = DeserializePayload(msg)
 	Recursive(msg.Payload, RegexParser)
+	DecryptAll(d, msg.Payload)
 	d.Options = msg.Payload
 	Logger = nil
 	d.GetLogger()
