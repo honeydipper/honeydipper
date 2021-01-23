@@ -164,6 +164,11 @@ func (d *Driver) SendMessage(m *Message) {
 	SendMessage(d.Out, m)
 }
 
+// CheckOption : get the data from options and check if it is truthy.
+func (d *Driver) CheckOption(path string) bool {
+	return CheckMapData(d.Options, path)
+}
+
 // GetOption : get the data from options map with the key.
 func (d *Driver) GetOption(path string) (interface{}, bool) {
 	return GetMapData(d.Options, path)

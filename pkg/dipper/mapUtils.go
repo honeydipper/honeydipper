@@ -128,6 +128,13 @@ func MustGetMapDataBool(from interface{}, path string) bool {
 	panic(fmt.Errorf("%w: not a bool: %s", ErrMapError, path))
 }
 
+// CheckMapData check if data exists and is truthy.
+func CheckMapData(from interface{}, path string) bool {
+	v, ok := GetMapData(from, path)
+
+	return ok && IsTruthy(v)
+}
+
 // ItemProcessor is a function processing one of the items in a data structure.
 type ItemProcessor func(key string, val interface{}) (newval interface{}, ok bool)
 
