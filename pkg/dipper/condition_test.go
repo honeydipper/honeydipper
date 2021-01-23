@@ -70,3 +70,20 @@ func TestCompareAllMap(t *testing.T) {
 	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, "invalid condition"), "fail with invalid condition for map value")
 	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, map[string]interface{}{"key4": "111"}), "fail with condition that missing value")
 }
+
+func TestIsTruthy(t *testing.T) {
+	assert.False(t, IsTruthy(nil), "nil should NOT be truthy")
+	assert.False(t, IsTruthy(" 	"), "whitespace only string should NOT be truthy")
+	assert.False(t, IsTruthy("some random string"), "non-empty string should NOT be truthy")
+	assert.False(t, IsTruthy("false"), `"false" string should NOT be truthy`)
+	assert.False(t, IsTruthy(map[string]interface{}{}), "empty map should NOT be truthy")
+	assert.False(t, IsTruthy(map[string]interface{}{"k": "v"}), "non-empty map should NOT be truthy")
+	assert.False(t, IsTruthy([]interface{}{}), "empty list should NOT be truthy")
+	assert.False(t, IsTruthy([]interface{}{"k"}), "non-empty list should NOT be truthy")
+	assert.False(t, IsTruthy(0), "0 should NOT be truthy")
+	assert.False(t, IsTruthy(-3), "non-zero number should NOT be truthy")
+
+	assert.True(t, IsTruthy("True"), `"True" string should be truthy`)
+	assert.True(t, IsTruthy("true"), `"true" string should be truthy`)
+	assert.True(t, IsTruthy(true), `boolean "true" should be truthy`)
+}

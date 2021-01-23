@@ -181,3 +181,28 @@ func TestMerge(t *testing.T) {
 		assert.Equal(t, e, d, n)
 	}
 }
+
+func TestCheckMapData(t *testing.T) {
+	data := map[string]interface{}{
+		"1": map[string]interface{}{
+			"a": "there",
+			"b": "false",
+			"c": 0,
+		},
+		"2": []interface{}{
+			false,
+			"true",
+			true,
+		},
+	}
+
+	assert.False(t, CheckMapData(data, "1.a"), `"1.a" value "there" should be false.`)
+	assert.False(t, CheckMapData(data, "1.b"), `"1.b" value "false" should be false.`)
+	assert.False(t, CheckMapData(data, "1.c"), `"1.c" value 0 should be false.`)
+	assert.False(t, CheckMapData(data, "1.d"), `"1.d" not present should be false.`)
+	assert.False(t, CheckMapData(data, "2.0"), `"2.0" value false should be false.`)
+	assert.False(t, CheckMapData(data, "2.3"), `"2.3" value not present should be false.`)
+
+	assert.True(t, CheckMapData(data, "2.1"), `"2.1" value "true" should be true.`)
+	assert.True(t, CheckMapData(data, "2.2"), `"2.2" value boolean "true" should be true.`)
+}
