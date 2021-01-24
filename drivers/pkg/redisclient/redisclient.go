@@ -79,14 +79,22 @@ func setupTLSConfig(driver *dipper.Driver) *tls.Config {
 	return config
 }
 
-// GetRedisOps configures driver to talk to Redis.
-func GetRedisOps(driver *dipper.Driver) *redis.Options {
+// GetRedisOpts configures driver to talk to Redis.
+func GetRedisOpts(driver *dipper.Driver) *redis.Options {
+	if conn, ok := dipper.GetMapData(driver.Options, "data.connection"); ok {
+		defer delete(conn.(map[string]interface{}), "Password")
+	}
+	if tls, ok := dipper.GetMapData(driver.Options, "data.connection.TLS"); ok {
+		defer delete(tls.(map[string]interface{}), "CACerts")
+	}
+
 	if localRedis, ok := os.LookupEnv("LOCALREDIS"); ok && localRedis != "" {
 		return &redis.Options{
 			Addr: "127.0.0.1:6379",
 			DB:   0,
 		}
 	}
+
 	opts := &redis.Options{}
 	if value, ok := driver.GetOptionStr("data.connection.Addr"); ok {
 		opts.Addr = value
