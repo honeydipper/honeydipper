@@ -68,6 +68,7 @@ func main() {
 
 func loadOptions() {
 	log = driver.GetLogger()
+	redisOptions = redisclient.GetRedisOpts(driver)
 	log.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
 
 	eb := &EventBusOptions{
@@ -89,8 +90,6 @@ func loadOptions() {
 		eb.APITopic = apiTopic
 	}
 	eventbus = eb
-
-	redisOptions = redisclient.GetRedisOps(driver)
 }
 
 func start(msg *dipper.Message) {
