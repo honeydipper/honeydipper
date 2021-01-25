@@ -1,3 +1,18 @@
+# [2.2.0](https://github.com/honeydipper/honeydipper/compare/v2.1.4...v2.2.0) (2021-01-25)
+
+
+### Bug Fixes
+
+* **drivers:** redis drivers avoid printing password ([8391b01](https://github.com/honeydipper/honeydipper/commit/8391b0139c4ad988413b287938ffdf6c30075e14))
+* **services:** api service discovery using staged dataset ([#369](https://github.com/honeydipper/honeydipper/issues/369)) ([a6a2615](https://github.com/honeydipper/honeydipper/commit/a6a26156f8b27ba5ccb19a0aa6e7052dad288f83))
+
+
+### Features
+
+* **dipper:** helper function to check truthy value ([78dc32a](https://github.com/honeydipper/honeydipper/commit/78dc32ad36a1a8ae673b839a05bae685d66618e4))
+* **dipper:** support deferred decryption in drivers ([37619a6](https://github.com/honeydipper/honeydipper/commit/37619a6d626b05793ac4f9110581e26fca44b80b))
+* **drivers:** redis drivers support TLS ([48c979c](https://github.com/honeydipper/honeydipper/commit/48c979cb4c446c6be01e58bb24f9cf5379b10853))
+
 ## [2.1.4](https://github.com/honeydipper/honeydipper/compare/v2.1.3...v2.1.4) (2021-01-04)
 
 
