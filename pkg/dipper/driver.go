@@ -111,6 +111,7 @@ func (d *Driver) Ping(msg *Message) {
 func (d *Driver) ReceiveOptions(msg *Message) {
 	msg = DeserializePayload(msg)
 	Recursive(msg.Payload, RegexParser)
+	DecryptAll(d, msg.Payload)
 	d.Options = msg.Payload
 	Logger = nil
 	d.GetLogger()
@@ -161,6 +162,11 @@ func (d *Driver) stop(msg *Message) {
 func (d *Driver) SendMessage(m *Message) {
 	Logger.Infof("[%s] sending raw message to daemon %s:%s", d.Service, m.Channel, m.Subject)
 	SendMessage(d.Out, m)
+}
+
+// CheckOption : get the data from options and check if it is truthy.
+func (d *Driver) CheckOption(path string) bool {
+	return CheckMapData(d.Options, path)
 }
 
 // GetOption : get the data from options map with the key.

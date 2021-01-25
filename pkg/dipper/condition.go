@@ -143,3 +143,20 @@ func RegexParser(key string, val interface{}) (ret interface{}, replace bool) {
 
 	return nil, false
 }
+
+// IsTruthy is a helper function to check if a value represents Truthy value, and only boolean true or
+// string "true" (ignore case and trailing leading white spaces) will yield truthy value.
+func IsTruthy(v interface{}) bool {
+	switch c := v.(type) {
+	case string:
+		c = strings.ToLower(strings.TrimSpace(c))
+
+		return c == "true"
+	case nil:
+		return false
+	case bool:
+		return c
+	}
+
+	return false
+}

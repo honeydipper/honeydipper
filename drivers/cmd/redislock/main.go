@@ -44,7 +44,7 @@ func (l *Locker) start(msg *dipper.Message) {
 }
 
 func (l *Locker) loadOptions(msg *dipper.Message) {
-	l.redisOptions = redisclient.GetRedisOps(l.driver)
+	l.redisOptions = redisclient.GetRedisOpts(l.driver)
 	var ok bool
 	if l.prefix, ok = dipper.GetMapDataStr(l.driver.Options, "data.prefix"); !ok {
 		l.prefix = DefaultPrefix

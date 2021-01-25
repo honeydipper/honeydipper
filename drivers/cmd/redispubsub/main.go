@@ -52,6 +52,7 @@ func main() {
 
 func loadOptions() {
 	log = driver.GetLogger()
+	redisOptions = redisclient.GetRedisOpts(driver)
 	log.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
 
 	broadcastTopic, ok = driver.GetOptionStr("data.topic")
@@ -62,8 +63,6 @@ func loadOptions() {
 	if !ok {
 		broadcastChannel = "broadcast"
 	}
-
-	redisOptions = redisclient.GetRedisOps(driver)
 }
 
 func start(msg *dipper.Message) {
