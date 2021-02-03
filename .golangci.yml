@@ -1,17 +1,53 @@
-# golangci.com configuration
-# https://github.com/golangci/golangci/wiki/Configuration
-service:
-  golangci-lint-version: v1.33.x # use fixed version to not introduce new linters unexpectedly
-
+---
 linters:
-  enable-all: true
-  disable:
-    - exhaustive
-    - exhaustivestruct
-    # code to be refactored at some point
-    # but seems necessary to have global variables
-    - gochecknoglobals
-    - wsl
+  enable:
+    - asciicheck
+    - bodyclose
+    - depguard
+    - dogsled
+    - dupl
+    - errorlint
+    - exportloopref
+    - funlen
+    - gci
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - goerr113
+    - gofmt
+    - gofumpt
+    - goheader
+    - goimports
+    - golint
+    - gomnd
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - interfacer
+    - lll
+    - maligned
+    - misspell
+    - nakedret
+    - nestif
+    - nlreturn
+    - noctx
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - rowserrcheck
+    - scopelint
+    - sqlclosecheck
+    - stylecheck
+    - testpackage
+    - tparallel
+    - unconvert
+    - unparam
+    - whitespace
+    - wrapcheck
 
 linters-settings:
   lll:
@@ -24,3 +60,4 @@ linters-settings:
 
 run:
   tests: false
+
