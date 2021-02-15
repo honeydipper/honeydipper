@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ func TestIntegrationStart(t *testing.T) {
 	defer t.Run("shutting down daemon", intTestDaemonShutdown)
 	t.Run("checking services", intTestServices)
 	t.Run("checking processes", intTestProcesses)
-	t.Run("checking processes", intTestMakingAPICall)
+	t.Run("checking API calls", intTestMakingAPICall)
 	t.Run("checking crashed driver", intTestDriverCrash)
 }
 
@@ -78,12 +79,28 @@ func intTestDaemonStartup(t *testing.T) {
 		}
 		daemon.Run(&cfg)
 	}()
-
-	time.Sleep(time.Second * 5)
-	assert.True(t, runtime.NumGoroutine() > 10, "running goroutine should be more than 10")
 }
 
 func intTestServices(t *testing.T) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	timeout := time.After(time.Second * 30)
+
+waitForServices:
+	for {
+		fmt.Println("waiting for services")
+		select {
+		case <-ticker.C:
+			if len(service.Services) == 4 {
+				break waitForServices
+			}
+		case <-timeout:
+			break waitForServices
+		}
+	}
+
+	assert.True(t, runtime.NumGoroutine() > 10, "running goroutine should be more than 10")
+
 	_, ok := service.Services["receiver"]
 	assert.True(t, ok, "receiver service should be running")
 	_, ok = service.Services["engine"]
@@ -96,24 +113,40 @@ func intTestServices(t *testing.T) {
 }
 
 func intTestProcesses(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
 	var (
 		pidstr []byte
 		err    error
+		pids   []string
 	)
-	if runtime.GOOS == "darwin" {
-		pidstr, err = exec.CommandContext(ctx, "pgrep", "-a", "honeydipper.test").Output()
-	} else {
-		pidstr, err = exec.CommandContext(ctx, "pgrep", "honeydipper.test").Output()
+	ppid := strconv.Itoa(os.Getpid())
+	fmt.Println("PID:", ppid)
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	timeout := time.After(time.Second * 30)
+
+waitForProcesses:
+	for {
+		fmt.Println("waiting for processes")
+		select {
+		case <-ticker.C:
+			func() {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid).Output()
+			}()
+			if err == nil {
+				pids = strings.Split(string(pidstr), "\n")
+				if len(pids) >= 18 {
+					break waitForProcesses
+				}
+			}
+		case <-timeout:
+			break waitForProcesses
+		}
 	}
-	fmt.Printf("pids %+v", string(pidstr))
-	fmt.Printf("error %+v\n", err)
-	assert.Nil(t, err, "should be able to run pgrep to find honeydipper process")
-	ppid := strings.Split(string(pidstr), "\n")[0]
-	pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid).Output()
+
 	assert.Nil(t, err, "should be able to run pgrep to find all child processes")
-	pids := strings.Split(string(pidstr), "\n")
 	assert.Lenf(t, pids, 18, "expecting 17 child processes for honeydipper process")
 }
 
