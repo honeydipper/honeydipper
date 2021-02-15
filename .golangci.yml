@@ -60,4 +60,5 @@ linters-settings:
 
 run:
   tests: false
+  timeout: 5m
 
