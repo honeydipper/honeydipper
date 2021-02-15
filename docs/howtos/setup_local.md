@@ -30,17 +30,28 @@ git clone https://github.com/honeydipper/honeydipper.git
 go install -v ./...
 ```
 
- * Run test
+ * Run tests
 
 ```bash
-go test -v ./...
+make test
 ```
 
- * (Optional) For colored test results
+To run only the unit tests
 
 ```bash
-go get -u github.com/rakyll/gotest
-gotest -v ./...
+make unit-tests
+```
+
+To run only the integration tests
+
+```bash
+make integration-tests
+```
+
+ * Clean up mockgen generated files
+
+```bash
+make clean
 ```
 
  * For pre-commit hooks
