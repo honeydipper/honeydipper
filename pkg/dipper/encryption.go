@@ -11,9 +11,9 @@ import (
 	"strings"
 )
 
-// DecryptAll find and decrypt all eyaml style encrypted data in the given data structure.
-func DecryptAll(rpc RPCCaller, from interface{}) {
-	Recursive(from, func(key string, val interface{}) (interface{}, bool) {
+// GetDecryptFunc returns a function used in recursive decryption.
+func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
+	return func(key string, val interface{}) (interface{}, bool) {
 		Logger.Debugf("[%s] decrypting %s", rpc.GetName(), key)
 		str, ok := val.(string)
 		if !ok || !strings.HasPrefix(str, "ENC[") {
@@ -26,14 +26,25 @@ func DecryptAll(rpc RPCCaller, from interface{}) {
 			return "ENC[" + parts[1] + "]", true
 		}
 
-		data := []byte(parts[1])
-		decoded, err := base64.StdEncoding.DecodeString(string(data))
-		if err != nil {
-			Logger.Panicf("encrypted data shoud be base64 encoded")
+		var decoded []byte
+
+		if parts[1][0] == '"' {
+			decoded = []byte(strings.Trim(parts[1], "\""))
+		} else {
+			var err error
+			decoded, err = base64.StdEncoding.DecodeString(parts[1])
+			if err != nil {
+				Logger.Panicf("encrypted data should be base64 encoded")
+			}
 		}
 
 		decrypted, _ := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
 
 		return string(decrypted), true
-	})
+	}
+}
+
+// DecryptAll find and decrypt all eyaml style encrypted data in the given data structure.
+func DecryptAll(rpc RPCCaller, from interface{}) {
+	Recursive(from, GetDecryptFunc(rpc))
 }

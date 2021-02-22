@@ -7,7 +7,6 @@
 package service
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -137,29 +136,6 @@ func (s *Service) GetStream(feature string) io.Writer {
 	panic(fmt.Errorf("%w: feature not loaded: %s", ErrServiceError, feature))
 }
 
-func (s *Service) decryptDriverData(key string, val interface{}) (ret interface{}, replace bool) {
-	str, ok := val.(string)
-	if !ok || !strings.HasPrefix(str, "ENC[") {
-		return nil, false
-	}
-
-	dipper.Logger.Debugf("[%s] decrypting %s", s.name, key)
-	parts := strings.SplitN(str[4:len(str)-1], ",", 2)
-	encDriver := parts[0]
-	if encDriver == "deferred" {
-		return "ENC[" + parts[1] + "]", true
-	}
-
-	data := []byte(parts[1])
-	decoded, err := base64.StdEncoding.DecodeString(string(data))
-	if err != nil {
-		dipper.Logger.Panicf("encrypted data shoud be base64 encoded")
-	}
-	decrypted, _ := s.CallRaw("driver:"+encDriver, "decrypt", decoded)
-
-	return string(decrypted), true
-}
-
 func (s *Service) loadFeature(feature string) (affected bool, driverName string, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -280,7 +256,7 @@ func (s *Service) start() {
 		s.loadRequiredFeatures(featureList, true)
 		go s.serviceLoop()
 		time.Sleep(time.Second)
-		s.config.AdvanceStage(s.name, config.StageDiscovering, s.decryptDriverData)
+		s.config.AdvanceStage(s.name, config.StageDiscovering, dipper.GetDecryptFunc(s))
 		s.loadAdditionalFeatures(featureList)
 		s.config.AdvanceStage(s.name, config.StageServing)
 		if s.ServiceReload != nil {
@@ -309,7 +285,7 @@ func (s *Service) Reload() {
 	s.config.AdvanceStage(s.name, config.StageBooting)
 	featureList := s.getFeatureList()
 	s.loadRequiredFeatures(featureList, false)
-	s.config.AdvanceStage(s.name, config.StageDiscovering, s.decryptDriverData)
+	s.config.AdvanceStage(s.name, config.StageDiscovering, dipper.GetDecryptFunc(s))
 	s.loadAdditionalFeatures(featureList)
 	s.config.AdvanceStage(s.name, config.StageServing)
 	if s.ServiceReload != nil {
