@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestDecryptWithoutName(t *testing.T) {
+func TestLookupWithoutName(t *testing.T) {
 	driver = dipper.NewDriver(os.Args[1], "secretmanager")
 	ctrl := gomock.NewController(t)
 	client := mock_driver.NewMockSecretManagerClient(ctrl)
@@ -38,10 +38,10 @@ func TestDecryptWithoutName(t *testing.T) {
 
 	client.EXPECT().Close().Times(1).Return(nil)
 
-	assert.PanicsWithValue(t, ErrSecretNameMissing, func() { decrypt(&dipper.Message{}) }, "should panic without the secret name")
+	assert.PanicsWithValue(t, ErrSecretNameMissing, func() { lookup(&dipper.Message{}) }, "should panic without the secret name")
 }
 
-func TestDecryptWithName(t *testing.T) {
+func TestLookupWithName(t *testing.T) {
 	driver = dipper.NewDriver(os.Args[1], "secretmanager")
 	ctrl := gomock.NewController(t)
 	client := mock_driver.NewMockSecretManagerClient(ctrl)
@@ -69,7 +69,7 @@ func TestDecryptWithName(t *testing.T) {
 		Reply:   make(chan dipper.Message, 1),
 	}
 
-	assert.NotPanics(t, func() { decrypt(msg) }, "should not panic when decrypting.")
+	assert.NotPanics(t, func() { lookup(msg) }, "should not panic when looking up.")
 	select {
 	case ret := <-msg.Reply:
 		assert.Equal(t, []byte("plaintext"), ret.Payload, "return value should be 'plaintext'.")

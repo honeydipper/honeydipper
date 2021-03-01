@@ -16,31 +16,36 @@ func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
 	return func(key string, val interface{}) (interface{}, bool) {
 		Logger.Debugf("[%s] decrypting %s", rpc.GetName(), key)
 		str, ok := val.(string)
-		if !ok || !strings.HasPrefix(str, "ENC[") {
+		if !ok {
 			return nil, false
 		}
 
-		parts := strings.SplitN(str[4:len(str)-1], ",", 2)
-		encDriver := parts[0]
-		if encDriver == "deferred" {
-			return "ENC[" + parts[1] + "]", true
-		}
-
-		var decoded []byte
-
-		if parts[1][0] == '"' {
-			decoded = []byte(strings.Trim(parts[1], "\""))
-		} else {
-			var err error
-			decoded, err = base64.StdEncoding.DecodeString(parts[1])
+		switch {
+		case strings.HasPrefix(str, "ENC["):
+			parts := strings.SplitN(str[4:len(str)-1], ",", 2)
+			encDriver := parts[0]
+			if encDriver == "deferred" {
+				return "ENC[" + parts[1] + "]", true
+			}
+			decoded, err := base64.StdEncoding.DecodeString(parts[1])
 			if err != nil {
 				Logger.Panicf("encrypted data should be base64 encoded")
 			}
+			decrypted, _ := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
+
+			return string(decrypted), true
+		case strings.HasPrefix(str, "LOOKUP["):
+			parts := strings.SplitN(str[7:len(str)-1], ",", 2)
+			lookupDriver := parts[0]
+			if lookupDriver == "deferred" {
+				return "LOOKUP[" + parts[1] + "]", true
+			}
+			lookupValue, _ := rpc.CallRaw("driver:"+lookupDriver, "lookup", []byte(parts[1]))
+
+			return string(lookupValue), true
 		}
 
-		decrypted, _ := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
-
-		return string(decrypted), true
+		return nil, false
 	}
 }
 

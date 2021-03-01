@@ -74,13 +74,13 @@ func main() {
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "google-secret")
-	driver.RPCHandlers["decrypt"] = decrypt
+	driver.RPCHandlers["lookup"] = lookup
 	driver.Reload = loadOptions
 	driver.Start = loadOptions
 	driver.Run()
 }
 
-func decrypt(msg *dipper.Message) {
+func lookup(msg *dipper.Message) {
 	nameBytes, ok := msg.Payload.([]byte)
 	if !ok {
 		panic(ErrSecretNameMissing)
