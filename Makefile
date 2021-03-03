@@ -6,7 +6,8 @@ RESET := \033[0m
 files_require_mocking = internal/workflow/session.go \
 						internal/workflow/store.go \
 						pkg/dipper/rpc.go \
-						internal/api/request_context.go
+						internal/api/request_context.go \
+						drivers/cmd/gcloud-secret/main.go
 
 .PHONY: build lint run_mockgen unit-tests integration-tests test all clean
 
