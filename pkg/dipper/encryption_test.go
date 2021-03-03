@@ -109,3 +109,49 @@ data:
 	assert.Equal(t, "ENC[driver1,YWFiYmNjZGQ=]", MustGetMapDataStr(data, "data.item3.item4"), "item4 should be stripped off one deferred flag")
 	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
 }
+
+func TestDecryptAllWithLookUp(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: LOOKUP[kvstore,foo]
+`
+
+	expect := func(O io.Reader, c *RPCCallerBase) {
+		assert.Equalf(t,
+			Message{
+				Channel: "rpc",
+				Subject: "call",
+				IsRaw:   true,
+				Size:    3,
+				Payload: []byte("foo"),
+				Labels: map[string]string{
+					"caller":  "-",
+					"feature": "driver:kvstore",
+					"method":  "lookup",
+					"rpcID":   "0",
+				},
+			},
+			*FetchRawMessage(O),
+			"should make call to lookup for item2",
+		)
+		c.HandleReturn(&Message{
+			Channel: "rpc",
+			Subject: "return",
+			IsRaw:   true,
+			Size:    3,
+			Payload: []byte("bar"),
+			Labels: map[string]string{
+				"caller":  "-",
+				"feature": "driver:kvstore",
+				"method":  "lookup",
+				"rpcID":   "0",
+				"status":  "success",
+			},
+		})
+	}
+
+	data := wrapDecryptAll(t, doc, expect)
+	assert.Equal(t, "bar", MustGetMapDataStr(data, "data.item2"), "data.item2 should container decrypted data")
+	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
+}
