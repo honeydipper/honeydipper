@@ -15,10 +15,12 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/gin-gonic/gin v1.6.3
 	github.com/go-errors/errors v1.1.1
-	github.com/go-redis/redis/v8 v8.0.0-beta.7
+	github.com/go-redis/redis/v8 v8.5.0
+	github.com/gogf/gf v1.15.3
 	github.com/golang/mock v1.4.4
 	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.1
+	github.com/googleapis/gax-go/v2 v2.0.5
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/huandu/xstrings v1.3.1 // indirect
 	github.com/imdario/mergo v0.3.8
@@ -29,14 +31,13 @@ require (
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/qiangmzsx/string-adapter/v2 v2.1.0
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
-	golang.org/x/oauth2 v0.0.0-20201208152858-08078c50e5b5
-	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
+	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+	golang.org/x/oauth2 v0.0.0-20210220000619-9bb904979d93
+	golang.org/x/term v0.0.0-20210220032956-6a3ed077a48d
 	google.golang.org/api v0.32.0
-	google.golang.org/genproto v0.0.0-20201204160425-06b3db808446
+	google.golang.org/genproto v0.0.0-20210303154014-9728d6b83eeb
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
-	gopkg.in/yaml.v2 v2.3.0 // indirect
 	k8s.io/api v0.18.3
 	k8s.io/apimachinery v0.18.3
 	k8s.io/client-go v0.18.3

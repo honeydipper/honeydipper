@@ -1,16 +1,14 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.15.5-alpine
+    - image: golang:1.15.7-alpine
       environment:
-        - GO111MODULE=auto
+        - GO111MODULE=on
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 license_finder: &license_finder
   docker:
     - image: licensefinder/license_finder:6.10.0
-      environment:
-        - GO111MODULE=auto
   working_directory: /root/src/honeydipper
 
 restore_mod: &restore_mod
@@ -28,7 +26,7 @@ jobs:
   golangci-lint:
     <<: *defaults
     docker:
-      - image: golangci/golangci-lint:v1.33.0-alpine
+      - image: golangci/golangci-lint:v1.36.0-alpine
     steps:
       - checkout
       - run: golangci-lint run
@@ -43,23 +41,23 @@ jobs:
   test:
     <<: *defaults
     steps:
-      - run: apk add git openssh-client gcc libc-dev
+      - run: apk add git openssh-client gcc libc-dev make
       - checkout
       - *restore_mod
       - run: go build -v ./...
       - *save_mod
-      - run: go test -v ./...
+      - run: make unit-tests
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.15.5-alpine
+      - image: golang:1.15.7-alpine
       - image: redis:5.0.10-alpine
     steps:
       - run:
           name: install dependencies
           command: >
             apk add --repository http://dl-3.alpinelinux.org/alpine/edge/testing
-            git openssh-client gcc libc-dev dockerize
+            git openssh-client gcc libc-dev dockerize make
       - checkout
       - *restore_mod
       - run: go install -v ./...
@@ -67,7 +65,7 @@ jobs:
       - run:
           name: Wait for Redis
           command: dockerize -wait tcp://127.0.0.1:6379 -timeout 120s
-      - run: go test -tags=integration -v ./...
+      - run: make integration-tests
   semantic-release:
     docker:
       - image: circleci/node:10

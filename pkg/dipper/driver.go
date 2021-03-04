@@ -49,11 +49,12 @@ type Driver struct {
 // NewDriver : create a blank driver object.
 func NewDriver(service string, name string) *Driver {
 	driver := Driver{
-		Name:    name,
-		Service: service,
-		State:   "loaded",
-		In:      os.Stdin,
-		Out:     os.Stdout,
+		Name:        name,
+		Service:     service,
+		State:       "loaded",
+		In:          os.Stdin,
+		Out:         os.Stdout,
+		ReadySignal: make(chan bool),
 	}
 
 	driver.RPCProvider.Init("rpc", "return", driver.Out)
@@ -129,10 +130,7 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 }
 
 func (d *Driver) start(msg *Message) {
-	select {
-	case <-d.ReadySignal:
-	case <-time.After(time.Second):
-	}
+	<-d.ReadySignal
 
 	if d.State == "alive" {
 		if d.Reload != nil {
