@@ -1,3 +1,22 @@
+# [2.3.0](https://github.com/honeydipper/honeydipper/compare/v2.2.0...v2.3.0) (2021-03-04)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 5ea612d ([#383](https://github.com/honeydipper/honeydipper/issues/383)) ([8197ee0](https://github.com/honeydipper/honeydipper/commit/8197ee05ed3c0b45ef44029a68bbd416bc1145f0))
+* **deps:** update golang.org/x/oauth2 commit hash to 0101308 ([#373](https://github.com/honeydipper/honeydipper/issues/373)) ([9d00d72](https://github.com/honeydipper/honeydipper/commit/9d00d7205a6c5a97c15963c680ce5afc4ffb57f4))
+* **deps:** update golang.org/x/oauth2 commit hash to 9bb9049 ([#384](https://github.com/honeydipper/honeydipper/issues/384)) ([ada3958](https://github.com/honeydipper/honeydipper/commit/ada3958a2a6663b69130d7b360893436bdc26854))
+* **deps:** update golang.org/x/term commit hash to 2321bbc ([#374](https://github.com/honeydipper/honeydipper/issues/374)) ([9e5ecee](https://github.com/honeydipper/honeydipper/commit/9e5ecee1ddda2a99aa4f3ddacadd8d12e7ebe193))
+* **deps:** update golang.org/x/term commit hash to 6a3ed07 ([#385](https://github.com/honeydipper/honeydipper/issues/385)) ([925ddc1](https://github.com/honeydipper/honeydipper/commit/925ddc1fe5a7c954578c44a0c09b13efbed7afa1))
+* **deps:** update google.golang.org/genproto commit hash to 9728d6b ([#386](https://github.com/honeydipper/honeydipper/issues/386)) ([d02675d](https://github.com/honeydipper/honeydipper/commit/d02675d1dab89671693fb5e73c98bcceeeacdfe4))
+* **deps:** update google.golang.org/genproto commit hash to bba0dbe ([#375](https://github.com/honeydipper/honeydipper/issues/375)) ([e87d7e9](https://github.com/honeydipper/honeydipper/commit/e87d7e9a018fbb37270f9e71321dc6ff37f9f0f7))
+* **dipper:** driver ReadySignal chan initialization ([#381](https://github.com/honeydipper/honeydipper/issues/381)) ([e413893](https://github.com/honeydipper/honeydipper/commit/e413893a8d6420a77f10020903d51641ea9d9bbf))
+
+
+### Features
+
+* **drivers:** fetch secrets from google secret manager ([#382](https://github.com/honeydipper/honeydipper/issues/382)) ([0bf283f](https://github.com/honeydipper/honeydipper/commit/0bf283fdddc225dbd03f80366da0aa4cbbe94a72))
+
 # [2.2.0](https://github.com/honeydipper/honeydipper/compare/v2.1.4...v2.2.0) (2021-01-25)
 
 
