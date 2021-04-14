@@ -1,3 +1,12 @@
+## [2.3.1](https://github.com/honeydipper/honeydipper/compare/v2.3.0...v2.3.1) (2021-04-14)
+
+
+### Bug Fixes
+
+* **config:** contaminated dataset crashes during reload ([#393](https://github.com/honeydipper/honeydipper/issues/393)) ([f483352](https://github.com/honeydipper/honeydipper/commit/f48335214cb7c4bbd852f29c5d42db78b6753777))
+* **deps:** update golang.org/x/crypto commit hash to 0c34fe9 ([#390](https://github.com/honeydipper/honeydipper/issues/390)) ([6594a88](https://github.com/honeydipper/honeydipper/commit/6594a884a6e5766af3337df1186be5b96af35cf1))
+* **deps:** update golang.org/x/oauth2 commit hash to 2e8d934 ([#391](https://github.com/honeydipper/honeydipper/issues/391)) ([e1eabba](https://github.com/honeydipper/honeydipper/commit/e1eabba990cb199ed834c68538fbdaff16c5b5e1))
+
 # [2.3.0](https://github.com/honeydipper/honeydipper/compare/v2.2.0...v2.3.0) (2021-03-04)
 
 
