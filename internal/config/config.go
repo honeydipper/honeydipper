@@ -213,6 +213,20 @@ func (c *Config) AdvanceStage(service string, stage int, fns ...dipper.ItemProce
 		}
 
 		dipper.Logger.Infof("[%s] service reached stage %s", service, StageNames[stage])
+
+		if c.Stage >= stage {
+			return
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				// upon error signal other services to cancel
+				// by setting c.Locker to nil
+				c.Locker = nil
+				panic(r)
+			}
+		}()
+
 		for _, fn := range fns {
 			c.RecursiveStaged(fn)
 		}
@@ -425,16 +439,15 @@ func DeepCopy(s interface{}, d interface{}) error {
 	return nil
 }
 
-func mergeDataSet(d *DataSet, s DataSet) error {
+func mergeDataSet(d *DataSet, source DataSet) error {
+	s := DataSet{}
+	dipper.Must(DeepCopy(source, &s))
 	for name := range s.Systems {
-		system := s.Systems[name]
-		srcCopy := &System{}
-		dipper.Must(DeepCopy(&system, srcCopy))
 		exist, ok := d.Systems[name]
 		if ok {
-			dipper.Must(mergeSystem(&exist, *srcCopy))
+			dipper.Must(mergeSystem(&exist, s.Systems[name]))
 		} else {
-			exist = *srcCopy
+			exist = s.Systems[name]
 		}
 		if d.Systems == nil {
 			d.Systems = map[string]System{}
@@ -442,8 +455,6 @@ func mergeDataSet(d *DataSet, s DataSet) error {
 		d.Systems[name] = exist
 	}
 	s.Systems = map[string]System{}
-	s.Contexts = dipper.MustDeepCopyMap(s.Contexts)
-	s.Drivers = dipper.MustDeepCopyMap(s.Drivers)
 
 	return mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
 }
