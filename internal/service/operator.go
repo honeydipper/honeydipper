@@ -103,6 +103,7 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 		}).(map[string]interface{})
 	}
 	dipper.Logger.Debugf("[operator] interpolated function call %+v", finalParams)
+	dipper.Recursive(finalParams, dipper.GetDecryptFunc(operator))
 
 	msg.Payload = finalParams
 	if msg.Labels == nil {
