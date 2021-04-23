@@ -9,6 +9,7 @@ package workflow
 import (
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
@@ -223,6 +224,7 @@ func (w *Session) complete(msg *dipper.Message) {
 			return
 		}
 
+		w.completionTime = time.Now()
 		dipper.IDMapDel(&w.store.sessions, w.ID)
 		if w.parent != "" {
 			daemon.Children.Add(1)
