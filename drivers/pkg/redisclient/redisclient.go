@@ -89,6 +89,10 @@ func GetRedisOpts(driver *dipper.Driver) *redis.Options {
 	}
 
 	if localRedis, ok := os.LookupEnv("LOCALREDIS"); ok && localRedis != "" {
+		if opts, e := redis.ParseURL(localRedis); e == nil {
+			return opts
+		}
+
 		return &redis.Options{
 			Addr: "127.0.0.1:6379",
 			DB:   0,
