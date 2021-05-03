@@ -1,0 +1,26 @@
+version: "3.8"
+services:
+  redis:
+    image: redis:latest
+  daemon:
+    build:
+      context: ../../..
+      dockerfile: build/docker/Dockerfile-dev
+    environment:
+      - REPO=${REPO:-/opt/config}
+      - BRANCH
+      - DEBUG
+      - DIPPER_SSH_KEY
+      - SSH_AUTH_SOCK
+      - LOCALREDIS=redis://redis:6379
+      - HOME=/opt/honeydipper
+    volumes:
+      - ${SSH_AUTH_SOCK:-/dev/null}:/${SSH_AUTH_SOCK:-/tmp/non-socket}:ro
+      - ${HOME}/.ssh/known_hosts:/opt/honeydipper/.ssh/known_hosts:ro
+      - ${REPO_DIR:-/dev/null}:/opt/config:ro
+
+      # use the current user's cloud credentials
+      - ${HOME}/.config:/opt/honeydipper/.config:ro
+
+    depends_on:
+      - redis

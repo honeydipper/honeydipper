@@ -9,7 +9,12 @@ files_require_mocking = internal/workflow/session.go \
 						internal/api/request_context.go \
 						drivers/cmd/gcloud-secret/main.go
 
-.PHONY: build lint run_mockgen unit-tests integration-tests test all clean
+ifneq (,$(wildcard ./.env))
+	include ./.env
+	export
+endif
+
+.PHONY: build lint run_mockgen unit-tests integration-tests test all clean run
 
 build:
 	@echo -e "$(BOLD)Buiding$(RESET)"
@@ -57,3 +62,7 @@ clean:
 	done
 	@[[ -f ".mockgen_files_generated" ]] && rm -f .mockgen_files_generated || true
 	@[[ -f ".mockgen_installed" ]] && rm -f .mockgen_installed || true
+
+run: build
+	@echo -e "$(BOLD)Starting the daemon$(RESET)"
+	@REPO=$${REPO:-$${REPO_DIR}} $$(go env GOPATH)/bin/honeydipper
