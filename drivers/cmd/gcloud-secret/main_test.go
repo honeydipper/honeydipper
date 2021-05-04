@@ -53,7 +53,7 @@ func TestLookupWithName(t *testing.T) {
 	client.EXPECT().AccessSecretVersion(
 		gomock.Any(),
 		gomock.Eq(&secretmanagerpb.AccessSecretVersionRequest{
-			Name: "secretname",
+			Name: "projects/myproject/secrets/secretname/versions/latest",
 		}),
 	).Times(1).Return(
 		&secretmanagerpb.AccessSecretVersionResponse{
@@ -65,7 +65,7 @@ func TestLookupWithName(t *testing.T) {
 	)
 
 	msg := &dipper.Message{
-		Payload: []byte("secretname"),
+		Payload: []byte("myproject/secretname"),
 		Reply:   make(chan dipper.Message, 1),
 	}
 
