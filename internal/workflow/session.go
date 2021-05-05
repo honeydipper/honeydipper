@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
@@ -43,6 +44,8 @@ type Session struct {
 	isHook         bool
 	context        context.Context
 	cancelFunc     context.CancelFunc
+	startTime      time.Time
+	completionTime time.Time
 }
 
 // SessionHandler prepare and execute the session provides entry point for SessionStore to invoke and mock for testing.
@@ -59,6 +62,8 @@ type SessionHandler interface {
 	GetStatus() (string, string)
 	GetExported() []map[string]interface{}
 	Watch() <-chan struct{}
+	GetStartTime() time.Time
+	GetCompletionTime() time.Time
 }
 
 const (
@@ -480,4 +485,14 @@ func (w *Session) GetEventName() string {
 	}
 
 	return ""
+}
+
+// GetStartTime returns the start time of the session.
+func (w *Session) GetStartTime() time.Time {
+	return w.startTime
+}
+
+// GetCompletionTime returns the complete time of the session.
+func (w *Session) GetCompletionTime() time.Time {
+	return w.completionTime
 }

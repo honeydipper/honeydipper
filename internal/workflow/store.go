@@ -8,6 +8,7 @@ package workflow
 
 import (
 	"sync"
+	"time"
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
@@ -48,11 +49,12 @@ func (s *SessionStore) Len() int {
 // newSession creates the workflow session.
 func (s *SessionStore) newSession(parent string, eventUUID string, wf *config.Workflow) SessionHandler {
 	w := &Session{
-		parent:   parent,
-		store:    s,
-		EventID:  eventUUID,
-		workflow: wf,
-		ctxLock:  &sync.Mutex{},
+		parent:    parent,
+		store:     s,
+		EventID:   eventUUID,
+		workflow:  wf,
+		ctxLock:   &sync.Mutex{},
+		startTime: time.Now(),
 	}
 
 	performing := w.setPerforming("")
