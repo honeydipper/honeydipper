@@ -1,3 +1,23 @@
+# [2.4.0](https://github.com/honeydipper/honeydipper/compare/v2.3.1...v2.4.0) (2021-05-11)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 38f3c27 ([#398](https://github.com/honeydipper/honeydipper/issues/398)) ([8ca52a8](https://github.com/honeydipper/honeydipper/commit/8ca52a825db4ca2a3ce5435a3b4faa55213b229c))
+* **deps:** update golang.org/x/oauth2 commit hash to 81ed05c ([#399](https://github.com/honeydipper/honeydipper/issues/399)) ([4142a60](https://github.com/honeydipper/honeydipper/commit/4142a60ae3a1e8c61a9449fefab5bb9b405958b8))
+* **deps:** update golang.org/x/term commit hash to a79de54 ([#400](https://github.com/honeydipper/honeydipper/issues/400)) ([fdab939](https://github.com/honeydipper/honeydipper/commit/fdab93977836e9c0ceaa4f5d62f1055d1ad52fed))
+* **deps:** update google.golang.org/genproto commit hash to 3b2ad6c ([#401](https://github.com/honeydipper/honeydipper/issues/401)) ([6766ffc](https://github.com/honeydipper/honeydipper/commit/6766ffc2c4055cc27d3865cfc6a03debe1048eae))
+* **internal:** re-order git SSH auth options ([#403](https://github.com/honeydipper/honeydipper/issues/403)) ([69bd070](https://github.com/honeydipper/honeydipper/commit/69bd0706894c7ef7dbea0edf3653d832ffd56f61))
+
+
+### Features
+
+* **drivers:** gcloud dataflow supports name pattern matching ([#404](https://github.com/honeydipper/honeydipper/issues/404)) ([5c33c5a](https://github.com/honeydipper/honeydipper/commit/5c33c5a8cb912c329a63f770a13b4ad2551c866d))
+* **drivers:** gcloud-secret support shorthand key name ([6c5eaa2](https://github.com/honeydipper/honeydipper/commit/6c5eaa22c770eca264c67890bc49d4386e3a1583))
+* **drivers:** load redis option from env variable ([#402](https://github.com/honeydipper/honeydipper/issues/402)) ([2a4b34d](https://github.com/honeydipper/honeydipper/commit/2a4b34d37e8cbff3ff7e06612bc1bb67bc3e405c))
+* **operator:** support deferred decryption and lookup ([f8abc83](https://github.com/honeydipper/honeydipper/commit/f8abc83babde7a67ca630621867037cc49f6194d))
+* **workflow:** keep track of start and completion time ([#397](https://github.com/honeydipper/honeydipper/issues/397)) ([5cc4571](https://github.com/honeydipper/honeydipper/commit/5cc4571066d355dc59a3fccac5013b248ce36f31))
+
 ## [2.3.1](https://github.com/honeydipper/honeydipper/compare/v2.3.0...v2.3.1) (2021-04-14)
 
 
