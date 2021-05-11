@@ -27,3 +27,10 @@ vendor/**
 **/mock_*/**
 .mockgen_files_generated
 .mockgen_installed
+
+# local environment files
+**/.env
+
+# docker compose override files
+**/docker-compose.override.yml
+**/docker-compose.override.yaml

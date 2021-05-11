@@ -1,0 +1,13 @@
+FROM golang:1.15.7-alpine
+
+# Enable module mode (see https://github.com/golang/go/wiki/Modules)
+ENV GO111MODULE=auto
+RUN apk add --no-cache git gcc libc-dev ca-certificates
+
+WORKDIR /build
+COPY ./ ./
+RUN go install -v ./...
+
+ENTRYPOINT ["/go/bin/honeydipper"]
+EXPOSE 8080
+EXPOSE 9000
