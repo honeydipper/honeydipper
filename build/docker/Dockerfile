@@ -33,3 +33,5 @@ WORKDIR /opt/honeydipper/drivers/builtin
 COPY --from=build /go/bin/* ./
 
 ENTRYPOINT ["./honeydipper"]
+EXPOSE 8080
+EXPOSE 9000

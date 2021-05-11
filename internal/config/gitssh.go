@@ -33,8 +33,6 @@ func GetGitSSHAuth() transport.AuthMethod {
 	keysock := os.Getenv("SSH_AUTH_SOCK")
 
 	switch {
-	case keysock != "":
-		// using SSH_AUTH_SOCK to do ssh authentication
 	case keybytes != "":
 		if auth, e := ssh.NewPublicKeys("git", []byte(keybytes), keypass); e == nil {
 			// #nosec
@@ -43,6 +41,8 @@ func GetGitSSHAuth() transport.AuthMethod {
 		} else {
 			dipper.Logger.Panicf("Unable load ssh key: %v", e)
 		}
+	case keysock != "":
+		// using SSH_AUTH_SOCK to do ssh authentication
 	default:
 		if len(keyfile) == 0 {
 			keyfile = path.Join(os.Getenv("HOME"), ".ssh", "id_rsa")

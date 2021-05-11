@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
@@ -27,6 +28,9 @@ const DefaultClientTTLSeconds = 60
 
 // ErrSecretNameMissing means the secret name is not supplied.
 var ErrSecretNameMissing = errors.New("secret name not supplied")
+
+// ErrSecretNameInvalid means the secret name is not valid.
+var ErrSecretNameInvalid = errors.New("secret name not valid")
 
 // SecretManagerClient is an interface with a subset of method used for mocking.
 type SecretManagerClient interface {
@@ -86,6 +90,25 @@ func lookup(msg *dipper.Message) {
 		panic(ErrSecretNameMissing)
 	}
 	name := string(nameBytes)
+
+	parts := strings.Split(name, "/")
+	switch {
+	case len(parts) == 6: //nolint:gomnd
+		if parts[0] != "projects" || parts[2] != "secrets" || parts[4] != "versions" {
+			dipper.Logger.Warningf("incorrect secret key format %s", name)
+			panic(ErrSecretNameInvalid)
+		}
+	case len(parts) == 2 || len(parts) == 3:
+		version := "latest"
+		if len(parts) == 3 { //nolint:gomnd
+			version = parts[2]
+		}
+		name = fmt.Sprintf("projects/%s/secrets/%s/versions/%s", parts[0], parts[1], version)
+	default:
+		dipper.Logger.Warningf("incorrect secret key format %s", name)
+		panic(ErrSecretNameInvalid)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	defer cancel()
 	req := &secretmanagerpb.AccessSecretVersionRequest{

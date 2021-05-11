@@ -1,6 +1,24 @@
 # Setup a test/dev environment locally
 
-## Setup Go environment
+## Using docker-compose
+
+As of 2.4.0, we added support for running and developing using [docker compose](https://docs.docker.com/compose/). It should simplify the process of setting up and running the system and improve the developer experience.
+
+```bash
+git clone https://github.com/honeydipper/honeydipper.git
+cd dev/macos # or linux
+cat > .env <<EOF
+REPO=<...>
+BRANCH=<...>
+EOF
+docker-compose up
+```
+
+The container will try to use your `SSH_AUTH_SOCK` to clone remote ssh repo if needed. Or you can use `DIPPER_SSH_KEY` environment variable to pass a ssh private key directly into the container. To use a repo on local file system, use `REPO_DIR` instead of `REPO`. You can also specify `DEBUG='*'` or `DEBUG='daemon'` in the `.env` file to increase the log verbosity.
+
+## Using local Go environment
+
+### Setup Go environment
 
  * Setup a directory as your go work directory and add it to GOPATH. Assuming go 1.13.1 or up is installed, gvm is recommended to manage multiple versions of go. You may want to persist the GOPATH in your bash_profile
 
@@ -10,7 +28,7 @@ export GOPATH=$GOPATH:$PWD/go
 export PATH=$PATH:$GOPATH/bin
 ```
 
-## Clone the code
+### Clone the code
 
 ```bash
 go get github.com/honeydipper/honeydipper
@@ -22,7 +40,7 @@ or
 git clone https://github.com/honeydipper/honeydipper.git
 ```
 
-## Build and test
+### Build and test
 
  * Build
 
@@ -62,7 +80,7 @@ brew install pre-commit
 pre-commit install --install-hooks
 ```
 
-## Create local config REPO
+### Create local config REPO
 
 Run below command to create your local config repo.
 
@@ -92,7 +110,7 @@ git add init.yaml
 git commit -m 'init' -a
 ```
 
-## Start Honeydipper daemon
+### Start Honeydipper daemon
 
 Before you start your Honeydipper daemon, you need:
 
@@ -116,3 +134,5 @@ curl -D- http://127.0.0.1:8080/health
 You should see a `200` response code. There is no payload in the response.
 
 See [configuration guide](../configuration.md) for detail on how to configure your system.
+
+Since 2.4.0, there is an easier way to start the daemon using `Makefile`. Simply put all the needed environment variable in a `.env` file at the top level directory, then run `make run`.

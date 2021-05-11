@@ -1,0 +1,27 @@
+version: "3.8"
+services:
+  redis:
+    image: redis:latest
+  daemon:
+    image: honeydipper/honeydipper:${VERSION}
+    environment:
+      - REPO=${REPO:-/opt/config}
+      - BRANCH
+      - DEBUG
+      - DIPPER_SSH_KEY
+      - LOCALREDIS=redis://redis:6379
+      - SSH_AUTH_SOCK=/ssh-agent
+      - HOME=/opt/honeydipper
+    volumes:
+      - /run/host-services/ssh-auth.sock:/ssh-agent:ro
+      - ${HOME}/.ssh/known_hosts:/opt/honeydipper/.ssh/known_hosts:ro
+      - ${REPO_DIR:-/dev/null}:/opt/config:ro
+
+      # use the current user's cloud credentials
+      - ${HOME}/.config:/opt/honeydipper/.config:ro
+
+    ports:
+      - 8080:8080
+      - 9000:9000
+    depends_on:
+      - redis

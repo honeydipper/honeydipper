@@ -7,6 +7,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/honeydipper/honeydipper/internal/api"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
@@ -59,6 +61,10 @@ func handleEventList(resp *api.Response) {
 			"exported":    session.GetExported(),
 			"eventID":     session.GetEventID(),
 			"event":       session.GetEventName(),
+			"startTime":   session.GetStartTime().Format(time.RFC3339),
+		}
+		if c := session.GetCompletionTime(); !c.IsZero() {
+			ret[i].(map[string]interface{})["completionTime"] = c.Format(time.RFC3339)
 		}
 	}
 	resp.Return(map[string]interface{}{

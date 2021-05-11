@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -113,7 +114,7 @@ func createJob(msg *dipper.Message) {
 
 	dataflowService := getDataflowService(serviceAccountBytes)
 
-	result := getExistingJob(project, location, jobSpec.JobName, dataflowService)
+	result := getExistingJob(project, location, "^"+jobSpec.JobName+"$", dataflowService)
 	if result == nil {
 		execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 		func() {
@@ -189,6 +190,8 @@ func getJob(msg *dipper.Message) {
 }
 
 func getExistingJob(project, location, jobName string, dataflowService *dataflow.Service) *dataflow.Job {
+	pattern := regexp.MustCompile(jobName)
+
 	listJobCall := dataflowService.Projects.Jobs.List(project)
 	fieldList := []googleapi.Field{
 		"nextPageToken",
@@ -215,7 +218,7 @@ found:
 
 		if len(result.Jobs) > 0 {
 			for _, j := range result.Jobs {
-				if j.Name == jobName {
+				if pattern.Match([]byte(j.Name)) {
 					job = j
 
 					break found
