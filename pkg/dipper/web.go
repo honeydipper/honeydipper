@@ -7,6 +7,7 @@
 package dipper
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
@@ -31,14 +32,22 @@ func ExtractWebRequestExceptBody(r *http.Request) map[string]interface{} {
 
 // ExtractWebRequest put needed information from a request in a map.
 func ExtractWebRequest(r *http.Request) map[string]interface{} {
+	// keep the body for sha256
+	var body []byte
+	if r.Body != nil {
+		body = Must(ioutil.ReadAll(r.Body)).([]byte)
+		r.Body.Close()
+		r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+	}
+
 	req := ExtractWebRequestExceptBody(r)
 
-	if r.Method == http.MethodPost {
-		req["body"] = Must(ioutil.ReadAll(r.Body))
+	if len(body) > 0 {
+		req["body"] = body
 		if strings.HasPrefix(r.Header.Get("content-type"), "application/json") {
-			bodyObj := map[string]interface{}{}
-			Must(json.Unmarshal(req["body"].([]byte), &bodyObj))
-			req["json"] = bodyObj
+			j := map[string]interface{}{}
+			Must(json.Unmarshal(body, &j))
+			req["json"] = j
 		}
 	}
 
