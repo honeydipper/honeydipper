@@ -1,3 +1,10 @@
+# [2.5.0](https://github.com/honeydipper/honeydipper/compare/v2.4.0...v2.5.0) (2021-06-01)
+
+
+### Features
+
+* **drivers:** webhook verify signature using hmac ([#407](https://github.com/honeydipper/honeydipper/issues/407)) ([462ade6](https://github.com/honeydipper/honeydipper/commit/462ade6c47967856704c025ac197308dfa6d2a2c))
+
 # [2.4.0](https://github.com/honeydipper/honeydipper/compare/v2.3.1...v2.4.0) (2021-05-11)
 
 
