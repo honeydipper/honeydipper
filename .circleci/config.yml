@@ -47,6 +47,23 @@ jobs:
       - run: go build -v ./...
       - *save_mod
       - run: make unit-tests
+  test_coverage:
+    <<: *defaults
+    steps:
+      - run: apk add git openssh-client gcc libc-dev make
+      - checkout
+      - run:
+          name: Setup Code Climate test-reporter
+          command: |
+            # download test reporter as a static binary
+            wget -O cc-test-reporter https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64
+            chmod +x ./cc-test-reporter
+      - run: ./cc-test-reporter before-build
+      - *restore_mod
+      - run: go build -v ./...
+      - *save_mod
+      - run: REPORT_TEST_COVERAGE=1 make unit-tests
+      - run: ./cc-test-reporter after-build --prefix=github.com/honeydipper/honeydipper
   integration:
     <<: *defaults
     docker:
@@ -85,13 +102,24 @@ workflows:
     jobs:
       - golangci-lint
       - license_finder
+      - test_coverage:
+          context: honeydipper
+          filters:
+            branches:
+              only: dev
       - test:
           requires:
             - golangci-lint
             - license_finder
+          filters:
+            branches:
+              ignore: dev
       - integration:
           requires:
             - test
+          filters:
+            branches:
+              ignore: dev
   release:
     jobs:
       - semantic-release:

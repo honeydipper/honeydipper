@@ -44,7 +44,11 @@ run_mockgen: .mockgen_installed .mockgen_files_generated
 
 unit-tests: run_mockgen
 	@echo -e "$(BOLD)Running unit tests$(RESET)"
+ifneq (,$(REPORT_TEST_COVERAGE))
+	@go test -coverprofile=c.out ./...
+else
 	@go test ./...
+endif
 
 integration-tests: run_mockgen
 	@echo -e "$(BOLD)Running integration tests$(RESET)"

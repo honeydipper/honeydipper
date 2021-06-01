@@ -16,12 +16,14 @@ type CollapsedTrigger struct {
 	Exports    []map[string]interface{} `json:"exports"`
 	SysData    map[string]interface{}   `json:"sysData"`
 	Parameters map[string]interface{}   `json:"parameters"`
+	SysName    string                   `json:"sysName"`
 }
 
 // CollapseTrigger collapses matching criteria, exports and sysData of a trigger and its inheritted triggers.
 func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 	var stack []*Trigger
 	current := t
+
 	for len(current.Source.System) > 0 {
 		stack = append(stack, current)
 		sourceSys := c.Systems[current.Source.System]
@@ -52,11 +54,16 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		params = dipper.Interpolate(params, envData).(map[string]interface{})
 	}
 
+	if flag, ok := params["verifySystem"]; ok && dipper.IsTruthy(flag) {
+		match["verifiedSystem"] = t.Source.System
+	}
+
 	return current, &CollapsedTrigger{
 		Match:      match,
 		Exports:    exports,
 		SysData:    sysData,
 		Parameters: params,
+		SysName:    t.Source.System,
 	}
 }
 
