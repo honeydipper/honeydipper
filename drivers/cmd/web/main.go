@@ -64,7 +64,14 @@ func sendRequest(m *dipper.Message) {
 	formData, _ := dipper.GetMapData(m.Payload, "form")
 	if formData != nil {
 		for k, v := range formData.(map[string]interface{}) {
-			form.Add(k, v.(string))
+			switch val := v.(type) {
+			case string:
+				form.Add(k, val)
+			case []interface{}:
+				for _, vs := range val {
+					form.Add(k, vs.(string))
+				}
+			}
 		}
 	}
 
