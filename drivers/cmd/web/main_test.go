@@ -9,6 +9,8 @@
 package main
 
 import (
+	"bytes"
+	"flag"
 	"os"
 	"strconv"
 	"testing"
@@ -107,4 +109,198 @@ func TestSendRequestInvalid(t *testing.T) {
 		assert.Contains(t, response.Labels, "error")
 		assert.NotNil(t, response.Labels["error"])
 	}
+}
+
+func TestSendRequestMultipleQueryValue(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("http://example.com").
+		Get("/test").
+		MatchParam("key_multi", "string1").
+		MatchParam("key_multi", "string2").
+		MatchParam("key_single", "only_string").
+		Reply(200).
+		JSON(map[string]string{"foo": "bar"})
+
+	request := &dipper.Message{
+		Channel: "event",
+		Subject: "command",
+		Payload: map[string]interface{}{
+			"URL": "http://example.com/test",
+			"form": map[string]interface{}{
+				"key_single": "only_string",
+				"key_multi": []interface{}{
+					"string1",
+					"string2",
+				},
+			},
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+	sendRequest(request)
+	response := <-request.Reply
+	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
+	assert.NotContains(t, response.Labels, "error")
+	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
+}
+
+func TestSendRequestPostJSONString(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("http://example.com").
+		Post("/test").
+		MatchType("application/json").
+		Body(bytes.NewBufferString(`{"incoming": "foobar"}`)).
+		Reply(200).
+		JSON(map[string]string{"foo": "bar"})
+
+	request := &dipper.Message{
+		Channel: "event",
+		Subject: "command",
+		Payload: map[string]interface{}{
+			"method": "POST",
+			"URL":    "http://example.com/test",
+			"header": map[string]interface{}{
+				"Content-Type": "application/json",
+			},
+			"content": `{"incoming": "foobar"}`,
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+	sendRequest(request)
+	response := <-request.Reply
+	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
+	assert.NotContains(t, response.Labels, "error")
+	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
+}
+
+func TestSendRequestPostJSON(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("http://example.com").
+		Post("/test").
+		MatchType("application/json").
+		Body(bytes.NewBufferString(`{"incoming":"foobar"}`)).
+		Reply(200).
+		JSON(map[string]string{"foo": "bar"})
+
+	request := &dipper.Message{
+		Channel: "event",
+		Subject: "command",
+		Payload: map[string]interface{}{
+			"method": "POST",
+			"URL":    "http://example.com/test",
+			"header": map[string]interface{}{
+				"Content-Type": "application/json",
+			},
+			"content": map[string]interface{}{
+				"incoming": "foobar",
+			},
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+	sendRequest(request)
+	response := <-request.Reply
+	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
+	assert.NotContains(t, response.Labels, "error")
+	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
+}
+
+func TestSendRequestPostJSONForm(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("http://example.com").
+		Post("/test").
+		MatchType("application/json").
+		Body(bytes.NewBufferString(`{"incoming":"foobar"}`)).
+		Reply(200).
+		JSON(map[string]string{"foo": "bar"})
+
+	request := &dipper.Message{
+		Channel: "event",
+		Subject: "command",
+		Payload: map[string]interface{}{
+			"method": "POST",
+			"URL":    "http://example.com/test",
+			"header": map[string]interface{}{
+				"Content-Type": "application/json",
+			},
+			"form": map[string]interface{}{
+				"incoming": "foobar",
+			},
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+	sendRequest(request)
+	response := <-request.Reply
+	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
+	assert.NotContains(t, response.Labels, "error")
+	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
+}
+
+func TestSendRequestPostForm(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("http://example.com").
+		Post("/test").
+		Body(bytes.NewBufferString(`post_field1=string1&post_field2=string2`)).
+		Reply(200).
+		JSON(map[string]string{"foo": "bar"})
+
+	request := &dipper.Message{
+		Channel: "event",
+		Subject: "command",
+		Payload: map[string]interface{}{
+			"method": "POST",
+			"URL":    "http://example.com/test",
+			"content": map[string]interface{}{
+				"post_field1": "string1",
+				"post_field2": "string2",
+			},
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+	sendRequest(request)
+	response := <-request.Reply
+	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
+	assert.NotContains(t, response.Labels, "error")
+	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
+}
+
+func TestSendRequestPostFormForm(t *testing.T) {
+	defer gock.Off()
+
+	initFlags()
+	flag.Usage()
+	gock.New("http://example.com").
+		Post("/test").
+		Body(bytes.NewBufferString(`post_field1=string1&post_field2=string2`)).
+		Reply(200).
+		AddHeader("Set-Cookie", "mycookie=123").
+		JSON(map[string]string{"foo": "bar"})
+
+	request := &dipper.Message{
+		Channel: "event",
+		Subject: "command",
+		Payload: map[string]interface{}{
+			"method": "POST",
+			"URL":    "http://example.com/test",
+			"form": map[string]interface{}{
+				"post_field1": "string1",
+				"post_field2": "string2",
+			},
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+	sendRequest(request)
+	response := <-request.Reply
+	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
+	assert.NotContains(t, response.Labels, "error")
+	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }

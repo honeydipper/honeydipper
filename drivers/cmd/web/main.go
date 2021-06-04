@@ -50,11 +50,7 @@ func main() {
 	}
 }
 
-func sendRequest(m *dipper.Message) {
-	if log == nil {
-		log = driver.GetLogger()
-	}
-	m = dipper.DeserializePayload(m)
+func prepareRequest(m *dipper.Message) *http.Request {
 	rurl, ok := dipper.GetMapDataStr(m.Payload, "URL")
 	if !ok {
 		log.Panicf("[%s] URL is required but missing", driver.Service)
@@ -64,7 +60,14 @@ func sendRequest(m *dipper.Message) {
 	formData, _ := dipper.GetMapData(m.Payload, "form")
 	if formData != nil {
 		for k, v := range formData.(map[string]interface{}) {
-			form.Add(k, v.(string))
+			switch val := v.(type) {
+			case string:
+				form.Add(k, val)
+			case []interface{}:
+				for _, vs := range val {
+					form.Add(k, vs.(string))
+				}
+			}
 		}
 	}
 
@@ -81,40 +84,48 @@ func sendRequest(m *dipper.Message) {
 		method = "GET"
 	}
 
-	var (
-		req *http.Request
-		buf io.Reader
-	)
+	return createRequest(method, rurl, header, form, m)
+}
+
+func prepareRequestBody(form url.Values, header http.Header, m *dipper.Message) io.Reader {
+	var buf io.Reader
+
+	content, hasContent := dipper.GetMapData(m.Payload, "content")
+	contentStr, contentIsStr := content.(string)
+	needsJSON := strings.HasPrefix(header.Get("content-type"), "application/json")
+
+	switch {
+	case contentIsStr:
+		buf = bytes.NewBufferString(contentStr)
+	case hasContent && needsJSON:
+		contentBytes := dipper.Must(json.Marshal(content)).([]byte)
+		buf = bytes.NewBuffer(contentBytes)
+	case hasContent:
+		postForm := url.Values{}
+		for key, val := range content.(map[string]interface{}) {
+			postForm.Add(key, val.(string))
+		}
+		buf = bytes.NewBufferString(postForm.Encode())
+	case needsJSON:
+		formData, _ := dipper.GetMapData(m.Payload, "form")
+		contentBytes := dipper.Must(json.Marshal(formData)).([]byte)
+		buf = bytes.NewBuffer(contentBytes)
+	default:
+		buf = bytes.NewBufferString(form.Encode())
+	}
+
+	return buf
+}
+
+func createRequest(method, rurl string, header http.Header, form url.Values, m *dipper.Message) *http.Request {
+	var req *http.Request
 
 	switch method {
 	case "POST":
 		fallthrough
 	case "PUT":
-		content, hasContent := dipper.GetMapData(m.Payload, "content")
-		contentStr, contentIsStr := content.(string)
-		needsJSON := strings.HasPrefix(header.Get("content-type"), "application/json")
-
-		switch {
-		case contentIsStr:
-			buf = bytes.NewBufferString(contentStr)
-		case hasContent && needsJSON:
-			contentBytes := dipper.Must(json.Marshal(content)).([]byte)
-			buf = bytes.NewBuffer(contentBytes)
-		case hasContent:
-			postForm := url.Values{}
-			for key, val := range content.(map[string]interface{}) {
-				postForm.Add(key, val.(string))
-			}
-			buf = bytes.NewBufferString(postForm.Encode())
-		case needsJSON:
-			contentBytes := dipper.Must(json.Marshal(formData)).([]byte)
-			buf = bytes.NewBuffer(contentBytes)
-		default:
-			buf = bytes.NewBufferString(form.Encode())
-		}
-
+		buf := prepareRequestBody(form, header, m)
 		req = dipper.Must(http.NewRequest(method, rurl, buf)).(*http.Request)
-
 	default: // GET
 		req = dipper.Must(http.NewRequest(method, rurl, nil)).(*http.Request)
 		if len(req.URL.RawQuery) > 0 {
@@ -124,6 +135,16 @@ func sendRequest(m *dipper.Message) {
 	}
 
 	req.Header = header
+
+	return req
+}
+
+func sendRequest(m *dipper.Message) {
+	if log == nil {
+		log = driver.GetLogger()
+	}
+	m = dipper.DeserializePayload(m)
+	req := prepareRequest(m)
 
 	client := http.Client{}
 	resp, err := client.Do(req)
