@@ -1,3 +1,17 @@
+# [2.6.0](https://github.com/honeydipper/honeydipper/compare/v2.5.0...v2.6.0) (2021-06-04)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to c07d793 ([#411](https://github.com/honeydipper/honeydipper/issues/411)) ([282dd70](https://github.com/honeydipper/honeydipper/commit/282dd7093373e345e93891bb7cc0d69bbc81b304))
+* **deps:** update golang.org/x/oauth2 commit hash to f6687ab ([#412](https://github.com/honeydipper/honeydipper/issues/412)) ([4f309c7](https://github.com/honeydipper/honeydipper/commit/4f309c77d3e7ef141621742493f578deab4a1a73))
+* **deps:** update google.golang.org/genproto commit hash to 58e84a5 ([#413](https://github.com/honeydipper/honeydipper/issues/413)) ([8bbaecd](https://github.com/honeydipper/honeydipper/commit/8bbaecd9f2ad965612946ca1e3e3c65f4d70ba0e))
+
+
+### Features
+
+* **drivers:** web request support multiple value query variables ([#415](https://github.com/honeydipper/honeydipper/issues/415)) ([b5c26a7](https://github.com/honeydipper/honeydipper/commit/b5c26a7da3291de22259896fc9afb4f560f536ba))
+
 # [2.5.0](https://github.com/honeydipper/honeydipper/compare/v2.4.0...v2.5.0) (2021-06-01)
 
 
