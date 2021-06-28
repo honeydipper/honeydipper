@@ -260,27 +260,37 @@ func verifySystems(eventData map[string]interface{}) {
 		}
 	}
 
-	if signatureHeader != "" {
-		var verifiedSystem []string
-		for name, sys := range sysMap {
-			expectedHeader, ok := sys["signatureHeader"]
-			if !ok || !strings.EqualFold(expectedHeader.(string), signatureHeader) {
-				// ignore unsupported headers or system without signatureHeader
-				continue
-			}
+	if signatureHeader == "" {
+		return
+	}
 
-			secret, ok := dipper.GetMapDataStr(sys, "signatureSecret")
-			if !ok {
-				log.Warningf("[%s] signature secret not defined for system %s", driver.Service, name)
+	var verifiedSystem []string
+	for name, sys := range sysMap {
+		expectedHeader, ok := sys["signatureHeader"]
+		if !ok || !strings.EqualFold(expectedHeader.(string), signatureHeader) {
+			// ignore unsupported headers or system without signatureHeader
+			continue
+		}
 
-				continue
-			}
+		secretValue, ok := dipper.GetMapData(sys, "signatureSecret")
+		if !ok {
+			log.Warningf("[%s] signature secret not defined for system %s", driver.Service, name)
 
-			if verifySignature(signatureHeader, signatureValue, secret, eventData) {
+			continue
+		}
+		secrets, ok := secretValue.([]interface{})
+		if !ok {
+			secrets = []interface{}{secretValue}
+		}
+
+		for _, secret := range secrets {
+			if verifySignature(signatureHeader, signatureValue, secret.(string), eventData) {
 				verifiedSystem = append(verifiedSystem, name)
+
+				break
 			}
 		}
-		log.Infof("[%s] HMAC verified for system(s) %+v", driver.Service, verifiedSystem)
-		eventData["verifiedSystem"] = verifiedSystem
 	}
+	log.Infof("[%s] HMAC verified for system(s) %+v", driver.Service, verifiedSystem)
+	eventData["verifiedSystem"] = verifiedSystem
 }
