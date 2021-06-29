@@ -69,13 +69,16 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 		dipper.Logger.Panicf("[operator] invalid function received")
 	}
 
-	var driver string
-	var params map[string]interface{}
 	dipper.Logger.Debugf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
 	driver, rawaction, params, sysData := collapseFunction(nil, &function)
 	dipper.Logger.Debugf("[operator] collapsed function %s %s %+v", driver, rawaction, params)
 
-	worker := operator.getDriverRuntime("driver:" + driver)
+	feature := "driver:" + driver
+	if strings.HasPrefix(driver, "feature:") {
+		feature = driver[8:]
+	}
+	worker := operator.getDriverRuntime(feature)
+
 	if worker == nil {
 		panic(fmt.Errorf("%w: not defined: %s", ErrOperatorError, driver))
 	}
@@ -114,28 +117,25 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 		"ctx":    ctx,
 		"params": finalParams,
 	})
+	delete(msg.Labels, "retry")
 	if retry != "" {
 		msg.Labels["retry"] = retry
-	} else {
-		delete(msg.Labels, "retry")
 	}
 	backoff := dipper.InterpolateStr("$?ctx.backoff_ms,params.backoff_ms", map[string]interface{}{
 		"ctx":    ctx,
 		"params": finalParams,
 	})
+	delete(msg.Labels, "backoff_ms")
 	if backoff != "" {
 		msg.Labels["backoff_ms"] = backoff
-	} else {
-		delete(msg.Labels, "backoff_ms")
 	}
 	timeout := dipper.InterpolateStr("$?ctx.timeout,params.timeout", map[string]interface{}{
 		"ctx":    ctx,
 		"params": finalParams,
 	})
+	delete(msg.Labels, "timeout")
 	if timeout != "" {
 		msg.Labels["timeout"] = timeout
-	} else {
-		delete(msg.Labels, "timeout")
 	}
 
 	return []RoutedMessage{
