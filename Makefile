@@ -7,7 +7,8 @@ files_require_mocking = internal/workflow/session.go \
 						internal/workflow/store.go \
 						pkg/dipper/rpc.go \
 						internal/api/request_context.go \
-						drivers/cmd/gcloud-secret/main.go
+						drivers/cmd/gcloud-secret/main.go \
+						drivers/cmd/datadog-emitter/statsd.go
 
 ifneq (,$(wildcard ./.env))
 	include ./.env

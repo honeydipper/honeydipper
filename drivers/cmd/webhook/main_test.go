@@ -157,6 +157,13 @@ func TestHookHandler(t *testing.T) {
 			"signatureHeader": "x-pagerduty-signature",
 			"signatureSecret": "test-secret",
 		},
+		"sys-secret-list": map[string]interface{}{
+			"signatureHeader": "x-pagerduty-signature",
+			"signatureSecret": []interface{}{
+				"test-secret1",
+				"test-secret2",
+			},
+		},
 		"sys-unsupported-header": map[string]interface{}{
 			"signatureHeader": "x-unknown-signature",
 		},
@@ -181,6 +188,11 @@ func TestHookHandler(t *testing.T) {
 		"sys4.webhook": []interface{}{
 			map[string]interface{}{
 				"match": map[string]interface{}{"verifiedSystem": "sys"},
+			},
+		},
+		"sys5.webhook": []interface{}{
+			map[string]interface{}{
+				"match": map[string]interface{}{"verifiedSystem": "sys-secret-list"},
 			},
 		},
 	}
@@ -232,4 +244,17 @@ func TestHookHandler(t *testing.T) {
 	hookHandler(resp, req)
 	assert.Equalf(t, 404, resp.status, "should return 404 with unsupported signature header")
 	assert.Zerof(t, buf.Len(), "should not emit event to daemon")
+
+	resp = &mockResponseWriter{header: http.Header{}}
+	req = &http.Request{
+		Method: "POST",
+		URL:    &url.URL{Path: "/test/sys5"},
+		Header: http.Header{"X-Pagerduty-Signature": []string{"v1=7afdf53eec1c15fb75269b28fab95228ba591b11a103d8e0972087e6dee018ca"}},
+		Body:   ioutil.NopCloser(bytes.NewBufferString("hello")),
+	}
+	hookHandler(resp, req)
+	msg = dipper.FetchMessage(buf)
+	assert.Equalf(t, 200, resp.status, "should return 200 on success with proper signature")
+	assert.Equalf(t, "sys-secret-list", dipper.MustGetMapDataStr(msg.Payload, "data.verifiedSystem.0"), "should emit webhook event with verifiedSystem")
+	assert.Equalf(t, 1, len(dipper.MustGetMapData(msg.Payload, "data.verifiedSystem").([]interface{})), "should verify only 1 system")
 }

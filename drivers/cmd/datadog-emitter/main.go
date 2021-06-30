@@ -38,7 +38,8 @@ var (
 	driver         *dipper.Driver
 	log            *logging.Logger
 	datadogOptions DatadogOptions
-	dogstatsd      *statsd.Client
+	dogstatsd      virtualStatsd
+	mockedstatsd   virtualStatsd
 	daemonID       string
 )
 
@@ -50,6 +51,8 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "datadog-emitter")
 	driver.RPCHandlers["counter_increment"] = counterIncr
 	driver.RPCHandlers["gauge_set"] = gaugeSet
+	driver.Commands["counter_increment"] = counterIncr
+	driver.Commands["gauge_set"] = gaugeSet
 	driver.Reload = loadOptions
 	driver.Start = loadOptions
 	driver.Run()
@@ -76,7 +79,7 @@ func loadOptions(msg *dipper.Message) {
 	if dogstatsd != nil {
 		dogstatsd.Close()
 	}
-	dogstatsd, err = statsd.New(datadogOptions.StatsdHost + ":" + datadogOptions.StatsdPort)
+	dogstatsd, err = newStatsd(datadogOptions.StatsdHost + ":" + datadogOptions.StatsdPort)
 	if err != nil {
 		panic(err)
 	}
@@ -100,6 +103,9 @@ func counterIncr(msg *dipper.Message) {
 	}
 
 	dipper.Must(dogstatsd.Incr(name, tags, 1))
+	if msg.Reply != nil {
+		msg.Reply <- dipper.Message{}
+	}
 }
 
 func gaugeSet(msg *dipper.Message) {
@@ -119,4 +125,7 @@ func gaugeSet(msg *dipper.Message) {
 	}
 
 	dipper.Must(dogstatsd.Gauge(name, value, tags, 1))
+	if msg.Reply != nil {
+		msg.Reply <- dipper.Message{}
+	}
 }
