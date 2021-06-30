@@ -1,3 +1,11 @@
+# [2.7.0](https://github.com/honeydipper/honeydipper/compare/v2.6.0...v2.7.0) (2021-06-30)
+
+
+### Features
+
+* **drivers:** datadog-emitter allow functions ([#418](https://github.com/honeydipper/honeydipper/issues/418)) ([7329f6b](https://github.com/honeydipper/honeydipper/commit/7329f6b34edb1a6609651562b20e3b1aedba5fe9))
+* **drivers:** webhook hmac support secret list ([#417](https://github.com/honeydipper/honeydipper/issues/417)) ([312a350](https://github.com/honeydipper/honeydipper/commit/312a350128368ce1abbf6b544e27afd8c3bbaf37))
+
 # [2.6.0](https://github.com/honeydipper/honeydipper/compare/v2.5.0...v2.6.0) (2021-06-04)
 
 
