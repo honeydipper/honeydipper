@@ -3,7 +3,7 @@ module github.com/honeydipper/honeydipper
 go 1.13
 
 require (
-	cloud.google.com/go v0.68.0
+	cloud.google.com/go v0.84.0
 	cloud.google.com/go/pubsub v1.3.1
 	cloud.google.com/go/spanner v1.6.0
 	cloud.google.com/go/storage v1.10.0
@@ -17,7 +17,7 @@ require (
 	github.com/go-errors/errors v1.1.1
 	github.com/go-redis/redis/v8 v8.5.0
 	github.com/gogf/gf v1.15.3
-	github.com/golang/mock v1.4.4
+	github.com/golang/mock v1.5.0
 	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.1.2
 	github.com/googleapis/gax-go/v2 v2.0.5
@@ -32,10 +32,10 @@ require (
 	github.com/qiangmzsx/string-adapter/v2 v2.1.0
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
-	golang.org/x/oauth2 v0.0.0-20210514164344-f6687ab2804c
+	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914
 	golang.org/x/term v0.0.0-20210503060354-a79de5458b56
-	google.golang.org/api v0.32.0
-	google.golang.org/genproto v0.0.0-20210603172842-58e84a565dcf
+	google.golang.org/api v0.50.0
+	google.golang.org/genproto v0.0.0-20210624195500-8bfb893ecb84
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	k8s.io/api v0.18.3
