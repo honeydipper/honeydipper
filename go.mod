@@ -19,7 +19,7 @@ require (
 	github.com/gogf/gf v1.15.3
 	github.com/golang/mock v1.4.4
 	github.com/golang/protobuf v1.5.2
-	github.com/google/uuid v1.1.2
+	github.com/google/uuid v1.2.0
 	github.com/googleapis/gax-go/v2 v2.0.5
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/huandu/xstrings v1.3.1 // indirect
