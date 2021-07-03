@@ -17,7 +17,7 @@ require (
 	github.com/go-errors/errors v1.1.1
 	github.com/go-redis/redis/v8 v8.5.0
 	github.com/gogf/gf v1.15.3
-	github.com/golang/mock v1.4.4
+	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.1.2
 	github.com/googleapis/gax-go/v2 v2.0.5
