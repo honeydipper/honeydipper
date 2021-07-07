@@ -35,7 +35,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20210514164344-f6687ab2804c
 	golang.org/x/term v0.0.0-20210503060354-a79de5458b56
 	google.golang.org/api v0.32.0
-	google.golang.org/genproto v0.0.0-20210603172842-58e84a565dcf
+	google.golang.org/genproto v0.0.0-20210707164411-8c882eb9abba
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	k8s.io/api v0.18.3
