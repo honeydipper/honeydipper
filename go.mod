@@ -32,7 +32,7 @@ require (
 	github.com/qiangmzsx/string-adapter/v2 v2.1.0
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
-	golang.org/x/oauth2 v0.0.0-20210514164344-f6687ab2804c
+	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914
 	golang.org/x/term v0.0.0-20210503060354-a79de5458b56
 	google.golang.org/api v0.32.0
 	google.golang.org/genproto v0.0.0-20210707164411-8c882eb9abba
