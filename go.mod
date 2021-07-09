@@ -33,7 +33,7 @@ require (
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
 	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914
-	golang.org/x/term v0.0.0-20210503060354-a79de5458b56
+	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b
 	google.golang.org/api v0.32.0
 	google.golang.org/genproto v0.0.0-20210707164411-8c882eb9abba
 	gopkg.in/h2non/gock.v1 v1.0.15
