@@ -68,7 +68,7 @@ jobs:
     <<: *defaults
     docker:
       - image: golang:1.15.7-alpine
-      - image: redis:5.0.12-alpine
+      - image: redis:5.0.13-alpine
     steps:
       - run:
           name: install dependencies
