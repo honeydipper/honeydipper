@@ -8,7 +8,7 @@ defaults: &defaults
 
 license_finder: &license_finder
   docker:
-    - image: licensefinder/license_finder:6.10.0
+    - image: licensefinder/license_finder:6.14.1
   working_directory: /root/src/honeydipper
 
 restore_mod: &restore_mod
