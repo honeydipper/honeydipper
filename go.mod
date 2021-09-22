@@ -13,7 +13,7 @@ require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/casbin/casbin/v2 v2.13.1
 	github.com/ghodss/yaml v1.0.0
-	github.com/gin-gonic/gin v1.6.3
+	github.com/gin-gonic/gin v1.7.0
 	github.com/go-errors/errors v1.1.1
 	github.com/go-logr/logr v1.1.0 // indirect
 	github.com/go-redis/redis/v8 v8.5.0
@@ -59,7 +59,7 @@ require (
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.13.0 // indirect
 	github.com/go-playground/universal-translator v0.17.0 // indirect
-	github.com/go-playground/validator/v10 v10.2.0 // indirect
+	github.com/go-playground/validator/v10 v10.4.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
