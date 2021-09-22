@@ -95,6 +95,7 @@ func (c *Config) ResetStage() {
 			dipper.WaitGroupDoneAll(wg)
 		}
 	}
+	//nolint:gomnd
 	c.StageWG = make([]*sync.WaitGroup, 3)
 	c.StageWG[StageLoading] = &sync.WaitGroup{}
 	c.StageWG[StageLoading].Add(len(c.Services))
@@ -456,7 +457,11 @@ func mergeDataSet(d *DataSet, source DataSet) error {
 	}
 	s.Systems = map[string]System{}
 
-	return mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice)
+	if e := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice); e != nil {
+		return fmt.Errorf("merging error: %w", e)
+	}
+
+	return nil
 }
 
 func addSubsystem(d *System, s System, key string) {

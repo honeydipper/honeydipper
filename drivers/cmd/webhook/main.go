@@ -211,6 +211,7 @@ func verifySignature(header, actual, secret string, eventData map[string]interfa
 		}
 		if _, ok := eventData["skip_replay_check"]; !ok {
 			current := time.Now().Unix()
+			//nolint:gomnd
 			requestedAt := dipper.Must(strconv.ParseInt(timestamp, 10, 64)).(int64)
 			if current-requestedAt > 300 || current < requestedAt {
 				panic(ErrReplayAttack)

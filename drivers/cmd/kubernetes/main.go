@@ -130,7 +130,8 @@ func getJobLog(m *dipper.Message) {
 
 	for _, pod := range pods.Items {
 		if returnStatus == StatusSuccess {
-			cStatuses := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
+			cStatuses := pod.Status.InitContainerStatuses
+			cStatuses = append(cStatuses, pod.Status.ContainerStatuses...)
 			for _, c := range cStatuses {
 				if c.State.Terminated == nil {
 					returnStatus = StatusFailure
@@ -204,7 +205,7 @@ func waitForJob(m *dipper.Message) {
 
 	returnJobStatus := func(job *batchv1.Job) {
 		var (
-			jobStatus string = StatusSuccess
+			jobStatus = StatusSuccess
 			reason    []string
 		)
 		if job.Status.Failed > 0 {

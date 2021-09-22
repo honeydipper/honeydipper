@@ -58,7 +58,12 @@ func (c *Repo) isFileLoaded(filename string) bool {
 
 // ReadFile reads a file from the repo.
 func (c *Repo) ReadFile(filename string) ([]byte, error) {
-	return ioutil.ReadFile(path.Join(c.root, filename[1:]))
+	b, e := ioutil.ReadFile(path.Join(c.root, filename[1:]))
+	if e != nil {
+		return b, fmt.Errorf("read file: %w", e)
+	}
+
+	return b, nil
 }
 
 func (c *Repo) loadFile(filename string) {

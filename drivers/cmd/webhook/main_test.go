@@ -4,6 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, you can obtain one at http://mozilla.org/MPL/2.0/.
 
+//go:build !integration
 // +build !integration
 
 package main
@@ -150,21 +151,21 @@ func (m *mockResponseWriter) Header() http.Header {
 
 func TestHookHandler(t *testing.T) {
 	sysMap = map[string]map[string]interface{}{
-		"sys-missing-secret": map[string]interface{}{
+		"sys-missing-secret": {
 			"signatureHeader": "x-pagerduty-signature",
 		},
-		"sys": map[string]interface{}{
+		"sys": {
 			"signatureHeader": "x-pagerduty-signature",
 			"signatureSecret": "test-secret",
 		},
-		"sys-secret-list": map[string]interface{}{
+		"sys-secret-list": {
 			"signatureHeader": "x-pagerduty-signature",
 			"signatureSecret": []interface{}{
 				"test-secret1",
 				"test-secret2",
 			},
 		},
-		"sys-unsupported-header": map[string]interface{}{
+		"sys-unsupported-header": {
 			"signatureHeader": "x-unknown-signature",
 		},
 	}
