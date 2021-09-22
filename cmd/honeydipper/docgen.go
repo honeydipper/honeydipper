@@ -134,7 +134,7 @@ func fetchItem(item DocItem, cfg *config.Config) {
 
 			file := path.Join(cfg.DocDst, item.Name)
 			ensureDirExists(file)
-			//nolint:gosec
+			//nolint:gosec,gomnd
 			err = ioutil.WriteFile(file, content, 0o644)
 			if err != nil {
 				panic(err)
@@ -162,6 +162,7 @@ func fetchItem(item DocItem, cfg *config.Config) {
 
 func ensureDirExists(file string) {
 	dir := filepath.Dir(file)
+	//nolint:gomnd
 	err := os.MkdirAll(dir, 0o755)
 	if err != nil {
 		panic(err)
@@ -217,7 +218,7 @@ func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config
 
 	file := path.Join(cfg.DocDst, name)
 	ensureDirExists(file)
-	//nolint:gosec
+	//nolint:gosec,gomnd
 	err := ioutil.WriteFile(file, []byte(doc), 0o644)
 	if err != nil {
 		panic(err)

@@ -179,7 +179,12 @@ func (l *Store) setupAuthorization() {
 
 // Enforce checks if the action is allowed based on rules.
 func (l *Store) Enforce(args ...interface{}) (bool, error) {
-	return l.enforcer.Enforce(args...)
+	ef, e := l.enforcer.Enforce(args...)
+	if e != nil {
+		return ef, fmt.Errorf("auth middleware error: %w", e)
+	}
+
+	return ef, nil
 }
 
 // AuthMiddleware is a middleware handles auth.
@@ -275,7 +280,7 @@ func (l *Store) CreateHTTPHandlerFunc(def Def) gin.HandlerFunc {
 
 // setupRoutes sets up the routes.
 func (l *Store) setupRoutes(prefix string) {
-	var group *gin.RouterGroup = &l.engine.RouterGroup
+	group := &l.engine.RouterGroup
 	if prefix != "" {
 		group = group.Group(prefix)
 	}
