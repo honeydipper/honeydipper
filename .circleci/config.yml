@@ -79,7 +79,7 @@ jobs:
       - run: make integration-tests
   semantic-release:
     docker:
-      - image: circleci/node:10
+      - image: circleci/node:14
     steps:
       - checkout
       - run: |
