@@ -15,16 +15,20 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ghodss/yaml"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/imdario/mergo"
 	"github.com/op/go-logging"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -330,25 +334,13 @@ func createJob(m *dipper.Message) {
 		nameSpace = DefaultNamespace
 	}
 
-	buf, err := yaml.Marshal(dipper.MustGetMapData(m.Payload, "job"))
-	if err != nil {
-		log.Panicf("[%s] unable to marshal job manifest %+v", driver.Service, err)
-	}
-
-	jobSpec := batchv1.Job{}
-	err = yaml.Unmarshal(buf, &jobSpec)
-	if err != nil {
-		log.Panicf("[%s] invalid job manifest %+v", driver.Service, err)
-	}
-	log.Debugf("[%s] source %+v job spec %+v", driver.Service, dipper.MustGetMapData(m.Payload, "job"), jobSpec)
-
+	job := constructJob(m, nameSpace, k8client)
 	jobclient := k8client.BatchV1().Jobs(nameSpace)
-
-	jobResult := getExistingJob(&jobSpec, jobclient)
+	jobResult := getExistingJob(&job, jobclient)
 	if jobResult == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
 		defer cancel()
-		jobResult, err = jobclient.Create(ctx, &jobSpec, metav1.CreateOptions{})
+		jobResult, err = jobclient.Create(ctx, &job, metav1.CreateOptions{})
 		if err != nil {
 			log.Panicf("[%s] failed to create job %+v", driver.Service, err)
 		}
@@ -360,6 +352,55 @@ func createJob(m *dipper.Message) {
 			"status":   jobResult.Status,
 		},
 	}
+}
+
+func constructJob(m *dipper.Message, namespace string, client *kubernetes.Clientset) batchv1.Job {
+	job := batchv1.Job{}
+
+	if fromCronJob, ok := dipper.GetMapDataStr(m.Payload, "fromCronJob"); ok {
+		cronJobNamespace, cronJobName := path.Split(fromCronJob)
+		if cronJobNamespace == "" {
+			cronJobNamespace = namespace
+		}
+
+		v1client := client.BatchV1().CronJobs(cronJobNamespace)
+		ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+		defer cancel()
+		cronJob, err := v1client.Get(ctx, cronJobName, metav1.GetOptions{})
+
+		switch {
+		case errors.IsNotFound(err):
+			v1beta1client := client.BatchV1beta1().CronJobs(cronJobNamespace)
+			ctx2, cancel2 := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+			defer cancel2()
+			cronJobv1beta1 := dipper.Must(v1beta1client.Get(ctx2, cronJobName, metav1.GetOptions{})).(*batchv1beta1.CronJob)
+
+			job.Spec = cronJobv1beta1.Spec.JobTemplate.Spec
+		case err != nil:
+			log.Panicf("[%s] unable get cronJob information %s: %+v", driver.Service, fromCronJob, err)
+		default:
+			job.Spec = cronJob.Spec.JobTemplate.Spec
+		}
+	}
+
+	override := batchv1.Job{}
+	source := dipper.MustGetMapData(m.Payload, "job")
+	buf, err := yaml.Marshal(source)
+	if err != nil {
+		log.Panicf("[%s] unable to marshal job manifest %+v", driver.Service, err)
+	}
+	err = yaml.Unmarshal(buf, &override)
+	if err != nil {
+		log.Panicf("[%s] invalid job manifest %+v", driver.Service, err)
+	}
+
+	if err = mergo.Merge(&job, override, mergo.WithOverride, mergo.WithAppendSlice); err != nil {
+		log.Panicf("[%s] unable to merge job %w", driver.Service, err)
+	}
+
+	log.Debugf("[%s] source %+v job spec %+v", driver.Service, source, job)
+
+	return job
 }
 
 func recycleDeployment(m *dipper.Message) {
