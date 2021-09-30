@@ -44,7 +44,7 @@ func ExtractWebRequest(r *http.Request) map[string]interface{} {
 
 	if len(body) > 0 {
 		req["body"] = body
-		if strings.HasPrefix(r.Header.Get("content-type"), "application/json") {
+		if strings.Contains(r.Header.Get("content-type"), "json") {
 			j := map[string]interface{}{}
 			Must(json.Unmarshal(body, &j))
 			req["json"] = j
