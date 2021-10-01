@@ -1,15 +1,10 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.15.7-alpine
+    - image: golang:1.17.1-alpine
       environment:
         - GO111MODULE=on
   working_directory: /go/src/github.com/honeydipper/honeydipper
-
-license_finder: &license_finder
-  docker:
-    - image: licensefinder/license_finder:6.10.0
-  working_directory: /root/src/honeydipper
 
 restore_mod: &restore_mod
   restore_cache:
@@ -26,18 +21,17 @@ jobs:
   golangci-lint:
     <<: *defaults
     docker:
-      - image: golangci/golangci-lint:v1.36.0-alpine
+      - image: golangci/golangci-lint:v1.42.1-alpine
     steps:
       - checkout
       - run: golangci-lint run
   license_finder:
-    <<: *license_finder
+    <<: *defaults
     steps:
       - checkout
-      - run: go build -v ./...
+      - run: go mod download
       - run: |
-          source /root/.bash_profile
-          license_finder --decisions_file=./.dependency_decisions.yml
+          apk add -u ruby ruby-dev build-base && gem install json license_finder && license_finder --decisions_file=./.dependency_decisions.yml
   test:
     <<: *defaults
     steps:
@@ -67,8 +61,8 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.15.7-alpine
-      - image: redis:5.0.12-alpine
+      - image: golang:1.17.1-alpine
+      - image: redis:5.0.13-alpine
     steps:
       - run:
           name: install dependencies
@@ -85,7 +79,7 @@ jobs:
       - run: make integration-tests
   semantic-release:
     docker:
-      - image: circleci/node:10
+      - image: circleci/node:14
     steps:
       - checkout
       - run: |

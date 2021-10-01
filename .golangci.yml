@@ -22,14 +22,11 @@ linters:
     - gofumpt
     - goheader
     - goimports
-    - golint
     - gomnd
     - gomodguard
     - goprintffuncname
     - gosec
-    - interfacer
     - lll
-    - maligned
     - misspell
     - nakedret
     - nestif
@@ -38,8 +35,8 @@ linters:
     - nolintlint
     - paralleltest
     - prealloc
+    - revive
     - rowserrcheck
-    - scopelint
     - sqlclosecheck
     - stylecheck
     - testpackage

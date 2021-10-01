@@ -7,7 +7,11 @@
 // Package datadog-emitter enables Honeydipper to send metrics to datadog
 package main
 
-import "github.com/DataDog/datadog-go/statsd"
+import (
+	"fmt"
+
+	"github.com/DataDog/datadog-go/statsd"
+)
 
 type virtualStatsd interface {
 	Close() error
@@ -20,6 +24,10 @@ func newStatsd(datadogOptStr string) (virtualStatsd, error) {
 	if mockedstatsd != nil {
 		return mockedstatsd, nil
 	}
+	d, e := statsd.New(datadogOptStr)
+	if e != nil {
+		return d, fmt.Errorf("wrapping statsd library error: %w", e)
+	}
 
-	return statsd.New(datadogOptStr)
+	return d, nil
 }

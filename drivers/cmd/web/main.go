@@ -189,7 +189,7 @@ func extractHTTPResponseData(r *http.Response) map[string]interface{} {
 	}
 
 	contentType := r.Header.Get("Content-type")
-	if len(contentType) > 0 && strings.HasPrefix(contentType, "application/json") {
+	if len(contentType) > 0 && strings.Contains(contentType, "json") {
 		var bodyObj interface{}
 		err := json.Unmarshal(bodyBytes, &bodyObj)
 		if err != nil {

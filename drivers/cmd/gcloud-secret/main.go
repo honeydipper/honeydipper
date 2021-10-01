@@ -68,8 +68,15 @@ func loadOptions(msg *dipper.Message) {
 	}
 	_clientPool = gpool.New(
 		clientTTL, // TTL
-		func() (interface{}, error) { return secretmanager.NewClient(context.Background()) }, // NewFunc
-		func(o interface{}) { _ = o.(SecretManagerClient).Close() },                          // ExpireFunc
+		func() (interface{}, error) {
+			i, e := secretmanager.NewClient(context.Background())
+			if e != nil {
+				return i, fmt.Errorf("new secret manager client error: %w", e)
+			}
+
+			return i, nil
+		}, // NewFunc
+		func(o interface{}) { _ = o.(SecretManagerClient).Close() }, // ExpireFunc
 	)
 }
 
