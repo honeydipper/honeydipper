@@ -1,3 +1,25 @@
+# [2.8.0](https://github.com/honeydipper/honeydipper/compare/v2.7.0...v2.8.0) (2021-10-01)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 0a44fdf ([#428](https://github.com/honeydipper/honeydipper/issues/428)) ([2961189](https://github.com/honeydipper/honeydipper/commit/2961189334e2515ecaa7151c043f3e5691b5213c))
+* **deps:** update golang.org/x/crypto commit hash to 32db794 ([#433](https://github.com/honeydipper/honeydipper/issues/433)) ([e8b0462](https://github.com/honeydipper/honeydipper/commit/e8b046273774041934e08ef24cdffc132047f909))
+* **deps:** update golang.org/x/crypto commit hash to 5ff15b2 ([#421](https://github.com/honeydipper/honeydipper/issues/421)) ([423896a](https://github.com/honeydipper/honeydipper/commit/423896a94542cfdcae011ba8f9816a727c5e8469))
+* **deps:** update golang.org/x/oauth2 commit hash to 2bc19b1 ([#434](https://github.com/honeydipper/honeydipper/issues/434)) ([ee1db57](https://github.com/honeydipper/honeydipper/commit/ee1db57aa22856a62f6f53731b6e4b9a5b9dcd70))
+* **deps:** update golang.org/x/oauth2 commit hash to a41e5a7 ([#422](https://github.com/honeydipper/honeydipper/issues/422)) ([bf1b15e](https://github.com/honeydipper/honeydipper/commit/bf1b15ef6cbf34afd9debceda6b74e9261ca6dc9))
+* **deps:** update golang.org/x/term commit hash to 6886f2d ([#423](https://github.com/honeydipper/honeydipper/issues/423)) ([4d55069](https://github.com/honeydipper/honeydipper/commit/4d550696d0eaa40627b43ab03e71af501edd1b65))
+* **deps:** update google.golang.org/genproto commit hash to 8c882eb ([#424](https://github.com/honeydipper/honeydipper/issues/424)) ([7011bd0](https://github.com/honeydipper/honeydipper/commit/7011bd006665c21e99b7a42e45f1e7ce5518492b))
+* **deps:** update google.golang.org/genproto commit hash to d08c68a ([#435](https://github.com/honeydipper/honeydipper/issues/435)) ([738334e](https://github.com/honeydipper/honeydipper/commit/738334e54dc178a26b67e5dbecd12667e8e8a3fe))
+* **deps:** update google.golang.org/genproto commit hash to e15ff19 ([#429](https://github.com/honeydipper/honeydipper/issues/429)) ([db1c248](https://github.com/honeydipper/honeydipper/commit/db1c248b428e102085e886b9509a15b32896cce3))
+* **deps:** update module github.com/imdario/mergo to v0.3.12 ([#425](https://github.com/honeydipper/honeydipper/issues/425)) ([972d57f](https://github.com/honeydipper/honeydipper/commit/972d57fcdc62485125b17a5918b4294f418108ac))
+* **drivers:** web and webhook recognize more json content types ([#441](https://github.com/honeydipper/honeydipper/issues/441)) ([924e99c](https://github.com/honeydipper/honeydipper/commit/924e99cae67dc875e535691684de1d38d3eefd4c))
+
+
+### Features
+
+* **drivers:** create k8s job from cronjob spec ([#440](https://github.com/honeydipper/honeydipper/issues/440)) ([e3982fc](https://github.com/honeydipper/honeydipper/commit/e3982fca3dbb7a713b3d55b80909a0bee75c8ed0))
+
 # [2.7.0](https://github.com/honeydipper/honeydipper/compare/v2.6.0...v2.7.0) (2021-06-30)
 
 
