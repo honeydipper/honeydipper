@@ -44,8 +44,8 @@ require (
 	google.golang.org/genproto v0.0.0-20210903162649-d08c68adba83
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
-	k8s.io/api v0.22.2
-	k8s.io/apimachinery v0.22.2
+	k8s.io/api v0.22.4
+	k8s.io/apimachinery v0.22.4
 	k8s.io/client-go v0.22.2
 	k8s.io/klog/v2 v2.20.0 // indirect
 )
