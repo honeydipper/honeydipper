@@ -1,4 +1,4 @@
-FROM golang:1.17.3-alpine AS build
+FROM golang:1.17.6-alpine AS build
 
 ARG GOINSTALLOPTS
 ARG GOGC
