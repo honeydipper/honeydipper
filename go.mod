@@ -13,7 +13,7 @@ require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/casbin/casbin/v2 v2.13.1
 	github.com/ghodss/yaml v1.0.0
-	github.com/gin-gonic/gin v1.7.4
+	github.com/gin-gonic/gin v1.7.7
 	github.com/go-errors/errors v1.1.1
 	github.com/go-logr/logr v1.1.0 // indirect
 	github.com/go-redis/redis/v8 v8.5.0
