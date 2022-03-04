@@ -3,10 +3,10 @@ module github.com/honeydipper/honeydipper
 go 1.17
 
 require (
-	cloud.google.com/go v0.100.2 // indirect
-	cloud.google.com/go/pubsub v1.17.1
-	cloud.google.com/go/spanner v1.29.0
-	cloud.google.com/go/storage v1.20.0
+	cloud.google.com/go v0.78.0
+	cloud.google.com/go/pubsub v1.10.1
+	cloud.google.com/go/spanner v1.15.0
+	cloud.google.com/go/storage v1.14.0
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
@@ -23,7 +23,7 @@ require (
 	github.com/google/go-cmp v0.5.7 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.3.0
-	github.com/googleapis/gax-go/v2 v2.1.1
+	github.com/googleapis/gax-go/v2 v2.0.5
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.12
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -40,24 +40,17 @@ require (
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
 	golang.org/x/text v0.3.7 // indirect
-	google.golang.org/api v0.68.0
+	google.golang.org/api v0.41.0
 	google.golang.org/genproto v0.0.0-20220208230804-65c12eb4c068
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	k8s.io/api v0.23.3
 	k8s.io/apimachinery v0.23.3
-	k8s.io/client-go v0.23.3
+	k8s.io/client-go v0.23.0-alpha.0
 	k8s.io/klog/v2 v2.40.1 // indirect
 )
 
 require (
-	cloud.google.com/go/kms v1.2.0
-	cloud.google.com/go/secretmanager v1.1.0
-)
-
-require (
-	cloud.google.com/go/compute v1.2.0 // indirect
-	cloud.google.com/go/iam v0.1.1 // indirect
 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
 	github.com/Microsoft/go-winio v0.5.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
@@ -73,6 +66,7 @@ require (
 	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/h2non/parth v0.0.0-20190131123155-b4df798d6542 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
+	github.com/jstemmer/go-junit-report v0.9.1 // indirect
 	github.com/kevinburke/ssh_config v1.1.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
@@ -87,9 +81,12 @@ require (
 	go.opencensus.io v0.23.0 // indirect
 	go.opentelemetry.io/otel v1.3.0 // indirect
 	go.opentelemetry.io/otel/trace v1.3.0 // indirect
+	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
+	golang.org/x/mod v0.4.2 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20220207234003-57398862261d // indirect
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11 // indirect
+	golang.org/x/tools v0.1.5 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/grpc v1.44.0 // indirect

@@ -27,7 +27,7 @@ lint:
 
 .mockgen_installed:
 	@echo -e "$(BOLD)Installing mockgen$(RESET)"
-	@go get github.com/golang/mock/mockgen@v1.4.4
+	@go get -d github.com/golang/mock/mockgen@v1.6.0
 	@touch "$@"
 
 .mockgen_files_generated: $(files_require_mocking)
@@ -43,7 +43,7 @@ lint:
 
 run_mockgen: .mockgen_installed .mockgen_files_generated
 
-unit-tests: run_mockgen
+unit-tests:
 	@echo -e "$(BOLD)Running unit tests$(RESET)"
 ifneq (,$(REPORT_TEST_COVERAGE))
 	@go test -coverprofile=c.out ./...
@@ -51,7 +51,7 @@ else
 	@go test ./...
 endif
 
-integration-tests: run_mockgen
+integration-tests:
 	@echo -e "$(BOLD)Running integration tests$(RESET)"
 	@go test -tags=integration ./cmd/honeydipper
 

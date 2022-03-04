@@ -24,7 +24,6 @@ vendor/**
 **/*.bak
 
 # mockgen generated or related files
-**/mock_*/**
 .mockgen_files_generated
 .mockgen_installed
 
