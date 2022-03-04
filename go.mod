@@ -41,7 +41,7 @@ require (
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/api v0.41.0
-	google.golang.org/genproto v0.0.0-20220208230804-65c12eb4c068
+	google.golang.org/genproto v0.0.0-20220304144024-325a89244dc8
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	k8s.io/api v0.23.3
