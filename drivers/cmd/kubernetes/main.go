@@ -1,8 +1,8 @@
-// Copyright 2019 Honey Science Corporation
-//
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, you can obtain one at http://mozilla.org/MPL/2.0/.
+// Copyright 2022 PayPal Inc.
+
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT License was not distributed with this file,
+// you can obtain one at https://mit-license.org/.
 
 // Package kubernetes enables Honeydipper to interact with Kubernete clusters.
 package main

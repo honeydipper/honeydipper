@@ -95,7 +95,7 @@ To get started on developing. See [How to setup local test environment](./docs/h
 
 ## License
 
-Honeydipper is licensed under the [MPLv2 License](./LICENSE).
+Honeydipper is licensed under the [MIT License](./LICENSE).
 
 ## Contributing
 
