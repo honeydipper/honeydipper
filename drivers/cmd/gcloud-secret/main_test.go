@@ -1,9 +1,10 @@
-// Copyright 2021 Honey Science Corporation
-//
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, you can obtain one at http://mozilla.org/MPL/2.0/.
+// Copyright 2022 PayPal Inc.
 
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT License was not distributed with this file,
+// you can obtain one at https://mit-license.org/.
+
+//go:build !integration
 // +build !integration
 
 package main
@@ -36,7 +37,7 @@ func TestLookupWithoutName(t *testing.T) {
 	_clientPool.Put(client)
 	defer _clientPool.Close()
 
-	client.EXPECT().Close().Times(1).Return(nil)
+	// client.EXPECT().Close().Times(1).Return(nil)
 
 	assert.PanicsWithValue(t, ErrSecretNameMissing, func() { lookup(&dipper.Message{}) }, "should panic without the secret name")
 }
@@ -49,7 +50,7 @@ func TestLookupWithName(t *testing.T) {
 	_clientPool.Put(client)
 	defer _clientPool.Close()
 
-	client.EXPECT().Close().Times(1).Return(nil)
+	// client.EXPECT().Close().Times(1).Return(nil)
 	client.EXPECT().AccessSecretVersion(
 		gomock.Any(),
 		gomock.Eq(&secretmanagerpb.AccessSecretVersionRequest{
