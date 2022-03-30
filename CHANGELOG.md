@@ -1,3 +1,18 @@
+## [2.8.1](https://github.com/honeydipper/honeydipper/compare/v2.8.0...v2.8.1) (2022-03-30)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto commit hash to 4570a08 ([#453](https://github.com/honeydipper/honeydipper/issues/453)) ([2264769](https://github.com/honeydipper/honeydipper/commit/2264769c0c4c91f08b3e84b2af748f45b7d2ac51))
+* **deps:** update golang.org/x/crypto commit hash to 8634188 ([#457](https://github.com/honeydipper/honeydipper/issues/457)) ([3354c64](https://github.com/honeydipper/honeydipper/commit/3354c640ed6f18c07f11b502750258858b95f9fc))
+* **deps:** update golang.org/x/crypto commit hash to e495a2d ([#455](https://github.com/honeydipper/honeydipper/issues/455)) ([d310ee9](https://github.com/honeydipper/honeydipper/commit/d310ee96ce8331d9eb64e2be70ec29e3cf55726f))
+* **deps:** update golang.org/x/oauth2 commit hash to d3ed0bb ([#454](https://github.com/honeydipper/honeydipper/issues/454)) ([591cbae](https://github.com/honeydipper/honeydipper/commit/591cbaece7df53d0b8efb6420c64bc798c9b543f))
+* **deps:** update golang.org/x/oauth2 commit hash to ee48083 ([#462](https://github.com/honeydipper/honeydipper/issues/462)) ([e474648](https://github.com/honeydipper/honeydipper/commit/e4746485cc0c78a9e18636d7e445cdc691a56c17))
+* **deps:** update golang.org/x/term commit hash to 03fcf44 ([#456](https://github.com/honeydipper/honeydipper/issues/456)) ([0b44b58](https://github.com/honeydipper/honeydipper/commit/0b44b584f0842d76f2f438175a1f1b7c0aaf0824))
+* **deps:** update google.golang.org/genproto commit hash to 325a892 ([#458](https://github.com/honeydipper/honeydipper/issues/458)) ([d4acc76](https://github.com/honeydipper/honeydipper/commit/d4acc76199ff9d20355690948ba904bc4b63cea4))
+* **deps:** update module github.com/gin-gonic/gin to v1.7.4 ([#448](https://github.com/honeydipper/honeydipper/issues/448)) ([8435181](https://github.com/honeydipper/honeydipper/commit/8435181e76b7f726f7f954e53c7405ea9445530b))
+* **deps:** update module k8s.io/api to v0.22.4 ([#451](https://github.com/honeydipper/honeydipper/issues/451)) ([310006e](https://github.com/honeydipper/honeydipper/commit/310006edc3ec363ca7b31c2128b74ac0a6bbb9dc))
+
 # [2.8.0](https://github.com/honeydipper/honeydipper/compare/v2.7.0...v2.8.0) (2021-10-01)
 
 
