@@ -1,7 +1,7 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.17.8-alpine
+    - image: golang:1.17.10-alpine
       environment:
         - GO111MODULE=on
   working_directory: /go/src/github.com/honeydipper/honeydipper
@@ -21,10 +21,13 @@ jobs:
   golangci-lint:
     <<: *defaults
     docker:
-      - image: golangci/golangci-lint:v1.42.1-alpine
+      - image: golangci/golangci-lint:v1.43-alpine
     steps:
       - checkout
       - run: golangci-lint run
+      # Since golangci is ignoring test files, make sure gofmt gets run on
+      # everything
+      - run: golangci-lint run --tests=true --disable-all --enable=gofmt --enable=gofumpt --no-config
   license_finder:
     <<: *defaults
     steps:
@@ -61,7 +64,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.17.8-alpine
+      - image: golang:1.17.10-alpine
       - image: redis:5.0.14-alpine
     steps:
       - run:
@@ -79,7 +82,7 @@ jobs:
       - run: make integration-tests
   semantic-release:
     docker:
-      - image: circleci/node:14
+      - image: circleci/node:16
     steps:
       - checkout
       - run: |
