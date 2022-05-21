@@ -55,7 +55,20 @@ linters-settings:
   gocognit:
     min-complexity: 60
 
+issues:
+  exclude-rules:
+    - path: (.+)_test.go
+      linters:
+        - dupl
+        - errcheck
+        - funlen
+        - gocritic
+        - goerr113
+        - gosec
+        - lll
+        - nestif
+        - paralleltest
+        - staticcheck
+        - testpackage
 run:
-  tests: false
   timeout: 5m
-

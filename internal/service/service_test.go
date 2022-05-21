@@ -61,6 +61,7 @@ func TestServiceLoopCatchError(t *testing.T) {
 			if m.Channel == "test" && m.Subject == "error0" {
 				panic(fmt.Errorf("error in route"))
 			}
+
 			return nil
 		},
 	}

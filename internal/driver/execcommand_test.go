@@ -25,8 +25,10 @@ func generateFakeExecCommand(fname string) func(string, ...string) *exec.Cmd {
 		cmd := exec.Command(os.Args[0], cs...)
 		cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
 		fakeExecCommandCount++
+
 		return cmd
 	}
+
 	return fakeExecCommand
 }
 

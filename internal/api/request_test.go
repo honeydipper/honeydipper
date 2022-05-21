@@ -105,6 +105,7 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 					}
 				}()
 			}
+
 			return st.ReturnMessage, st.Err
 		})
 	}

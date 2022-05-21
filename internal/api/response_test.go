@@ -24,7 +24,6 @@ import (
 type ResponseTestCase struct {
 	defsByName     map[string]Def
 	shouldLock     bool
-	name           string
 	lockingError   error
 	msg            *dipper.Message
 	mockAPI        func(*Response, *ResponseTestCase)

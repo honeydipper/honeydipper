@@ -86,6 +86,7 @@ func TestDriverStart(t *testing.T) {
 				}
 				assert.Equal(t, strings.Join(append([]string{command}, args...), " "), c[3].([]string)[execCommandCount], "should "+msg)
 				execCommandCount++
+
 				return generateFakeExecCommand("TestExecCommandDummy")(command, args...)
 			}
 			defer func() {
