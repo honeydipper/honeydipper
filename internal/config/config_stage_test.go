@@ -33,6 +33,7 @@ func TestAdvanceStage(t *testing.T) {
 		if v, ok := val.(string); ok && v == "v1" {
 			return "v1+", true
 		}
+
 		return nil, false
 	}
 

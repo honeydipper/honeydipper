@@ -54,11 +54,11 @@ func TestSendRequest(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
-	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	mapKey := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }
 
-func TestRecieveListJson(t *testing.T) {
+func TestReceiveListJson(t *testing.T) {
 	defer gock.Off()
 
 	gock.New("http://example.com").
@@ -142,7 +142,7 @@ func TestSendRequestMultipleQueryValue(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
-	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	mapKey := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }
 
@@ -173,7 +173,7 @@ func TestSendRequestPostJSONString(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
-	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	mapKey := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }
 
@@ -206,7 +206,7 @@ func TestSendRequestPostJSON(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
-	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	mapKey := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }
 
@@ -239,7 +239,7 @@ func TestSendRequestPostJSONForm(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
-	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	mapKey := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }
 
@@ -269,7 +269,7 @@ func TestSendRequestPostForm(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
-	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	mapKey := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }
 
@@ -302,6 +302,6 @@ func TestSendRequestPostFormForm(t *testing.T) {
 	response := <-request.Reply
 	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
 	assert.NotContains(t, response.Labels, "error")
-	mapKey, _ := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
+	mapKey := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }

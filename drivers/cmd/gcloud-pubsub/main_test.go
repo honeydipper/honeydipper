@@ -21,6 +21,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	testProject          = "test"
+	testSubscriptionName = "pubsub-test"
+)
+
 func TestMain(m *testing.M) {
 	if dipper.Logger == nil {
 		logFile, err := os.Create("test.log")
@@ -35,9 +40,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestMsgHandlerMatchJsonRule(t *testing.T) {
-	projectID := "test"
-	subscriptionName := "pubsub-test"
-
 	messages := []struct {
 		Message map[string]string
 		Want    map[string]interface{}
@@ -47,8 +49,8 @@ func TestMsgHandlerMatchJsonRule(t *testing.T) {
 				"key1": "value1",
 			},
 			Want: map[string]interface{}{
-				"project":          projectID,
-				"subscriptionName": subscriptionName,
+				"project":          testProject,
+				"subscriptionName": testSubscriptionName,
 				"json": map[string]interface{}{
 					"key1": "value1",
 				},
@@ -59,8 +61,8 @@ func TestMsgHandlerMatchJsonRule(t *testing.T) {
 				"key2": "value2",
 			},
 			Want: map[string]interface{}{
-				"project":          projectID,
-				"subscriptionName": subscriptionName,
+				"project":          testProject,
+				"subscriptionName": testSubscriptionName,
 				"json": map[string]interface{}{
 					"key2": "value2",
 				},
@@ -69,19 +71,19 @@ func TestMsgHandlerMatchJsonRule(t *testing.T) {
 	}
 
 	testConfig := &SubscriberConfig{
-		Project:          projectID,
-		SubscriptionName: subscriptionName,
+		Project:          testProject,
+		SubscriptionName: testSubscriptionName,
 		Conditions: []interface{}{
 			map[string]interface{}{
-				"project":          projectID,
-				"subscriptionName": subscriptionName,
+				"project":          testProject,
+				"subscriptionName": testSubscriptionName,
 				"json": map[string]interface{}{
 					"key1": "value1",
 				},
 			},
 			map[string]interface{}{
-				"project":          projectID,
-				"subscriptionName": subscriptionName,
+				"project":          testProject,
+				"subscriptionName": testSubscriptionName,
 				"json": map[string]interface{}{
 					"key2": "value2",
 				},
@@ -112,8 +114,6 @@ func TestMsgHandlerMatchJsonRule(t *testing.T) {
 }
 
 func TestMsgHandlerMatchTextRule(t *testing.T) {
-	projectID := "test"
-	subscriptionName := "pubsub-test"
 	msg := "test message"
 
 	messages := []struct {
@@ -123,20 +123,20 @@ func TestMsgHandlerMatchTextRule(t *testing.T) {
 		{
 			Message: msg,
 			Want: map[string]interface{}{
-				"project":          projectID,
-				"subscriptionName": subscriptionName,
+				"project":          testProject,
+				"subscriptionName": testSubscriptionName,
 				"text":             msg,
 			},
 		},
 	}
 
 	testConfig := &SubscriberConfig{
-		Project:          projectID,
-		SubscriptionName: subscriptionName,
+		Project:          testProject,
+		SubscriptionName: testSubscriptionName,
 		Conditions: []interface{}{
 			map[string]interface{}{
-				"project":          projectID,
-				"subscriptionName": subscriptionName,
+				"project":          testProject,
+				"subscriptionName": testSubscriptionName,
 				"text":             msg,
 			},
 		},
@@ -160,20 +160,17 @@ func TestMsgHandlerMatchTextRule(t *testing.T) {
 }
 
 func TestMsgHandlerDontMatchJsonRule(t *testing.T) {
-	projectID := "test"
-	subscriptionName := "pubsub-test"
-
 	messages := []map[string]string{
 		{},
 		{"key1": "value2"},
 	}
 	testConfig := &SubscriberConfig{
-		Project:          projectID,
-		SubscriptionName: subscriptionName,
+		Project:          testProject,
+		SubscriptionName: testSubscriptionName,
 		Conditions: []interface{}{
 			map[string]interface{}{
-				"project":          projectID,
-				"subscriptionName": subscriptionName,
+				"project":          testProject,
+				"subscriptionName": testSubscriptionName,
 				"json": map[string]interface{}{
 					"key1": "value1",
 				},

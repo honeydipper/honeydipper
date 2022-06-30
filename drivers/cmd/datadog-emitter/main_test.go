@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const daemonIDString = "1.1.1.1"
+
 func TestMain(m *testing.M) {
 	if dipper.Logger == nil {
 		logFile, err := os.Create("test.log")
@@ -36,7 +38,7 @@ func TestIncrCmd(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	_mockedstatsd := mock_driver.NewMockvirtualStatsd(ctrl)
 	dogstatsd = _mockedstatsd
-	daemonID = "1.1.1.1"
+	daemonID = daemonIDString
 
 	inMsg := &dipper.Message{
 		Payload: map[string]interface{}{
@@ -57,7 +59,7 @@ func TestGaugeCmd(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	_mockedstatsd := mock_driver.NewMockvirtualStatsd(ctrl)
 	dogstatsd = _mockedstatsd
-	daemonID = "1.1.1.1"
+	daemonID = daemonIDString
 
 	inMsg := &dipper.Message{
 		Payload: map[string]interface{}{
@@ -80,7 +82,7 @@ func TestLoadOptions(t *testing.T) {
 	_mockedstatsd := mock_driver.NewMockvirtualStatsd(ctrl)
 	mockedstatsd = _mockedstatsd
 	dogstatsd = _mockedstatsd
-	daemonID = "1.1.1.1"
+	daemonID = daemonIDString
 
 	driver.Options = map[string]interface{}{
 		"data": map[string]interface{}{
