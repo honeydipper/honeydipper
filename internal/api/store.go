@@ -366,5 +366,5 @@ func (l *Store) getTimeout(d Def) time.Duration {
 		return dipper.Must(time.ParseDuration(timeoutStr)).(time.Duration)
 	}
 
-	return DefaultAPIWriteTimeout * time.Second
+	return l.writeTimeout
 }
