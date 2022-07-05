@@ -8,6 +8,7 @@ def:
   reqType: 2
   service: foo
   object: event
+  ackTimeout: 1000
 
 
 # mock incoming call
