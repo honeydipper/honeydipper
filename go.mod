@@ -16,7 +16,7 @@ require (
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-errors/errors v1.4.2
 	github.com/go-logr/logr v1.2.2 // indirect
-	github.com/go-redis/redis/v8 v8.11.4
+	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gogf/gf v1.16.6
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
