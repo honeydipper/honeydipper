@@ -41,7 +41,7 @@ require (
 	golang.org/x/term v0.0.0-20220411215600-e5f449aeb171
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/api v0.43.0
-	google.golang.org/genproto v0.0.0-20220304144024-325a89244dc8
+	google.golang.org/genproto v0.0.0-20220707150051-590a5ac7bee1
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	k8s.io/api v0.24.2
@@ -102,7 +102,7 @@ require (
 	golang.org/x/tools v0.1.10 // indirect
 	golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/grpc v1.44.0 // indirect
+	google.golang.org/grpc v1.47.0 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/src-d/go-billy.v4 v4.3.2 // indirect
