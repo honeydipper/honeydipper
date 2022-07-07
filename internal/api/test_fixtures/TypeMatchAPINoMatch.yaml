@@ -9,6 +9,10 @@ def:
   service: foo
   object: event
 
+# store config
+config:
+  writeTimeout: 2000
+
 # mock incoming call
 path: /test_type_match
 
