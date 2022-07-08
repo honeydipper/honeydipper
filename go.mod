@@ -17,7 +17,7 @@ require (
 	github.com/go-errors/errors v1.4.2
 	github.com/go-logr/logr v1.2.2 // indirect
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/gogf/gf v1.16.6
+	github.com/gogf/gf v1.16.9
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.8 // indirect
