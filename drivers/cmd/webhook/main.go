@@ -26,6 +26,11 @@ import (
 	"github.com/op/go-logging"
 )
 
+const (
+	// Timeout (in seconds) for RequestHeaderTimeout.
+	RequestHeaderTimeoutSecs = 20
+)
+
 var log *logging.Logger
 
 // ErrCalcHash is raised when unable to calculate the hash for validating the webhook request.
@@ -112,8 +117,9 @@ func loadOptions(m *dipper.Message) {
 func startWebhook(m *dipper.Message) {
 	loadOptions(m)
 	server = &http.Server{
-		Addr:    Addr,
-		Handler: http.HandlerFunc(hookHandler),
+		Addr:              Addr,
+		Handler:           http.HandlerFunc(hookHandler),
+		ReadHeaderTimeout: RequestHeaderTimeoutSecs * time.Second,
 	}
 	go func() {
 		log.Infof("[%s] start listening for webhook requests", driver.Service)
