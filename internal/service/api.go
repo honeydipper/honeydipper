@@ -23,6 +23,9 @@ import (
 const (
 	// APIServerGracefulTimeout is the timeout in seconds for waiting for a http.Server to shutdown gracefully.
 	APIServerGracefulTimeout time.Duration = 10
+
+	// Timeout (in seconds) for RequestHeaderTimeout.
+	RequestHeaderTimeoutSecs = 20
 )
 
 var (
@@ -83,8 +86,9 @@ func startAPIListener() {
 		}
 	})
 	APIServer = &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: RequestHeaderTimeoutSecs * time.Second,
 	}
 	go func() {
 		dipper.Logger.Infof("[api] start listening for webhook requests")
