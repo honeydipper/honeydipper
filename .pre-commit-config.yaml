@@ -17,3 +17,4 @@ repos:
       exclude: ^deployments/helm/honeydipper/
     - id: check-json
     - id: detect-private-key
+      exclude: test_fixtures/

@@ -117,7 +117,7 @@ func (c *Repo) cloneFetchRepo() {
 
 	opts := &git.CloneOptions{URL: c.repo.Repo}
 	if strings.HasPrefix(c.repo.Repo, "git@") {
-		if auth := GetGitSSHAuth(); auth != nil {
+		if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
 			opts.Auth = auth
 		}
 	}
@@ -187,7 +187,7 @@ func (c *Repo) refreshRepo() bool {
 		ReferenceName: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
 	}
 	if strings.HasPrefix(c.repo.Repo, "git@") {
-		if auth := GetGitSSHAuth(); auth != nil {
+		if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
 			opts.Auth = auth
 		}
 	}
