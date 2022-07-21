@@ -58,7 +58,8 @@ Ow==
 -----END CERTIFICATE-----
 		`,
 	}
-	assert.NotEmpty(t, LoadCACerts(nil, true).Subjects(), "system cert pool should not be empty")
-	assert.Empty(t, LoadCACerts(nil, false).Subjects(), "pool should be empty")
-	assert.Equal(t, 3, len(LoadCACerts(certs, false).Subjects()), "should load 3 CA certs")
+	assert.NotPanics(t, func() { LoadCACerts(nil, true) }, "loading system cert pool should not panic")
+	assert.NotPanics(t, func() { LoadCACerts(nil, false) }, "loading an empty pool should not panic")
+	assert.NotPanics(t, func() { LoadCACerts(certs, false) }, "loading user specified root CA should not panic")
+	assert.NotPanics(t, func() { LoadCACerts(certs, true) }, "loading user specified root CA on top of system certs should not panic")
 }
