@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	// Timeout (in seconds) for RequestHeaderTimeout.
+	// RequestHeaderTimeoutSecs is the timeout (in seconds) for accepting incoming requests.
 	RequestHeaderTimeoutSecs = 20
 )
 
@@ -124,7 +124,7 @@ func startWebhook(m *dipper.Message) {
 	go func() {
 		log.Infof("[%s] start listening for webhook requests", driver.Service)
 		log.Infof("[%s] listener stopped: %+v", driver.Service, server.ListenAndServe())
-		if driver.State != "exit" && driver.State != "cold" {
+		if driver.State != "stopped" && driver.State != "cold" {
 			startWebhook(m)
 		}
 	}()

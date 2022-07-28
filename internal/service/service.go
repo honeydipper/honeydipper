@@ -74,11 +74,15 @@ type Service struct {
 	APIs               map[string]func(*api.Response)
 	ResponseFactory    *api.ResponseFactory
 	healthy            bool
+	drainingGroup      *sync.WaitGroup
 }
 
 var (
 	// Services holds a catalog of running services in this daemon process.
 	Services = map[string]*Service{}
+
+	// masterService the service responsible for reloading and daemon lifecycle.
+	masterService *Service
 
 	// ErrServiceError indicates error condition when rendering service.
 	ErrServiceError = errors.New("service error")
@@ -96,6 +100,7 @@ func NewService(cfg *config.Config, name string) *Service {
 	svc.RPCCallerBase.Init(svc, "rpc", "call")
 
 	svc.responders["state:cold"] = []MessageResponder{coldReloadDriverRuntime}
+	svc.responders["state:stopped"] = []MessageResponder{handleDriverStop}
 	svc.responders["rpc:call"] = []MessageResponder{handleRPCCall}
 	svc.responders["rpc:return"] = []MessageResponder{handleRPCReturn}
 	svc.responders["broadcast:reload"] = []MessageResponder{handleReload}
@@ -103,6 +108,11 @@ func NewService(cfg *config.Config, name string) *Service {
 
 	svc.ResponseFactory = api.NewResponseFactory()
 	svc.APIs = map[string]func(*api.Response){}
+
+	if len(Services) == 0 {
+		masterService = svc
+	}
+	Services[name] = svc
 
 	return svc
 }
@@ -639,6 +649,7 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 		})
 	}
 
+	dipper.Logger.Warningf("[%s] start loading/reloading driver %s", s.name, driverName)
 	retry := func() {
 		dipper.Logger.Warningf("[%s] failed to load/reload driver %s attempt %d", s.name, driverName, count)
 		if count < DriverRetryCount {
@@ -708,24 +719,37 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 	if ok && daemonID != dipper.GetIP() {
 		return
 	}
-	var min string
-	for min = range Services {
-		if from.Service > min {
-			break
-		}
+
+	m = dipper.DeserializePayload(m)
+	force := false
+	if f, ok := dipper.GetMapData(m.Payload, "force"); ok && dipper.IsTruthy(f) {
+		force = true
 	}
-	if from.Service <= min {
-		m := dipper.DeserializePayload(m)
-		go func() {
-			time.Sleep(time.Second)
-			if force, ok := dipper.GetMapDataStr(m.Payload, "force"); ok && (force == "yes" || force == "true") {
-				daemon.ShutDown()
-				os.Exit(0)
-			} else {
-				dipper.Logger.Infof("[%s] reload config on broadcast reload message", min)
-				Services[min].config.Refresh()
-			}
-		}()
+
+	if !force {
+		if from.Service == masterService.name {
+			dipper.Logger.Warningf("[%s] reload config on broadcast reload message", from.Service)
+			go masterService.config.Refresh()
+		}
+
+		return
+	}
+
+	go func() {
+		<-time.After(time.Second)
+		dipper.Logger.Warningf("[%s] quiting on broadcast force reload message", from.Service)
+		Services[from.Service].Drain()
+		if from.Service == masterService.name {
+			daemon.ShutDown()
+			os.Exit(0)
+		}
+	}()
+}
+
+func handleDriverStop(from *driver.Runtime, m *dipper.Message) {
+	if from.State != driver.DriverStopped {
+		from.State = driver.DriverStopped
+		Services[from.Service].drainingGroup.Done()
 	}
 }
 
@@ -783,4 +807,36 @@ func (s *Service) metricsLoop() {
 		}()
 		time.Sleep(time.Minute)
 	}
+}
+
+// Drain stops the service from accepting new requests but allow the remaining requests to complete.
+func (s *Service) Drain() {
+	s.healthy = false
+
+	cnt := 0
+	s.driverLock.Lock()
+	for _, d := range s.driverRuntimes {
+		if d.State != driver.DriverFailed && d.State != driver.DriverStopped {
+			cnt++
+		}
+	}
+	s.driverLock.Unlock()
+
+	if cnt > 0 {
+		s.drainingGroup = &sync.WaitGroup{}
+		s.drainingGroup.Add(cnt)
+
+		for _, d := range s.driverRuntimes {
+			if d.State != driver.DriverFailed && d.State != driver.DriverStopped {
+				d.SendMessage(&dipper.Message{
+					Channel: "command",
+					Subject: "stop",
+				})
+			}
+		}
+
+		dipper.WaitGroupWaitTimeout(s.drainingGroup, time.Second)
+	}
+
+	s.config.AdvanceStage(s.name, config.StageDrained)
 }

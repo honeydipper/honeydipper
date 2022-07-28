@@ -24,7 +24,7 @@ const (
 	// APIServerGracefulTimeout is the timeout in seconds for waiting for a http.Server to shutdown gracefully.
 	APIServerGracefulTimeout time.Duration = 10
 
-	// Timeout (in seconds) for RequestHeaderTimeout.
+	// RequestHeaderTimeoutSecs is the timeout (in seconds) for accepting incoming requests.
 	RequestHeaderTimeoutSecs = 20
 )
 
@@ -45,7 +45,6 @@ func StartAPI(cfg *config.Config) {
 	API.ServiceReload = reloadAPI
 	API.DiscoverFeatures = APIFeatures
 	API.addResponder("eventbus:api", handleAPIMessage)
-	Services["api"] = API
 	APIRequestStore = api.NewStore(API)
 	API.start()
 }

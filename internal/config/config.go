@@ -30,6 +30,8 @@ const (
 	StageDiscovering
 	// StageServing means all config should be processed and serving.
 	StageServing
+	// StageDrained means that the service has finished all in-fly requests and no longer accepts new requests.
+	StageDrained
 )
 
 var (
@@ -39,6 +41,7 @@ var (
 		"Booting",
 		"Discovering",
 		"Serving",
+		"Drained",
 	}
 
 	// ErrConfigRollback happens when daemon decides to rollback during reload.
@@ -96,13 +99,15 @@ func (c *Config) ResetStage() {
 		}
 	}
 	//nolint:gomnd
-	c.StageWG = make([]*sync.WaitGroup, 3)
+	c.StageWG = make([]*sync.WaitGroup, 4)
 	c.StageWG[StageLoading] = &sync.WaitGroup{}
 	c.StageWG[StageLoading].Add(len(c.Services))
 	c.StageWG[StageBooting] = &sync.WaitGroup{}
 	c.StageWG[StageBooting].Add(len(c.Services))
 	c.StageWG[StageDiscovering] = &sync.WaitGroup{}
 	c.StageWG[StageDiscovering].Add(len(c.Services))
+	c.StageWG[StageServing] = &sync.WaitGroup{}
+	c.StageWG[StageServing].Add(len(c.Services))
 }
 
 // Bootstrap loads the configuration during daemon bootstrap.
