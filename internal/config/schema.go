@@ -119,6 +119,8 @@ type RepoInfo struct {
 	Path        string
 	Name        string
 	Description string
+	KeyFile     string
+	KeyPassEnv  string
 }
 
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.

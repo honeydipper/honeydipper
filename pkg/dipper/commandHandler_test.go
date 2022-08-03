@@ -11,13 +11,15 @@ package dipper
 
 import (
 	"bytes"
-	"fmt"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+var errRetry = errors.New("please retry")
 
 func TestCommandRetrySuccess(t *testing.T) {
 	b := bytes.Buffer{}
@@ -32,7 +34,7 @@ func TestCommandRetrySuccess(t *testing.T) {
 			"test": func(m *Message) {
 				if counter < 2 {
 					counter++
-					panic(fmt.Errorf("please retry"))
+					panic(errRetry)
 				}
 				m.Reply <- Message{}
 			},
@@ -81,7 +83,7 @@ func TestCommandRetryFailure(t *testing.T) {
 			"test": func(m *Message) {
 				if counter < 2 {
 					counter++
-					panic(fmt.Errorf("please retry"))
+					panic(errRetry)
 				}
 				m.Reply <- Message{}
 			},
@@ -131,7 +133,7 @@ func TestCommandRetryRougueFunction(t *testing.T) {
 				switch counter {
 				case 0:
 					counter++
-					panic(fmt.Errorf("please retry"))
+					panic(errRetry)
 				case 1:
 					counter++
 					m.Reply <- Message{

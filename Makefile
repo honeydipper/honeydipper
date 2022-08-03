@@ -18,15 +18,15 @@ endif
 .PHONY: build lint run_mockgen unit-tests integration-tests test all clean run
 
 build:
-	@echo -e "$(BOLD)Buiding$(RESET)"
+	@printf "$(BOLD)Buiding$(RESET)\n"
 	@go install ./...
 
 lint:
-	@echo -e "$(BOLD)Linting source code$(RESET)"
+	@printf "$(BOLD)Linting source code$(RESET)\n"
 	@golangci-lint run
 
 .mockgen_installed:
-	@echo -e "$(BOLD)Installing mockgen$(RESET)"
+	@printf "$(BOLD)Installing mockgen$(RESET)\n"
 	@go get -d github.com/golang/mock/mockgen@v1.6.0
 	@touch "$@"
 
@@ -36,7 +36,7 @@ lint:
 		mockdir="$$basedir"/mock_`basename $$basedir`; \
 		mockfile="$$mockdir"/`basename $$f`; \
 		mkdir -p "$$mockdir"; \
-		echo -e "$(BOLD)Generating $$mockfile $(RESET)"; \
+		printf "$(BOLD)Generating $$mockfile $(RESET)\n"; \
 		mockgen -copyright_file=COPYRIGHT -source="$$f" -destination="$$mockfile"; \
 	done
 	@touch "$@"
@@ -44,7 +44,7 @@ lint:
 run_mockgen: .mockgen_installed .mockgen_files_generated
 
 unit-tests:
-	@echo -e "$(BOLD)Running unit tests$(RESET)"
+	@printf "$(BOLD)Running unit tests$(RESET)\n"
 ifneq (,$(REPORT_TEST_COVERAGE))
 	@go test -coverprofile=c.out ./...
 else
@@ -52,7 +52,7 @@ else
 endif
 
 integration-tests:
-	@echo -e "$(BOLD)Running integration tests$(RESET)"
+	@printf "$(BOLD)Running integration tests$(RESET)\n"
 	@go test -tags=integration ./cmd/honeydipper
 
 test: unit-tests integration-tests
@@ -69,5 +69,5 @@ clean:
 	@[[ -f ".mockgen_installed" ]] && rm -f .mockgen_installed || true
 
 run: build
-	@echo -e "$(BOLD)Starting the daemon$(RESET)"
+	@printf "$(BOLD)Starting the daemon$(RESET)\n"
 	@REPO=$${REPO:-$${REPO_DIR}} $$(go env GOPATH)/bin/honeydipper

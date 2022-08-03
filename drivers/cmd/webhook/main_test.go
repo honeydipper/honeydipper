@@ -57,7 +57,12 @@ func TestExtractEvent(t *testing.T) {
 	}()
 	// without this the client will send request too early and server is not ready
 	<-time.After(100 * time.Millisecond)
-	resp, err := http.Get("http://127.0.0.1:8999")
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:8999", nil)
+	resp, err := http.DefaultClient.Do(req)
 
 	assert.NoError(t, err, "client should not get err")
 	assert.NotEmpty(t, resp, "response should not be empty")
@@ -138,6 +143,7 @@ type mockResponseWriter struct {
 
 func (m *mockResponseWriter) Write(c []byte) (int, error) {
 	m.content = c
+
 	return len(c), m.e
 }
 

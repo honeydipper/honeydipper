@@ -8,7 +8,7 @@ def:
   reqType: 2
   service: foo
   object: event
-  timeout: 0
+  timeout: 500
 
 # test config
 config:

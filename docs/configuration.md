@@ -62,9 +62,13 @@ Repos are defined like below.
 ```go
 // RepoInfo points to a git repo where config data can be read from.
 type RepoInfo struct {
-	Repo   string
-	Branch string `json:"branch,omitempty"`
-	Path   string `json:"path,omitempty"`
+	Repo        string
+	Branch      string
+	Path        string
+	Name        string
+	Description string
+	KeyFile     string
+	KeyPassEnv  string
 }
 ```
 
@@ -76,6 +80,8 @@ repos:
   - repo: <git url to the repo>
     branch: <optional, defaults to master>
     path: <the location of the init.yaml, must starts with /, optional, defaults to />
+    keyFile: <deploy key used for cloning the repo, optional>
+    keyPassEnv: <an environment variable name containing the passphrase for the deploy key, optional>
   ...
 ```
 
