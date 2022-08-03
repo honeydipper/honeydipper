@@ -1,3 +1,23 @@
+# [2.9.0](https://github.com/honeydipper/honeydipper/compare/v2.8.1...v2.9.0) (2022-08-03)
+
+
+### Bug Fixes
+
+* add RequestHeaderTimeout to http servers ([#483](https://github.com/honeydipper/honeydipper/issues/483)) ([b19d596](https://github.com/honeydipper/honeydipper/commit/b19d596d7ea6df75e551f39a66b22c0940ba2001))
+* API default timeout use store writeTimeout ([#481](https://github.com/honeydipper/honeydipper/issues/481)) ([9069d7b](https://github.com/honeydipper/honeydipper/commit/9069d7befaa93adba939c2d6840342cdc3981cb4))
+* **deps:** update golang.org/x/crypto digest to 0559593 ([#477](https://github.com/honeydipper/honeydipper/issues/477)) ([5ddb5e4](https://github.com/honeydipper/honeydipper/commit/5ddb5e432a17fd701c23c3817b05ed66276b072b))
+* **deps:** update golang.org/x/oauth2 digest to 2104d58 ([#468](https://github.com/honeydipper/honeydipper/issues/468)) ([37539da](https://github.com/honeydipper/honeydipper/commit/37539da6a4819757dad0771a7acf7d8a06068905))
+* **deps:** update golang.org/x/term digest to 065cf7b ([#478](https://github.com/honeydipper/honeydipper/issues/478)) ([9af1806](https://github.com/honeydipper/honeydipper/commit/9af18066930fea684723bed232de49763c29d512))
+* **deps:** update google.golang.org/genproto digest to 590a5ac ([#479](https://github.com/honeydipper/honeydipper/issues/479)) ([db534e2](https://github.com/honeydipper/honeydipper/commit/db534e20088b0b6380caa0c8cf3db8fca4dc8aae))
+* **deps:** update kubernetes packages to v0.24.2 ([#471](https://github.com/honeydipper/honeydipper/issues/471)) ([ede6311](https://github.com/honeydipper/honeydipper/commit/ede63111cc22147093163fcd72b97230d4695ae7))
+* **deps:** update module github.com/go-redis/redis/v8 to v8.11.5 ([#476](https://github.com/honeydipper/honeydipper/issues/476)) ([7b92f30](https://github.com/honeydipper/honeydipper/commit/7b92f30f788e24583e5c4280bfd23448b6880750))
+* **deps:** update module github.com/gogf/gf to v1.16.9 ([#480](https://github.com/honeydipper/honeydipper/issues/480)) ([07e95a1](https://github.com/honeydipper/honeydipper/commit/07e95a1a684398b04c9f8936cfbf1b0bb99597da))
+
+
+### Features
+
+* allow repo specific ssh keys ([#484](https://github.com/honeydipper/honeydipper/issues/484)) ([559b59f](https://github.com/honeydipper/honeydipper/commit/559b59fbbad7ff06465182d2e35b60e87cd7b896))
+
 ## [2.8.1](https://github.com/honeydipper/honeydipper/compare/v2.8.0...v2.8.1) (2022-03-30)
 
 
