@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,7 @@ func TestIntegrationStart(t *testing.T) {
 	t.Run("checking processes", intTestProcesses)
 	t.Run("checking API calls", intTestMakingAPICall)
 	t.Run("checking crashed driver", intTestDriverCrash)
+	t.Run("checking draining drivers", intTestDrain)
 }
 
 func intTestDaemonStartup(t *testing.T) {
@@ -170,6 +172,18 @@ func intTestMakingAPICall(t *testing.T) {
 	defer resp.Body.Close()
 	assert.NoErrorf(t, err, "api call should not receive error")
 	assert.Equalf(t, 200, resp.StatusCode, "api call should succeed with correct creds")
+}
+
+func intTestDrain(t *testing.T) {
+	waiting := (int32)(len(service.Services))
+	for _, s := range service.Services {
+		go func(s *service.Service) {
+			s.Drain()
+			atomic.AddInt32(&waiting, -1)
+		}(s)
+	}
+
+	assert.Eventually(t, func() bool { return waiting == 0 }, time.Second*3, time.Millisecond*5, "All service should reach drained stage eventually.")
 }
 
 func intTestDaemonShutdown(t *testing.T) {
