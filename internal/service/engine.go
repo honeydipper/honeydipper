@@ -51,7 +51,6 @@ func (h *WorkflowHelper) GetConfig() *config.Config {
 // StartEngine Starts the engine service.
 func StartEngine(cfg *config.Config) {
 	engine = NewService(cfg, "engine")
-	Services["engine"] = engine
 	helper := &WorkflowHelper{engine: engine}
 	sessionStore = workflow.NewSessionStore(helper)
 
