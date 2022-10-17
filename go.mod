@@ -38,7 +38,7 @@ require (
 	golang.org/x/crypto v0.0.0-20220817201139-bc19a97f63c8
 	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e // indirect
 	golang.org/x/oauth2 v0.0.0-20220822191816-0ebed06d0094
-	golang.org/x/term v0.0.0-20220526004731-065cf7ba2467
+	golang.org/x/term v0.0.0-20221017184919-83659145692c
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/api v0.85.0
 	google.golang.org/genproto v0.0.0-20220707150051-590a5ac7bee1
@@ -116,6 +116,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.1.0 // indirect
 	github.com/googleapis/go-type-adapters v1.0.0 // indirect
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
-	golang.org/x/sys v0.0.0-20220615213510-4f61da869c0c // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
 )
