@@ -19,6 +19,17 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
 
+// Options wraps redis.Options and provide a persisted redis.Client.
+type Options struct {
+	*redis.Client
+	*redis.Options
+}
+
+// Close method hides redis.Client Close method so it can be reused.
+func (o Options) Close() error {
+	return nil
+}
+
 func verifyPeerCertificate(config *tls.Config, rawCerts [][]byte, _ [][]*x509.Certificate) error {
 	// the function does the samething as the part this is skipped due to
 	// InsecureSkipVerify in the verifyServerCertificate function from tls
@@ -80,7 +91,7 @@ func setupTLSConfig(driver *dipper.Driver) *tls.Config {
 }
 
 // GetRedisOpts configures driver to talk to Redis.
-func GetRedisOpts(driver *dipper.Driver) *redis.Options {
+func GetRedisOpts(driver *dipper.Driver) *Options {
 	if conn, ok := dipper.GetMapData(driver.Options, "data.connection"); ok {
 		defer delete(conn.(map[string]interface{}), "Password")
 	}
@@ -90,12 +101,16 @@ func GetRedisOpts(driver *dipper.Driver) *redis.Options {
 
 	if localRedis, ok := os.LookupEnv("LOCALREDIS"); ok && localRedis != "" {
 		if opts, e := redis.ParseURL(localRedis); e == nil {
-			return opts
+			return &Options{
+				Options: opts,
+			}
 		}
 
-		return &redis.Options{
-			Addr: "127.0.0.1:6379",
-			DB:   0,
+		return &Options{
+			Options: &redis.Options{
+				Addr: "127.0.0.1:6379",
+				DB:   0,
+			},
 		}
 	}
 
@@ -116,5 +131,16 @@ func GetRedisOpts(driver *dipper.Driver) *redis.Options {
 		opts.TLSConfig = setupTLSConfig(driver)
 	}
 
-	return opts
+	return &Options{
+		Options: opts,
+	}
+}
+
+// NewClient wraps around redis.NewClient method so we can inject a wrapper for redis.Client.
+func NewClient(c *Options) Options {
+	if c.Client == nil {
+		c.Client = redis.NewClient(c.Options)
+	}
+
+	return *c
 }
