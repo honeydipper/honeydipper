@@ -23,7 +23,7 @@ import (
 var (
 	log              *logging.Logger
 	driver           *dipper.Driver
-	redisOptions     *redis.Options
+	redisOptions     *redisclient.Options
 	broadcastTopic   string
 	broadcastChannel string
 	ok               bool
@@ -86,7 +86,7 @@ func broadcastToRedis(msg *dipper.Message) {
 		payload["data"] = data
 	}
 	buf := dipper.SerializeContent(payload)
-	client := redis.NewClient(redisOptions)
+	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
 	ctx, cancel := driver.GetContext()
 	defer cancel()
@@ -111,7 +111,7 @@ func sendBroadcast(msg *dipper.Message) {
 		payload["data"] = data
 	}
 	buf := dipper.SerializeContent(payload)
-	client := redis.NewClient(redisOptions)
+	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
 	ctx, cancel := driver.GetContext()
 	defer cancel()
@@ -125,7 +125,7 @@ func subscribe() {
 	for {
 		func() {
 			defer dipper.SafeExitOnError("[%s] re-subscribing to redis pubsub %s", driver.Service, broadcastTopic)
-			client := redis.NewClient(redisOptions)
+			client := redisclient.NewClient(redisOptions)
 			defer client.Close()
 			var pubsub *redis.PubSub
 			ctx, cancel := driver.GetContext()
