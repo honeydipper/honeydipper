@@ -1,5 +1,5 @@
 // Copyright 2022 PayPal Inc.
-
+//
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
 // you can obtain one at https://mit-license.org/.
@@ -12,10 +12,10 @@
 package mock_main
 
 import (
+	secretmanagerpb "cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	context "context"
 	gomock "github.com/golang/mock/gomock"
 	gax "github.com/googleapis/gax-go/v2"
-	secretmanager "google.golang.org/genproto/googleapis/cloud/secretmanager/v1"
 	reflect "reflect"
 )
 
@@ -43,14 +43,14 @@ func (m *MockSecretManagerClient) EXPECT() *MockSecretManagerClientMockRecorder 
 }
 
 // AccessSecretVersion mocks base method
-func (m *MockSecretManagerClient) AccessSecretVersion(ctx context.Context, req *secretmanager.AccessSecretVersionRequest, opts ...gax.CallOption) (*secretmanager.AccessSecretVersionResponse, error) {
+func (m *MockSecretManagerClient) AccessSecretVersion(ctx context.Context, req *secretmanagerpb.AccessSecretVersionRequest, opts ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error) {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{ctx, req}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "AccessSecretVersion", varargs...)
-	ret0, _ := ret[0].(*secretmanager.AccessSecretVersionResponse)
+	ret0, _ := ret[0].(*secretmanagerpb.AccessSecretVersionResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
