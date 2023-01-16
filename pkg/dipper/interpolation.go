@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -48,9 +48,15 @@ func InterpolateStr(pattern string, data interface{}) string {
 }
 
 // InterpolateGoTemplate : parse the string as go template.
-func InterpolateGoTemplate(pattern string, data interface{}) string {
-	if strings.Contains(pattern, "{{") {
-		tmpl := template.Must(template.New("got").Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Parse(pattern))
+func InterpolateGoTemplate(isLoading bool, title string, pattern string, data interface{}) string {
+	ldelim := "{{"
+	rdelim := "}}"
+	if isLoading {
+		ldelim = "{%"
+		rdelim = "%}"
+	}
+	if strings.Contains(pattern, ldelim) {
+		tmpl := template.Must(template.New(title).Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Delims(ldelim, rdelim).Parse(pattern))
 		buf := new(bytes.Buffer)
 		if err := tmpl.Execute(buf, data); err != nil {
 			Logger.Warningf("interpolation pattern failed: %+v", pattern)
@@ -132,7 +138,7 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			return InterpolateDollarStr(v, data)
 		}
 
-		ret := InterpolateGoTemplate(v, data)
+		ret := InterpolateGoTemplate(false, "go", v, data)
 
 		if strings.HasPrefix(ret, ":yaml:") {
 			defer func() {
