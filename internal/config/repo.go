@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -75,6 +75,7 @@ func (c *Repo) loadFile(filename string) {
 
 	var content DataSet
 	yamlFile := dipper.Must(ioutil.ReadFile(path.Join(c.root, filename[1:]))).([]byte)
+	yamlFile = []byte(dipper.InterpolateGoTemplate(true, "filename", string(yamlFile), map[string]interface{}{"env": dipper.Getenv()}))
 	dipper.Must(yaml.Unmarshal(yamlFile, &content))
 
 	if content.Repos != nil {
