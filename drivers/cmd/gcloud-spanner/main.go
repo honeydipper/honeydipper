@@ -12,10 +12,10 @@ import (
 	"time"
 
 	spannerAdmin "cloud.google.com/go/spanner/admin/database/apiv1"
+	spannerAdminSchema "cloud.google.com/go/spanner/admin/database/apiv1/databasepb"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"google.golang.org/api/option"
-	spannerAdminSchema "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
 )
 
 const (

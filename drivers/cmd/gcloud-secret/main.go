@@ -17,10 +17,10 @@ import (
 	"time"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
+	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"github.com/gogf/gf/container/gpool"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	secretmanagerpb "google.golang.org/genproto/googleapis/cloud/secretmanager/v1"
 )
 
 // DefaultClientTTLSeconds specifies the TTL for reusable google clients.
