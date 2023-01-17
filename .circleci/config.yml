@@ -1,7 +1,7 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.17.10-alpine
+    - image: golang:1.18.10-alpine
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 version: 2.1
@@ -94,8 +94,8 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.17.10-alpine
-      - image: redis:5.0.14-alpine
+      - image: golang:1.18.10-alpine
+      - image: redis:7.0.7-alpine
     steps:
       - attach_workspace:
           at: /go

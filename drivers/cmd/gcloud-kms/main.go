@@ -16,8 +16,8 @@ import (
 	"time"
 
 	kms "cloud.google.com/go/kms/apiv1"
+	"cloud.google.com/go/kms/apiv1/kmspb"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
 )
 
 // ErrKeyNameMissing means the key used for decrypting is not configured.
