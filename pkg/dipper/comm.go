@@ -109,13 +109,11 @@ func DeserializePayload(msg *Message) *Message {
 }
 
 // FetchMessage : fetch message from input from daemon service.
-//   may block or throw io.EOF based on the fcntl setting.
 func FetchMessage(in io.Reader) (msg *Message) {
 	return DeserializePayload(FetchRawMessage(in))
 }
 
 // FetchRawMessage : fetch encoded message from input from daemon service.
-//   may block or throw io.EOF based on the fcntl setting.
 func FetchRawMessage(in io.Reader) (msg *Message) {
 	var (
 		channel   string

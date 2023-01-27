@@ -42,7 +42,7 @@ jobs:
     <<: *defaults
     resource_class: medium+
     docker:
-      - image: golangci/golangci-lint:v1.47-alpine
+      - image: golangci/golangci-lint:v1.50-alpine
     steps:
       - checkout
       - restore_cache:
