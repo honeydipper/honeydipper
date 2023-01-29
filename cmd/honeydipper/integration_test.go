@@ -91,7 +91,7 @@ func intTestServices(t *testing.T) {
 
 waitForServices:
 	for {
-		fmt.Println("waiting for services")
+		fmt.Printf("waiting for services %d/4\n", len(service.Services))
 		select {
 		case <-ticker.C:
 			if len(service.Services) == 4 {
@@ -200,6 +200,7 @@ func intTestDaemonShutdown(t *testing.T) {
 }
 
 func intTestDriverCrash(t *testing.T) {
+	assert.NotPanics(t, func() { _ = service.Services["operator"].GetStream("driver:gcloud-dataflow") }, "driver:gcloud-dataflow should be ready by now")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var (
@@ -220,10 +221,11 @@ func intTestDriverCrash(t *testing.T) {
 	assert.Nil(t, err, "should be able to simulate a driver crash by killing the process")
 
 	pidstr = nil
+loop:
 	for pidstr == nil {
 		select {
 		case <-ctx.Done():
-			break
+			break loop
 		default:
 			time.Sleep(time.Second)
 			pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid, "gcloud-dataflow").Output()
