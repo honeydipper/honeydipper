@@ -156,7 +156,7 @@ waitForProcesses:
 func intTestMakingAPICall(t *testing.T) {
 	// making an api call with wrong credentials
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "http://localhost:9000/api/events", nil)
+	req, err := http.NewRequest("GET", "http://localhost:9100/api/events", nil)
 	assert.NoErrorf(t, err, "creating http request should not receive error")
 	req.Header.Add("Authorization", "bearer wrongcredentials")
 	resp, err := client.Do(req)
@@ -165,7 +165,7 @@ func intTestMakingAPICall(t *testing.T) {
 	assert.Equalf(t, 401, resp.StatusCode, "api call should fail with bad creds")
 
 	// making an api call with correct credentials
-	req, err = http.NewRequest("GET", "http://localhost:9000/api/events", nil)
+	req, err = http.NewRequest("GET", "http://localhost:9100/api/events", nil)
 	assert.NoErrorf(t, err, "creating http request should not receive error")
 	req.Header.Add("Authorization", "bearer abcdefg")
 	resp, err = client.Do(req)

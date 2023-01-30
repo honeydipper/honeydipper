@@ -84,3 +84,5 @@ drivers:
               - |
                 # define basic policy effects
                 p, admin, *, *
+        listener:
+          addr: ":9100"
