@@ -12,7 +12,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -160,7 +160,7 @@ func getJobLog(m *dipper.Message) {
 					returnStatus = StatusFailure
 				} else {
 					defer stream.Close()
-					containerlog, err := ioutil.ReadAll(stream)
+					containerlog, err := io.ReadAll(stream)
 					if err != nil {
 						podlogs[container.Name] = fmt.Sprintf("Error: unable to read the logs from the stream %s.%s", pod.Name, container.Name)
 						messages = append(messages, podlogs[container.Name])

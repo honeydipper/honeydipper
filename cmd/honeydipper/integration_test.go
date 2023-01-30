@@ -91,7 +91,7 @@ func intTestServices(t *testing.T) {
 
 waitForServices:
 	for {
-		fmt.Println("waiting for services")
+		fmt.Printf("waiting for services %d/4\n", len(service.Services))
 		select {
 		case <-ticker.C:
 			if len(service.Services) == 4 {
@@ -156,7 +156,7 @@ waitForProcesses:
 func intTestMakingAPICall(t *testing.T) {
 	// making an api call with wrong credentials
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "http://localhost:9000/api/events", nil)
+	req, err := http.NewRequest("GET", "http://localhost:9100/api/events", nil)
 	assert.NoErrorf(t, err, "creating http request should not receive error")
 	req.Header.Add("Authorization", "bearer wrongcredentials")
 	resp, err := client.Do(req)
@@ -165,7 +165,7 @@ func intTestMakingAPICall(t *testing.T) {
 	assert.Equalf(t, 401, resp.StatusCode, "api call should fail with bad creds")
 
 	// making an api call with correct credentials
-	req, err = http.NewRequest("GET", "http://localhost:9000/api/events", nil)
+	req, err = http.NewRequest("GET", "http://localhost:9100/api/events", nil)
 	assert.NoErrorf(t, err, "creating http request should not receive error")
 	req.Header.Add("Authorization", "bearer abcdefg")
 	resp, err = client.Do(req)
@@ -200,6 +200,7 @@ func intTestDaemonShutdown(t *testing.T) {
 }
 
 func intTestDriverCrash(t *testing.T) {
+	assert.NotPanics(t, func() { _ = service.Services["operator"].GetStream("driver:gcloud-dataflow") }, "driver:gcloud-dataflow should be ready by now")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var (
@@ -220,10 +221,11 @@ func intTestDriverCrash(t *testing.T) {
 	assert.Nil(t, err, "should be able to simulate a driver crash by killing the process")
 
 	pidstr = nil
+loop:
 	for pidstr == nil {
 		select {
 		case <-ctx.Done():
-			break
+			break loop
 		default:
 			time.Sleep(time.Second)
 			pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid, "gcloud-dataflow").Output()

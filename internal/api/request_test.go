@@ -11,7 +11,7 @@ package api
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -42,8 +42,8 @@ type RequestTestCase struct {
 
 func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 	var buffer, delta map[string]interface{}
-	dipper.Must(yaml.Unmarshal(dipper.Must(ioutil.ReadFile("test_fixtures/common.yaml")).([]byte), &buffer))
-	dipper.Must(yaml.Unmarshal(dipper.Must(ioutil.ReadFile(fmt.Sprintf("test_fixtures/%s.yaml", caseName))).([]byte), &delta))
+	dipper.Must(yaml.Unmarshal(dipper.Must(os.ReadFile("test_fixtures/common.yaml")).([]byte), &buffer))
+	dipper.Must(yaml.Unmarshal(dipper.Must(os.ReadFile(fmt.Sprintf("test_fixtures/%s.yaml", caseName))).([]byte), &delta))
 	dipper.Must(mergo.Merge(&buffer, delta, mergo.WithOverride))
 
 	c := &RequestTestCase{}

@@ -27,7 +27,7 @@ lint:
 
 .mockgen_installed:
 	@printf "$(BOLD)Installing mockgen$(RESET)\n"
-	@go get -d github.com/golang/mock/mockgen@v1.6.0
+	@go install github.com/golang/mock/mockgen@v1.6.0
 	@touch "$@"
 
 .mockgen_files_generated: $(files_require_mocking)

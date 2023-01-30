@@ -12,7 +12,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -233,7 +233,7 @@ func TestHookHandler(t *testing.T) {
 		Method: "POST",
 		URL:    &url.URL{Path: "/test/sys2"},
 		Header: http.Header{"X-Pagerduty-Signature": []string{"v1=bcc889a40667cab715e1dc22ad280692cf4bf1c3a280eeeca60d8dbcd8e4b993"}},
-		Body:   ioutil.NopCloser(bytes.NewBufferString("hello")),
+		Body:   io.NopCloser(bytes.NewBufferString("hello")),
 	}
 	hookHandler(resp, req)
 	msg = dipper.FetchMessage(buf)
@@ -246,7 +246,7 @@ func TestHookHandler(t *testing.T) {
 		Method: "POST",
 		URL:    &url.URL{Path: "/test/sys2"},
 		Header: http.Header{"X-Unknown-Signature": []string{"v1=bcc889a40667cab715e1dc22ad280692cf4bf1c3a280eeeca60d8dbcd8e4b993"}},
-		Body:   ioutil.NopCloser(bytes.NewBufferString("hello")),
+		Body:   io.NopCloser(bytes.NewBufferString("hello")),
 	}
 	hookHandler(resp, req)
 	assert.Equalf(t, 404, resp.status, "should return 404 with unsupported signature header")
@@ -257,7 +257,7 @@ func TestHookHandler(t *testing.T) {
 		Method: "POST",
 		URL:    &url.URL{Path: "/test/sys5"},
 		Header: http.Header{"X-Pagerduty-Signature": []string{"v1=7afdf53eec1c15fb75269b28fab95228ba591b11a103d8e0972087e6dee018ca"}},
-		Body:   ioutil.NopCloser(bytes.NewBufferString("hello")),
+		Body:   io.NopCloser(bytes.NewBufferString("hello")),
 	}
 	hookHandler(resp, req)
 	msg = dipper.FetchMessage(buf)

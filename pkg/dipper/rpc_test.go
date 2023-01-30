@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"testing"
 	"time"
 
@@ -91,7 +90,7 @@ func TestRPCCallRaw(t *testing.T) {
 	lv, ok = labels["method"]
 	assert.True(t, ok, "rpc method present")
 	assert.Equal(t, "testmethod", lv, "method should be testmethod")
-	received, err := ioutil.ReadAll(&b)
+	received, err := io.ReadAll(&b)
 	assert.Nil(t, err, "rpc call payload should be readable")
 	assert.Equal(t, "hello world", string(received), "rpc should be unchanged")
 }
