@@ -12,7 +12,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 
@@ -201,7 +201,7 @@ func fetchFile(msg *dipper.Message) {
 	}
 	defer rc.Close()
 
-	content, err := ioutil.ReadAll(rc)
+	content, err := io.ReadAll(rc)
 	if err != nil {
 		panic(err)
 	}

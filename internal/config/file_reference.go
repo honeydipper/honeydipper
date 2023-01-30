@@ -9,7 +9,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path"
 	"strings"
 
@@ -37,7 +37,7 @@ func (c *Repo) normalizeFilePaths(currentFile string, content *DataSet) {
 		switch v := val.(type) {
 		case string:
 			if len(v) > 2 && v[0:2] == "@:" {
-				text, err := ioutil.ReadFile(c.normalizeFilePath(cwd, v[2:]))
+				text, err := os.ReadFile(c.normalizeFilePath(cwd, v[2:]))
 				if err != nil {
 					panic(err)
 				}
