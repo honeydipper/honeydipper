@@ -1,3 +1,21 @@
+# [2.10.0](https://github.com/honeydipper/honeydipper/compare/v2.9.0...v2.10.0) (2023-02-09)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/crypto digest to bc19a97 ([#487](https://github.com/honeydipper/honeydipper/issues/487)) ([6f9b0c5](https://github.com/honeydipper/honeydipper/commit/6f9b0c559d9b613142b1a1823b76d49822842f8a))
+* **deps:** update golang.org/x/oauth2 digest to 0ebed06 ([#488](https://github.com/honeydipper/honeydipper/issues/488)) ([b2196af](https://github.com/honeydipper/honeydipper/commit/b2196af015466d739e25346040def48d523ff2ef))
+* **deps:** update google.golang.org/genproto digest to 008b390 ([#504](https://github.com/honeydipper/honeydipper/issues/504)) ([a6b4a18](https://github.com/honeydipper/honeydipper/commit/a6b4a1835b9ce35b67f4c35aa2ab6e45356e9416))
+* **deps:** update google.golang.org/genproto digest to 28d6b97 ([#495](https://github.com/honeydipper/honeydipper/issues/495)) ([873c1dd](https://github.com/honeydipper/honeydipper/commit/873c1ddaa0eec2063b8a159cd7fa29b2906256a6))
+* **deps:** update module github.com/imdario/mergo to v0.3.13 ([#498](https://github.com/honeydipper/honeydipper/issues/498)) ([8626323](https://github.com/honeydipper/honeydipper/commit/86263236e685dbfdccaa3a15ae78ed06a39ec8cb))
+
+
+### Features
+
+* **core:** graceful shutdown by draining drivers ([#489](https://github.com/honeydipper/honeydipper/issues/489)) ([f8c00a1](https://github.com/honeydipper/honeydipper/commit/f8c00a1365924b45df6bf7216942421bdcafbed7))
+* env var interpolation and load-time interpolation ([#501](https://github.com/honeydipper/honeydipper/issues/501)) ([9b1c659](https://github.com/honeydipper/honeydipper/commit/9b1c659606a33d9634be473edc03a3bcc9192146)), closes [#496](https://github.com/honeydipper/honeydipper/issues/496)
+* use redis as a cache storage through RPC ([#497](https://github.com/honeydipper/honeydipper/issues/497)) ([2b0a588](https://github.com/honeydipper/honeydipper/commit/2b0a588c5469f83b719c210d54fa4de26e8bba0e))
+
 # [2.9.0](https://github.com/honeydipper/honeydipper/compare/v2.8.1...v2.9.0) (2022-08-03)
 
 
