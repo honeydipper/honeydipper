@@ -112,7 +112,7 @@ jobs:
       - run: make integration-tests
   semantic-release:
     docker:
-      - image: circleci/node:18
+      - image: cimg/node:19.6.0
     steps:
       - checkout
       - run: |
