@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -71,4 +71,11 @@ test:
 		parsed,
 		"interpolating a map of templates",
 	)
+}
+
+func TestInterpolateGoTemplate(t *testing.T) {
+	assert.Equal(t, "{% not interpolated %}", InterpolateGoTemplate(false, "go", "{% not interpolated %}", map[string]interface{}{}), "should not interpolate {%%} in non-loading time")
+	assert.Equal(t, "{{ not interpolated }}", InterpolateGoTemplate(true, "test.yml", "{{ not interpolated }}", map[string]interface{}{}), "should not interpolate {{}} in loading time")
+	assert.Equal(t, "test", InterpolateGoTemplate(false, "go", "{{ .env.TEST_ENV }}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}), "should interpolate {{}} in non-loading time")
+	assert.Equal(t, "test", InterpolateGoTemplate(true, "test.yml", "{% .env.TEST_ENV %}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}), "should interpolate {%%} in loading time")
 }

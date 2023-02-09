@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	// Timeout (in seconds) for RequestHeaderTimeout.
+	// RequestHeaderTimeoutSecs is the timeout (in seconds) for accepting incoming requests.
 	RequestHeaderTimeoutSecs = 20
 )
 
@@ -124,7 +124,7 @@ func startWebhook(m *dipper.Message) {
 	go func() {
 		log.Infof("[%s] start listening for webhook requests", driver.Service)
 		log.Infof("[%s] listener stopped: %+v", driver.Service, server.ListenAndServe())
-		if driver.State != "exit" && driver.State != "cold" {
+		if driver.State != "stopped" && driver.State != "cold" {
 			startWebhook(m)
 		}
 	}()
@@ -217,7 +217,6 @@ func verifySignature(header, actual, secret string, eventData map[string]interfa
 		}
 		if _, ok := eventData["skip_replay_check"]; !ok {
 			current := time.Now().Unix()
-			//nolint:gomnd
 			requestedAt := dipper.Must(strconv.ParseInt(timestamp, 10, 64)).(int64)
 			if current-requestedAt > 300 || current < requestedAt {
 				panic(ErrReplayAttack)

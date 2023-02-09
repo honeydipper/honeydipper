@@ -1,4 +1,4 @@
-FROM golang:1.17.10-alpine AS build
+FROM golang:1.18.10-alpine AS build
 
 ARG GOINSTALLOPTS
 ARG GOGC
@@ -21,7 +21,7 @@ RUN go install -v ./drivers/cmd/redispubsub
 RUN go install -v ./cmd/...
 RUN go install -v ./drivers/...
 
-FROM alpine:3.15
+FROM alpine:3.17
 
 LABEL description="Honeydipper - an event-driven orchestration framework" \
       org.label-schema.vcs-url=https://github.com/honeydipper/honeydipper \

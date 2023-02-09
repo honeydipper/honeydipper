@@ -9,7 +9,7 @@ package dipper
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -35,9 +35,9 @@ func ExtractWebRequest(r *http.Request) map[string]interface{} {
 	// keep the body for sha256
 	var body []byte
 	if r.Body != nil {
-		body = Must(ioutil.ReadAll(r.Body)).([]byte)
+		body = Must(io.ReadAll(r.Body)).([]byte)
 		r.Body.Close()
-		r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+		r.Body = io.NopCloser(bytes.NewBuffer(body))
 	}
 
 	req := ExtractWebRequestExceptBody(r)

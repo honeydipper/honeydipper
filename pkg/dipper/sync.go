@@ -7,7 +7,10 @@
 // Package dipper is a library used for developing drivers for Honeydipper.
 package dipper
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 // WaitGroupDone is a way to safely decrement the counter for a WaitGroup.
 func WaitGroupDone(wg *sync.WaitGroup) (ok bool) {
@@ -41,4 +44,19 @@ func WaitGroupWait(wg *sync.WaitGroup) {
 	}()
 
 	wg.Wait()
+}
+
+// WaitGroupWaitTimeout is a wrapper for safely waiting for a WaitGroup with a timeout.
+func WaitGroupWaitTimeout(wg *sync.WaitGroup, t time.Duration) {
+	allDone := make(chan interface{})
+	go func() {
+		WaitGroupWait(wg)
+		close(allDone)
+	}()
+
+	select {
+	case <-time.After(t):
+		WaitGroupDoneAll(wg)
+	case <-allDone:
+	}
 }

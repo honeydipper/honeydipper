@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 )
@@ -34,7 +33,7 @@ var (
 // Locker holds the driver, configurations and runtime information.
 type Locker struct {
 	driver       *dipper.Driver
-	redisOptions *redis.Options
+	redisOptions *redisclient.Options
 	prefix       string
 	nodeID       string
 }
@@ -89,7 +88,7 @@ func (l *Locker) lock(msg *dipper.Message) {
 	}
 	defer cancel()
 
-	client := redis.NewClient(l.redisOptions)
+	client := redisclient.NewClient(l.redisOptions)
 	defer client.Close()
 
 	ok := dipper.Must(client.SetNX(ctx, l.prefix+name, l.nodeID, expire).Result()).(bool)
@@ -107,7 +106,7 @@ func (l *Locker) unlock(msg *dipper.Message) {
 	ctx, cancel := l.driver.GetContext()
 	defer cancel()
 
-	client := redis.NewClient(l.redisOptions)
+	client := redisclient.NewClient(l.redisOptions)
 	defer client.Close()
 
 	ok := dipper.Must(client.Del(ctx, l.prefix+name).Result()).(int64) > 0

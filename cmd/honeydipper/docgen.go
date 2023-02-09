@@ -12,7 +12,6 @@ package main
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -60,7 +59,7 @@ var (
 func runDocGen(cfg *config.Config) {
 	var dgCfg DocGenConfig
 
-	yamlStr, err := ioutil.ReadFile(path.Join(cfg.DocSrc, "docgen.yaml"))
+	yamlStr, err := os.ReadFile(path.Join(cfg.DocSrc, "docgen.yaml"))
 	if err != nil {
 		panic(err)
 	}
@@ -127,7 +126,7 @@ func fetchItem(item DocItem, cfg *config.Config) {
 		if resp.StatusCode >= http.StatusMultipleChoices {
 			dipper.Logger.Warningf("Received status code %d when fetching file %s", resp.StatusCode, item.Source)
 		} else {
-			content, err := ioutil.ReadAll(resp.Body)
+			content, err := io.ReadAll(resp.Body)
 			if err != nil {
 				panic(err)
 			}
@@ -135,7 +134,7 @@ func fetchItem(item DocItem, cfg *config.Config) {
 			file := path.Join(cfg.DocDst, item.Name)
 			ensureDirExists(file)
 			//nolint:gosec,gomnd
-			err = ioutil.WriteFile(file, content, 0o644)
+			err = os.WriteFile(file, content, 0o644)
 			if err != nil {
 				panic(err)
 			}
@@ -171,7 +170,7 @@ func ensureDirExists(file string) {
 
 func readFile(root string, file string) string {
 	cwd := path.Dir(file)
-	tmpl, err := ioutil.ReadFile(path.Join(root, file))
+	tmpl, err := os.ReadFile(path.Join(root, file))
 	if err != nil {
 		panic(err)
 	}
@@ -219,7 +218,7 @@ func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config
 	file := path.Join(cfg.DocDst, name)
 	ensureDirExists(file)
 	//nolint:gosec,gomnd
-	err := ioutil.WriteFile(file, []byte(doc), 0o644)
+	err := os.WriteFile(file, []byte(doc), 0o644)
 	if err != nil {
 		panic(err)
 	}

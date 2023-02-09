@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -8,7 +8,7 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -58,7 +58,7 @@ func (c *Repo) isFileLoaded(filename string) bool {
 
 // ReadFile reads a file from the repo.
 func (c *Repo) ReadFile(filename string) ([]byte, error) {
-	b, e := ioutil.ReadFile(path.Join(c.root, filename[1:]))
+	b, e := os.ReadFile(path.Join(c.root, filename[1:]))
 	if e != nil {
 		return b, fmt.Errorf("read file: %w", e)
 	}
@@ -74,7 +74,8 @@ func (c *Repo) loadFile(filename string) {
 	}
 
 	var content DataSet
-	yamlFile := dipper.Must(ioutil.ReadFile(path.Join(c.root, filename[1:]))).([]byte)
+	yamlFile := dipper.Must(os.ReadFile(path.Join(c.root, filename[1:]))).([]byte)
+	yamlFile = []byte(dipper.InterpolateGoTemplate(true, "filename", string(yamlFile), map[string]interface{}{"env": dipper.Getenv()}))
 	dipper.Must(yaml.Unmarshal(yamlFile, &content))
 
 	if content.Repos != nil {
@@ -110,7 +111,7 @@ func newRepo(c *Config, repo RepoInfo) *Repo {
 func (c *Repo) cloneFetchRepo() {
 	dipper.Logger.Infof("cloning repo [%v]", c.repo.Repo)
 	var err error
-	if c.root, err = ioutil.TempDir(c.parent.WorkingDir, "git"); err != nil {
+	if c.root, err = os.MkdirTemp(c.parent.WorkingDir, "git"); err != nil {
 		dipper.Logger.Errorf("%v", err)
 		dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
 	}

@@ -38,7 +38,7 @@ var (
 	log          *logging.Logger
 	driver       *dipper.Driver
 	eventbus     *EventBusOptions
-	redisOptions *redis.Options
+	redisOptions *redisclient.Options
 )
 
 func initFlags() {
@@ -103,7 +103,7 @@ func start(msg *dipper.Message) {
 	case "api":
 		go subscribe(eventbus.APITopic, "api")
 	case "receiver":
-		client := redis.NewClient(redisOptions)
+		client := redisclient.NewClient(redisOptions)
 		defer client.Close()
 		ctx, cancel := driver.GetContext()
 		defer cancel()
@@ -140,7 +140,7 @@ func relayToRedis(msg *dipper.Message) {
 		payload["data"] = string(msg.Payload.([]byte))
 	}
 	buf := dipper.SerializeContent(payload)
-	client := redis.NewClient(redisOptions)
+	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
 	ctx, cancel := driver.GetContext()
 	defer cancel()
@@ -154,7 +154,7 @@ func subscribe(topic string, subject string) {
 	for {
 		func() {
 			defer dipper.SafeExitOnError("[%s] re-subscribing to redis %s", driver.Service, topic)
-			client := redis.NewClient(redisOptions)
+			client := redisclient.NewClient(redisOptions)
 			defer client.Close()
 			realTopic := topic
 			if topic == eventbus.ReturnTopic || topic == eventbus.APITopic {

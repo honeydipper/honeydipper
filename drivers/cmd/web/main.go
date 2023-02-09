@@ -13,7 +13,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -171,7 +170,7 @@ func sendRequest(m *dipper.Message) {
 }
 
 func extractHTTPResponseData(r *http.Response) map[string]interface{} {
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Panicf("[%s] unable to read resp body", driver.Service)
 	}

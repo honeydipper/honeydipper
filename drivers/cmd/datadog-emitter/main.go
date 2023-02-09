@@ -112,7 +112,6 @@ func gaugeSet(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload.(map[string]interface{})
 	name := params["name"].(string)
-	//nolint:gomnd
 	value, err := strconv.ParseFloat(params["value"].(string), 64)
 	if err != nil {
 		panic(err)

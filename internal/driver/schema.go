@@ -21,4 +21,5 @@ const (
 	DriverReloading
 	DriverAlive
 	DriverFailed
+	DriverStopped
 )

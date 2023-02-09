@@ -30,6 +30,8 @@ const (
 	StageDiscovering
 	// StageServing means all config should be processed and serving.
 	StageServing
+	// StageDrained means that the service has finished all in-fly requests and no longer accepts new requests.
+	StageDrained
 )
 
 var (
@@ -39,6 +41,7 @@ var (
 		"Booting",
 		"Discovering",
 		"Serving",
+		"Drained",
 	}
 
 	// ErrConfigRollback happens when daemon decides to rollback during reload.
@@ -96,13 +99,15 @@ func (c *Config) ResetStage() {
 		}
 	}
 	//nolint:gomnd
-	c.StageWG = make([]*sync.WaitGroup, 3)
+	c.StageWG = make([]*sync.WaitGroup, 4)
 	c.StageWG[StageLoading] = &sync.WaitGroup{}
 	c.StageWG[StageLoading].Add(len(c.Services))
 	c.StageWG[StageBooting] = &sync.WaitGroup{}
 	c.StageWG[StageBooting].Add(len(c.Services))
 	c.StageWG[StageDiscovering] = &sync.WaitGroup{}
 	c.StageWG[StageDiscovering].Add(len(c.Services))
+	c.StageWG[StageServing] = &sync.WaitGroup{}
+	c.StageWG[StageServing].Add(len(c.Services))
 }
 
 // Bootstrap loads the configuration during daemon bootstrap.
@@ -332,7 +337,6 @@ func (c *Config) loadRepo(repo RepoInfo) {
 }
 
 // GetStagedDriverData gets an item from a staged driver's data block.
-//   conn,ok := c.GetStagedDriverData("redis.connection")
 // The function returns an interface{} that could be anything.
 func (c *Config) GetStagedDriverData(path string) (ret interface{}, ok bool) {
 	if c.Staged == nil || c.Staged.Drivers == nil {
@@ -343,7 +347,6 @@ func (c *Config) GetStagedDriverData(path string) (ret interface{}, ok bool) {
 }
 
 // GetStagedDriverDataStr gets an item from a staged driver's data block.
-//   logLevel,ok := c.GetStagedDriverData("daemon.loglevel")
 // The function assume the return value is a string will do a type assertion.
 // upon returning.
 func (c *Config) GetStagedDriverDataStr(path string) (ret string, ok bool) {
@@ -355,7 +358,6 @@ func (c *Config) GetStagedDriverDataStr(path string) (ret string, ok bool) {
 }
 
 // GetDriverData gets an item from a driver's data block.
-//   conn,ok := c.GetDriverData("redis.connection")
 // The function returns an interface{} that could be anything.
 func (c *Config) GetDriverData(path string) (ret interface{}, ok bool) {
 	if c.DataSet == nil || c.DataSet.Drivers == nil {
@@ -366,7 +368,6 @@ func (c *Config) GetDriverData(path string) (ret interface{}, ok bool) {
 }
 
 // GetDriverDataStr gets an item from a driver's data block.
-//   logLevel,ok := c.GetDriverData("daemon.loglevel")
 // The function assume the return value is a string will do a type assertion.
 // upon returning.
 func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {

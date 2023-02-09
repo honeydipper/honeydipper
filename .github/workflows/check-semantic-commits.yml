@@ -20,7 +20,8 @@ jobs:
           validateSingleCommit: true
           scopes: |
             core
-            database
+            drivers
+            pkg
             deps
             error
             release

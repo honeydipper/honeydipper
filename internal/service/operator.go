@@ -28,7 +28,6 @@ var (
 func StartOperator(cfg *config.Config) {
 	operator = NewService(cfg, "operator")
 	operator.Route = operatorRoute
-	Services["operator"] = operator
 	operator.start()
 }
 

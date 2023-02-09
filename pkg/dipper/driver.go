@@ -148,12 +148,12 @@ func (d *Driver) start(msg *Message) {
 }
 
 func (d *Driver) stop(msg *Message) {
-	d.State = "exit"
+	d.State = "stopped"
 	if d.Stop != nil {
 		d.Stop(msg)
 	}
 	d.Ping(msg)
-	Logger.Fatalf("[%s] quiting on daemon request", d.Service)
+	Logger.Warningf("[%s] quiting on daemon request", d.Service)
 }
 
 // SendMessage : send a prepared message to daemon.
