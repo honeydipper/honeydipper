@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,7 @@ type Config struct {
 	Stage         int
 	Staged        *DataSet
 	StageWG       []*sync.WaitGroup
+	Overrides     map[string]string
 }
 
 // ResetStage resets the stage of the config.
@@ -110,9 +112,29 @@ func (c *Config) ResetStage() {
 	c.StageWG[StageServing].Add(len(c.Services))
 }
 
+// loadOverrides from the environment variables.
+func (c *Config) loadOverrides() {
+	if c.Overrides == nil {
+		c.Overrides = map[string]string{}
+		for _, ev := range os.Environ() {
+			k, v, _ := strings.Cut(ev, "=")
+			if k == "REPO_OVERRIDE" || strings.HasPrefix(k, "REPO_OVERRIDE_") {
+				remote, override, found := strings.Cut(v, "=>")
+				remote = strings.TrimSpace(remote)
+				override = strings.TrimSpace(override)
+				if !found || remote == "" || override == "" {
+					dipper.Logger.Panicf("invalid repo override definition: %s", ev)
+				}
+				c.Overrides[remote] = override
+			}
+		}
+	}
+}
+
 // Bootstrap loads the configuration during daemon bootstrap.
 // WorkingDir is where git will clone remote repo into.
 func (c *Config) Bootstrap(wd string) {
+	c.loadOverrides()
 	if !c.IsConfigCheck && !c.IsDocGen {
 		c.ResetStage()
 	}

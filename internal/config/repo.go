@@ -144,15 +144,14 @@ func (c *Repo) cloneFetchRepo() {
 func (c *Repo) loadRepo() {
 	defer c.recovering("", c.repo.Repo)
 
-	if c.parent.IsConfigCheck && *c.repo == c.parent.InitRepo {
-		c.root = dipper.Must(filepath.Abs(c.repo.Repo)).(string)
-		dipper.Logger.Infof("using working copy of repo [%v]", c.root)
-		// uncomment below to ensure the working copy is a repo
-		// if _, err = git.PlainOpen(c.root); err != nil {
-		//   panic(err)
-		// }
-	} else {
+	if override, found := c.parent.Overrides[c.repo.Repo]; found {
+		c.root = dipper.Must(filepath.Abs(override)).(string)
+		dipper.Logger.Infof("using [%s] overriding repo [%v]", c.root, c.repo.Repo)
+	} else if _, err := os.Stat(c.repo.Repo); os.IsNotExist(err) || c.repo.Branch != "" {
 		c.cloneFetchRepo()
+	} else {
+		c.root = dipper.Must(filepath.Abs(c.repo.Repo)).(string)
+		dipper.Logger.Infof("using uncommitted files [%v]", c.root)
 	}
 
 	dipper.Logger.Infof("start loading repo [%v]", c.repo.Repo)

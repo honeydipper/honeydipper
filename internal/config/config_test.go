@@ -82,3 +82,21 @@ func TestRegexParsing(t *testing.T) {
 	assert.Equal(t, "non regex", config.DataSet.Workflows["test-workflow"].UnlessMatch.(map[string]interface{})["key4"], "workflow unless_match non-regex should remain")
 	assert.Equal(t, "non regex", config.DataSet.Rules[0].When.Match["key6"], "rule match non-regex should remain")
 }
+
+func TestLoadValidOverrides(t *testing.T) {
+	config := &Config{}
+	t.Setenv("REPO_OVERRIDE", "https://test.com/foo/bar.git => /tmp/foobar")
+	t.Setenv("REPO_OVERRIDE_ANOTHER", "git@github.com:foo/bar.git => /tmp/foobar")
+
+	assert.NotPanics(t, func() { config.loadOverrides() }, "loadOverride shoud not panic with valid definition")
+	assert.Equal(t, 2, len(config.Overrides), "loadOverride should detect two override definitions")
+	assert.Equal(t, "/tmp/foobar", config.Overrides["https://test.com/foo/bar.git"], "loadOverride should accept REPO_OVERRIDE")
+	assert.Equal(t, "/tmp/foobar", config.Overrides["git@github.com:foo/bar.git"], "loadOverride should accept REPO_OVERRIDE_*")
+}
+
+func TestLoadInvalidOverrides(t *testing.T) {
+	config := &Config{}
+	t.Setenv("REPO_OVERRIDE", "https://test.com/foo/bar.git =>")
+
+	assert.Panics(t, func() { config.loadOverrides() }, "loadOverride shoud panic with invalid definition")
+}
