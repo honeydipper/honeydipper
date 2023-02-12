@@ -106,7 +106,7 @@ func (w *Session) executeRound(msg *dipper.Message) {
 		if w.ctx == nil {
 			w.ctx = map[string]interface{}{}
 		}
-		w.ctx["resume_token"] = "/" + w.workflow.Name + "/" + w.ID
+		w.ctx["resume_token"] = w.store.Helper.GetDaemonID() + "/" + w.workflow.Name + "/" + w.ID
 	}
 
 	w.executeIteration(msg)
