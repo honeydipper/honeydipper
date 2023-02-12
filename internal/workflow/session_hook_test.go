@@ -34,6 +34,7 @@ func TestOnSessionHook(t *testing.T) {
 			},
 		},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -68,6 +69,9 @@ func TestOnSessionHook(t *testing.T) {
 					},
 				},
 				"ctx": map[string]interface{}{},
+				"asserts": func() {
+					mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
+				},
 			},
 		},
 	}
@@ -85,6 +89,7 @@ func TestOnFirstActionHook(t *testing.T) {
 			},
 		},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -153,6 +158,7 @@ func TestOnExitHook(t *testing.T) {
 			},
 		},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -205,6 +211,7 @@ func TestOnSuccessHook(t *testing.T) {
 			},
 		},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -259,6 +266,7 @@ func TestOnFailureHook(t *testing.T) {
 			},
 		},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -360,6 +368,7 @@ func TestOnErrorHook(t *testing.T) {
 			},
 		},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -458,6 +467,7 @@ func TestFailureInHook(t *testing.T) {
 			},
 		},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -508,6 +518,7 @@ func TestErrorInCompletionHook(t *testing.T) {
 			},
 		},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",

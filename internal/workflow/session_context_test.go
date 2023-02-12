@@ -127,6 +127,7 @@ func TestWorkflowWithEventContext(t *testing.T) {
 		"msg":      &dipper.Message{},
 		"ctx":      map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -195,6 +196,7 @@ func TestWorkflowWithEventSectionInContext(t *testing.T) {
 		"msg":      &dipper.Message{},
 		"ctx":      map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -268,6 +270,7 @@ func TestWorkflowWithNamedContext(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",

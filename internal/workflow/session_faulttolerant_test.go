@@ -56,6 +56,7 @@ func TestWorkflowErrorWorkflowNotDefined(t *testing.T) {
 		"ctx":      map[string]interface{}{},
 		"steps":    []map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 		},
 	}
@@ -92,6 +93,7 @@ func TestWorkflowIterateEmptyAsChild(t *testing.T) {
 		"ctx":   map[string]interface{}{},
 		"steps": []map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 		},
 	}
