@@ -65,6 +65,7 @@ func TestWorkflowIterateParallel(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(DipperMsgEq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -188,6 +189,7 @@ func TestWorkflowThreads(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(DipperMsgEq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",

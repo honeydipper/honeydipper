@@ -49,6 +49,7 @@ func TestWorkflowNoopAsChild(t *testing.T) {
 		"ctx":   map[string]interface{}{},
 		"steps": []map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 		},
 	}
@@ -68,6 +69,7 @@ func TestWorkflowNoop(t *testing.T) {
 		"ctx":   map[string]interface{}{},
 		"steps": []map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 		},
 	}
@@ -81,6 +83,7 @@ func TestCallWorkflow(t *testing.T) {
 		"ctx":      map[string]interface{}{},
 		"steps":    []map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 		},
 	}
@@ -93,6 +96,7 @@ func TestCallDriver(t *testing.T) {
 		"msg":      &dipper.Message{},
 		"ctx":      map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -142,6 +146,7 @@ func TestCallFunction(t *testing.T) {
 		"msg":      &dipper.Message{},
 		"ctx":      map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -202,6 +207,7 @@ func TestWorkflowSteps(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -302,6 +308,7 @@ func TestWorkflowResumeWithTimeout(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -367,6 +374,7 @@ func TestWorkflowResume(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -438,6 +446,7 @@ func TestContinueNonexistSession(t *testing.T) {
 		"msg":      &dipper.Message{},
 		"ctx":      map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
 		},
 		"steps": []map[string]interface{}{
@@ -479,6 +488,7 @@ func TestWorkflowResumeCrash(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -558,6 +568,7 @@ func TestWorkflowIterate(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
