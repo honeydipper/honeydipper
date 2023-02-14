@@ -29,6 +29,7 @@ func TestConditionElse(t *testing.T) {
 		"msg":      &dipper.Message{},
 		"ctx":      map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -77,6 +78,7 @@ func TestSwitchDefault(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -127,6 +129,7 @@ func TestSwitch(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",
@@ -186,6 +189,7 @@ func TestWorkflowLoop(t *testing.T) {
 		"msg": &dipper.Message{},
 		"ctx": map[string]interface{}{},
 		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().Return("")
 			mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 				Channel: "eventbus",
 				Subject: "command",

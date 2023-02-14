@@ -75,6 +75,7 @@ type Service struct {
 	ResponseFactory    *api.ResponseFactory
 	healthy            bool
 	drainingGroup      *sync.WaitGroup
+	daemonID           string
 }
 
 var (
@@ -92,6 +93,7 @@ var (
 func NewService(cfg *config.Config, name string) *Service {
 	svc := &Service{
 		name:           name,
+		daemonID:       dipper.GetIP(),
 		config:         cfg,
 		driverRuntimes: map[string]*driver.Runtime{},
 		expects:        map[string][]ExpectHandler{},
@@ -716,7 +718,7 @@ func handleAPI(from *driver.Runtime, m *dipper.Message) {
 
 func handleReload(from *driver.Runtime, m *dipper.Message) {
 	daemonID, ok := m.Labels["daemonID"]
-	if ok && daemonID != dipper.GetIP() {
+	if ok && daemonID != Services[from.Service].daemonID {
 		return
 	}
 

@@ -56,6 +56,20 @@ func (mr *MockSessionStoreHelperMockRecorder) GetConfig() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConfig", reflect.TypeOf((*MockSessionStoreHelper)(nil).GetConfig))
 }
 
+// GetDaemonID mocks base method.
+func (m *MockSessionStoreHelper) GetDaemonID() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDaemonID")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetDaemonID indicates an expected call of GetDaemonID.
+func (mr *MockSessionStoreHelperMockRecorder) GetDaemonID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDaemonID", reflect.TypeOf((*MockSessionStoreHelper)(nil).GetDaemonID))
+}
+
 // SendMessage mocks base method.
 func (m *MockSessionStoreHelper) SendMessage(msg *dipper.Message) {
 	m.ctrl.T.Helper()

@@ -20,6 +20,7 @@ import (
 type SessionStoreHelper interface {
 	GetConfig() *config.Config
 	SendMessage(msg *dipper.Message)
+	GetDaemonID() string
 }
 
 // SessionStore stores session in memory and provides helper function for session to perform.
