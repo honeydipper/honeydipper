@@ -10,6 +10,7 @@
 package dipper
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,6 +77,8 @@ test:
 func TestInterpolateGoTemplate(t *testing.T) {
 	assert.Equal(t, "{% not interpolated %}", InterpolateGoTemplate(false, "go", "{% not interpolated %}", map[string]interface{}{}), "should not interpolate {%%} in non-loading time")
 	assert.Equal(t, "{{ not interpolated }}", InterpolateGoTemplate(true, "test.yml", "{{ not interpolated }}", map[string]interface{}{}), "should not interpolate {{}} in loading time")
-	assert.Equal(t, "test", InterpolateGoTemplate(false, "go", "{{ .env.TEST_ENV }}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}), "should interpolate {{}} in non-loading time")
-	assert.Equal(t, "test", InterpolateGoTemplate(true, "test.yml", "{% .env.TEST_ENV %}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}), "should interpolate {%%} in loading time")
+	assert.Equal(t, "test", InterpolateGoTemplate(false, "go", "{{ .env.TEST_ENV }}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}).(*bytes.Buffer).String(), "should interpolate {{}} in non-loading time")
+	assert.Equal(t, "test", InterpolateGoTemplate(true, "test.yml", "{% .env.TEST_ENV %}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}).(*bytes.Buffer).String(), "should interpolate {%%} in loading time")
+	assert.Equal(t, true, InterpolateGoTemplate(false, "go", "{{ return true }}", map[string]interface{}{}), "should return a boolean type")
+	assert.Equal(t, map[string]interface{}{"foo": "bar"}, InterpolateGoTemplate(false, "go", "{{ dict \"foo\" \"bar\" | return }}", map[string]interface{}{}), "should return a map type")
 }
