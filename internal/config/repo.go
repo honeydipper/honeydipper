@@ -7,6 +7,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path"
@@ -75,7 +76,12 @@ func (c *Repo) loadFile(filename string) {
 
 	var content DataSet
 	yamlFile := dipper.Must(os.ReadFile(path.Join(c.root, filename[1:]))).([]byte)
-	yamlFile = []byte(dipper.InterpolateGoTemplate(true, "filename", string(yamlFile), map[string]interface{}{"env": dipper.Getenv()}))
+	switch ret := dipper.InterpolateGoTemplate(true, "filename", string(yamlFile), map[string]interface{}{"env": dipper.Getenv()}).(type) {
+	case *bytes.Buffer:
+		yamlFile = ret.Bytes()
+	case string:
+		yamlFile = []byte(ret)
+	}
 	dipper.Must(yaml.Unmarshal(yamlFile, &content))
 
 	if content.Repos != nil {
