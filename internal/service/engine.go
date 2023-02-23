@@ -48,6 +48,11 @@ func (h *WorkflowHelper) GetConfig() *config.Config {
 	return h.engine.config
 }
 
+// GetDaemonID method gets an identifier to the current daemon.
+func (h *WorkflowHelper) GetDaemonID() string {
+	return h.engine.daemonID
+}
+
 // StartEngine Starts the engine service.
 func StartEngine(cfg *config.Config) {
 	engine = NewService(cfg, "engine")

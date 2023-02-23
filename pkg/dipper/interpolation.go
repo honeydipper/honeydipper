@@ -14,7 +14,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/Masterminds/sprig"
+	"github.com/Masterminds/sprig/v3"
 	"github.com/ghodss/yaml"
 )
 
@@ -48,7 +48,7 @@ func InterpolateStr(pattern string, data interface{}) string {
 }
 
 // InterpolateGoTemplate : parse the string as go template.
-func InterpolateGoTemplate(isLoading bool, title string, pattern string, data interface{}) string {
+func InterpolateGoTemplate(isLoading bool, title string, pattern string, data interface{}) interface{} {
 	ldelim := "{{"
 	rdelim := "}}"
 	if isLoading {
@@ -56,14 +56,35 @@ func InterpolateGoTemplate(isLoading bool, title string, pattern string, data in
 		rdelim = "%}"
 	}
 	if strings.Contains(pattern, ldelim) {
-		tmpl := template.Must(template.New(title).Funcs(FuncMap).Funcs(sprig.TxtFuncMap()).Delims(ldelim, rdelim).Parse(pattern))
+		var ret interface{}
+		useRet := false
+		returnFuncMap := template.FuncMap{
+			"return": func(v interface{}) string {
+				useRet = true
+				ret = v
+
+				return ""
+			},
+		}
+
+		tmpl := template.New(title)
+		tmpl = tmpl.Funcs(FuncMap)
+		tmpl = tmpl.Funcs(sprig.TxtFuncMap())
+		tmpl = tmpl.Funcs(returnFuncMap)
+		tmpl = tmpl.Delims(ldelim, rdelim)
+		parsed := template.Must(tmpl.Parse(pattern))
+
 		buf := new(bytes.Buffer)
-		if err := tmpl.Execute(buf, data); err != nil {
+		if err := parsed.Execute(buf, data); err != nil {
 			Logger.Warningf("interpolation pattern failed: %+v", pattern)
 			Logger.Panicf("failed to interpolate: %+v", err)
 		}
 
-		return buf.String()
+		if useRet {
+			return ret
+		}
+
+		return buf
 	}
 
 	return pattern
@@ -138,7 +159,16 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 			return InterpolateDollarStr(v, data)
 		}
 
-		ret := InterpolateGoTemplate(false, "go", v, data)
+		var ret string
+
+		switch retAnything := InterpolateGoTemplate(false, "go", v, data).(type) {
+		case *bytes.Buffer:
+			ret = retAnything.String()
+		case string:
+			ret = retAnything
+		default:
+			return retAnything
+		}
 
 		if strings.HasPrefix(ret, ":yaml:") {
 			defer func() {
@@ -150,9 +180,8 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 
 			return ParseYaml(ret[6:])
 		}
-		ret = strings.TrimPrefix(ret, "\\")
 
-		return ret
+		return strings.TrimPrefix(ret, "\\")
 	case map[string]interface{}:
 		ret := map[string]interface{}{}
 		for k, val := range v {

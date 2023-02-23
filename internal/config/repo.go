@@ -7,6 +7,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path"
@@ -75,7 +76,12 @@ func (c *Repo) loadFile(filename string) {
 
 	var content DataSet
 	yamlFile := dipper.Must(os.ReadFile(path.Join(c.root, filename[1:]))).([]byte)
-	yamlFile = []byte(dipper.InterpolateGoTemplate(true, "filename", string(yamlFile), map[string]interface{}{"env": dipper.Getenv()}))
+	switch ret := dipper.InterpolateGoTemplate(true, "filename", string(yamlFile), map[string]interface{}{"env": dipper.Getenv()}).(type) {
+	case *bytes.Buffer:
+		yamlFile = ret.Bytes()
+	case string:
+		yamlFile = []byte(ret)
+	}
 	dipper.Must(yaml.Unmarshal(yamlFile, &content))
 
 	if content.Repos != nil {
@@ -144,15 +150,14 @@ func (c *Repo) cloneFetchRepo() {
 func (c *Repo) loadRepo() {
 	defer c.recovering("", c.repo.Repo)
 
-	if c.parent.IsConfigCheck && *c.repo == c.parent.InitRepo {
-		c.root = dipper.Must(filepath.Abs(c.repo.Repo)).(string)
-		dipper.Logger.Infof("using working copy of repo [%v]", c.root)
-		// uncomment below to ensure the working copy is a repo
-		// if _, err = git.PlainOpen(c.root); err != nil {
-		//   panic(err)
-		// }
-	} else {
+	if override, found := c.parent.Overrides[c.repo.Repo]; found {
+		c.root = dipper.Must(filepath.Abs(override)).(string)
+		dipper.Logger.Infof("using [%s] overriding repo [%v]", c.root, c.repo.Repo)
+	} else if _, err := os.Stat(c.repo.Repo); os.IsNotExist(err) || c.repo.Branch != "" {
 		c.cloneFetchRepo()
+	} else {
+		c.root = dipper.Must(filepath.Abs(c.repo.Repo)).(string)
+		dipper.Logger.Infof("using uncommitted files [%v]", c.root)
 	}
 
 	dipper.Logger.Infof("start loading repo [%v]", c.repo.Repo)
@@ -169,37 +174,38 @@ func (c *Repo) refreshRepo() bool {
 
 	defer c.recovering("", c.repo.Repo)
 
-	var repoObj *git.Repository
-	var err error
 	dipper.Logger.Infof("refreshing repo [%v]", c.repo.Repo)
-	if repoObj, err = git.PlainOpen(c.root); err != nil {
-		panic(err)
-	}
+	_, overridden := c.parent.Overrides[c.repo.Repo]
+	_, e := os.Stat(c.repo.Repo)
+	usingUncommitted := e == nil && c.repo.Branch == ""
 
-	tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
-
-	branch := "master"
-	if c.repo.Branch != "" {
-		branch = c.repo.Branch
-	}
-
-	opts := &git.PullOptions{
-		RemoteName:    "origin",
-		ReferenceName: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
-	}
-	if strings.HasPrefix(c.repo.Repo, "git@") {
-		if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
-			opts.Auth = auth
+	if !overridden && !usingUncommitted {
+		repoObj := dipper.Must(git.PlainOpen(c.root)).(*git.Repository)
+		tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
+		opts := &git.PullOptions{
+			RemoteName: "origin",
 		}
-	}
 
-	err = tree.Pull(opts)
-	if errors.Is(err, git.NoErrAlreadyUpToDate) {
-		dipper.Logger.Infof("no changes skip repo [%s]", c.repo.Repo)
+		switch c.repo.Branch {
+		case "":
+			opts.ReferenceName = plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", c.repo.Branch))
+		default:
+			opts.ReferenceName = plumbing.ReferenceName("refs/heads/master")
+		}
 
-		return false
-	} else if err != nil {
-		panic(err)
+		if strings.HasPrefix(c.repo.Repo, "git@") {
+			if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
+				opts.Auth = auth
+			}
+		}
+
+		err := tree.Pull(opts)
+		if errors.Is(err, git.NoErrAlreadyUpToDate) {
+			dipper.Logger.Infof("no changes skip repo [%s]", c.repo.Repo)
+
+			return false
+		}
+		dipper.Must(err)
 	}
 
 	c.DataSet = DataSet{}
