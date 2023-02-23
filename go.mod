@@ -9,8 +9,6 @@ require (
 	cloud.google.com/go/storage v1.27.0
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver v1.5.0 // indirect
-	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/casbin/casbin/v2 v2.41.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/gin-gonic/gin v1.7.7
@@ -24,8 +22,8 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.3.0
 	github.com/googleapis/gax-go/v2 v2.7.0
-	github.com/huandu/xstrings v1.3.2 // indirect
-	github.com/imdario/mergo v0.3.12
+	github.com/huandu/xstrings v1.4.0 // indirect
+	github.com/imdario/mergo v0.3.13
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/logrusorgru/aurora/v3 v3.0.0
 	github.com/mattn/go-runewidth v0.0.13 // indirect
@@ -35,7 +33,7 @@ require (
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/qiangmzsx/string-adapter/v2 v2.1.0
 	github.com/stretchr/testify v1.8.1
-	golang.org/x/crypto v0.0.0-20220817201139-bc19a97f63c8
+	golang.org/x/crypto v0.6.0
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20221014153046-6fdb5e3db783
 	golang.org/x/term v0.5.0
@@ -110,14 +108,20 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-require github.com/go-redis/redismock/v8 v8.0.6
+require (
+	github.com/Masterminds/sprig/v3 v3.2.3
+	github.com/go-redis/redismock/v8 v8.0.6
+)
 
 require (
 	cloud.google.com/go/compute v1.13.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.1 // indirect
 	cloud.google.com/go/iam v0.10.0 // indirect
 	cloud.google.com/go/longrunning v0.4.0 // indirect
+	github.com/Masterminds/semver/v3 v3.2.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.0 // indirect
+	github.com/shopspring/decimal v1.3.1 // indirect
+	github.com/spf13/cast v1.5.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
