@@ -1,3 +1,17 @@
+# [2.11.0](https://github.com/honeydipper/honeydipper/compare/v2.10.0...v2.11.0) (2023-02-23)
+
+
+### Bug Fixes
+
+* **core:** resume_token should be unique among cluster members ([#512](https://github.com/honeydipper/honeydipper/issues/512)) ([8f47a15](https://github.com/honeydipper/honeydipper/commit/8f47a158d08982e24808f940f2bf86f3b78a5eb0))
+* **deps:** update sprig functions to v3 ([#516](https://github.com/honeydipper/honeydipper/issues/516)) ([3a4716f](https://github.com/honeydipper/honeydipper/commit/3a4716f6c9c64b59d4699f6e7fbb0543afcc377f))
+
+
+### Features
+
+* **core:** allow override a repo with a directory ([#511](https://github.com/honeydipper/honeydipper/issues/511)) ([0ccb251](https://github.com/honeydipper/honeydipper/commit/0ccb2513b952b8576081069d701bb08e0bbf7913))
+* **core:** allow return typed data from go template ([#514](https://github.com/honeydipper/honeydipper/issues/514)) ([f70b923](https://github.com/honeydipper/honeydipper/commit/f70b923188ca4cf184d783876b64b3f18aea7e74))
+
 # [2.10.0](https://github.com/honeydipper/honeydipper/compare/v2.9.0...v2.10.0) (2023-02-09)
 
 
