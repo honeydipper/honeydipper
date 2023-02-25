@@ -188,9 +188,9 @@ func (c *Repo) refreshRepo() bool {
 
 		switch c.repo.Branch {
 		case "":
-			opts.ReferenceName = plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", c.repo.Branch))
-		default:
 			opts.ReferenceName = plumbing.ReferenceName("refs/heads/master")
+		default:
+			opts.ReferenceName = plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", c.repo.Branch))
 		}
 
 		if strings.HasPrefix(c.repo.Repo, "git@") {
