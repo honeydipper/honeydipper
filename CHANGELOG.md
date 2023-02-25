@@ -1,3 +1,10 @@
+## [2.11.1](https://github.com/honeydipper/honeydipper/compare/v2.11.0...v2.11.1) (2023-02-25)
+
+
+### Bug Fixes
+
+* **core:** refresh repo should load correct ref ([#517](https://github.com/honeydipper/honeydipper/issues/517)) ([717bdd0](https://github.com/honeydipper/honeydipper/commit/717bdd0eb66e27a35e2db9c93c8763e29b959bfb))
+
 # [2.11.0](https://github.com/honeydipper/honeydipper/compare/v2.10.0...v2.11.0) (2023-02-23)
 
 
