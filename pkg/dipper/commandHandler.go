@@ -89,6 +89,69 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 	SendMessage(p.ReturnWriter, retMsg)
 }
 
+type commandWrapper struct {
+	msg      *Message
+	method   string
+	provider *CommandProvider
+	f        MessageHandler
+	retry    int
+	timeout  time.Duration
+	backoff  time.Duration
+}
+
+func (w *commandWrapper) attempt(replyChannel chan Message) {
+	w.msg.Reply = replyChannel
+	m := *w.msg
+	// make a copy of Labels so the function call won't
+	// tamper with the original one.
+	m.Labels = map[string]string{}
+	for k, v := range w.msg.Labels {
+		m.Labels[k] = v
+	}
+
+	go func() {
+		defer func() {
+			close(replyChannel)
+			replyChannel = nil
+		}()
+
+		Logger.Debugf("[operaotr] cmd labels %+v", m.Labels)
+
+		select {
+		case reply := <-replyChannel:
+			if _, ok := reply.Labels["no-timeout"]; ok {
+				reply = <-m.Reply
+			}
+
+			_, hasError := reply.Labels["error"]
+			if status, ok := reply.Labels["status"]; (hasError || (ok && status != SUCCESS)) && w.retry > 0 {
+				Logger.Debugf("[operaotr] %d retry left for method %s", w.retry, w.method)
+				w.retry--
+				time.Sleep(w.backoff * time.Millisecond)
+				w.backoff *= 2
+				go w.attempt(make(chan Message, 1))
+			} else {
+				w.provider.Return(w.msg, &reply)
+			}
+		case <-time.After(time.Second * w.timeout):
+			_ = w.provider.ReturnError(w.msg, "timeout")
+		}
+	}()
+
+	defer func() {
+		if r := recover(); r != nil && replyChannel != nil {
+			Logger.Warningf("Resuming after command error: %v", r)
+			Logger.Warning(errors.Wrap(r, 1).ErrorStack())
+			replyChannel <- Message{
+				Labels: map[string]string{
+					"error": fmt.Sprintf("%+v", r),
+				},
+			}
+		}
+	}()
+	w.f(&m)
+}
+
 // Router : route the message to rpc handlers.
 func (p *CommandProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
@@ -98,62 +161,16 @@ func (p *CommandProvider) Router(msg *Message) {
 	}
 
 	retry, timeout, backoff := p.UnpackLabels(msg)
-
-	var attempt func(chan Message)
-	attempt = func(replyChannel chan Message) {
-		msg.Reply = replyChannel
-		m := *msg
-		// make a copy of Labels so the function call won't
-		// tamper with the original one.
-		m.Labels = map[string]string{}
-		for k, v := range msg.Labels {
-			m.Labels[k] = v
-		}
-
-		go func() {
-			defer func() {
-				close(replyChannel)
-				replyChannel = nil
-			}()
-
-			Logger.Debugf("[operaotr] cmd labels %+v", m.Labels)
-
-			select {
-			case reply := <-replyChannel:
-				if _, ok := reply.Labels["no-timeout"]; ok {
-					reply = <-m.Reply
-				}
-
-				_, hasError := reply.Labels["error"]
-				if status, ok := reply.Labels["status"]; (hasError || (ok && status != SUCCESS)) && retry > 0 {
-					Logger.Debugf("[operaotr] %d retry left for method %s", retry, method)
-					retry--
-					time.Sleep(backoff * time.Millisecond)
-					backoff *= 2
-					go attempt(make(chan Message, 1))
-				} else {
-					p.Return(msg, &reply)
-				}
-			case <-time.After(time.Second * timeout):
-				_ = p.ReturnError(msg, "timeout")
-			}
-		}()
-
-		defer func() {
-			if r := recover(); r != nil && replyChannel != nil {
-				Logger.Warningf("Resuming after command error: %v", r)
-				Logger.Warning(errors.Wrap(r, 1).ErrorStack())
-				replyChannel <- Message{
-					Labels: map[string]string{
-						"error": fmt.Sprintf("%+v", r),
-					},
-				}
-			}
-		}()
-		f(&m)
+	w := &commandWrapper{
+		msg:      msg,
+		f:        f,
+		provider: p,
+		retry:    retry,
+		timeout:  timeout,
+		backoff:  backoff,
 	}
 
-	attempt(make(chan Message, 1))
+	w.attempt(make(chan Message, 1))
 }
 
 // UnpackLabels loads necessary variables out of the labels.
