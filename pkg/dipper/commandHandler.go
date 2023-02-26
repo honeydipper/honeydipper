@@ -103,6 +103,12 @@ func (p *CommandProvider) Router(msg *Message) {
 	attempt = func(replyChannel chan Message) {
 		msg.Reply = replyChannel
 		m := *msg
+		// make a copy of Labels so the function call won't
+		// tamper with the original one.
+		m.Labels = map[string]string{}
+		for k, v := range msg.Labels {
+			m.Labels[k] = v
+		}
 
 		go func() {
 			defer func() {
