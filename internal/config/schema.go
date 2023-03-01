@@ -103,6 +103,7 @@ type Workflow struct {
 	Export          map[string]interface{}
 	ExportOnSuccess map[string]interface{} `json:"export_on_success" mapstructure:"export_on_success"`
 	ExportOnFailure map[string]interface{} `json:"export_on_failure" mapstructure:"export_on_failure"`
+	ExportOnError   map[string]interface{} `json:"export_on_error" mapstructure:"export_on_error"`
 	NoExport        []string               `json:"no_export" mapstructure:"no_export"`
 }
 

@@ -137,6 +137,8 @@ func (w *Session) processExport(msg *dipper.Message) {
 	}
 	if status != SessionStatusError {
 		w.postWorkflowExport(w.workflow.Export, envData)
+	} else {
+		w.postWorkflowExport(w.workflow.ExportOnError, envData)
 	}
 	if status == SessionStatusSuccess {
 		w.postWorkflowExport(w.workflow.ExportOnSuccess, envData)
