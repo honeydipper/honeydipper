@@ -1,3 +1,15 @@
+# [2.12.0](https://github.com/honeydipper/honeydipper/compare/v2.11.1...v2.12.0) (2023-03-01)
+
+
+### Bug Fixes
+
+* commandHandler protecting the return labels ([#519](https://github.com/honeydipper/honeydipper/issues/519)) ([7e3fa4d](https://github.com/honeydipper/honeydipper/commit/7e3fa4df2ee32f5c5c9524b5692a1a1ded7c5179))
+
+
+### Features
+
+* allow export on error ([#521](https://github.com/honeydipper/honeydipper/issues/521)) ([614bc0f](https://github.com/honeydipper/honeydipper/commit/614bc0fb8d50d8a7729479447fa5af4a935d26b6))
+
 ## [2.11.1](https://github.com/honeydipper/honeydipper/compare/v2.11.0...v2.11.1) (2023-02-25)
 
 
