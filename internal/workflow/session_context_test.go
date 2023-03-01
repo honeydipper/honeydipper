@@ -98,6 +98,17 @@ contexts:
 	exported = map[string]interface{}{"data1": "testdata"}
 	w.processNoExport(exported)
 	assert.Empty(t, exported, "remove all items from exported data")
+
+	w = s.newSession("", "uuid10", &config.Workflow{Name: "workflow1", ExportOnError: map[string]interface{}{"foo": "bar"}, Export: map[string]interface{}{"foo2": "bar2"}}).(*Session)
+	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
+	w.processExport(&dipper.Message{
+		Labels: map[string]string{
+			"status": "error",
+			"reason": "test",
+		},
+	})
+	assert.Equal(t, "bar", w.exported[0]["foo"], "export_on_error should be used if on error")
+	assert.NotContains(t, w.exported[0], "foo2", "export should not be used if on error")
 }
 
 var configStrWithEventContexts = `
