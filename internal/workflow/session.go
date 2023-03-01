@@ -320,6 +320,7 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.Export = v.Export                   // delayed
 	ret.ExportOnSuccess = v.ExportOnSuccess // delayed
 	ret.ExportOnFailure = v.ExportOnFailure // delayed
+	ret.ExportOnError = v.ExportOnError     // delayed
 	ret.Switch = v.Switch                   // delayed
 	ret.Cases = v.Cases                     // delayed
 	ret.Default = v.Default                 // delayed
