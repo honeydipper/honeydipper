@@ -1,3 +1,12 @@
+## [2.12.1](https://github.com/honeydipper/honeydipper/compare/v2.12.0...v2.12.1) (2023-03-03)
+
+
+### Bug Fixes
+
+* **core:** workflow export failure protection ([#526](https://github.com/honeydipper/honeydipper/issues/526)) ([183bd6f](https://github.com/honeydipper/honeydipper/commit/183bd6fcde5c4589373fb8cc71dc324b5b8c743c))
+* **deps:** update google.golang.org/genproto digest to e74f57a ([#524](https://github.com/honeydipper/honeydipper/issues/524)) ([5667209](https://github.com/honeydipper/honeydipper/commit/5667209f06f57e7d49e2d480b34316c9b65e0198))
+* patch method require body in the request ([#522](https://github.com/honeydipper/honeydipper/issues/522)) ([5dbf1e4](https://github.com/honeydipper/honeydipper/commit/5dbf1e4b957dccb0708fff9e989455c6dafe638e))
+
 # [2.12.0](https://github.com/honeydipper/honeydipper/compare/v2.11.1...v2.12.0) (2023-03-01)
 
 
