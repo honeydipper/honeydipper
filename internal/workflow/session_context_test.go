@@ -109,6 +109,19 @@ contexts:
 	})
 	assert.Equal(t, "bar", w.exported[0]["foo"], "export_on_error should be used if on error")
 	assert.NotContains(t, w.exported[0], "foo2", "export should not be used if on error")
+
+	w = s.newSession("", "uuid12", &config.Workflow{Name: "workflow1", ExportOnError: map[string]interface{}{"foo": "$bar"}, Export: map[string]interface{}{"foo2": "$bar2"}}).(*Session)
+	m := &dipper.Message{
+		Labels: map[string]string{
+			"status": "success",
+			"reason": "test",
+		},
+	}
+	w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
+	assert.NotPanics(t, func() { w.processExport(m) }, "export should not panic if unable to export")
+	assert.Empty(t, w.exported, "export_on_error should fail if there is interpolation error")
+	assert.Equal(t, "test\nError on exporting data config error: invalid path: bar2", m.Labels["reason"], "failed export should append message to reason")
+	assert.Equal(t, "error", m.Labels["status"], "failed export should set message status to fail")
 }
 
 var configStrWithEventContexts = `

@@ -127,6 +127,13 @@ func (w *Session) processExport(msg *dipper.Message) {
 	envData := w.buildEnvData(msg)
 	status := msg.Labels["status"]
 
+	defer dipper.SafeExitOnError("session [%s] error on exporting data", w.ID, func(r interface{}) {
+		msg.Labels["status"] = SessionStatusError
+		if len(msg.Labels["reason"]) > 0 {
+			msg.Labels["reason"] += "\n"
+		}
+		msg.Labels["reason"] += fmt.Sprintf("Error on exporting data %+v", r)
+	})
 	if w.inFlyFunction != nil && status != SessionStatusError {
 		export := config.ExportFunctionContext(w.inFlyFunction, envData, w.store.Helper.GetConfig())
 		delete(envData, "sysData")

@@ -120,6 +120,8 @@ func createRequest(method, rurl string, header http.Header, form url.Values, m *
 	var req *http.Request
 
 	switch method {
+	case "PATCH":
+		fallthrough
 	case "POST":
 		fallthrough
 	case "PUT":
