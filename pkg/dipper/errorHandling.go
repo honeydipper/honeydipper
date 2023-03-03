@@ -11,9 +11,16 @@ import "github.com/go-errors/errors"
 // SafeExitOnError : use this function in defer statement to ignore errors.
 func SafeExitOnError(args ...interface{}) {
 	if r := recover(); r != nil {
+		l := len(args)
+		if handler, ok := args[l-1].(func(interface{})); ok {
+			l--
+			handler(r)
+		}
 		Logger.Warningf("Resuming after error: %v", r)
 		Logger.Warning(errors.Wrap(r, 1).ErrorStack())
-		Logger.Warningf(args[0].(string), args[1:]...)
+		if l >= 1 {
+			Logger.Warningf(args[0].(string), args[1:l]...)
+		}
 	}
 }
 
