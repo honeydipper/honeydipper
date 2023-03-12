@@ -134,6 +134,7 @@ func (s *Service) GetReceiver(feature string) interface{} {
 	if receiver == nil {
 		panic(fmt.Errorf("%w: feature not loaded: %s", ErrServiceError, feature))
 	}
+	receiver.Ready(DriverReadyTimeout * time.Second)
 
 	return receiver
 }
@@ -182,34 +183,29 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		dynamicData = s.dynamicFeatureData[feature]
 	}
 
-	var driverHandler driver.Handler
-	if driverMeta, ok := s.config.GetStagedDriverData(fmt.Sprintf("daemon.drivers.%s", driverName)); ok {
-		driverHandler = driver.NewDriver(driverMeta.(map[string]interface{}))
-	} else {
+	driverMeta, ok := s.config.GetStagedDriverData(fmt.Sprintf("daemon.drivers.%s", driverName))
+	if !ok {
 		panic("unable to get driver metadata")
 	}
 
-	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverHandler.Meta())
-	driverRuntime := driver.Runtime{
-		Feature:     feature,
-		Data:        driverData,
-		DynamicData: dynamicData,
-		State:       driver.DriverLoading,
-		Handler:     driverHandler,
-	}
+	driverRuntime := driver.NewDriver(feature, driverMeta.(map[string]interface{}), driverData, dynamicData)
+	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverRuntime.Handler.Meta())
 
-	if oldRuntime != nil && oldRuntime.State != driver.DriverFailed && reflect.DeepEqual(*oldRuntime.Handler.Meta(), *driverHandler.Meta()) {
+	driverMetaUnchanged := oldRuntime != nil && reflect.DeepEqual(*oldRuntime.Handler.Meta(), *driverRuntime.Handler.Meta())
+	driverRunning := oldRuntime != nil && oldRuntime.State != driver.DriverFailed
+
+	if driverRunning && driverMetaUnchanged {
 		if reflect.DeepEqual(oldRuntime.Data, driverRuntime.Data) && reflect.DeepEqual(oldRuntime.DynamicData, driverRuntime.DynamicData) {
 			dipper.Logger.Infof("[%s] driver not affected: %s", s.name, driverName)
 		} else {
 			// hot reload
 			affected = true
-			s.hotReload(&driverRuntime, oldRuntime)
+			s.hotReload(driverRuntime, oldRuntime)
 		}
 	} else {
 		// cold reload
 		affected = true
-		s.coldReload(&driverRuntime, oldRuntime)
+		s.coldReload(driverRuntime, oldRuntime)
 	}
 
 	return affected, driverName, nil
@@ -229,10 +225,9 @@ func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.R
 	go func(s *Service, runtime *driver.Runtime) {
 		defer dipper.SafeExitOnError("[%s] driver runtime %s crash", s.name, runtime.Handler.Meta().Name)
 		defer s.checkDeleteDriverRuntime(runtime.Feature, runtime)
-		defer close(runtime.Stream)
+		defer runtime.Handler.Close()
 
-		//nolint:errcheck
-		runtime.Run.Wait()
+		runtime.Handler.Wait()
 	}(s, driverRuntime)
 
 	if oldRuntime != nil {
@@ -245,7 +240,7 @@ func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.R
 			defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Handler.Meta().Name)
 			// allow 50 millisecond for the data to drain
 			time.Sleep(DriverGracefulTimeout * time.Millisecond)
-			runtime.Output.Close()
+			runtime.Handler.Close()
 		}(oldRuntime)
 	}
 }
@@ -328,7 +323,7 @@ func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 				defer dipper.SafeExitOnError("[%s] unused runtime %s output is already closed", s.name, runtime.Handler.Meta().Name)
 				// allow 50 millisecond for the data to drain
 				time.Sleep(DriverGracefulTimeout * time.Millisecond)
-				runtime.Output.Close()
+				runtime.Handler.Close()
 			}(runtime)
 		}
 	}
@@ -495,7 +490,7 @@ func (s *Service) serviceLoop() {
 	for fname, runtime := range s.driverRuntimes {
 		func() {
 			defer dipper.SafeExitOnError("[%s] driver runtime for feature %s already closed", s.name, fname)
-			runtime.Output.Close()
+			runtime.Handler.Close()
 		}()
 	}
 	dipper.Logger.Warningf("[%s] service closed for business", s.name)
@@ -626,7 +621,7 @@ func (s *Service) checkDeleteDriverRuntime(feature string, check *driver.Runtime
 func coldReloadDriverRuntime(d *driver.Runtime, m *dipper.Message) {
 	s := Services[d.Service]
 	s.checkDeleteDriverRuntime(d.Feature, d)
-	d.Output.Close()
+	d.Handler.Close()
 	dipper.Must(s.loadFeature(d.Feature))
 }
 
