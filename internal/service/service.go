@@ -9,7 +9,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -129,23 +128,14 @@ func (s *Service) GetName() string {
 	return s.name
 }
 
-// GetStream returns the writer for communication with the specified feature.
-func (s *Service) GetStream(feature string) io.Writer {
-	if runtime := s.getDriverRuntime(feature); runtime != nil {
-		seconds := 0
-		for seconds < 9 && (runtime.State == driver.DriverLoading || runtime.State == driver.DriverReloading) {
-			dipper.Logger.Warningf("[%s] waiting for feature %s to load/reload ...", s.name, feature)
-			time.Sleep(time.Second)
-			seconds++
-		}
-
-		if runtime.State != driver.DriverAlive {
-			panic(fmt.Errorf("%w: feature failed or loading timeout: %s", ErrServiceError, feature))
-		}
-
-		return runtime.Output
+// GetReceiver returns the driver object that receives the rpc messages.
+func (s *Service) GetReceiver(feature string) interface{} {
+	receiver := s.getDriverRuntime(feature)
+	if receiver == nil {
+		panic(fmt.Errorf("%w: feature not loaded: %s", ErrServiceError, feature))
 	}
-	panic(fmt.Errorf("%w: feature not loaded: %s", ErrServiceError, feature))
+
+	return receiver
 }
 
 func (s *Service) loadFeature(feature string) (affected bool, driverName string, rerr error) {
@@ -468,7 +458,7 @@ func (s *Service) serviceLoop() {
 			func() {
 				defer dipper.SafeExitOnError("[%s] service loop continue", s.name)
 				runtime := orderedRuntimes[chosen]
-				msg := value.Interface().(dipper.Message)
+				msg := value.Interface().(*dipper.Message)
 				if runtime.Feature != FeatureEmitter {
 					if emitter, ok := daemon.Emitters[s.name]; ok {
 						emitter.CounterIncr("honey.honeydipper.local.message", []string{
@@ -483,7 +473,7 @@ func (s *Service) serviceLoop() {
 
 				s.driverLock.Lock()
 				defer s.driverLock.Unlock()
-				go s.process(msg, runtime)
+				go s.process(*msg, runtime)
 			}()
 
 		case !ok && chosen < len(orderedRuntimes):
@@ -684,7 +674,7 @@ func handleRPCCall(from *driver.Runtime, m *dipper.Message) {
 	feature := m.Labels["feature"]
 	m.Labels["caller"] = from.Feature
 	s := Services[from.Service]
-	dipper.SendMessage(s.getDriverRuntime(feature).Output, m)
+	s.getDriverRuntime(feature).SendMessage(m)
 }
 
 func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
@@ -693,14 +683,14 @@ func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
 	if caller == "-" {
 		s.HandleReturn(m)
 	} else {
-		dipper.SendMessage(s.getDriverRuntime(caller).Output, m)
+		s.getDriverRuntime(caller).SendMessage(m)
 	}
 }
 
 func handleAPI(from *driver.Runtime, m *dipper.Message) {
 	s := Services[from.Service]
 	dipper.DeserializePayload(m)
-	resp := s.ResponseFactory.NewResponse(s, s.getDriverRuntime("eventbus").Output, m)
+	resp := s.ResponseFactory.NewResponse(s, s.GetReceiver("eventbus").(dipper.MessageReceiver), m)
 	if resp == nil {
 		dipper.Logger.Debugf("[%s] skipping handling API: %+v", s.name, m.Labels)
 

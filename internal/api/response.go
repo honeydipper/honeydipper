@@ -8,7 +8,6 @@ package api
 
 import (
 	"fmt"
-	"io"
 	"strconv"
 
 	"github.com/honeydipper/honeydipper/pkg/dipper"
@@ -22,14 +21,14 @@ const DefaultAPILockExpireMS = 1000
 
 // Response is used for responding to the api service.
 type Response struct {
-	EventBus io.Writer
+	EventBus dipper.MessageReceiver
 	Request  *dipper.Message
 	Acked    bool
 }
 
 // Ack acks a call.
 func (resp *Response) Ack() {
-	dipper.SendMessage(resp.EventBus, &dipper.Message{
+	resp.EventBus.SendMessage(&dipper.Message{
 		Channel: "eventbus",
 		Subject: "api",
 		Labels: map[string]string{
@@ -43,7 +42,7 @@ func (resp *Response) Ack() {
 
 // Return returns data to api service.
 func (resp *Response) Return(data interface{}) {
-	dipper.SendMessage(resp.EventBus, &dipper.Message{
+	resp.EventBus.SendMessage(&dipper.Message{
 		Channel: "eventbus",
 		Subject: "api",
 		Labels: map[string]string{
@@ -57,7 +56,7 @@ func (resp *Response) Return(data interface{}) {
 
 // ReturnError returns an error to the API service.
 func (resp *Response) ReturnError(err error) {
-	dipper.SendMessage(resp.EventBus, &dipper.Message{
+	resp.EventBus.SendMessage(&dipper.Message{
 		Channel: "eventbus",
 		Subject: "api",
 		Labels: map[string]string{
@@ -94,7 +93,7 @@ func NewResponseFactory() *ResponseFactory {
 }
 
 // NewResponse provides a function to create new api Response.
-func (rf *ResponseFactory) NewResponse(caller dipper.RPCCaller, eventbus io.Writer, m *dipper.Message) *Response {
+func (rf *ResponseFactory) NewResponse(caller dipper.RPCCaller, eventbus dipper.MessageReceiver, m *dipper.Message) *Response {
 	resp := &Response{
 		EventBus: eventbus,
 		Request:  m,
