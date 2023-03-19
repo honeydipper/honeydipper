@@ -200,7 +200,7 @@ func intTestDaemonShutdown(t *testing.T) {
 }
 
 func intTestDriverCrash(t *testing.T) {
-	assert.NotPanics(t, func() { _ = service.Services["operator"].GetStream("driver:gcloud-dataflow") }, "driver:gcloud-dataflow should be ready by now")
+	assert.NotPanics(t, func() { _ = service.Services["operator"].GetReceiver("driver:gcloud-dataflow") }, "driver:gcloud-dataflow should be ready by now")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var (

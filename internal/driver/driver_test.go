@@ -53,7 +53,7 @@ func TestDriverNewDriver(t *testing.T) {
 					}
 				}
 			}()
-			NewDriver(c[0].(map[string]interface{}))
+			NewDriver("testfeature", c[0].(map[string]interface{}), nil, nil)
 		}(tc.([]interface{}))
 	}
 }
