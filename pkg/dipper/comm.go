@@ -52,6 +52,23 @@ type Message struct {
 // MessageHandler : a type of functions that take a pointer to a message and handle it.
 type MessageHandler func(*Message)
 
+// MessageReceiver is a object that can receive and handle a dipper message.
+type MessageReceiver interface {
+	SendMessage(*Message)
+}
+
+// NullReceiver is a placeholder for MessageReceiver.
+type NullReceiver struct {
+	SendMessageFunc MessageHandler
+}
+
+// SendMessage does nothing unless overridden with SendMessageFunc.
+func (n *NullReceiver) SendMessage(msg *Message) {
+	if n.SendMessageFunc != nil {
+		n.SendMessageFunc(msg)
+	}
+}
+
 // SerializeContent : encode payload content into bytes.
 func SerializeContent(content interface{}) (ret []byte) {
 	var err error

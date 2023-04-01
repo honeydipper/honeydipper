@@ -9,9 +9,7 @@ package driver
 import (
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
+	"time"
 
 	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
@@ -27,19 +25,31 @@ const DriverMessageBuffer = 10
 // Handler provides common functions for handling a driver.
 type Handler interface {
 	Acquire()
-	Prepare()
 	Meta() *Meta
+	Prepare(input chan<- *dipper.Message)
+	SendMessage(*dipper.Message)
+	Start(string)
+	Close()
+	Wait()
 }
 
-// replace the func variable with mock during testing.
-var execCommand = exec.Command
+// Runtime contains the runtime information of the running driver.
+type Runtime struct {
+	Data        interface{}
+	DynamicData interface{}
+	Feature     string
+	Handler     Handler
+	Stream      <-chan *dipper.Message
+	Service     string
+	State       int
+}
 
 // NewDriver creates a driver object to represent a child process.
-func NewDriver(data map[string]interface{}) Handler {
+func NewDriver(feature string, metaData map[string]interface{}, driverData interface{}, dynamicData interface{}) *Runtime {
 	var meta Meta
-	err := mapstructure.Decode(data, &meta)
+	err := mapstructure.Decode(metaData, &meta)
 	if err != nil {
-		panic(fmt.Errorf("malformat driver meta: %+v: %w", data, err))
+		panic(fmt.Errorf("malformat driver meta: %+v: %w", metaData, err))
 	}
 
 	if meta.Name == "" {
@@ -51,62 +61,32 @@ func NewDriver(data map[string]interface{}) Handler {
 	switch meta.Type {
 	case "builtin":
 		dh = NewBuiltinDriver(&meta)
+	case "null":
+		dh = NewNullDriver(&meta)
 	default:
 		panic(fmt.Errorf("%w: unsupported driver type: %s", ErrDriverError, meta.Type))
 	}
 
-	dh.Acquire()
-	dh.Prepare()
+	stream := make(chan *dipper.Message, DriverMessageBuffer)
 
-	if meta.Executable == "" {
-		panic(fmt.Errorf("%w: executable not defined for driver: %s", ErrDriverError, meta.Name))
+	runtime := &Runtime{
+		Data:        driverData,
+		DynamicData: dynamicData,
+		Feature:     feature,
+		Handler:     dh,
+		Stream:      stream,
 	}
 
-	return dh
-}
+	dh.Acquire()
+	dh.Prepare(stream)
 
-// Runtime contains the runtime information of the running driver.
-type Runtime struct {
-	Data        interface{}
-	DynamicData interface{}
-	Feature     string
-	Stream      chan dipper.Message
-	Input       io.ReadCloser
-	Output      io.WriteCloser
-	Service     string
-	Run         *exec.Cmd
-	State       int
-	Handler     Handler
+	return runtime
 }
 
 // Start the driver child process.  The "service" indicates which service this driver belongs to.
 func (runtime *Runtime) Start(service string) {
 	runtime.Service = service
-
-	m := runtime.Handler.Meta()
-
-	run := execCommand(m.Executable, append([]string{service}, m.Arguments...)...)
-	if input, err := run.StdoutPipe(); err != nil {
-		dipper.Logger.Panicf("[%s] Unable to link to driver stdout %v", service, err)
-	} else {
-		runtime.Input = input
-		runtime.Stream = make(chan dipper.Message, DriverMessageBuffer)
-		go runtime.fetchMessages()
-	}
-
-	if output, err := run.StdinPipe(); err != nil {
-		dipper.Logger.Panicf("[%s] Unable to link to driver stdin %v", service, err)
-	} else {
-		runtime.Output = output
-	}
-
-	run.Stderr = os.Stderr
-	run.ExtraFiles = []*os.File{os.Stdout} // giving child process stdout for logging
-	if err := run.Start(); err != nil {
-		dipper.Logger.Panicf("[%s] Failed to start driver %v", service, err)
-	}
-
-	runtime.Run = run
+	runtime.Handler.Start(service)
 	runtime.SendOptions()
 }
 
@@ -127,7 +107,7 @@ func (runtime *Runtime) SendOptions() {
 	})
 }
 
-// SendMessage sentds a dipper message to the driver child process.
+// SendMessage sends a dipper message to the driver child process.
 func (runtime *Runtime) SendMessage(msg *dipper.Message) {
 	if runtime.Feature != "emitter" {
 		if emitter, ok := daemon.Emitters[runtime.Service]; ok {
@@ -140,26 +120,18 @@ func (runtime *Runtime) SendMessage(msg *dipper.Message) {
 			})
 		}
 	}
-	dipper.SendMessage(runtime.Output, msg)
+	runtime.Handler.SendMessage(msg)
 }
 
-func (runtime *Runtime) fetchMessages() {
-	quit := false
-	daemon.Children.Add(1)
-	defer daemon.Children.Done()
-	for !quit && !daemon.ShuttingDown {
-		func() {
-			defer dipper.SafeExitOnError(
-				"failed to fetching messages from driver %s.%s",
-				runtime.Service,
-				runtime.Handler.Meta().Name,
-			)
-			defer dipper.CatchError(io.EOF, func() { quit = true })
-			for !quit && !daemon.ShuttingDown {
-				message := dipper.FetchRawMessage(runtime.Input)
-				runtime.Stream <- *message
-			}
-		}()
+// Ready waits until the driver is alive or report error.
+func (runtime *Runtime) Ready(d time.Duration) {
+	var elapsed time.Duration
+	for runtime.State < DriverAlive && elapsed < d {
+		time.Sleep(time.Second)
+		elapsed += time.Second
 	}
-	dipper.Logger.Warningf("[%s-%s] driver closed for business", runtime.Service, runtime.Handler.Meta().Name)
+
+	if runtime.State != DriverAlive {
+		panic(fmt.Errorf("%w: feature failed or loading timeout: %s", ErrDriverError, runtime.Feature))
+	}
 }
