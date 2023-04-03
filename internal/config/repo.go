@@ -67,6 +67,22 @@ func (c *Repo) ReadFile(filename string) ([]byte, error) {
 	return b, nil
 }
 
+func (c *Repo) loadFileGlob(globname string) {
+	filenames, err := filepath.Glob(globname)
+	if err != nil {
+		dipper.Logger.Errorf("%v", err)
+		dipper.Logger.Fatalf("Unable to expand glob to filenames in '%s'", globname)
+	}
+
+	if len(filenames) == 0 {
+		dipper.Logger.Warningf("glob '%s'not matching any files", globname)
+	}
+
+	for _, f := range filenames {
+		c.loadFile(f)
+	}
+}
+
 func (c *Repo) loadFile(filename string) {
 	defer c.recovering(filename, "")
 
@@ -75,7 +91,7 @@ func (c *Repo) loadFile(filename string) {
 	}
 
 	var content DataSet
-	yamlFile := dipper.Must(os.ReadFile(path.Join(c.root, filename[1:]))).([]byte)
+	yamlFile := dipper.Must(os.ReadFile(filename)).([]byte)
 	switch ret := dipper.InterpolateGoTemplate(true, "filename", string(yamlFile), map[string]interface{}{"env": dipper.Getenv()}).(type) {
 	case *bytes.Buffer:
 		yamlFile = ret.Bytes()
@@ -98,9 +114,7 @@ func (c *Repo) loadFile(filename string) {
 		cwd := path.Dir(filename)
 		for _, include := range content.Includes {
 			absname := path.Clean(path.Join(cwd, include))
-			if !c.isFileLoaded(absname) {
-				c.loadFile(absname)
-			}
+			c.loadFileGlob(absname)
 		}
 	}
 
@@ -165,7 +179,7 @@ func (c *Repo) loadRepo() {
 	if c.repo.Path != "" {
 		root = c.repo.Path
 	}
-	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
+	c.loadFile(path.Clean(path.Join(c.root, root, "init.yaml")))
 	dipper.Logger.Infof("repo [%v] loaded", c.repo.Repo)
 }
 
@@ -214,7 +228,7 @@ func (c *Repo) refreshRepo() bool {
 	if c.repo.Path != "" {
 		root = c.repo.Path
 	}
-	c.loadFile(path.Clean(path.Join(root, "init.yaml")))
+	c.loadFile(path.Clean(path.Join(c.root, root, "init.yaml")))
 	dipper.Logger.Warningf("repo [%v] reloaded", c.repo.Repo)
 
 	return true

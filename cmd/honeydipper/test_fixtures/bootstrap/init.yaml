@@ -4,3 +4,4 @@ includes:
   - drivers.yaml
   - honey-queue.yaml
   - rules.yaml
+  - glob/work*.yaml

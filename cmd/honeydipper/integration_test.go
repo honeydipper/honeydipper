@@ -40,8 +40,15 @@ func TestIntegrationStart(t *testing.T) {
 	t.Run("checking services", intTestServices)
 	t.Run("checking processes", intTestProcesses)
 	t.Run("checking API calls", intTestMakingAPICall)
+	t.Run("checking config integrity", intTestConfig)
 	t.Run("checking crashed driver", intTestDriverCrash)
 	t.Run("checking draining drivers", intTestDrain)
+}
+
+func intTestConfig(t *testing.T) {
+	assert.Contains(t, cfg.DataSet.Workflows, "workflow1", "workflow1 should be loaded through glob file loading")
+	assert.Contains(t, cfg.DataSet.Workflows, "workflow2", "workflow2 should be loaded through glob file loading")
+	assert.NotContains(t, cfg.DataSet.Workflows, "not-included", "not-included should NOT be loaded through glob file loading")
 }
 
 func intTestDaemonStartup(t *testing.T) {
@@ -65,7 +72,7 @@ func intTestDaemonStartup(t *testing.T) {
 		ref := strings.Split(string(currentBranch.Name()), "/")
 		workingBranch = ref[len(ref)-1]
 	}
-	cfg := config.Config{
+	cfg = config.Config{
 		Services: []string{"engine", "receiver", "operator", "api"},
 		InitRepo: config.RepoInfo{
 			Repo:   "../..",
