@@ -20,7 +20,7 @@ import (
 var ErrFileError = errors.New("file error")
 
 func (c *Repo) normalizeFilePath(cwd string, file string) string {
-	fullpath := path.Clean(path.Join(c.root, cwd, file))
+	fullpath := path.Clean(path.Join(cwd, file))
 	if !strings.HasPrefix(fullpath, c.root+"/") {
 		panic(fmt.Errorf("%w: invalid path: %s", ErrFileError, fullpath))
 	}
