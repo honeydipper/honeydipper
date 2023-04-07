@@ -9,7 +9,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -129,23 +128,15 @@ func (s *Service) GetName() string {
 	return s.name
 }
 
-// GetStream returns the writer for communication with the specified feature.
-func (s *Service) GetStream(feature string) io.Writer {
-	if runtime := s.getDriverRuntime(feature); runtime != nil {
-		seconds := 0
-		for seconds < 9 && (runtime.State == driver.DriverLoading || runtime.State == driver.DriverReloading) {
-			dipper.Logger.Warningf("[%s] waiting for feature %s to load/reload ...", s.name, feature)
-			time.Sleep(time.Second)
-			seconds++
-		}
-
-		if runtime.State != driver.DriverAlive {
-			panic(fmt.Errorf("%w: feature failed or loading timeout: %s", ErrServiceError, feature))
-		}
-
-		return runtime.Output
+// GetReceiver returns the driver object that receives the rpc messages.
+func (s *Service) GetReceiver(feature string) interface{} {
+	receiver := s.getDriverRuntime(feature)
+	if receiver == nil {
+		panic(fmt.Errorf("%w: feature not loaded: %s", ErrServiceError, feature))
 	}
-	panic(fmt.Errorf("%w: feature not loaded: %s", ErrServiceError, feature))
+	receiver.Ready(DriverReadyTimeout * time.Second)
+
+	return receiver
 }
 
 func (s *Service) loadFeature(feature string) (affected bool, driverName string, rerr error) {
@@ -192,34 +183,29 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		dynamicData = s.dynamicFeatureData[feature]
 	}
 
-	var driverHandler driver.Handler
-	if driverMeta, ok := s.config.GetStagedDriverData(fmt.Sprintf("daemon.drivers.%s", driverName)); ok {
-		driverHandler = driver.NewDriver(driverMeta.(map[string]interface{}))
-	} else {
+	driverMeta, ok := s.config.GetStagedDriverData(fmt.Sprintf("daemon.drivers.%s", driverName))
+	if !ok {
 		panic("unable to get driver metadata")
 	}
 
-	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverHandler.Meta())
-	driverRuntime := driver.Runtime{
-		Feature:     feature,
-		Data:        driverData,
-		DynamicData: dynamicData,
-		State:       driver.DriverLoading,
-		Handler:     driverHandler,
-	}
+	driverRuntime := driver.NewDriver(feature, driverMeta.(map[string]interface{}), driverData, dynamicData)
+	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverRuntime.Handler.Meta())
 
-	if oldRuntime != nil && oldRuntime.State != driver.DriverFailed && reflect.DeepEqual(*oldRuntime.Handler.Meta(), *driverHandler.Meta()) {
+	driverMetaUnchanged := oldRuntime != nil && reflect.DeepEqual(*oldRuntime.Handler.Meta(), *driverRuntime.Handler.Meta())
+	driverRunning := oldRuntime != nil && oldRuntime.State != driver.DriverFailed
+
+	if driverRunning && driverMetaUnchanged {
 		if reflect.DeepEqual(oldRuntime.Data, driverRuntime.Data) && reflect.DeepEqual(oldRuntime.DynamicData, driverRuntime.DynamicData) {
 			dipper.Logger.Infof("[%s] driver not affected: %s", s.name, driverName)
 		} else {
 			// hot reload
 			affected = true
-			s.hotReload(&driverRuntime, oldRuntime)
+			s.hotReload(driverRuntime, oldRuntime)
 		}
 	} else {
 		// cold reload
 		affected = true
-		s.coldReload(&driverRuntime, oldRuntime)
+		s.coldReload(driverRuntime, oldRuntime)
 	}
 
 	return affected, driverName, nil
@@ -239,10 +225,9 @@ func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.R
 	go func(s *Service, runtime *driver.Runtime) {
 		defer dipper.SafeExitOnError("[%s] driver runtime %s crash", s.name, runtime.Handler.Meta().Name)
 		defer s.checkDeleteDriverRuntime(runtime.Feature, runtime)
-		defer close(runtime.Stream)
+		defer runtime.Handler.Close()
 
-		//nolint:errcheck
-		runtime.Run.Wait()
+		runtime.Handler.Wait()
 	}(s, driverRuntime)
 
 	if oldRuntime != nil {
@@ -255,7 +240,7 @@ func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.R
 			defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Handler.Meta().Name)
 			// allow 50 millisecond for the data to drain
 			time.Sleep(DriverGracefulTimeout * time.Millisecond)
-			runtime.Output.Close()
+			runtime.Handler.Close()
 		}(oldRuntime)
 	}
 }
@@ -338,7 +323,7 @@ func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 				defer dipper.SafeExitOnError("[%s] unused runtime %s output is already closed", s.name, runtime.Handler.Meta().Name)
 				// allow 50 millisecond for the data to drain
 				time.Sleep(DriverGracefulTimeout * time.Millisecond)
-				runtime.Output.Close()
+				runtime.Handler.Close()
 			}(runtime)
 		}
 	}
@@ -468,7 +453,7 @@ func (s *Service) serviceLoop() {
 			func() {
 				defer dipper.SafeExitOnError("[%s] service loop continue", s.name)
 				runtime := orderedRuntimes[chosen]
-				msg := value.Interface().(dipper.Message)
+				msg := value.Interface().(*dipper.Message)
 				if runtime.Feature != FeatureEmitter {
 					if emitter, ok := daemon.Emitters[s.name]; ok {
 						emitter.CounterIncr("honey.honeydipper.local.message", []string{
@@ -483,7 +468,7 @@ func (s *Service) serviceLoop() {
 
 				s.driverLock.Lock()
 				defer s.driverLock.Unlock()
-				go s.process(msg, runtime)
+				go s.process(*msg, runtime)
 			}()
 
 		case !ok && chosen < len(orderedRuntimes):
@@ -505,7 +490,7 @@ func (s *Service) serviceLoop() {
 	for fname, runtime := range s.driverRuntimes {
 		func() {
 			defer dipper.SafeExitOnError("[%s] driver runtime for feature %s already closed", s.name, fname)
-			runtime.Output.Close()
+			runtime.Handler.Close()
 		}()
 	}
 	dipper.Logger.Warningf("[%s] service closed for business", s.name)
@@ -636,7 +621,7 @@ func (s *Service) checkDeleteDriverRuntime(feature string, check *driver.Runtime
 func coldReloadDriverRuntime(d *driver.Runtime, m *dipper.Message) {
 	s := Services[d.Service]
 	s.checkDeleteDriverRuntime(d.Feature, d)
-	d.Output.Close()
+	d.Handler.Close()
 	dipper.Must(s.loadFeature(d.Feature))
 }
 
@@ -684,7 +669,7 @@ func handleRPCCall(from *driver.Runtime, m *dipper.Message) {
 	feature := m.Labels["feature"]
 	m.Labels["caller"] = from.Feature
 	s := Services[from.Service]
-	dipper.SendMessage(s.getDriverRuntime(feature).Output, m)
+	s.getDriverRuntime(feature).SendMessage(m)
 }
 
 func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
@@ -693,14 +678,14 @@ func handleRPCReturn(from *driver.Runtime, m *dipper.Message) {
 	if caller == "-" {
 		s.HandleReturn(m)
 	} else {
-		dipper.SendMessage(s.getDriverRuntime(caller).Output, m)
+		s.getDriverRuntime(caller).SendMessage(m)
 	}
 }
 
 func handleAPI(from *driver.Runtime, m *dipper.Message) {
 	s := Services[from.Service]
 	dipper.DeserializePayload(m)
-	resp := s.ResponseFactory.NewResponse(s, s.getDriverRuntime("eventbus").Output, m)
+	resp := s.ResponseFactory.NewResponse(s, s.GetReceiver("eventbus").(dipper.MessageReceiver), m)
 	if resp == nil {
 		dipper.Logger.Debugf("[%s] skipping handling API: %+v", s.name, m.Labels)
 

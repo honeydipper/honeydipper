@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -113,7 +114,8 @@ func TestBuiltinPrepare(t *testing.T) {
 					}
 				}
 			}()
-			c[0].(*BuiltinDriver).Prepare()
+			stream := make(chan *dipper.Message, 1)
+			c[0].(*BuiltinDriver).Prepare(stream)
 		}(tc.([]interface{}))
 	}
 }

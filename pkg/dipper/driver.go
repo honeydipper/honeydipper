@@ -198,9 +198,9 @@ func (d *Driver) GetLogger() *logging.Logger {
 	return Logger
 }
 
-// GetStream getting a output stream for a feature.
-func (d *Driver) GetStream(feature string) io.Writer {
-	return d.Out
+// GetReceiver getting a object that receive objects through SendMessage.
+func (d *Driver) GetReceiver(feature string) interface{} {
+	return d
 }
 
 // GetName returns the name of the driver.

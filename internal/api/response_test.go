@@ -11,7 +11,6 @@ package api
 
 import (
 	"fmt"
-	"io"
 	"testing"
 	"time"
 
@@ -36,20 +35,17 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 	defer ctrl.Finish()
 	mockRPCCaller := mock_dipper.NewMockRPCCaller(ctrl)
 
-	eventbusO, eventbusI := io.Pipe()
-	defer eventbusO.Close()
-	defer eventbusI.Close()
+	stream := make(chan *dipper.Message, 1)
+	mockReceiver := &dipper.NullReceiver{
+		SendMessageFunc: func(msg *dipper.Message) {
+			stream <- msg
+		},
+	}
+
 	waitForMsg := func(delay time.Duration) *dipper.Message {
 		var m *dipper.Message
-		msgAvailable := make(chan byte)
-		go func() {
-			defer recover()
-			defer close(msgAvailable)
-			m = dipper.FetchMessage(eventbusO)
-			m.Size = 0 // ignore Size property, only used for raw msg
-		}()
 		select {
-		case <-msgAvailable:
+		case m = <-stream:
 		case <-time.After(delay):
 		}
 
@@ -67,7 +63,7 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 	factory := NewResponseFactory()
 	factory.DefsByName = c.defsByName
 
-	resp := factory.NewResponse(mockRPCCaller, eventbusI, c.msg)
+	resp := factory.NewResponse(mockRPCCaller, mockReceiver, c.msg)
 	if c.noResponse {
 		assert.Nil(t, resp)
 	} else {

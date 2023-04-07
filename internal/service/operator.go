@@ -40,7 +40,7 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 				newLabels["status"] = "error"
 				newLabels["reason"] = fmt.Sprintf("%+v", r)
 				eventbus := operator.getDriverRuntime(dipper.ChannelEventbus)
-				dipper.SendMessage(eventbus.Output, &dipper.Message{
+				eventbus.SendMessage(&dipper.Message{
 					Channel: dipper.ChannelEventbus,
 					Subject: dipper.EventbusReturn,
 					Labels:  newLabels,

@@ -12,7 +12,6 @@
 package mock_dipper
 
 import (
-	io "io"
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
@@ -55,18 +54,18 @@ func (mr *MockRPCCallerStubMockRecorder) GetName() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetName", reflect.TypeOf((*MockRPCCallerStub)(nil).GetName))
 }
 
-// GetStream mocks base method.
-func (m *MockRPCCallerStub) GetStream(feature string) io.Writer {
+// GetReceiver mocks base method.
+func (m *MockRPCCallerStub) GetReceiver(feature string) interface{} {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetStream", feature)
-	ret0, _ := ret[0].(io.Writer)
+	ret := m.ctrl.Call(m, "GetReceiver", feature)
+	ret0, _ := ret[0].(interface{})
 	return ret0
 }
 
-// GetStream indicates an expected call of GetStream.
-func (mr *MockRPCCallerStubMockRecorder) GetStream(feature interface{}) *gomock.Call {
+// GetReceiver indicates an expected call of GetReceiver.
+func (mr *MockRPCCallerStubMockRecorder) GetReceiver(feature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStream", reflect.TypeOf((*MockRPCCallerStub)(nil).GetStream), feature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReceiver", reflect.TypeOf((*MockRPCCallerStub)(nil).GetReceiver), feature)
 }
 
 // MockRPCCaller is a mock of RPCCaller interface.

@@ -10,9 +10,6 @@
 package dipper
 
 import (
-	"bytes"
-	"fmt"
-	"io"
 	"testing"
 	"time"
 
@@ -25,72 +22,48 @@ func TestRPCCallRaw(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStub := mock_dipper.NewMockRPCCallerStub(ctrl)
-
-	var b bytes.Buffer
+	curr := 0
 	c := RPCCallerBase{}
+	var m *Message
 
+	expect := []MessageReceiver{
+		&NullReceiver{
+			SendMessageFunc: func(msg *Message) {
+				m = msg
+			},
+		},
+	}
+
+	mockStub := mock_dipper.NewMockRPCCallerStub(ctrl)
 	mockStub.EXPECT().GetName().AnyTimes().Return("mockCaller")
-	mockStub.EXPECT().GetStream(gomock.Any()).Return(&b)
+	mockStub.EXPECT().GetReceiver(gomock.AssignableToTypeOf("")).AnyTimes().DoAndReturn(func(x string) MessageReceiver {
+		ret := expect[curr]
+		curr++
+
+		return ret
+	})
 	c.Init(mockStub, "rpc", "call")
 	assert.NotPanicsf(t, func() { c.CallRaw("target", "testmethod", []byte("hello world")) }, "CallRaw should not panic")
 	time.Sleep(time.Second / 10)
-	var channel, subject string
-	var size, numlabels int
-	fmt.Fscanln(&b, &channel, &subject, &numlabels, &size)
-	assert.Equal(t, "rpc", channel, "rpc call sends message through rpc channel")
-	assert.Equal(t, "call", subject, "rpc uses callee and method and prefix for subject")
-	assert.Equal(t, 11, size, "rpc call raw sends the bytes as payload")
-	assert.Equal(t, 4, numlabels, "rpc call use labels to specify feature and method")
-	var lname string
-	var lval []byte
-	var vl int
-	labels := map[string]string{}
-	fmt.Fscanln(&b, &lname, &vl)
-	if vl > 0 {
-		lval = make([]byte, vl)
-		Must(io.ReadFull(&b, lval))
-		labels[lname] = string(lval)
-	} else {
-		labels[lname] = ""
-	}
-	fmt.Fscanln(&b, &lname, &vl)
-	if vl > 0 {
-		lval = make([]byte, vl)
-		Must(io.ReadFull(&b, lval))
-		labels[lname] = string(lval)
-	} else {
-		labels[lname] = ""
-	}
-	fmt.Fscanln(&b, &lname, &vl)
-	if vl > 0 {
-		lval = make([]byte, vl)
-		Must(io.ReadFull(&b, lval))
-		labels[lname] = string(lval)
-	} else {
-		labels[lname] = ""
-	}
-	fmt.Fscanln(&b, &lname, &vl)
-	if vl > 0 {
-		lval = make([]byte, vl)
-		Must(io.ReadFull(&b, lval))
-		labels[lname] = string(lval)
-	} else {
-		labels[lname] = ""
-	}
-	lv, ok := labels["caller"]
+
+	assert.Equal(t, "rpc", m.Channel, "rpc call sends message through rpc channel")
+	assert.Equal(t, "call", m.Subject, "rpc uses callee and method and prefix for subject")
+	assert.Equal(t, 4, len(m.Labels), "rpc call use labels to specify feature and method")
+
+	lv, ok := m.Labels["caller"]
 	assert.True(t, ok, "rpc caller present")
 	assert.Equal(t, "-", lv, "rpc caller should be -")
-	lv, ok = labels["rpcID"]
+	lv, ok = m.Labels["rpcID"]
 	assert.True(t, ok, "rpc rpcID present")
 	assert.Equal(t, "0", lv, "rpcID should be 0")
-	lv, ok = labels["feature"]
+	lv, ok = m.Labels["feature"]
 	assert.True(t, ok, "rpc feature present")
 	assert.Equal(t, "target", lv, "feature should be target")
-	lv, ok = labels["method"]
+	lv, ok = m.Labels["method"]
 	assert.True(t, ok, "rpc method present")
+
 	assert.Equal(t, "testmethod", lv, "method should be testmethod")
-	received, err := io.ReadAll(&b)
-	assert.Nil(t, err, "rpc call payload should be readable")
+	received, ok := m.Payload.([]byte)
+	assert.True(t, ok, "rpc call payload should be byte array")
 	assert.Equal(t, "hello world", string(received), "rpc should be unchanged")
 }

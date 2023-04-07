@@ -31,7 +31,7 @@ type RPCHandler func(string, string, []byte)
 // RPCCallerStub is an interface which every RPC caller should implement.
 type RPCCallerStub interface {
 	GetName() string
-	GetStream(feature string) io.Writer
+	GetReceiver(feature string) interface{}
 }
 
 // RPCCaller defines all method required for making rpc alls.
@@ -118,13 +118,13 @@ func (c *RPCCallerBase) CallRawNoWait(feature string, method string, params []by
 		rpcID = "skip"
 	}
 
-	out := c.Parent.GetStream(feature)
-	if out == nil {
+	receiver := c.Parent.GetReceiver(feature).(MessageReceiver)
+	if receiver == nil {
 		return fmt.Errorf("%w: feature not available: %s", ErrRPCError, feature)
 	}
 
 	// making the call by sending a message
-	SendMessage(out, &Message{
+	receiver.SendMessage(&Message{
 		Channel: c.Channel,
 		Subject: c.Subject,
 		Labels: map[string]string{

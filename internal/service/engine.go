@@ -40,7 +40,7 @@ type WorkflowHelper struct {
 // SendMessage method sends workflow messages to eventbus channle.
 func (h *WorkflowHelper) SendMessage(msg *dipper.Message) {
 	worker := h.engine.getDriverRuntime(dipper.ChannelEventbus)
-	dipper.SendMessage(worker.Output, msg)
+	worker.SendMessage(msg)
 }
 
 // GetConfig method feed config from service to workflow engine.
