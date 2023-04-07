@@ -1,3 +1,16 @@
+# [2.13.0](https://github.com/honeydipper/honeydipper/compare/v2.12.1...v2.13.0) (2023-04-07)
+
+
+### Bug Fixes
+
+* **deps:** update google.golang.org/genproto digest to c38d8f0 ([#530](https://github.com/honeydipper/honeydipper/issues/530)) ([cd0f603](https://github.com/honeydipper/honeydipper/commit/cd0f603b7ef475b178612fdbb8df5ca5c104e02b))
+* file reference path correction ([#532](https://github.com/honeydipper/honeydipper/issues/532)) ([f462751](https://github.com/honeydipper/honeydipper/commit/f4627512cea0567d50e90995e637f74d435727c2))
+
+
+### Features
+
+* loading files matching glob ([#529](https://github.com/honeydipper/honeydipper/issues/529)) ([a7308d8](https://github.com/honeydipper/honeydipper/commit/a7308d8ecaf755707fc9a48cb36ac2f6721eccb2))
+
 ## [2.12.1](https://github.com/honeydipper/honeydipper/compare/v2.12.0...v2.12.1) (2023-03-03)
 
 
