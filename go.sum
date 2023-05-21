@@ -50,6 +50,8 @@ cloud.google.com/go/kms v1.8.0 h1:VrJLOsMRzW7IqTTYn+OYupqF3iKSE060Nrn+PECrYjg=
 cloud.google.com/go/kms v1.8.0/go.mod h1:4xFEhYFqvW+4VMELtZyxomGSYtSQKzM178ylFW4jMAg=
 cloud.google.com/go/kms v1.10.0 h1:Imrtp8792uqNP9bdfPrjtUkjjqOMBcAJ2bdFaAnLhnk=
 cloud.google.com/go/kms v1.10.0/go.mod h1:ng3KTUtQQU9bPX3+QGLsflZIHlkbn8amFAMY63m8d24=
+cloud.google.com/go/kms v1.10.1 h1:7hm1bRqGCA1GBRQUrp831TwJ9TWhP+tvLuP497CQS2g=
+cloud.google.com/go/kms v1.10.1/go.mod h1:rIWk/TryCkR59GMC3YtHtXeLzd634lBbKenvyySAyYI=
 cloud.google.com/go/longrunning v0.4.0 h1:v+X4EwhHl6xE+TG1XgXj4T1XpKKs7ZevcAJ3FOu0YmY=
 cloud.google.com/go/longrunning v0.4.0/go.mod h1:eF3Qsw58iX/bkKtVjMTYpH0LRjQ2goDkjkNQTlzq/ZM=
 cloud.google.com/go/longrunning v0.4.1 h1:v+yFJOfKC3yZdY6ZUI933pIYdhyhV8S3NpWrXWmg7jM=
@@ -70,6 +72,8 @@ cloud.google.com/go/spanner v1.42.0 h1:W6RIkN4X0htp+GRNWK1rhXYYcjb5znZDuyIO2CWko
 cloud.google.com/go/spanner v1.42.0/go.mod h1:KEfcH3c7wMqO6bTZqY1/BDS5DZfC1k3U0QZTlnlvW/0=
 cloud.google.com/go/spanner v1.44.0 h1:fba7k2apz4aI0BE59/kbeaJ78dPOXSz2PSuBIfe7SBM=
 cloud.google.com/go/spanner v1.44.0/go.mod h1:G8XIgYdOK+Fbcpbs7p2fiprDw4CaZX63whnSMLVBxjk=
+cloud.google.com/go/spanner v1.45.0 h1:7VdjZ8zj4sHbDw55atp5dfY6kn1j9sam9DRNpPQhqR4=
+cloud.google.com/go/spanner v1.45.0/go.mod h1:FIws5LowYz8YAE1J8fOS7DJup8ff7xJeetWEo5REA2M=
 cloud.google.com/go/storage v1.0.0/go.mod h1:IhtSnM/ZTZV8YYJWCY8RULGVqBDmpoyjwiyrjsg+URw=
 cloud.google.com/go/storage v1.5.0/go.mod h1:tpKbwo567HUNpVclU5sGELwQWBDZ8gh0ZeosJ0Rtdos=
 cloud.google.com/go/storage v1.6.0/go.mod h1:N7U0C8pVQ/+NIKOBQyamJIeKQKkZ+mxpohlUTyfDhBk=
@@ -860,6 +864,8 @@ google.golang.org/genproto v0.0.0-20230303212802-e74f57abe488 h1:QQF+HdiI4iocoxU
 google.golang.org/genproto v0.0.0-20230303212802-e74f57abe488/go.mod h1:TvhZT5f700eVlTNwND1xoEZQeWTB2RY/65kplwl/bFA=
 google.golang.org/genproto v0.0.0-20230403163135-c38d8f061ccd h1:sLpv7bNL1AsX3fdnWh9WVh7ejIzXdOc1RRHGeAmeStU=
 google.golang.org/genproto v0.0.0-20230403163135-c38d8f061ccd/go.mod h1:UUQDJDOlWu4KYeJZffbWgBkS1YFobzKbLVfK69pe0Ak=
+google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 h1:KpwkzHKEF7B9Zxg18WzOa7djJ+Ha5DzthMyZYQfEn2A=
+google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1/go.mod h1:nKE/iIaLqn2bQwXBg8f1g2Ylh6r5MN5CmZvuzZCgsCU=
 google.golang.org/grpc v1.19.0/go.mod h1:mqu4LbDTu4XGKhr4mRzUsmM4RtVoemTSY81AxZiDr8c=
 google.golang.org/grpc v1.20.1/go.mod h1:10oTOabMzJvdu6/UiuZezV6QK5dSlG84ov/aaiqXj38=
 google.golang.org/grpc v1.21.1/go.mod h1:oYelfM1adQP15Ek0mdvEgi9Df8B9CZIaU1084ijfRaM=

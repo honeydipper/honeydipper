@@ -5,7 +5,7 @@ go 1.18
 require (
 	cloud.google.com/go v0.110.0 // indirect
 	cloud.google.com/go/pubsub v1.30.0
-	cloud.google.com/go/spanner v1.44.0
+	cloud.google.com/go/spanner v1.45.0
 	cloud.google.com/go/storage v1.28.1
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1 // indirect
@@ -39,7 +39,7 @@ require (
 	golang.org/x/term v0.6.0
 	golang.org/x/text v0.8.0 // indirect
 	google.golang.org/api v0.114.0
-	google.golang.org/genproto v0.0.0-20230403163135-c38d8f061ccd
+	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
 	gopkg.in/h2non/gock.v1 v1.0.15
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	k8s.io/api v0.24.2
@@ -49,7 +49,7 @@ require (
 )
 
 require (
-	cloud.google.com/go/kms v1.10.0
+	cloud.google.com/go/kms v1.10.1
 	cloud.google.com/go/secretmanager v1.10.0
 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
 	github.com/Microsoft/go-winio v0.5.1 // indirect
