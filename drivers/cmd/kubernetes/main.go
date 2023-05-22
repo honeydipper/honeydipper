@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -26,7 +26,6 @@ import (
 	"github.com/op/go-logging"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,6 +78,8 @@ func main() {
 	driver.Commands["waitForJob"] = waitForJob
 	driver.Commands["getJobLog"] = getJobLog
 	driver.Commands["deleteJob"] = deleteJob
+	driver.Commands["createPVC"] = createPVC
+	driver.Commands["deletePVC"] = deletePVC
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
@@ -370,10 +371,10 @@ func constructJob(m *dipper.Message, namespace string, client *kubernetes.Client
 
 		switch {
 		case errors.IsNotFound(err):
-			v1beta1client := client.BatchV1beta1().CronJobs(cronJobNamespace)
+			v1beta1client := client.BatchV1().CronJobs(cronJobNamespace)
 			ctx2, cancel2 := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
 			defer cancel2()
-			cronJobv1beta1 := dipper.Must(v1beta1client.Get(ctx2, cronJobName, metav1.GetOptions{})).(*batchv1beta1.CronJob)
+			cronJobv1beta1 := dipper.Must(v1beta1client.Get(ctx2, cronJobName, metav1.GetOptions{})).(*batchv1.CronJob)
 
 			job.Spec = cronJobv1beta1.Spec.JobTemplate.Spec
 		case err != nil:
