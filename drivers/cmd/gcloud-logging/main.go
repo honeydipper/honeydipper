@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/logging"
@@ -44,30 +45,39 @@ func main() {
 func sendLog(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	severity, _ := dipper.GetMapDataStr(m.Payload, "severity")
-	logger := getGCPLogger()
+	loggerPath := dipper.MustGetMapDataStr(m.Payload, "logger")
+	logger := getGCPLogger(loggerPath)
 	logger.Log(logging.Entry{Severity: logging.ParseSeverity(severity), Payload: dipper.MustGetMapData(m.Payload, "payload")})
 	m.Reply <- dipper.Message{}
 }
 
-func getGCPLogger() *logging.Logger {
-	l, ok := driver.GetOption("_runtime.logger")
+func getGCPLogger(loggerPath string) *logging.Logger {
+	l, ok := driver.GetOption("_runtime.loggers." + loggerPath)
 	if !ok {
-		ln, _ := driver.GetOptionStr("logger_name")
-		if ln == "" {
-			ln = "honeydipper"
-		}
-		parent, _ := driver.GetOptionStr("parent")
-		if parent == "" {
+		var loggerName, parent string
+		//nolint:gomnd
+		parts := strings.SplitN(loggerPath, "|", 2)
+		//nolint:gomnd
+		if len(parts) < 2 {
+			loggerName = strings.TrimSpace(parts[0])
 			parent, _ = metadata.ProjectID()
+		} else {
+			parent, loggerName = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 		}
+
 		options := []option.ClientOption{}
-		serviceAccount, _ := driver.GetOptionStr("service_account")
+		serviceAccount, _ := driver.GetOptionStr("loggers." + loggerPath + ".service_account")
 		if serviceAccount != "" {
 			options = append(options, option.WithCredentialsJSON([]byte(serviceAccount)))
 		}
 		client := dipper.Must(logging.NewClient(context.Background(), parent, options...)).(*logging.Client)
-		l := dipper.Must(client.Logger(ln))
-		driver.Options.(map[string]interface{})["_runtime"] = map[string]interface{}{"logger": l}
+		l = client.Logger(loggerName)
+
+		delta := map[string]interface{}{"_runtime": map[string]interface{}{"loggers": map[string]interface{}{loggerPath: l}}}
+		if driver.Options == nil {
+			driver.Options = map[string]interface{}{}
+		}
+		driver.Options = dipper.CombineMap(driver.Options.(map[string]interface{}), delta)
 	}
 
 	return l.(*logging.Logger)
