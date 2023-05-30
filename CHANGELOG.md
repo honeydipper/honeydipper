@@ -1,3 +1,18 @@
+# [2.14.0](https://github.com/honeydipper/honeydipper/compare/v2.13.0...v2.14.0) (2023-05-30)
+
+
+### Bug Fixes
+
+* allow config multiple loggerName and projects in gcloud-logging ([#540](https://github.com/honeydipper/honeydipper/issues/540)) ([d06391f](https://github.com/honeydipper/honeydipper/commit/d06391fdbd7a1dfc69f0d0f057b0547b3c68b814))
+* **deps:** update google.golang.org/genproto digest to daa745c ([#534](https://github.com/honeydipper/honeydipper/issues/534)) ([86de3d6](https://github.com/honeydipper/honeydipper/commit/86de3d6bb170db76d2d003a781f52be2e61c2192))
+* **deps:** update module github.com/gin-gonic/gin to v1.9.0 [security] ([#537](https://github.com/honeydipper/honeydipper/issues/537)) ([dfd9478](https://github.com/honeydipper/honeydipper/commit/dfd947895fdf6b617bddf17805b3e2ea67d0ea4b))
+
+
+### Features
+
+* add gcloud-logging driver ([#538](https://github.com/honeydipper/honeydipper/issues/538)) ([6b173f6](https://github.com/honeydipper/honeydipper/commit/6b173f6605bcb22dbf12ad8a896db015001911a3))
+* kubernetes pvc support ([#539](https://github.com/honeydipper/honeydipper/issues/539)) ([fd092f7](https://github.com/honeydipper/honeydipper/commit/fd092f7dc10ff56603ddaa29923d0387be2904fb))
+
 # [2.13.0](https://github.com/honeydipper/honeydipper/compare/v2.12.1...v2.13.0) (2023-04-07)
 
 
