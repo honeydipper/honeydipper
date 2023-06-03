@@ -23,7 +23,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/googleapis/gax-go/v2 v2.8.0
 	github.com/huandu/xstrings v1.4.0 // indirect
-	github.com/imdario/mergo v0.3.13
+	github.com/imdario/mergo v0.3.16
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/logrusorgru/aurora/v3 v3.0.0
 	github.com/mattn/go-runewidth v0.0.13 // indirect
