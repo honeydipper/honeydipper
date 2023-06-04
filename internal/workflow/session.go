@@ -210,6 +210,16 @@ func (w *Session) initCTX(msg *dipper.Message) {
 		w.injectNamedCTX(name, msg, false)
 	}
 
+	w.injectCTXs(msg)
+
+	if w.isHook {
+		// avoid hook in hook
+		delete(w.ctx, "hooks")
+	}
+}
+
+// injectCTXs loads the contexts specified through context or contexts fields.
+func (w *Session) injectCTXs(msg *dipper.Message) {
 	envdata := w.buildEnvData(msg)
 	w.workflow.Context = dipper.InterpolateStr(w.workflow.Context, envdata)
 	w.workflow.Contexts = dipper.Interpolate(w.workflow.Contexts, envdata)
@@ -247,11 +257,6 @@ func (w *Session) initCTX(msg *dipper.Message) {
 				w.loadedContexts = append(w.loadedContexts, name)
 			}
 		}
-	}
-
-	if w.isHook {
-		// avoid hook in hook
-		delete(w.ctx, "hooks")
 	}
 }
 
