@@ -296,7 +296,23 @@ Every workflow receives contextual data from a few sources:
 
 Since the data are received in that particular order listed above, the later source can override data from previous sources. Child workflow context data is independent from parent workflow, anything defined in `with` or inherited will only be in effect during the life cycle of current workflow, except the exported data. Once a field is exported, it will be available to all outer workflows. You can override this by specifying the list of fields that you don't want to export.
 
-Pay attention to the example `retry_func_count_with_exp_backoff` in the previous section. In order to not contaminate parent context with temporary fields, we use `no_export` to block the exporting of certain fields.
+Pay attention to the example `retry_func_count_with_exp_backoff` in the previous section. In order to not contaminate parent context with temporary fields, we use `no_export` to block the exporting of certain fields. For example
+
+The `with` field in the workflow can be a map or a list of maps. If it is a map, each key defines a variable. If it is a list of maps, each map is a layer. The layers are processed in the order they appear. The variables defined in previous layer can be used to define values in later layers.
+```yaml
+---
+call_workflow: something
+with:
+  - var1: initial value
+    var2: val2
+    foo:
+      - bar
+  - var3: '{{ .ctx.var2 }}, {{ .ctx.var1 }}'
+    foo+:
+      - another bar
+```
+
+The final value for `var3` will be `initial value, val2`, and the final value of list `foo` will contain both `bar` and `another bar`.
 
 ### Interpolation
 We can use interpolation in workflows to make the workflow flexible and versatile. You can use interpolation in most of the fields of a workflow. Besides contextual data, other data available for interpolation includes:
@@ -367,6 +383,8 @@ Usage:
  * `var-`: only use the new value if the `var` is not already defined and not nil
  * `var+`: if the `var` is a list or string, the new value will be appended to the existing values
  * `var*`: forcefully override the value
+
+Note that, the merging modifier works in layers too. See previous example for details.
 
 ## Essential Workflows
 
