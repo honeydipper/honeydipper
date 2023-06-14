@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -76,6 +76,11 @@ func prepareRequest(m *dipper.Message) *http.Request {
 		for k, v := range headerData.(map[string]interface{}) {
 			header.Set(k, v.(string))
 		}
+	}
+
+	if tokenSource, ok := dipper.GetMapDataStr(m.Payload, "tokenSource"); ok && len(tokenSource) > 0 {
+		token := getToken(tokenSource)
+		header.Set("Authorization", "Bearer "+token)
 	}
 
 	method, ok := dipper.GetMapDataStr(m.Payload, "method")
