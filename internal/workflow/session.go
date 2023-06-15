@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -270,10 +270,16 @@ func (w *Session) injectEventCTX(ctx map[string]interface{}) {
 // injectLocalCTX injects the workflow local context data.
 func (w *Session) injectLocalCTX(msg *dipper.Message) {
 	if w.workflow.Local != nil && w.workflow.CallDriver == "" {
+		layers, ok := w.workflow.Local.([]interface{})
+		if !ok {
+			layers = []interface{}{w.workflow.Local}
+		}
 		envData := w.buildEnvData(msg)
-		locals := dipper.Interpolate(w.workflow.Local, envData)
-
-		w.ctx = dipper.MergeMap(w.ctx, locals)
+		for _, l := range layers {
+			locals := dipper.Interpolate(l, envData)
+			envData["ctx"] = dipper.MergeMap(envData["ctx"].(map[string]interface{}), locals)
+		}
+		w.ctx = envData["ctx"].(map[string]interface{})
 	}
 }
 
