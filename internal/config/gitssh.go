@@ -9,10 +9,10 @@ package config
 import (
 	"os"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	crypto_ssh "golang.org/x/crypto/ssh"
-	"gopkg.in/src-d/go-git.v4/plumbing/transport"
-	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
 
 var currentSSHAuth = map[string]transport.AuthMethod{}
