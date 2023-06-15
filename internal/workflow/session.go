@@ -16,6 +16,7 @@ import (
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"golang.org/x/exp/slices"
 )
 
 // ErrWorkflowError is the base error for all workflow related errors.
@@ -153,7 +154,7 @@ func (w *Session) injectMsg(msg *dipper.Message) {
 }
 
 // injectNamedCTX inject a named context into the workflow.
-func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
+func (w *Session) injectNamedCTX(name string, msg *dipper.Message, firstTime bool) {
 	contexts := w.store.Helper.GetConfig().DataSet.Contexts
 
 	namedCTXs, ok := contexts[name]
@@ -167,7 +168,7 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 
 	envData := w.buildEnvData(msg)
 	ctx, ok := namedCTXs.(map[string]interface{})["*"]
-	if ok {
+	if firstTime && ok {
 		ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
 		ctx = dipper.Interpolate(ctx, envData)
 		w.ctx = dipper.MergeMap(w.ctx, ctx)
@@ -197,18 +198,28 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message) {
 
 // initCTX initialize the contextual data used in this workflow.
 func (w *Session) initCTX(msg *dipper.Message) {
-	w.injectNamedCTX(SessionContextDefault, msg)
+	w.injectNamedCTX(SessionContextDefault, msg, w.parent == "")
 	if w.parent == "" {
-		w.injectNamedCTX(SessionContextEvents, msg)
+		w.injectNamedCTX(SessionContextEvents, msg, true)
 	}
 
 	for _, name := range w.loadedContexts {
 		if name == SessionContextHooks {
 			w.isHook = true
 		}
-		w.injectNamedCTX(name, msg)
+		w.injectNamedCTX(name, msg, false)
 	}
 
+	w.injectCTXs(msg)
+
+	if w.isHook {
+		// avoid hook in hook
+		delete(w.ctx, "hooks")
+	}
+}
+
+// injectCTXs loads the contexts specified through context or contexts fields.
+func (w *Session) injectCTXs(msg *dipper.Message) {
 	envdata := w.buildEnvData(msg)
 	w.workflow.Context = dipper.InterpolateStr(w.workflow.Context, envdata)
 	w.workflow.Contexts = dipper.Interpolate(w.workflow.Contexts, envdata)
@@ -217,8 +228,11 @@ func (w *Session) initCTX(msg *dipper.Message) {
 		if w.workflow.Context == SessionContextHooks {
 			w.isHook = true
 		}
-		w.injectNamedCTX(w.workflow.Context, msg)
-		w.loadedContexts = append(w.loadedContexts, w.workflow.Context)
+
+		if !slices.Contains(w.loadedContexts, w.workflow.Context) {
+			w.injectNamedCTX(w.workflow.Context, msg, true)
+			w.loadedContexts = append(w.loadedContexts, w.workflow.Context)
+		}
 	}
 
 	if w.workflow.Contexts != nil {
@@ -230,21 +244,19 @@ func (w *Session) initCTX(msg *dipper.Message) {
 			if !ok {
 				panic(fmt.Errorf("%w: expected list of strings in contexts in workflow: %s", ErrWorkflowError, w.workflow.Name))
 			}
-			if name != "" {
-				// at this stage the hooks flag is added only through `context` not `contexts`
-				// this part of the code is unreachable
-				// if name == SessionContextHooks {
-				//	 w.isHook = true
-				// }
-				w.injectNamedCTX(name, msg)
+			if name == "" {
+				continue
+			}
+			// at this stage the hooks flag is added only through `context` not `contexts`
+			// this part of the code is unreachable
+			// if name == SessionContextHooks {
+			//	 w.isHook = true
+			// }
+			if !slices.Contains(w.loadedContexts, name) {
+				w.injectNamedCTX(name, msg, true)
 				w.loadedContexts = append(w.loadedContexts, name)
 			}
 		}
-	}
-
-	if w.isHook {
-		// avoid hook in hook
-		delete(w.ctx, "hooks")
 	}
 }
 
@@ -399,7 +411,7 @@ func (w *Session) inheritParentData(parent *Session) {
 
 	w.event = parent.event
 	w.ctx = dipper.MustDeepCopyMap(parent.ctx)
-	w.loadedContexts = append([]string{}, parent.loadedContexts...)
+	w.loadedContexts = parent.loadedContexts
 
 	delete(w.ctx, "hooks") // hooks don't get inherited
 }
