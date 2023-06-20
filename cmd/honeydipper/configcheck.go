@@ -145,11 +145,12 @@ func checkAuthRules(cfg *config.Config) int {
 		Models   []interface{}
 		Policies []interface{}
 		Tests    []struct {
-			Name    string
-			Subject string
-			Object  string
-			Action  string
-			Result  bool
+			Name     string
+			Subject  string
+			Object   string
+			Action   string
+			Provider string
+			Result   bool
 		}
 	}
 	var tests AuthTests
@@ -200,7 +201,7 @@ func checkAuthRules(cfg *config.Config) int {
 	failedTests := []int{}
 	processed := 0
 	for i, test := range tests.Tests {
-		ok, err := l.Enforce(test.Subject, test.Object, test.Action)
+		ok, err := l.Enforce(test.Subject, test.Object, test.Action, test.Provider)
 		if err != nil {
 			e = err
 			processed = i
@@ -218,11 +219,12 @@ func checkAuthRules(cfg *config.Config) int {
 		for _, num := range failedTests {
 			test := tests.Tests[num]
 			fmt.Printf(
-				"%s: Sub: %s, Obj: %s, Act: %s, Expected: %t, Found: %t\n",
+				"%s: Sub: %s, Obj: %s, Act: %s, Provider: %s, Expected: %t, Found: %t\n",
 				aurora.Yellow(test.Name),
 				test.Subject,
 				test.Object,
 				test.Action,
+				test.Provider,
 				aurora.BrightYellow(test.Result),
 				aurora.Red(!test.Result),
 			)
@@ -230,11 +232,12 @@ func checkAuthRules(cfg *config.Config) int {
 		if e != nil {
 			test := tests.Tests[processed]
 			fmt.Printf(
-				"%s: Sub: %s, Obj: %s, Act: %s, Expected: %t, Error: %+v\n",
+				"%s: Sub: %s, Obj: %s, Act: %s, Provider: %s, Expected: %t, Error: %+v\n",
 				aurora.Yellow(test.Name),
 				test.Subject,
 				test.Object,
 				test.Action,
+				test.Provider,
 				test.Result,
 				aurora.Red(e),
 			)
