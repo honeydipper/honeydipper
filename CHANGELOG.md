@@ -1,3 +1,21 @@
+# [2.15.0](https://github.com/honeydipper/honeydipper/compare/v2.14.0...v2.15.0) (2023-06-20)
+
+
+### Bug Fixes
+
+* bypass go-git unstaged change with reset ([#549](https://github.com/honeydipper/honeydipper/issues/549)) ([9f3a1ad](https://github.com/honeydipper/honeydipper/commit/9f3a1ad65c0e6963246e08102877ecb8a63ea12b))
+* **deps:** update google.golang.org/genproto digest to e85fd2c ([#544](https://github.com/honeydipper/honeydipper/issues/544)) ([e20add8](https://github.com/honeydipper/honeydipper/commit/e20add89f4e8256ef62f80995fc8db4cb97e62d9))
+* **deps:** update module github.com/gin-gonic/gin to v1.9.1 [security] ([#543](https://github.com/honeydipper/honeydipper/issues/543)) ([7d7dfe1](https://github.com/honeydipper/honeydipper/commit/7d7dfe13fe3e8edf36edfe58d6d5a4649c1ef9f6))
+* **deps:** update module github.com/imdario/mergo to v0.3.16 ([#545](https://github.com/honeydipper/honeydipper/issues/545)) ([3c41e5b](https://github.com/honeydipper/honeydipper/commit/3c41e5be5d8d1d4c61b1644830bd13409b01727e))
+* load each context only once ([#546](https://github.com/honeydipper/honeydipper/issues/546)) ([1060096](https://github.com/honeydipper/honeydipper/commit/1060096bdc77a19226d22cffc7ce62d7d95bc6a1))
+
+
+### Features
+
+* support layered local variable definitions ([#547](https://github.com/honeydipper/honeydipper/issues/547)) ([2df21fc](https://github.com/honeydipper/honeydipper/commit/2df21fcff1f9b251d6d02e6c7817fde9c861c308))
+* truncate the labels before displaying in logs ([#550](https://github.com/honeydipper/honeydipper/issues/550)) ([478fc7c](https://github.com/honeydipper/honeydipper/commit/478fc7c4e7e723080b12537ebe16140120a9e607))
+* web driver use token sources for authorization ([#548](https://github.com/honeydipper/honeydipper/issues/548)) ([545b736](https://github.com/honeydipper/honeydipper/commit/545b7363eb6bf2155326f97d6e08785873c93c3d))
+
 # [2.14.0](https://github.com/honeydipper/honeydipper/compare/v2.13.0...v2.14.0) (2023-05-30)
 
 
