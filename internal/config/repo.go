@@ -16,10 +16,9 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/go-errors/errors"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"gopkg.in/src-d/go-git.v4"
-	gitCfg "gopkg.in/src-d/go-git.v4/config"
-	"gopkg.in/src-d/go-git.v4/plumbing"
 )
 
 // Error represents a configuration error.
@@ -136,29 +135,22 @@ func (c *Repo) cloneFetchRepo() {
 		dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
 	}
 
-	opts := &git.CloneOptions{URL: c.repo.Repo}
+	branch := "master"
+	if c.repo.Branch != "" {
+		branch = c.repo.Branch
+	}
+	opts := &git.CloneOptions{
+		ReferenceName: plumbing.NewBranchReferenceName(branch),
+		URL:           c.repo.Repo,
+	}
 	if strings.HasPrefix(c.repo.Repo, "git@") {
 		if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
 			opts.Auth = auth
 		}
 	}
-	repoObj := dipper.Must(git.PlainClone(c.root, false, opts)).(*git.Repository)
 
 	dipper.Logger.Infof("fetching repo [%v]", c.repo.Repo)
-	branch := "master"
-	if c.repo.Branch != "" {
-		branch = c.repo.Branch
-	}
-	dipper.Must(repoObj.Fetch(&git.FetchOptions{
-		RefSpecs: []gitCfg.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
-		Auth:     opts.Auth,
-	}))
-
-	dipper.Logger.Infof("using branch [%v] in repo [%v]", branch, c.repo.Repo)
-	tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
-	dipper.Must(tree.Checkout(&git.CheckoutOptions{
-		Branch: plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", branch)),
-	}))
+	_ = dipper.Must(git.PlainClone(c.root, false, opts))
 }
 
 func (c *Repo) loadRepo() {
@@ -197,14 +189,17 @@ func (c *Repo) refreshRepo() bool {
 		repoObj := dipper.Must(git.PlainOpen(c.root)).(*git.Repository)
 		tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
 		opts := &git.PullOptions{
-			RemoteName: "origin",
+			RemoteName:   "origin",
+			RemoteURL:    c.repo.Repo,
+			Force:        true,
+			SingleBranch: true,
 		}
 
 		switch c.repo.Branch {
 		case "":
-			opts.ReferenceName = plumbing.ReferenceName("refs/heads/master")
+			opts.ReferenceName = plumbing.Master
 		default:
-			opts.ReferenceName = plumbing.ReferenceName(fmt.Sprintf("refs/heads/%s", c.repo.Branch))
+			opts.ReferenceName = plumbing.NewBranchReferenceName(c.repo.Branch)
 		}
 
 		if strings.HasPrefix(c.repo.Repo, "git@") {
@@ -214,10 +209,14 @@ func (c *Repo) refreshRepo() bool {
 		}
 
 		err := tree.Pull(opts)
-		if errors.Is(err, git.NoErrAlreadyUpToDate) {
+		switch {
+		case errors.Is(err, git.NoErrAlreadyUpToDate):
 			dipper.Logger.Infof("no changes skip repo [%s]", c.repo.Repo)
 
 			return false
+		case errors.Is(err, git.ErrUnstagedChanges):
+			dipper.Logger.Warningf("unstaged changes in repo [%s]", c.repo.Repo)
+			err = tree.Reset(&git.ResetOptions{Mode: git.HardReset})
 		}
 		dipper.Must(err)
 	}

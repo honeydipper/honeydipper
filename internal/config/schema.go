@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -62,7 +62,7 @@ type Workflow struct {
 	Meta        interface{}
 	Context     string
 	Contexts    interface{}
-	Local       map[string]interface{} `json:"with" mapstructure:"with"`
+	Local       interface{} `json:"with" mapstructure:"with"`
 
 	Match       interface{} `json:"if_match" mapstructure:"if_match"`
 	UnlessMatch interface{} `json:"unless_match" mapstructure:"unelss_match"`
