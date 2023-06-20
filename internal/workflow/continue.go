@@ -1,4 +1,4 @@
-// Copyright 2022 PayPal Inc.
+// Copyright 2023 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -223,7 +223,7 @@ func (w *Session) complete(msg *dipper.Message) {
 		msg.Labels["performing"] = w.performing
 	}
 
-	dipper.Logger.Infof("[workflow] session [%s] completing with msg labels %+v", w.ID, msg.Labels)
+	dipper.Logger.Infof("[workflow] session [%s] completing with msg labels %+v", w.ID, dipper.SanitizedLabels(msg.Labels))
 	if w.ID != "" && dipper.IDMapGet(&w.store.sessions, w.ID) != nil {
 		if w.currentHook == "" {
 			w.processExport(msg)
