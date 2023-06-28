@@ -6,20 +6,20 @@ config:
       models:
         - |-
           [request_definition]
-          r = sub, obj, act
+          r = sub, obj, act, provider
 
           [policy_definition]
-          p = sub, obj, act
+          p = sub, obj, act, provider
 
           [policy_effect]
           e = some(where (p.eft == allow))
 
           [matchers]
-          m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
+          m = r.sub == p.sub && r.obj == p.obj && r.act == p.act && r.provider == p.provider
 
       policies:
         - |-
-          p, test, event, GET
+          p, test, event, GET, auth-simple
 
 # mock uuids
 uuids:
@@ -27,6 +27,7 @@ uuids:
 
 # mock incoming call
 subject: test
+provider: auth-simple
 content-type: application/json
 payload: {}
 

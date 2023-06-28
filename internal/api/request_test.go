@@ -27,6 +27,7 @@ import (
 
 type RequestTestCase struct {
 	Subject         string
+	Provider        string
 	ContentType     string `json:"content-type" mapstructure:"content-type"`
 	Path            string
 	Payload         map[string]interface{}
@@ -61,6 +62,7 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 
 	mockReqCtx := mock_api.NewMockRequestContext(ctrl)
 	mockReqCtx.EXPECT().Get(gomock.Eq("subject")).Times(1).Return(c.Subject, c.Subject != "")
+	mockReqCtx.EXPECT().Get(gomock.Eq("provider")).Times(1).Return(c.Provider, c.Provider != "")
 	if c.ShouldAuthorize {
 		mockReqCtx.EXPECT().GetPath().Times(1).Return(c.Path)
 		mockReqCtx.EXPECT().GetPayload(gomock.Eq(c.Def.Method)).Times(1).Return(c.Payload)
