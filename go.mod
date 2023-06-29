@@ -8,7 +8,7 @@ require (
 	cloud.google.com/go/spanner v1.45.0
 	cloud.google.com/go/storage v1.29.0
 	github.com/DataDog/datadog-go v4.8.3+incompatible
-	github.com/Masterminds/goutils v1.1.1 // indirect
+	github.com/Masterminds/goutils v1.1.1
 	github.com/casbin/casbin/v2 v2.41.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/gin-gonic/gin v1.9.1
