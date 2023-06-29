@@ -1,3 +1,21 @@
+# [3.0.0](https://github.com/honeydipper/honeydipper/compare/v2.15.0...v3.0.0) (2023-06-29)
+
+
+### Features
+
+* support gcp iap authentication for api calls ([#552](https://github.com/honeydipper/honeydipper/issues/552)) ([77324d7](https://github.com/honeydipper/honeydipper/commit/77324d73be704253c3cc1e8560c47e6a6035e5a1))
+
+
+### BREAKING CHANGES
+
+* casbin policy requires adjustment
+
+The casbin policy needs to change the request to support an additional provider field in requests.
+
+* test: add provider in api tests
+
+* test: add api auth provider to integration test
+
 # [2.15.0](https://github.com/honeydipper/honeydipper/compare/v2.14.0...v2.15.0) (2023-06-20)
 
 
