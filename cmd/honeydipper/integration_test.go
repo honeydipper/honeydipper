@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-git/go-git/v5"
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
 	"github.com/honeydipper/honeydipper/internal/service"
@@ -59,24 +58,11 @@ func intTestDaemonStartup(t *testing.T) {
 		}
 		dipper.GetLogger("test", "INFO", logFile, logFile)
 	}
-	workingBranch, ok := os.LookupEnv("CIRCLE_BRANCH")
-	if !ok {
-		repo, err := git.PlainOpen("../..")
-		if err != nil {
-			panic(err)
-		}
-		currentBranch, err := repo.Head()
-		if err != nil {
-			panic(err)
-		}
-		ref := strings.Split(string(currentBranch.Name()), "/")
-		workingBranch = ref[len(ref)-1]
-	}
 	cfg = config.Config{
 		Services: []string{"engine", "receiver", "operator", "api"},
 		InitRepo: config.RepoInfo{
 			Repo:   "../..",
-			Branch: workingBranch,
+			Branch: "",
 			Path:   "/cmd/honeydipper/test_fixtures/bootstrap",
 		},
 	}

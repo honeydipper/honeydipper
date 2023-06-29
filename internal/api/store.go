@@ -211,6 +211,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 				allErrors[p.(string)] = err.Error()
 			} else {
 				c.Set("subject", dipper.DeserializeContent(subject))
+				c.Set("provider", provider)
 				c.Next()
 
 				return
@@ -226,9 +227,10 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 	if !ok {
 		return false
 	}
+	provider, _ := c.Get("provider")
 
-	dipper.Logger.Warningf("'%s' , '%s', '%s'", subject, def.Object, def.Method)
-	if res, err := l.enforcer.Enforce(subject.(string), def.Object, def.Method); res && err == nil {
+	dipper.Logger.Warningf("'%s' , '%s', '%s', '%s'", subject, def.Object, def.Method, provider)
+	if res, err := l.enforcer.Enforce(subject.(string), def.Object, def.Method, provider.(string)); res && err == nil {
 		return true
 	} else if err != nil {
 		dipper.Logger.Warningf("[api] denied access with enforcer error: %+v", err)
