@@ -1,3 +1,10 @@
+## [3.0.1](https://github.com/honeydipper/honeydipper/compare/v3.0.0...v3.0.1) (2023-07-01)
+
+
+### Bug Fixes
+
+* correct web driver token_sources missing headers ([#554](https://github.com/honeydipper/honeydipper/issues/554)) ([be9b756](https://github.com/honeydipper/honeydipper/commit/be9b75626e3f6c53089582f33f7d4aca3328fab4))
+
 # [3.0.0](https://github.com/honeydipper/honeydipper/compare/v2.15.0...v3.0.0) (2023-06-29)
 
 
