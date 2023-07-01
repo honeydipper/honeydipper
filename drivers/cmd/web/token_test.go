@@ -25,7 +25,7 @@ func TestGetToken(t *testing.T) {
 
 	gock.New("https://api.github.com").
 		Post("/app/installations/123/access_token").
-		Reply(200).
+		Reply(201).
 		JSON(map[string]string{"token": "foobar"})
 
 	keyb64 := dipper.Must(ioutil.ReadFile("test_fixtures/testkey")).([]byte)
@@ -42,8 +42,10 @@ func TestGetToken(t *testing.T) {
 	}
 
 	driver.Options = map[string]interface{}{
-		"token_sources": map[string]interface{}{
-			"test1": githubSource,
+		"data": map[string]interface{}{
+			"token_sources": map[string]interface{}{
+				"test1": githubSource,
+			},
 		},
 	}
 
@@ -60,7 +62,7 @@ func TestGetToken(t *testing.T) {
 
 	gock.New("https://api.github.com").
 		Post("/app/installations/123/access_token").
-		Reply(200).
+		Reply(201).
 		JSON(map[string]string{"token": "foobar2"})
 
 	githubSource["_expiresAt"] = time.Now().Add(-time.Minute * 15)
@@ -69,7 +71,7 @@ func TestGetToken(t *testing.T) {
 
 	gock.New("https://api.github.com").
 		Post("/app/installations/123/access_token").
-		Reply(200).
+		Reply(201).
 		JSON(map[string]string{"token": "foobar3"})
 
 	githubSource["_expiresAt"] = time.Now().Add(-time.Minute * 15)

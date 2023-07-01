@@ -22,7 +22,7 @@ import (
 const globalGitHubURL = "https://api.github.com"
 
 func getToken(source string) string {
-	s := dipper.MustGetMapData(driver.Options, "token_sources."+source).(map[string]interface{})
+	s := dipper.MustGetMapData(driver.Options, "data.token_sources."+source).(map[string]interface{})
 	switch s["type"].(string) {
 	case "github":
 
@@ -34,20 +34,12 @@ func getToken(source string) string {
 	return ""
 }
 
-func getGitHubToken(s map[string]interface{}) string {
-	saved, ok := s["_saved"]
-	if ok {
-		exp := dipper.MustGetMapData(s, "_expiresAt").(time.Time)
-		//nolint: gomnd
-		if time.Now().Add(2 * time.Second).Before(exp) {
-			return saved.(string)
-		}
-	}
-
+func getGitHubJWT(s map[string]interface{}) (string, time.Time) {
 	//nolint: gomnd
-	expiresAt := time.Now().Add(time.Minute * 15)
+	expiresAt := time.Now().Add(time.Minute * 10).Truncate(time.Second)
 	claims := &jwt.RegisteredClaims{
-		IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Minute * 1)),
+		//nolint: gomnd
+		IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Second * 30).Truncate(time.Second)),
 		ExpiresAt: jwt.NewNumericDate(expiresAt),
 		Issuer:    s["app_id"].(string),
 	}
@@ -63,9 +55,25 @@ func getGitHubToken(s map[string]interface{}) string {
 	}
 	jwtTokenStr := dipper.Must(jwtToken.SignedString(pk)).(string)
 
+	return jwtTokenStr, expiresAt
+}
+
+func getGitHubToken(s map[string]interface{}) string {
+	saved, ok := s["_saved"]
+	if ok {
+		exp := dipper.MustGetMapData(s, "_expiresAt").(time.Time)
+		//nolint: gomnd
+		if time.Now().Add(2 * time.Second).Before(exp) {
+			return saved.(string)
+		}
+	}
+
+	jwtTokenStr, expiresAt := getGitHubJWT(s)
+
 	header := http.Header{}
-	header.Set("accept", "application/vnd.github+json")
-	header.Set("authorization", "Bearer "+jwtTokenStr)
+	header.Set("Accept", "application/vnd.github+json")
+	header.Set("Authorization", "Bearer "+jwtTokenStr)
+	dipper.Logger.Debugf("the gh jwt is %s", jwtTokenStr)
 
 	permissions := dipper.MustGetMapData(s, "permissions").(map[string]interface{})
 	contentBytes := dipper.Must(json.Marshal(map[string]interface{}{
@@ -79,13 +87,18 @@ func getGitHubToken(s map[string]interface{}) string {
 	if !ok {
 		u = globalGitHubURL
 	}
-	req := dipper.Must(http.NewRequest("POST", u.(string)+"/app/installations/"+instID+"/access_token", buf)).(*http.Request)
+	req := dipper.Must(http.NewRequest("POST", u.(string)+"/app/installations/"+instID+"/access_tokens", buf)).(*http.Request)
+	req.Header = header
 	client := http.Client{}
 	//nolint: bodyClose
 	resp := dipper.Must(client.Do(req)).(*http.Response)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		log.Panicf("[%s] failed to fetch github access token with status code %+v", driver.Service, resp.StatusCode)
+	if resp.StatusCode != http.StatusCreated {
+		log.Panicf("[%s] failed to fetch github access token with status code %+v, %+v",
+			driver.Service,
+			resp.StatusCode,
+			string(dipper.Must(io.ReadAll(resp.Body)).([]byte)),
+		)
 	}
 
 	bodyObj := map[string]interface{}{}
