@@ -350,6 +350,7 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.OnError = v.OnError     // no interpolation
 	ret.OnFailure = v.OnFailure // no interpolation
 	ret.Local = v.Local         // no interpolation
+	ret.Detach = v.Detach       // no interpolation
 
 	w.workflow = &ret
 }
@@ -389,7 +390,7 @@ func (w *Session) setPerforming(performing string) string {
 	case wf.CallDriver != "":
 		w.performing = wf.CallDriver
 	case wf.Workflow != "":
-		w.performing = wf.Workflow
+		w.performing = "calling " + wf.Workflow
 	case w.isIteration():
 		w.performing = "iterating"
 	case w.isLoop():

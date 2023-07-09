@@ -296,10 +296,26 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		work := dipper.InterpolateStr(w.workflow.Workflow, envData)
 		w.performing = work
 		if !w.isHook && w.workflow.Name == "" {
-			w.ctx["_meta_name"] = work
+			w.ctx["_meta_name"] = "calling " + work
 		}
 		child := w.createChildSessionWithName(work, msg)
-		child.execute(msg)
+		if w.workflow.Detach {
+			child.parent = ""
+			delete(child.ctx, "resume_token")
+			daemon.Children.Add(1)
+			go func() {
+				defer daemon.Children.Done()
+				defer dipper.SafeExitOnError("Failed in execute detached workflow %+v", w.workflow.Workflow)
+				child.execute(msg)
+			}()
+			w.continueExec(&dipper.Message{
+				Labels: map[string]string{
+					"status": SessionStatusSuccess,
+				},
+			}, nil)
+		} else {
+			child.execute(msg)
+		}
 	case w.isFunction():
 		w.performing = "function"
 		f := w.interpolateFunction(&w.workflow.Function, msg)
