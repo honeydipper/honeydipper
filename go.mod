@@ -111,7 +111,7 @@ require (
 	github.com/go-git/go-git/v5 v5.7.0
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/golang-jwt/jwt/v5 v5.0.0
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
+	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 )
 
 require (
