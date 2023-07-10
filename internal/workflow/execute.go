@@ -17,6 +17,12 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+var Success = &dipper.Message{
+	Labels: map[string]string{
+		"status": SessionStatusSuccess,
+	},
+}
+
 // execute is the entry point of the workflow.
 func (w *Session) execute(msg *dipper.Message) {
 	w.fireHook("on_session", msg)
@@ -67,11 +73,7 @@ func (w *Session) execute(msg *dipper.Message) {
 // noop continues the workflow as doing nothing.
 func (w *Session) noop(msg *dipper.Message) {
 	if msg.Labels["status"] != "success" {
-		msg = &dipper.Message{
-			Labels: map[string]string{
-				"status": SessionStatusSuccess,
-			},
-		}
+		msg = Success
 	}
 	if w.ID != "" {
 		w.continueExec(msg, nil)
@@ -262,8 +264,8 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 	w.noop(msg)
 }
 
-// executeAction takes actions for a single iteration in a single loop round.
-func (w *Session) executeAction(msg *dipper.Message) {
+// processActionHooks process the action hooks.
+func (w *Session) processActionHooks(msg *dipper.Message) bool {
 	switch {
 	case w.workflow.Workflow != "":
 		fallthrough
@@ -284,11 +286,17 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		if w.currentHook == "" {
 			w.fireHook("on_action", msg)
 		}
-		if w.currentHook != "" {
-			return
-		}
 	}
 	// no action hooks if workflow is noop
+
+	return w.currentHook != ""
+}
+
+// executeAction takes actions for a single iteration in a single loop round.
+func (w *Session) executeAction(msg *dipper.Message) {
+	if w.processActionHooks(msg) { // hook in progress
+		return
+	}
 
 	switch {
 	case w.workflow.Workflow != "":
@@ -296,10 +304,20 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		work := dipper.InterpolateStr(w.workflow.Workflow, envData)
 		w.performing = work
 		if !w.isHook && w.workflow.Name == "" {
-			w.ctx["_meta_name"] = work
+			w.ctx["_meta_name"] = "calling " + work
 		}
 		child := w.createChildSessionWithName(work, msg)
-		child.execute(msg)
+		if w.workflow.Detach {
+			child.parent = ""
+			delete(child.ctx, "resume_token")
+			daemon.Go(func() {
+				defer dipper.SafeExitOnError("Failed in execute detached workflow %+v", w.workflow.Workflow)
+				child.execute(msg)
+			})
+			w.continueExec(Success, nil)
+		} else {
+			child.execute(msg)
+		}
 	case w.isFunction():
 		w.performing = "function"
 		f := w.interpolateFunction(&w.workflow.Function, msg)
@@ -325,11 +343,7 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		w.performing = "switch"
 		w.executeSwitch(msg)
 	default:
-		w.continueExec(&dipper.Message{
-			Labels: map[string]string{
-				"status": SessionStatusSuccess,
-			},
-		}, nil)
+		w.continueExec(Success, nil)
 	}
 }
 
