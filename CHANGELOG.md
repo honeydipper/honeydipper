@@ -1,3 +1,17 @@
+# [3.1.0](https://github.com/honeydipper/honeydipper/compare/v3.0.1...v3.1.0) (2023-07-10)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/exp digest to 97b1e66 ([#556](https://github.com/honeydipper/honeydipper/issues/556)) ([0fc6fc8](https://github.com/honeydipper/honeydipper/commit/0fc6fc8c80786be85907d3b506fa176e7f49e914))
+* **deps:** update google.golang.org/genproto digest to ccb25ca ([#557](https://github.com/honeydipper/honeydipper/issues/557)) ([17caafe](https://github.com/honeydipper/honeydipper/commit/17caafecf43d3e481b14fb10b45c729c04645e90))
+* run hooks in parallel to avoid interference ([#559](https://github.com/honeydipper/honeydipper/issues/559)) ([13ad15a](https://github.com/honeydipper/honeydipper/commit/13ad15ad67a9f985e5cacad06fa8b636a9d0cfca))
+
+
+### Features
+
+* detach a child workflow to make it independent ([#558](https://github.com/honeydipper/honeydipper/issues/558)) ([cc6281f](https://github.com/honeydipper/honeydipper/commit/cc6281fa1cc11b55f3490a683c3682a069f2433a))
+
 ## [3.0.1](https://github.com/honeydipper/honeydipper/compare/v3.0.0...v3.0.1) (2023-07-01)
 
 
