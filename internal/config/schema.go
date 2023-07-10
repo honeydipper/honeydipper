@@ -95,6 +95,7 @@ type Workflow struct {
 	Steps        []Workflow
 	Threads      []Workflow
 	Wait         string
+	Detach       bool
 
 	Switch  string
 	Cases   map[string]interface{}
