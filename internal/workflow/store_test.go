@@ -70,7 +70,7 @@ func TestNewSession(t *testing.T) {
 				Workflow: "test",
 			},
 			"asserts": func() {
-				assert.Equal(t, "test", session.performing)
+				assert.Equal(t, "calling test", session.performing)
 				assert.Equal(t, "0", session.parent)
 				session.save()
 				assert.Equal(t, "1", session.ID)

@@ -17,6 +17,12 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+var Success = &dipper.Message{
+	Labels: map[string]string{
+		"status": SessionStatusSuccess,
+	},
+}
+
 // execute is the entry point of the workflow.
 func (w *Session) execute(msg *dipper.Message) {
 	w.fireHook("on_session", msg)
@@ -67,11 +73,7 @@ func (w *Session) execute(msg *dipper.Message) {
 // noop continues the workflow as doing nothing.
 func (w *Session) noop(msg *dipper.Message) {
 	if msg.Labels["status"] != "success" {
-		msg = &dipper.Message{
-			Labels: map[string]string{
-				"status": SessionStatusSuccess,
-			},
-		}
+		msg = Success
 	}
 	if w.ID != "" {
 		w.continueExec(msg, nil)
@@ -302,17 +304,11 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		if w.workflow.Detach {
 			child.parent = ""
 			delete(child.ctx, "resume_token")
-			daemon.Children.Add(1)
-			go func() {
-				defer daemon.Children.Done()
+			daemon.Go(func() {
 				defer dipper.SafeExitOnError("Failed in execute detached workflow %+v", w.workflow.Workflow)
 				child.execute(msg)
-			}()
-			w.continueExec(&dipper.Message{
-				Labels: map[string]string{
-					"status": SessionStatusSuccess,
-				},
-			}, nil)
+			})
+			w.continueExec(Success, nil)
 		} else {
 			child.execute(msg)
 		}
@@ -341,11 +337,7 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		w.performing = "switch"
 		w.executeSwitch(msg)
 	default:
-		w.continueExec(&dipper.Message{
-			Labels: map[string]string{
-				"status": SessionStatusSuccess,
-			},
-		}, nil)
+		w.continueExec(Success, nil)
 	}
 }
 

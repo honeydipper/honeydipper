@@ -46,3 +46,12 @@ func Run(cfg *config.Config) {
 	OnStart()
 	cfg.Watch()
 }
+
+// Go launches a go routine with necessary prep and cleanup in the wrapper.
+func Go(f func()) {
+	Children.Add(1)
+	go func() {
+		defer Children.Done()
+		f()
+	}()
+}

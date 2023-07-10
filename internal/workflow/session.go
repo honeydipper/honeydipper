@@ -299,7 +299,7 @@ func (w *Session) injectLocalCTX(msg *dipper.Message) {
 func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	v := w.workflow
 	envData := w.buildEnvData(msg)
-	ret := config.Workflow{}
+	ret := *v
 
 	ret.Name = dipper.InterpolateStr(v.Name, envData)
 	ret.Description = dipper.InterpolateStr(v.Description, envData)
@@ -324,33 +324,33 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 		ret.IterateParallel = []interface{}{}
 	}
 
-	ret.While = v.While                     // repeatedly interpolated later
-	ret.WhileAny = v.WhileAny               // repeatedly interpolated later
-	ret.WhileMatch = v.WhileMatch           // repeatedly interpolated later
-	ret.Until = v.Until                     // repeatedly interpolated later
-	ret.UntilAll = v.UntilAll               // repeatedly interpolated later
-	ret.UntilMatch = v.UntilMatch           // repeatedly interpolated later
-	ret.Else = v.Else                       // delayed
-	ret.Workflow = v.Workflow               // delayed
-	ret.Function = v.Function               // delayed
-	ret.Steps = v.Steps                     // delayed
-	ret.Threads = v.Threads                 // delayed
-	ret.Export = v.Export                   // delayed
-	ret.ExportOnSuccess = v.ExportOnSuccess // delayed
-	ret.ExportOnFailure = v.ExportOnFailure // delayed
-	ret.ExportOnError = v.ExportOnError     // delayed
-	ret.Switch = v.Switch                   // delayed
-	ret.Cases = v.Cases                     // delayed
-	ret.Default = v.Default                 // delayed
+	// ret.While = v.While                     // repeatedly interpolated later
+	// ret.WhileAny = v.WhileAny               // repeatedly interpolated later
+	// ret.WhileMatch = v.WhileMatch           // repeatedly interpolated later
+	// ret.Until = v.Until                     // repeatedly interpolated later
+	// ret.UntilAll = v.UntilAll               // repeatedly interpolated later
+	// ret.UntilMatch = v.UntilMatch           // repeatedly interpolated later
+	// ret.Else = v.Else                       // delayed
+	// ret.Workflow = v.Workflow               // delayed
+	// ret.Function = v.Function               // delayed
+	// ret.Steps = v.Steps                     // delayed
+	// ret.Threads = v.Threads                 // delayed
+	// ret.Export = v.Export                   // delayed
+	// ret.ExportOnSuccess = v.ExportOnSuccess // delayed
+	// ret.ExportOnFailure = v.ExportOnFailure // delayed
+	// ret.ExportOnError = v.ExportOnError     // delayed
+	// ret.Switch = v.Switch                   // delayed
+	// ret.Cases = v.Cases                     // delayed
+	// ret.Default = v.Default                 // delayed
 
-	ret.Context = v.Context     // interpolated in initCTX
-	ret.Contexts = v.Contexts   // interpolated in initCTX
-	ret.NoExport = v.NoExport   // no interpolation
-	ret.IterateAs = v.IterateAs // no interpolation
-	ret.OnError = v.OnError     // no interpolation
-	ret.OnFailure = v.OnFailure // no interpolation
-	ret.Local = v.Local         // no interpolation
-	ret.Detach = v.Detach       // no interpolation
+	// ret.Context = v.Context     // interpolated in initCTX
+	// ret.Contexts = v.Contexts   // interpolated in initCTX
+	// ret.NoExport = v.NoExport   // no interpolation
+	// ret.IterateAs = v.IterateAs // no interpolation
+	// ret.OnError = v.OnError     // no interpolation
+	// ret.OnFailure = v.OnFailure // no interpolation
+	// ret.Local = v.Local         // no interpolation
+	// ret.Detach = v.Detach       // no interpolation
 
 	w.workflow = &ret
 }
