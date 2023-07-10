@@ -264,8 +264,8 @@ func (w *Session) executeSwitch(msg *dipper.Message) {
 	w.noop(msg)
 }
 
-// executeAction takes actions for a single iteration in a single loop round.
-func (w *Session) executeAction(msg *dipper.Message) {
+// processActionHooks process the action hooks.
+func (w *Session) processActionHooks(msg *dipper.Message) bool {
 	switch {
 	case w.workflow.Workflow != "":
 		fallthrough
@@ -286,11 +286,17 @@ func (w *Session) executeAction(msg *dipper.Message) {
 		if w.currentHook == "" {
 			w.fireHook("on_action", msg)
 		}
-		if w.currentHook != "" {
-			return
-		}
 	}
 	// no action hooks if workflow is noop
+
+	return w.currentHook != ""
+}
+
+// executeAction takes actions for a single iteration in a single loop round.
+func (w *Session) executeAction(msg *dipper.Message) {
+	if w.processActionHooks(msg) { // hook in progress
+		return
+	}
 
 	switch {
 	case w.workflow.Workflow != "":
