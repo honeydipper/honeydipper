@@ -308,6 +308,7 @@ func TestOnFailureHook(t *testing.T) {
 				},
 				"ctx": map[string]interface{}{},
 				"asserts": func() {
+					mockHelper.EXPECT().GetDaemonID().Return("")
 					mockHelper.EXPECT().SendMessage(gomock.Eq(&dipper.Message{
 						Channel: "eventbus",
 						Subject: "command",
@@ -316,10 +317,10 @@ func TestOnFailureHook(t *testing.T) {
 						},
 						Payload: map[string]interface{}{
 							"ctx": map[string]interface{}{
-								"_meta_desc":   "",
-								"_meta_name":   "foo.failure",
-								"resume_token": "//0",
-								"step_number":  int32(0),
+								"_meta_desc":    "",
+								"_meta_name":    "foo.failure",
+								"resume_token":  "//2",
+								"thread_number": 0,
 							},
 							"data":  map[string]interface{}{},
 							"event": map[string]interface{}{},
