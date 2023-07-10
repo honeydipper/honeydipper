@@ -62,7 +62,7 @@ func (w *Session) executeHook(msg *dipper.Message, hookBlock interface{}) {
 			Context: SessionContextHooks,
 		}
 		for i := 0; i < v.Len(); i++ {
-			childWf.Steps = append(childWf.Steps, config.Workflow{Workflow: v.Index(i).Interface().(string)})
+			childWf.Threads = append(childWf.Threads, config.Workflow{Workflow: v.Index(i).Interface().(string)})
 		}
 		child = w.createChildSession(&childWf, msg)
 	}
