@@ -91,7 +91,13 @@ func (c *Repo) loadFile(filename string) {
 
 	var content DataSet
 	yamlFile := dipper.Must(os.ReadFile(filename)).([]byte)
-	switch ret := dipper.InterpolateGoTemplate(true, "filename", string(yamlFile), map[string]interface{}{"env": dipper.Getenv()}).(type) {
+	envData := map[string]interface{}{
+		"env": dipper.Getenv(),
+		"local": map[string]interface{}{
+			"filename": strings.TrimPrefix(filename, c.root),
+		},
+	}
+	switch ret := dipper.InterpolateGoTemplate(true, filename, string(yamlFile), envData).(type) {
 	case *bytes.Buffer:
 		yamlFile = ret.Bytes()
 	case string:
@@ -112,7 +118,7 @@ func (c *Repo) loadFile(filename string) {
 	if content.Includes != nil {
 		cwd := path.Dir(filename)
 		for _, include := range content.Includes {
-			absname := path.Clean(path.Join(cwd, include))
+			absname := c.normalizeFilePath(cwd, include)
 			c.loadFileGlob(absname)
 		}
 	}
