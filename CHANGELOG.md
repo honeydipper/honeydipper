@@ -1,3 +1,10 @@
+# [3.2.0](https://github.com/honeydipper/honeydipper/compare/v3.1.0...v3.2.0) (2023-08-15)
+
+
+### Features
+
+* local variables in go templates ([#561](https://github.com/honeydipper/honeydipper/issues/561)) ([e66e2cf](https://github.com/honeydipper/honeydipper/commit/e66e2cf1820714a30ba762226ce9d762bb052512))
+
 # [3.1.0](https://github.com/honeydipper/honeydipper/compare/v3.0.1...v3.1.0) (2023-07-10)
 
 
