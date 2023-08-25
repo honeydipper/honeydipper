@@ -80,14 +80,10 @@ func getStorageClient(serviceAccountBytes string) *storage.Client {
 	return client
 }
 
-func getCommonParams(params interface{}) (string, string) {
+func getCommonParams(params interface{}) string {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
-	project, ok := dipper.GetMapDataStr(params, "project")
-	if !ok {
-		panic(ErrMissingProject)
-	}
 
-	return serviceAccountBytes, project
+	return serviceAccountBytes
 }
 
 // BucketIterator is an interface for iterate BucketAttrs.
@@ -103,7 +99,11 @@ type ObjectIterator interface {
 func listBuckets(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, project := getCommonParams(params)
+	serviceAccountBytes := getCommonParams(params)
+	project, ok := dipper.GetMapDataStr(params, "project")
+	if !ok {
+		panic(ErrMissingProject)
+	}
 
 	client := getStorageClient(serviceAccountBytes)
 
@@ -135,7 +135,7 @@ func listBucketsHelper(msg *dipper.Message, it BucketIterator) {
 func listFiles(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := getCommonParams(params)
+	serviceAccountBytes := getCommonParams(params)
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
@@ -185,7 +185,7 @@ func listFilesHelper(msg *dipper.Message, it ObjectIterator) {
 func fetchFile(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := getCommonParams(params)
+	serviceAccountBytes := getCommonParams(params)
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
@@ -227,7 +227,7 @@ func fetchFile(msg *dipper.Message) {
 func writeFile(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := getCommonParams(params)
+	serviceAccountBytes := getCommonParams(params)
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
@@ -252,7 +252,7 @@ func writeFile(msg *dipper.Message) {
 		fileType = attr.ContentType
 	}
 
-	wc := dipper.Must(obj.NewWriter(ctx)).(*storage.Writer)
+	wc := obj.NewWriter(ctx)
 	defer wc.Close()
 
 	switch v := content.(type) {
@@ -286,7 +286,7 @@ func writeFile(msg *dipper.Message) {
 func getAttrs(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := getCommonParams(params)
+	serviceAccountBytes := getCommonParams(params)
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
@@ -308,7 +308,7 @@ func getAttrs(msg *dipper.Message) {
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
 			"attrs":  attr,
-			"exists": err != nil,
+			"exists": err == nil,
 		},
 	}
 }
