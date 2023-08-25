@@ -9,14 +9,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"cloud.google.com/go/storage"
+	"github.com/ghodss/yaml"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -48,11 +51,12 @@ var driver *dipper.Driver
 func main() {
 	initFlags()
 	flag.Parse()
-
 	driver = dipper.NewDriver(os.Args[1], "gcloud-storage")
 	driver.Commands["listBuckets"] = listBuckets
 	driver.Commands["listFiles"] = listFiles
 	driver.Commands["fetchFile"] = fetchFile
+	driver.Commands["writeFile"] = writeFile
+	driver.Commands["getAttrs"] = getAttrs
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
@@ -76,14 +80,10 @@ func getStorageClient(serviceAccountBytes string) *storage.Client {
 	return client
 }
 
-func getCommonParams(params interface{}) (string, string) {
+func getCommonParams(params interface{}) string {
 	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
-	project, ok := dipper.GetMapDataStr(params, "project")
-	if !ok {
-		panic(ErrMissingProject)
-	}
 
-	return serviceAccountBytes, project
+	return serviceAccountBytes
 }
 
 // BucketIterator is an interface for iterate BucketAttrs.
@@ -99,7 +99,11 @@ type ObjectIterator interface {
 func listBuckets(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, project := getCommonParams(params)
+	serviceAccountBytes := getCommonParams(params)
+	project, ok := dipper.GetMapDataStr(params, "project")
+	if !ok {
+		panic(ErrMissingProject)
+	}
 
 	client := getStorageClient(serviceAccountBytes)
 
@@ -131,7 +135,7 @@ func listBucketsHelper(msg *dipper.Message, it BucketIterator) {
 func listFiles(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := getCommonParams(params)
+	serviceAccountBytes := getCommonParams(params)
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
@@ -181,7 +185,7 @@ func listFilesHelper(msg *dipper.Message, it ObjectIterator) {
 func fetchFile(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	params := msg.Payload
-	serviceAccountBytes, _ := getCommonParams(params)
+	serviceAccountBytes := getCommonParams(params)
 
 	bucket, ok := dipper.GetMapDataStr(params, "bucket")
 	if !ok {
@@ -216,6 +220,95 @@ func fetchFile(msg *dipper.Message) {
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
 			"content": string(content),
+		},
+	}
+}
+
+func writeFile(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+	serviceAccountBytes := getCommonParams(params)
+
+	bucket, ok := dipper.GetMapDataStr(params, "bucket")
+	if !ok {
+		panic(ErrMissingBucketSpec)
+	}
+	fileObj, ok := dipper.GetMapDataStr(params, "fileObject")
+	if !ok {
+		panic(ErrMissingFileSpec)
+	}
+	fileType, _ := dipper.GetMapDataStr(params, "fileType")
+	content, _ := dipper.GetMapData(params, "content")
+
+	client := getStorageClient(serviceAccountBytes)
+	ctx := context.Background()
+	obj := client.Bucket(bucket).Object(fileObj)
+	attr, err := obj.Attrs(ctx)
+	if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
+		panic(err)
+	}
+
+	if fileType == "" {
+		fileType = attr.ContentType
+	}
+
+	wc := obj.NewWriter(ctx)
+	defer wc.Close()
+
+	switch v := content.(type) {
+	case nil:
+		// empty file
+	case string:
+		dipper.Must(wc.Write([]byte(v)))
+	case []byte:
+		dipper.Must(wc.Write(v))
+	default:
+		switch {
+		case strings.Contains(fileType, "yaml"):
+			encoded := dipper.Must(yaml.Marshal(v))
+			dipper.Must(wc.Write(encoded.([]byte)))
+		default:
+			if fileType == "" {
+				fileType = "application/json"
+			}
+			encoded := dipper.Must(json.Marshal(v))
+			dipper.Must(wc.Write(encoded.([]byte)))
+		}
+	}
+
+	if fileType != "" && fileType != attr.ContentType {
+		dipper.Must(obj.Update(ctx, storage.ObjectAttrsToUpdate{ContentType: fileType}))
+	}
+
+	msg.Reply <- dipper.Message{}
+}
+
+func getAttrs(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+	serviceAccountBytes := getCommonParams(params)
+
+	bucket, ok := dipper.GetMapDataStr(params, "bucket")
+	if !ok {
+		panic(ErrMissingBucketSpec)
+	}
+	fileObj, ok := dipper.GetMapDataStr(params, "fileObject")
+	if !ok {
+		panic(ErrMissingFileSpec)
+	}
+
+	client := getStorageClient(serviceAccountBytes)
+	ctx := context.Background()
+	obj := client.Bucket(bucket).Object(fileObj)
+	attr, err := obj.Attrs(ctx)
+	if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
+		panic(err)
+	}
+
+	msg.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"attrs":  attr,
+			"exists": err == nil,
 		},
 	}
 }
