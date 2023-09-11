@@ -102,8 +102,12 @@ jobs:
       - run:
           name: install dependencies
           command: >
-            apk add --repository http://dl-3.alpinelinux.org/alpine/edge/testing
-            git openssh-client gcc libc-dev dockerize make
+            apk add git openssh-client gcc libc-dev make &&
+            wget "$DOCKERIZE_URL" &&
+            tar zxvf "$(basename "$DOCKERIZE_URL")" &&
+            install dockerize /usr/local/bin
+          environment:
+            DOCKERIZE_URL: https://github.com/jwilder/dockerize/releases/download/v0.7.0/dockerize-alpine-linux-amd64-v0.7.0.tar.gz
       - checkout
       - restore-mod
       - run:
