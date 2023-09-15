@@ -125,7 +125,10 @@ jobs:
           @semantic-release/commit-analyzer         \
           @semantic-release/git                     \
           @semantic-release/release-notes-generator
-      - run: npx semantic-release
+      - run:
+          command: npx semantic-release
+          environment:
+            DEBUG: semantic-release:git-commits
 
 workflows:
   version: 2
