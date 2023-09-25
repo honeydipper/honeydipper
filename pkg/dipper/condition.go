@@ -64,18 +64,32 @@ func CompareMap(actual interface{}, criteria interface{}) bool {
 			case key == ":auth:":
 				// offload to another driver using RPC
 				// pass
+			case key == ":present:":
+				fallthrough
 			case key == ":absent:":
+				expectPresence := key == ":present:"
 				keys := []interface{}{}
 				for _, k := range value.MapKeys() {
 					keys = append(keys, k.Interface())
 				}
-				if CompareAll(keys, subCriteria) {
-					// key not absent
+				presence := CompareAll(keys, subCriteria)
+				if presence != expectPresence {
+					// key presence not matching expectation
+					return false
+				}
+			case key == ":except:":
+				if CompareAll(actual, subCriteria) {
 					return false
 				}
 			default:
+				neg := key[len(key)-1] == '!'
+				if neg {
+					key = key[0 : len(key)-1]
+				}
+
 				subVal := value.MapIndex(reflect.ValueOf(key))
-				if !subVal.IsValid() || (subVal.IsValid() && !CompareAll(subVal.Interface(), subCriteria)) {
+				match := subVal.IsValid() && CompareAll(subVal.Interface(), subCriteria)
+				if match == neg {
 					return false
 				}
 			}

@@ -162,7 +162,35 @@ workflows:
 
 Please note how we use regular expression, list of options to match the contextual data, and how to match a field deep into the data structure.
 
-Below are some examples of using list of conditions:
+The matching condition also supports some special keywords.
+
+ - :absent: - true if a key is not in the data structure
+ - :present: - true if a key is present in the data structure
+ - :except: - true if the data structure does NOT match the given criteria
+
+You can also use a `!` suffix following a key name to negate the matching criteria. See some examples below.
+
+```yaml
+---
+workflows:
+  responding_to_github_push:
+    if_match:
+      git_repo: myorg/myrepo
+      git_ref!: ":regex:^refs/tags/" # except tags
+    ...
+
+  alert_unauthorized_access:
+    if_match:
+      scope: production
+      ":except:":
+        user:
+          role: authorized
+          ":present:": authorized_by
+    ...
+
+```
+
+Below are some more examples of using list of conditions:
 <!-- {% raw %} -->
 ```yaml
 ---
