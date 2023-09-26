@@ -68,8 +68,23 @@ func TestCompareAllMap(t *testing.T) {
 	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{":absent:": "key3"}), "map should have key3 absent")
 	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{":absent:": regexp.MustCompile("key3[1-3]")}), "map should have key3* absent")
 	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, map[string]interface{}{":absent:": regexp.MustCompile("key3[1-3]*")}), "map should have key3* absent and fail")
+	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{":present:": "key3"}), "map should have key3 present")
+	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{":present:": regexp.MustCompile("key3[1-3]")}), "map should have key3* present")
+	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, map[string]interface{}{":present:": regexp.MustCompile("key3[1-3]*")}), "map should have key3* present and fail")
 	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, "invalid condition"), "fail with invalid condition for map value")
 	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2", "key3": "val3"}, map[string]interface{}{"key4": "111"}), "fail with condition that missing value")
+}
+
+func TestCompareWithNegates(t *testing.T) {
+	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{"key1": "val1", "key2!": "val2"}), "map match nagated condition")
+	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{"key1": "val1", "key2!": "val3"}), "map not match nagated condition")
+	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{"key1": "val1", "key3!": "val3"}), "map missking key for nagated condition")
+}
+
+func TestCompareWithExcept(t *testing.T) {
+	assert.False(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{"key1": "val1", ":except:": map[string]interface{}{"key2": "val2"}}), "map match except condition")
+	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{"key1": "val1", ":except:": map[string]interface{}{"key2": "val3"}}), "map not match except condition")
+	assert.True(t, CompareAll(map[string]interface{}{"key1": "val1", "key2": "val2"}, map[string]interface{}{"key1": "val1", ":except:": map[string]interface{}{"key3": "val3"}}), "map missking key for except condition")
 }
 
 func TestIsTruthy(t *testing.T) {
