@@ -128,7 +128,7 @@ jobs:
       - run:
           command: npx semantic-release
           environment:
-            DEBUG: semantic-release:git-commits
+            DEBUG: semantic-release:get-commits
 
 workflows:
   version: 2
