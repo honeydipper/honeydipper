@@ -1,3 +1,16 @@
+# [3.4.0](https://github.com/honeydipper/honeydipper/compare/v3.3.0...v3.4.0) (2023-09-28)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/exp digest to 9212866 ([#566](https://github.com/honeydipper/honeydipper/issues/566)) ([1f984b0](https://github.com/honeydipper/honeydipper/commit/1f984b04c35b49b98528c05bc6baf8937d39b59f))
+* **deps:** update google.golang.org/genproto digest to 007df8e ([#567](https://github.com/honeydipper/honeydipper/issues/567)) ([87483b2](https://github.com/honeydipper/honeydipper/commit/87483b25d905806da81653995ac0380405e01482))
+
+
+### Features
+
+* support negated condition in match conditions ([#570](https://github.com/honeydipper/honeydipper/issues/570)) ([efbffcc](https://github.com/honeydipper/honeydipper/commit/efbffcc390cd7de45219baa54dd4e83446156d5f))
+
 # [3.3.0](https://github.com/honeydipper/honeydipper/compare/v3.2.0...v3.3.0) (2023-08-25)
 
 
