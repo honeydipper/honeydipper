@@ -3,9 +3,9 @@ module github.com/honeydipper/honeydipper
 go 1.18
 
 require (
-	cloud.google.com/go v0.110.7 // indirect
+	cloud.google.com/go v0.110.8 // indirect
 	cloud.google.com/go/pubsub v1.33.0
-	cloud.google.com/go/spanner v1.47.0
+	cloud.google.com/go/spanner v1.50.0
 	cloud.google.com/go/storage v1.30.1
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1
@@ -35,11 +35,11 @@ require (
 	github.com/stretchr/testify v1.8.3
 	golang.org/x/crypto v0.13.0
 	golang.org/x/net v0.15.0 // indirect
-	golang.org/x/oauth2 v0.8.0
+	golang.org/x/oauth2 v0.10.0
 	golang.org/x/term v0.12.0
 	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/api v0.128.0
-	google.golang.org/genproto v0.0.0-20230913181813-007df8e322eb
+	google.golang.org/genproto v0.0.0-20231009173412-8bfb1ae86b6c
 	gopkg.in/h2non/gock.v1 v1.0.15
 	k8s.io/api v0.24.2
 	k8s.io/apimachinery v0.24.2
@@ -91,7 +91,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.3.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/grpc v1.57.0 // indirect
+	google.golang.org/grpc v1.58.2 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
@@ -106,7 +106,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
-	cloud.google.com/go/logging v1.7.0
+	cloud.google.com/go/logging v1.8.1
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/go-git/go-git/v5 v5.7.0
 	github.com/go-redis/redismock/v8 v8.0.6
@@ -116,7 +116,7 @@ require (
 
 require (
 	cloud.google.com/go/compute v1.23.0 // indirect
-	cloud.google.com/go/iam v1.1.1 // indirect
+	cloud.google.com/go/iam v1.1.2 // indirect
 	cloud.google.com/go/longrunning v0.5.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20230528122434-6f98819771a1 // indirect
@@ -143,6 +143,6 @@ require (
 	golang.org/x/sys v0.12.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230803162519-f966b187b2e5 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20231002182017-d307bd883b97 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
 )
