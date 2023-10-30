@@ -1,3 +1,12 @@
+## [3.4.1](https://github.com/honeydipper/honeydipper/compare/v3.4.0...v3.4.1) (2023-10-30)
+
+
+### Bug Fixes
+
+* **deps:** update google.golang.org/genproto digest to 8bfb1ae ([#575](https://github.com/honeydipper/honeydipper/issues/575)) ([d7c8d52](https://github.com/honeydipper/honeydipper/commit/d7c8d525196755003dc07178f4544e45214a9fba))
+* **deps:** update module cloud.google.com/go/kms to v1.15.2 ([#576](https://github.com/honeydipper/honeydipper/issues/576)) ([0e8f1c3](https://github.com/honeydipper/honeydipper/commit/0e8f1c34b5c9fa1f96be561814b539e803cf129e))
+* not reusing success messages ([#577](https://github.com/honeydipper/honeydipper/issues/577)) ([2b12221](https://github.com/honeydipper/honeydipper/commit/2b122213122363dedaaf540ce28fb569c813d413))
+
 # [3.4.0](https://github.com/honeydipper/honeydipper/compare/v3.3.0...v3.4.0) (2023-09-28)
 
 
