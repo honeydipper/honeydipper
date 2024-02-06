@@ -33,11 +33,11 @@ require (
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/qiangmzsx/string-adapter/v2 v2.1.0
 	github.com/stretchr/testify v1.8.4
-	golang.org/x/crypto v0.13.0
+	golang.org/x/crypto v0.17.0
 	golang.org/x/net v0.15.0 // indirect
 	golang.org/x/oauth2 v0.10.0
-	golang.org/x/term v0.12.0
-	golang.org/x/text v0.13.0 // indirect
+	golang.org/x/term v0.15.0
+	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/api v0.128.0
 	google.golang.org/genproto v0.0.0-20231009173412-8bfb1ae86b6c
 	gopkg.in/h2non/gock.v1 v1.0.15
@@ -140,7 +140,7 @@ require (
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
-	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231002182017-d307bd883b97 // indirect
