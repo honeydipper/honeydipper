@@ -1,12 +1,13 @@
 {
   "extends": [
-    "config:base"
+    "config:recommended"
   ],
-  "schedule": ["before 3:00am on the 3 day of the month"],
   "packageRules": [
     {
-      "depTypeList": ["require"],
+      "matchDepTypes": ["require"],
       "semanticCommitType": "fix"
     }
-  ]
+  ],
+  "prConcurrentLimit": 10,
+  "schedule": ["before 3:00am on the 3 day of the month"]
 }
