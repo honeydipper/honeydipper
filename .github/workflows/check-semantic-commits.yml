@@ -19,10 +19,13 @@ jobs:
         with:
           validateSingleCommit: true
           scopes: |
+            config
             core
-            drivers
-            pkg
             deps
+            daemon
+            drivers
             error
+            pkg
             release
             util
+            workflow

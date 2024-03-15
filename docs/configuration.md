@@ -78,7 +78,7 @@ To load a repo other than the bootstrap repo, just put info in the `repos` secti
 ---
 repos:
   - repo: <git url to the repo>
-    branch: <optional, defaults to master>
+    branch: <optional, defaults to main>
     path: <the location of the init.yaml, must starts with /, optional, defaults to />
     keyFile: <deploy key used for cloning the repo, optional>
     keyPassEnv: <an environment variable name containing the passphrase for the deploy key, optional>

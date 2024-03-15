@@ -6,7 +6,7 @@
 # Honeydipper looks for a init.yaml in the root of every loaded repo.
 # init.yaml can include other yaml files in the same repo, and it can
 # also load other repos. While it is possible to fit everything into a
-# single file, it is recommended to organzie your configurations into 
+# single file, it is recommended to organzie your configurations into
 # smaller chunks in a way that each chunk contains only relevant
 # settings.
 #
@@ -24,13 +24,13 @@
 # fully loaded. Circular dependency will cause system to crash at this
 # moment. You can specify which branch to use for each repo, and which
 # path to be used as root (the location of the init.yaml). By default,
-# master branch will be used, and the root of the repo will be used.
+# the "main" branch will be used, and the root of the repo will be used.
 # Currently, ssh git repos, https repos and local file repos are
 # supported.
 
 repos:
   - repo: file:///Users/chunhuang/tmp/rules
-    # branch: master
+    # branch: main
     # path: /
 
 # Includes

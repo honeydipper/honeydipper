@@ -141,7 +141,7 @@ func (c *Repo) cloneFetchRepo() {
 		dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
 	}
 
-	branch := "master"
+	branch := "main"
 	if c.repo.Branch != "" {
 		branch = c.repo.Branch
 	}

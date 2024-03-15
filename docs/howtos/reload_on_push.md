@@ -54,7 +54,7 @@ rules:
     do:
       if_match:
         - git_repo: myorg/myconfig
-          git_ref: refs/heads/master
+          git_ref: refs/heads/main
       call_workflow: reload
 ```
 Your repository name and branch name may differ.
