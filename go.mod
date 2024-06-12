@@ -104,7 +104,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/go-redis/redismock/v8 v8.0.6
-	github.com/golang-jwt/jwt/v5 v5.2.0
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a
 )
 
