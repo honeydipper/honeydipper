@@ -3,10 +3,10 @@ module github.com/honeydipper/honeydipper
 go 1.21
 
 require (
-	cloud.google.com/go v0.112.2 // indirect
-	cloud.google.com/go/pubsub v1.37.0
-	cloud.google.com/go/spanner v1.60.0
-	cloud.google.com/go/storage v1.39.1
+	cloud.google.com/go v0.114.0 // indirect
+	cloud.google.com/go/pubsub v1.38.0
+	cloud.google.com/go/spanner v1.63.0
+	cloud.google.com/go/storage v1.40.0
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1
 	github.com/casbin/casbin/v2 v2.82.0
@@ -38,7 +38,7 @@ require (
 	golang.org/x/term v0.20.0
 	golang.org/x/text v0.15.0 // indirect
 	google.golang.org/api v0.180.0
-	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda
+	google.golang.org/genproto v0.0.0-20240610135401-a8a62080eff3
 	gopkg.in/h2non/gock.v1 v1.0.15
 	k8s.io/api v0.29.2
 	k8s.io/apimachinery v0.29.2
@@ -48,7 +48,7 @@ require (
 
 require (
 	cloud.google.com/go/kms v1.17.1
-	cloud.google.com/go/secretmanager v1.12.0
+	cloud.google.com/go/secretmanager v1.13.1
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -85,7 +85,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/grpc v1.63.2 // indirect
+	google.golang.org/grpc v1.64.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
@@ -100,7 +100,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.3.0
-	cloud.google.com/go/logging v1.9.0
+	cloud.google.com/go/logging v1.10.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/go-redis/redismock/v8 v8.0.6
@@ -111,7 +111,7 @@ require (
 require (
 	cloud.google.com/go/auth v0.4.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
-	cloud.google.com/go/compute v1.25.1 // indirect
+	cloud.google.com/go/compute v1.27.0 // indirect
 	cloud.google.com/go/iam v1.1.8 // indirect
 	cloud.google.com/go/longrunning v0.5.7 // indirect
 	dario.cat/mergo v1.0.0 // indirect
@@ -148,6 +148,6 @@ require (
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/tools v0.18.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240513163218-0867130af1f8 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240509183442-62759503f434 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240604185151-ef581f913117 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240604185151-ef581f913117 // indirect
 )
