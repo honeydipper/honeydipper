@@ -60,7 +60,7 @@ func getGCPLogger(loggerPath string) *logging.Logger {
 		//nolint:gomnd
 		if len(parts) < 2 {
 			loggerName = strings.TrimSpace(parts[0])
-			parent, _ = metadata.ProjectID()
+			parent, _ = metadata.ProjectIDWithContext(context.Background())
 		} else {
 			parent, loggerName = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 		}
