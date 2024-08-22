@@ -3,24 +3,24 @@ module github.com/honeydipper/honeydipper
 go 1.21
 
 require (
-	cloud.google.com/go v0.114.0 // indirect
-	cloud.google.com/go/pubsub v1.38.0
-	cloud.google.com/go/spanner v1.63.0
-	cloud.google.com/go/storage v1.40.0
+	cloud.google.com/go v0.115.1 // indirect
+	cloud.google.com/go/pubsub v1.41.0
+	cloud.google.com/go/spanner v1.65.0
+	cloud.google.com/go/storage v1.43.0
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1
 	github.com/casbin/casbin/v2 v2.82.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-errors/errors v1.5.1
-	github.com/go-logr/logr v1.4.1 // indirect
+	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gogf/gf v1.16.9
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.4
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0
-	github.com/googleapis/gax-go/v2 v2.12.4
+	github.com/googleapis/gax-go/v2 v2.13.0
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -32,13 +32,13 @@ require (
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/qiangmzsx/string-adapter/v2 v2.2.0
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/crypto v0.23.0
-	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/oauth2 v0.20.0
-	golang.org/x/term v0.20.0
-	golang.org/x/text v0.15.0 // indirect
-	google.golang.org/api v0.180.0
-	google.golang.org/genproto v0.0.0-20240610135401-a8a62080eff3
+	golang.org/x/crypto v0.26.0
+	golang.org/x/net v0.28.0 // indirect
+	golang.org/x/oauth2 v0.22.0
+	golang.org/x/term v0.23.0
+	golang.org/x/text v0.17.0 // indirect
+	google.golang.org/api v0.193.0
+	google.golang.org/genproto v0.0.0-20240814211410-ddb44dafa142
 	gopkg.in/h2non/gock.v1 v1.0.15
 	k8s.io/api v0.29.2
 	k8s.io/apimachinery v0.29.2
@@ -47,10 +47,10 @@ require (
 )
 
 require (
-	cloud.google.com/go/kms v1.17.1
-	cloud.google.com/go/secretmanager v1.13.1
+	cloud.google.com/go/kms v1.18.4
+	cloud.google.com/go/secretmanager v1.14.0
 	github.com/Microsoft/go-winio v0.6.1 // indirect
-	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
@@ -81,12 +81,12 @@ require (
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.opentelemetry.io/otel v1.24.0 // indirect
-	go.opentelemetry.io/otel/trace v1.24.0 // indirect
-	golang.org/x/time v0.5.0 // indirect
+	go.opentelemetry.io/otel v1.28.0 // indirect
+	go.opentelemetry.io/otel/trace v1.28.0 // indirect
+	golang.org/x/time v0.6.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/grpc v1.64.0 // indirect
-	google.golang.org/protobuf v1.34.1 // indirect
+	google.golang.org/grpc v1.65.0 // indirect
+	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -99,8 +99,8 @@ require (
 )
 
 require (
-	cloud.google.com/go/compute/metadata v0.3.0
-	cloud.google.com/go/logging v1.10.0
+	cloud.google.com/go/compute/metadata v0.5.0
+	cloud.google.com/go/logging v1.11.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/go-redis/redismock/v8 v8.0.6
@@ -109,11 +109,11 @@ require (
 )
 
 require (
-	cloud.google.com/go/auth v0.4.1 // indirect
-	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
-	cloud.google.com/go/compute v1.27.0 // indirect
-	cloud.google.com/go/iam v1.1.8 // indirect
-	cloud.google.com/go/longrunning v0.5.7 // indirect
+	cloud.google.com/go/auth v0.9.0 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
+	cloud.google.com/go/compute v1.27.4 // indirect
+	cloud.google.com/go/iam v1.1.13 // indirect
+	cloud.google.com/go/longrunning v0.5.11 // indirect
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/ProtonMail/go-crypto v1.0.0 // indirect
@@ -131,7 +131,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
-	github.com/google/s2a-go v0.1.7 // indirect
+	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.1 // indirect
@@ -140,14 +140,14 @@ require (
 	github.com/skeema/knownhosts v1.2.1 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
-	go.opentelemetry.io/otel/metric v1.24.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.52.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.53.0 // indirect
+	go.opentelemetry.io/otel/metric v1.28.0 // indirect
 	golang.org/x/arch v0.7.0 // indirect
-	golang.org/x/mod v0.15.0 // indirect
-	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.20.0 // indirect
-	golang.org/x/tools v0.18.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240604185151-ef581f913117 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240604185151-ef581f913117 // indirect
+	golang.org/x/mod v0.17.0 // indirect
+	golang.org/x/sync v0.8.0 // indirect
+	golang.org/x/sys v0.24.0 // indirect
+	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240814211410-ddb44dafa142 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240814211410-ddb44dafa142 // indirect
 )
