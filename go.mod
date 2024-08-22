@@ -4,8 +4,8 @@ go 1.21
 
 require (
 	cloud.google.com/go v0.115.1 // indirect
-	cloud.google.com/go/pubsub v1.41.0
-	cloud.google.com/go/spanner v1.65.0
+	cloud.google.com/go/pubsub v1.42.0
+	cloud.google.com/go/spanner v1.67.0
 	cloud.google.com/go/storage v1.43.0
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1
@@ -38,7 +38,7 @@ require (
 	golang.org/x/term v0.23.0
 	golang.org/x/text v0.17.0 // indirect
 	google.golang.org/api v0.193.0
-	google.golang.org/genproto v0.0.0-20240814211410-ddb44dafa142
+	google.golang.org/genproto v0.0.0-20240822170219-fc7c04adadcd
 	gopkg.in/h2non/gock.v1 v1.0.15
 	k8s.io/api v0.29.2
 	k8s.io/apimachinery v0.29.2
@@ -47,7 +47,7 @@ require (
 )
 
 require (
-	cloud.google.com/go/kms v1.18.4
+	cloud.google.com/go/kms v1.18.5
 	cloud.google.com/go/secretmanager v1.14.0
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -111,9 +111,9 @@ require (
 require (
 	cloud.google.com/go/auth v0.9.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
-	cloud.google.com/go/compute v1.27.4 // indirect
+	cloud.google.com/go/compute v1.27.5 // indirect
 	cloud.google.com/go/iam v1.1.13 // indirect
-	cloud.google.com/go/longrunning v0.5.11 // indirect
+	cloud.google.com/go/longrunning v0.5.12 // indirect
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/ProtonMail/go-crypto v1.0.0 // indirect
