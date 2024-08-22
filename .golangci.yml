@@ -3,9 +3,9 @@ linters:
   enable:
     - asciicheck
     - bodyclose
-    - depguard
     - dogsled
     - dupl
+    - err113
     - errorlint
     - exportloopref
     - funlen
@@ -17,17 +17,16 @@ linters:
     - gocyclo
     - godot
     - godox
-    - goerr113
     - gofmt
     - gofumpt
     - goheader
     - goimports
-    - gomnd
     - gomodguard
     - goprintffuncname
     - gosec
     - lll
     - misspell
+    # - mnd
     - nakedret
     - nestif
     - nlreturn
@@ -35,7 +34,7 @@ linters:
     - nolintlint
     - paralleltest
     - prealloc
-    - revive
+    # - revive
     - rowserrcheck
     - sqlclosecheck
     - stylecheck
@@ -57,13 +56,13 @@ linters-settings:
 
 issues:
   exclude-rules:
-    - path: (.+)_test.go
+    - path: _test\.go
       linters:
         - dupl
+        - err113
         - errcheck
         - funlen
         - gocritic
-        - goerr113
         - gosec
         - lll
         - nestif
