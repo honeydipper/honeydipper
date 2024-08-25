@@ -9,6 +9,7 @@ package service
 import (
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/driver"
@@ -67,6 +68,25 @@ func StartEngine(cfg *config.Config) {
 	setupEngineAPIs()
 
 	engine.start()
+	if cfg.IsJobMode {
+		go func() {
+			// TODO: build sync mechanism for awareness of readyness
+			time.Sleep(time.Second)
+			msg := &dipper.Message{
+				Labels: map[string]string{
+					"eventID": "main",
+				},
+			}
+			w := sessionStore.StartSession(&config.Workflow{Workflow: "reserved/main"}, msg, map[string]interface{}{})
+			<-w.Watch()
+			engine.CallNoWait("driver:redispubsub", "send", map[string]interface{}{
+				"broadcastSubject": "reload",
+				"data": map[string]interface{}{
+					"force": "true",
+				},
+			})
+		}()
+	}
 }
 
 func createSessions(d *driver.Runtime, msg *dipper.Message) {

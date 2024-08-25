@@ -73,6 +73,7 @@ type Config struct {
 	IsConfigCheck bool
 	CheckRemote   bool
 	IsDocGen      bool
+	IsJobMode     bool
 	DocSrc        string
 	DocDst        string
 	Locker        *sync.Mutex

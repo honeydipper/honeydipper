@@ -177,7 +177,11 @@ func (c *Repo) loadRepo() {
 	if c.repo.Path != "" {
 		root = c.repo.Path
 	}
-	c.loadFile(path.Clean(path.Join(c.root, root, "init.yaml")))
+	initFile := "init.yaml"
+	if c.repo.InitFile != "" {
+		initFile = c.repo.InitFile
+	}
+	c.loadFile(path.Clean(path.Join(c.root, root, initFile)))
 	dipper.Logger.Infof("repo [%v] loaded", c.repo.Repo)
 }
 

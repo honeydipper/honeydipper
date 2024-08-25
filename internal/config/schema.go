@@ -119,6 +119,7 @@ type RepoInfo struct {
 	Repo        string
 	Branch      string
 	Path        string
+	InitFile    string
 	Name        string
 	Description string
 	KeyFile     string

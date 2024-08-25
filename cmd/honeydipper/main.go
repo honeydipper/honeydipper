@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/internal/daemon"
@@ -91,11 +92,30 @@ loop:
 			}
 
 			break loop
+		case "job":
+			cfg.IsJobMode = true
+			cfg.Services = []string{"engine", "operator"}
+
+			break loop
 		}
 	}
 	getLogger()
 
-	if !cfg.IsDocGen {
+	switch {
+	case cfg.IsDocGen:
+		// DocGen doesnot require init repo.
+	case cfg.IsJobMode:
+		jobFile, ok := os.LookupEnv("JOB_FILE")
+		if !ok {
+			log.Fatal("JOB_FILE variable is required to start honeydipper in job mode.")
+		}
+		cfg.InitRepo = config.RepoInfo{
+			Repo:     path.Dir(jobFile),
+			Branch:   "",
+			Path:     "/",
+			InitFile: path.Base(jobFile),
+		}
+	default:
 		var ok bool
 		if cfg.InitRepo.Repo, ok = os.LookupEnv("REPO"); !ok {
 			log.Fatal("REPO environment variable is required to bootstrap honeydipper")
@@ -106,6 +126,7 @@ loop:
 		if cfg.InitRepo.Path, ok = os.LookupEnv("BOOTSTRAP_PATH"); !ok {
 			cfg.InitRepo.Path = "/"
 		}
+		cfg.InitRepo.InitFile, _ = os.LookupEnv("BOOTSTRAP_FILE")
 	}
 }
 
@@ -165,6 +186,9 @@ func main() {
 		exitCode = loadAndRunConfigCheck(&cfg)
 	case cfg.IsDocGen:
 		runDocGen(&cfg)
+	case cfg.IsJobMode:
+		daemon.OnStart = start
+		daemon.Run(&cfg)
 	default:
 		cfg.OnChange = reload
 		daemon.OnStart = start

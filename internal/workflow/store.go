@@ -65,12 +65,19 @@ func (s *SessionStore) newSession(parent string, eventUUID string, wf *config.Wo
 }
 
 // StartSession starts a workflow session.
-func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
+func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) SessionHandler {
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session")
 	eventUUID := msg.Labels["eventID"]
 	w := s.newSession("", eventUUID, wf)
-	w.prepare(msg, nil, ctx)
-	w.execute(msg)
+	if wf.Workflow == "reserved/main" {
+		w.Watch()
+	}
+	go func() {
+		defer dipper.SafeExitOnError("[workflow] error when preparing workflow session")
+		w.prepare(msg, nil, ctx)
+		w.execute(msg)
+	}()
+	return w
 }
 
 // ContinueSession resume a session with given dipper message.
