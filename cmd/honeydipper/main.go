@@ -120,12 +120,10 @@ loop:
 		if cfg.InitRepo.Repo, ok = os.LookupEnv("REPO"); !ok {
 			log.Fatal("REPO environment variable is required to bootstrap honeydipper")
 		}
-		if cfg.InitRepo.Branch, ok = os.LookupEnv("BRANCH"); !ok {
-			cfg.InitRepo.Branch = "master"
-		}
 		if cfg.InitRepo.Path, ok = os.LookupEnv("BOOTSTRAP_PATH"); !ok {
 			cfg.InitRepo.Path = "/"
 		}
+		cfg.InitRepo.Branch, _ = os.LookupEnv("BRANCH")
 		cfg.InitRepo.InitFile, _ = os.LookupEnv("BOOTSTRAP_FILE")
 	}
 }

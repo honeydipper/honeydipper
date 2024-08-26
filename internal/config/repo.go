@@ -141,7 +141,7 @@ func (c *Repo) cloneFetchRepo() {
 		dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
 	}
 
-	branch := "main"
+	branch := plumbing.Main.Short()
 	if c.repo.Branch != "" {
 		branch = c.repo.Branch
 	}
@@ -207,7 +207,7 @@ func (c *Repo) refreshRepo() bool {
 
 		switch c.repo.Branch {
 		case "":
-			opts.ReferenceName = plumbing.Master
+			opts.ReferenceName = plumbing.Main
 		default:
 			opts.ReferenceName = plumbing.NewBranchReferenceName(c.repo.Branch)
 		}
