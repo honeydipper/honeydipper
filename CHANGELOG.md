@@ -1,3 +1,25 @@
+# [3.5.0](https://github.com/honeydipper/honeydipper/compare/v3.4.1...v3.5.0) (2024-08-26)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/exp digest to 2c58cdc ([#579](https://github.com/honeydipper/honeydipper/issues/579)) ([f9113f2](https://github.com/honeydipper/honeydipper/commit/f9113f24fe5d7e5b5dd09d4d5280366555fe38bb))
+* **deps:** update golang.org/x/exp digest to 778ce7b ([#596](https://github.com/honeydipper/honeydipper/issues/596)) ([beb6220](https://github.com/honeydipper/honeydipper/commit/beb62203a4bd2383a0c6fa5089301fdf945fce49))
+* **deps:** update google.golang.org/genproto digest to a8a6208 ([#597](https://github.com/honeydipper/honeydipper/issues/597)) ([cb83b67](https://github.com/honeydipper/honeydipper/commit/cb83b675ea7c3dff5fbe93b8fe42a5965f75ed95))
+* **deps:** update google.golang.org/genproto digest to b0ce06b ([#580](https://github.com/honeydipper/honeydipper/issues/580)) ([6b84223](https://github.com/honeydipper/honeydipper/commit/6b842239e42c0fef1a4f19f3c2e2f4af4c1c104a))
+* **deps:** update google.golang.org/genproto digest to fc7c04a ([#598](https://github.com/honeydipper/honeydipper/issues/598)) ([6e5d911](https://github.com/honeydipper/honeydipper/commit/6e5d911d8dcbc7024af2faec9c616585b6169107))
+* **deps:** update module cloud.google.com/go/kms to v1.17.1 ([#594](https://github.com/honeydipper/honeydipper/issues/594)) ([6fddfda](https://github.com/honeydipper/honeydipper/commit/6fddfda624dcb3f980f023e2ba959ec26830f4b1))
+* **deps:** update module cloud.google.com/go/secretmanager to v1.14.0 ([#599](https://github.com/honeydipper/honeydipper/issues/599)) ([91f9975](https://github.com/honeydipper/honeydipper/commit/91f99750c81860076b8271a1dcc54aa02a6af414))
+* **deps:** update module github.com/golang-jwt/jwt/v5 to v5.2.1 ([#595](https://github.com/honeydipper/honeydipper/issues/595)) ([d72e10d](https://github.com/honeydipper/honeydipper/commit/d72e10d7e19fca5a1b4f47f7b1f083d5f3f9b9a9))
+* **deps:** update module github.com/stretchr/testify to v1.8.4 ([#585](https://github.com/honeydipper/honeydipper/issues/585)) ([7024463](https://github.com/honeydipper/honeydipper/commit/70244638ecb7c41968aeb354a196de2c7bd3a4bf))
+* **deps:** update module golang.org/x/crypto to v0.17.0 [security] ([#583](https://github.com/honeydipper/honeydipper/issues/583)) ([4a20348](https://github.com/honeydipper/honeydipper/commit/4a20348fe92158fc7a2d8f53b4f3984018a3e478))
+
+
+### Features
+
+* cli job mode ([#601](https://github.com/honeydipper/honeydipper/issues/601)) ([1f5cb44](https://github.com/honeydipper/honeydipper/commit/1f5cb44133074fb3ad2ab396015d3ccecec5ce89)), closes [#590](https://github.com/honeydipper/honeydipper/issues/590)
+* **config:** use main as default git branch ([#590](https://github.com/honeydipper/honeydipper/issues/590)) ([7fc8762](https://github.com/honeydipper/honeydipper/commit/7fc876293132d292d97b92ad7f81fd37b08439fd)), closes [#490](https://github.com/honeydipper/honeydipper/issues/490)
+
 ## [3.4.1](https://github.com/honeydipper/honeydipper/compare/v3.4.0...v3.4.1) (2023-10-30)
 
 
