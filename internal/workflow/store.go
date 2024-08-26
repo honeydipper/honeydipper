@@ -72,11 +72,8 @@ func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ct
 	if wf.Workflow == "reserved/main" {
 		w.Watch()
 	}
-	go func() {
-		defer dipper.SafeExitOnError("[workflow] error when preparing workflow session")
-		w.prepare(msg, nil, ctx)
-		w.execute(msg)
-	}()
+	w.prepare(msg, nil, ctx)
+	w.execute(msg)
 
 	return w
 }
