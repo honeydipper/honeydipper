@@ -70,6 +70,7 @@ func StartEngine(cfg *config.Config) {
 	engine.start()
 	if cfg.IsJobMode {
 		go func() {
+			//nolint:godox
 			// TODO: build sync mechanism for awareness of readyness
 			time.Sleep(time.Second)
 			msg := &dipper.Message{
@@ -79,12 +80,12 @@ func StartEngine(cfg *config.Config) {
 			}
 			w := sessionStore.StartSession(&config.Workflow{Workflow: "reserved/main"}, msg, map[string]interface{}{})
 			<-w.Watch()
-			engine.CallNoWait("driver:redispubsub", "send", map[string]interface{}{
+			dipper.Must(engine.CallNoWait("driver:redispubsub", "send", map[string]interface{}{
 				"broadcastSubject": "reload",
 				"data": map[string]interface{}{
 					"force": "true",
 				},
-			})
+			}))
 		}()
 	}
 }

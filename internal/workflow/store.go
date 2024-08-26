@@ -77,6 +77,7 @@ func (s *SessionStore) StartSession(wf *config.Workflow, msg *dipper.Message, ct
 		w.prepare(msg, nil, ctx)
 		w.execute(msg)
 	}()
+
 	return w
 }
 
