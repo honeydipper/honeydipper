@@ -260,7 +260,9 @@ func (s *Service) start() {
 			s.ServiceReload(s.config)
 		}
 		s.healthy = true
-		go s.metricsLoop()
+		if !s.config.IsJobMode {
+			go s.metricsLoop()
+		}
 	}()
 }
 

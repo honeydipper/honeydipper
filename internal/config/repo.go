@@ -141,7 +141,7 @@ func (c *Repo) cloneFetchRepo() {
 		dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
 	}
 
-	branch := "main"
+	branch := plumbing.Main.Short()
 	if c.repo.Branch != "" {
 		branch = c.repo.Branch
 	}
@@ -177,7 +177,11 @@ func (c *Repo) loadRepo() {
 	if c.repo.Path != "" {
 		root = c.repo.Path
 	}
-	c.loadFile(path.Clean(path.Join(c.root, root, "init.yaml")))
+	initFile := "init.yaml"
+	if c.repo.InitFile != "" {
+		initFile = c.repo.InitFile
+	}
+	c.loadFile(path.Clean(path.Join(c.root, root, initFile)))
 	dipper.Logger.Infof("repo [%v] loaded", c.repo.Repo)
 }
 
@@ -203,7 +207,7 @@ func (c *Repo) refreshRepo() bool {
 
 		switch c.repo.Branch {
 		case "":
-			opts.ReferenceName = plumbing.Master
+			opts.ReferenceName = plumbing.Main
 		default:
 			opts.ReferenceName = plumbing.NewBranchReferenceName(c.repo.Branch)
 		}
