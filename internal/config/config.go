@@ -159,8 +159,10 @@ func (c *Config) Watch() {
 		}
 		time.Sleep(interval)
 
-		if watch, ok := dipper.GetMapDataBool(c.Staged.Drivers, "daemon.watchConfig"); !ok || watch {
-			c.Refresh()
+		if !c.IsJobMode {
+			if watch, ok := dipper.GetMapDataBool(c.Staged.Drivers, "daemon.watchConfig"); !ok || watch {
+				c.Refresh()
+			}
 		}
 	}
 }
