@@ -116,7 +116,7 @@ jobs:
       - run: make integration-tests
   semantic-release:
     docker:
-      - image: cimg/node:20.6.1
+      - image: cimg/node:22.7.0
     steps:
       - checkout
       - run: |
