@@ -70,9 +70,11 @@ func StartEngine(cfg *config.Config) {
 	engine.start()
 	if cfg.IsJobMode {
 		go func() {
-			//nolint:godox
-			// TODO: build sync mechanism for awareness of readyness
-			time.Sleep(time.Second)
+			cfg.StageWG[config.StageDiscovering].Wait()
+			for cfg.Stage != config.StageServing {
+				dipper.Logger.Info("Waiting for serving stage ...")
+				time.Sleep(time.Second)
+			}
 			msg := &dipper.Message{
 				Labels: map[string]string{
 					"eventID": "main",
