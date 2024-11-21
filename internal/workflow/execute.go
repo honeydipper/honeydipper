@@ -8,6 +8,7 @@ package workflow
 
 import (
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -139,6 +140,27 @@ func (w *Session) launchIteration(msg *dipper.Message) {
 func (w *Session) launchParallelIterations(msg *dipper.Message) {
 	iter := reflect.ValueOf(w.workflow.IterateParallel)
 	l := iter.Len()
+
+	poolCount := l
+	if w.workflow.IteratePool != "" {
+		poolCount = min(l, dipper.Must(strconv.Atoi(w.workflow.IteratePool)).(int))
+	}
+
+	if poolCount <= 0 {
+		poolCount = l
+	}
+
+	w.origMsg = msg
+	for i := 0; i < poolCount; i++ {
+		daemon.Children.Add(1)
+		go w.launchParallelIteration(i)
+	}
+}
+
+// launchParallelIteration starts one of the iteration.
+func (w *Session) launchParallelIteration(i int) {
+	defer daemon.Children.Done()
+
 	single := config.Workflow{
 		Workflow:     w.workflow.Workflow,
 		Function:     w.workflow.Function,
@@ -150,22 +172,19 @@ func (w *Session) launchParallelIterations(msg *dipper.Message) {
 		Steps:        w.workflow.Steps,
 		Threads:      w.workflow.Threads,
 	}
-	for i := 0; i < l; i++ {
-		child := w.createChildSession(&single, msg)
-		child.ctx["current"] = iter.Index(i).Interface()
-		if w.workflow.IterateAs != "" {
-			child.ctx[w.workflow.IterateAs] = child.ctx["current"]
-		}
-		delete(child.ctx, "resume_token")
 
-		daemon.Children.Add(1)
-		go func(child *Session) {
-			defer daemon.Children.Done()
-			defer dipper.SafeExitOnError("Failed in execute child thread with %+v", single)
-			defer w.onError()
-			child.execute(msg)
-		}(child)
+	defer dipper.SafeExitOnError("Failed in execute child thread with %+v", single)
+	defer w.onError()
+
+	iter := reflect.ValueOf(w.workflow.IterateParallel)
+	child := w.createChildSession(&single, w.origMsg)
+	child.ctx["current"] = iter.Index(i).Interface()
+	if w.workflow.IterateAs != "" {
+		child.ctx[w.workflow.IterateAs] = child.ctx["current"]
 	}
+	delete(child.ctx, "resume_token")
+
+	child.execute(w.origMsg)
 }
 
 // executeIteration takes actions for items in iteration list.

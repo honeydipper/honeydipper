@@ -8,6 +8,7 @@ package workflow
 
 import (
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -333,6 +334,18 @@ func (w *Session) continueExec(msg *dipper.Message, exports []map[string]interfa
 		w.iteration++
 		w.executeIteration(msg)
 	case WorkflowNextParallelIteration:
+		if w.workflow.IteratePool != "" {
+			poolCount := dipper.Must(strconv.Atoi(w.workflow.IteratePool)).(int)
+			if poolCount > 0 {
+				w.iterationLock.Lock()
+				defer w.iterationLock.Unlock()
+				i := poolCount + int(w.iteration)
+				if i < w.lenOfIterate() {
+					daemon.Children.Add(1)
+					go w.launchParallelIteration(i)
+				}
+			}
+		}
 		atomic.AddInt32(&w.iteration, 1)
 	case WorkflowNextRound:
 		w.loopCount++
