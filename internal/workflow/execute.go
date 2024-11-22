@@ -144,10 +144,9 @@ func (w *Session) launchParallelIterations(msg *dipper.Message) {
 	poolCount := l
 	if w.workflow.IteratePool != "" {
 		poolCount = min(l, dipper.Must(strconv.Atoi(w.workflow.IteratePool)).(int))
-	}
-
-	if poolCount <= 0 {
-		dipper.Logger.Panicf("invalid iterate_pool %s", w.workflow.IteratePool)
+		if poolCount <= 0 {
+			dipper.Logger.Panicf("invalid iterate_pool %s", w.workflow.IteratePool)
+		}
 	}
 
 	w.origMsg = msg
