@@ -56,11 +56,17 @@ var WorkflowNextStrings = []string{
 
 // routeNext determines what to do next for the workflow.
 func (w *Session) routeNext(msg *dipper.Message) int {
-	if msg.Labels["status"] == SessionStatusError && w.workflow.OnError != "continue" {
-		return WorkflowNextComplete
-	}
-	if msg.Labels["status"] == SessionStatusFailure && w.workflow.OnFailure == "exit" {
-		return WorkflowNextComplete
+	if w.workflow.IterateParallel == nil {
+		if msg.Labels["status"] == SessionStatusError && w.workflow.OnError != "continue" {
+			return WorkflowNextComplete
+		}
+		if msg.Labels["status"] == SessionStatusFailure && w.workflow.OnFailure == "exit" {
+			return WorkflowNextComplete
+		}
+	} else if w.iterationOut == nil && msg.Labels["status"] != SessionStatusSuccess {
+		// parallel iteration will continue on error/failure, errors will be preserved
+		// reported when all iterations complete.
+		w.iterationOut = msg
 	}
 
 	switch {
@@ -216,13 +222,19 @@ func (w *Session) isInCompleteHooks() bool {
 
 // complete gracefully terminates a session and return exported data to parent.
 func (w *Session) complete(msg *dipper.Message) {
-	w.savedMsg = msg
+	if msg.Labels["status"] == SessionStatusSuccess && w.iterationOut != nil {
+		// surface the parallel iteration error
+		msg = w.iterationOut
+	}
+
 	if msg.Labels == nil {
 		msg.Labels = map[string]string{}
 	}
 	if msg.Labels["status"] != SessionStatusSuccess && msg.Labels["performing"] == "" {
 		msg.Labels["performing"] = w.performing
 	}
+
+	w.savedMsg = msg
 
 	dipper.Logger.Infof("[workflow] session [%s] completing with msg labels %+v", w.ID, dipper.SanitizedLabels(msg.Labels))
 	if w.ID != "" && dipper.IDMapGet(&w.store.sessions, w.ID) != nil {

@@ -30,6 +30,7 @@ type Session struct {
 	current        int32 // current thread or step
 	iteration      int32 // current item in the iteration list
 	iterationLock  *sync.Mutex
+	iterationOut   *dipper.Message
 	loopCount      int // counter for looping
 	parent         string
 	ctx            map[string]interface{}
