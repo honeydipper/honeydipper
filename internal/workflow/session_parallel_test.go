@@ -168,6 +168,126 @@ func TestWorkflowIterateParallel(t *testing.T) {
 	})
 }
 
+func TestWorkflowIterateParallelPool(t *testing.T) {
+	syntheticTest(t, configStr, map[string]interface{}{
+		"workflow": &config.Workflow{
+			CallFunction: "foo_sys.bar_func",
+			IterateParallel: []string{
+				"item1",
+				"item2",
+				"item3",
+			},
+			IteratePool: "2",
+		},
+		"msg": &dipper.Message{},
+		"ctx": map[string]interface{}{},
+		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
+			mockHelper.EXPECT().SendMessage(DipperMsgEq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels:  map[string]string{}, Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc": "",
+						"_meta_name": "foo_sys.bar_func",
+						"current":    "item1",
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Target: config.Action{
+							System:   "foo_sys",
+							Function: "bar_func",
+						},
+					},
+					"labels": emptyLabels,
+				},
+			})).Times(1)
+			mockHelper.EXPECT().SendMessage(DipperMsgEq(&dipper.Message{
+				Channel: "eventbus",
+				Subject: "command",
+				Labels:  map[string]string{}, Payload: map[string]interface{}{
+					"ctx": map[string]interface{}{
+						"_meta_desc": "",
+						"_meta_name": "foo_sys.bar_func",
+						"current":    "item2",
+					},
+					"data":  map[string]interface{}{},
+					"event": map[string]interface{}{},
+					"function": config.Function{
+						Target: config.Action{
+							System:   "foo_sys",
+							Function: "bar_func",
+						},
+					},
+					"labels": emptyLabels,
+				},
+			})).Times(1)
+		},
+		"steps": []map[string]interface{}{
+			{
+				"sessionID": "1",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "1",
+						"status":    "success",
+					},
+				},
+				"ctx": map[string]interface{}{},
+				"asserts": func() {
+					mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
+					mockHelper.EXPECT().SendMessage(DipperMsgEq(&dipper.Message{
+						Channel: "eventbus",
+						Subject: "command",
+						Labels:  map[string]string{}, Payload: map[string]interface{}{
+							"ctx": map[string]interface{}{
+								"_meta_desc": "",
+								"_meta_name": "foo_sys.bar_func",
+								"current":    "item3",
+							},
+							"data":  map[string]interface{}{},
+							"event": map[string]interface{}{},
+							"function": config.Function{
+								Target: config.Action{
+									System:   "foo_sys",
+									Function: "bar_func",
+								},
+							},
+							"labels": emptyLabels,
+						},
+					})).Times(1)
+				},
+			},
+			{
+				"sessionID": "2",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "2",
+						"status":    "success",
+					},
+				},
+				"ctx": map[string]interface{}{},
+			},
+			{
+				"sessionID": "3",
+				"msg": &dipper.Message{
+					Channel: "eventbus",
+					Subject: "return",
+					Labels: map[string]string{
+						"sessionID": "3",
+						"status":    "success",
+					},
+				},
+				"ctx": map[string]interface{}{},
+			},
+		},
+	})
+}
+
 func TestWorkflowThreads(t *testing.T) {
 	syntheticTest(t, configStr, map[string]interface{}{
 		"workflow": &config.Workflow{
