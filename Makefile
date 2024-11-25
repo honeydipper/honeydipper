@@ -18,7 +18,7 @@ endif
 .PHONY: build lint run_mockgen unit-tests integration-tests test all clean run
 
 build:
-	@printf "$(BOLD)Buiding$(RESET)\n"
+	@printf "$(BOLD)Building$(RESET)\n"
 	@go install ./...
 
 lint:
@@ -57,7 +57,7 @@ integration-tests:
 
 test: unit-tests integration-tests
 
-all: lint test build
+all: lint build test
 
 clean:
 	@for f in $(files_require_mocking); do \
