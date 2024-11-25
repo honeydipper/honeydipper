@@ -21,7 +21,7 @@ RUN go install -v ./drivers/cmd/redispubsub
 RUN go install -v ./cmd/...
 RUN go install -v ./drivers/...
 
-FROM alpine:3.19
+FROM alpine:3.20
 
 LABEL description="Honeydipper - an event-driven orchestration framework" \
       org.label-schema.vcs-url=https://github.com/honeydipper/honeydipper \
