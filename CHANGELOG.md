@@ -1,3 +1,16 @@
+# [3.6.0](https://github.com/honeydipper/honeydipper/compare/v3.5.0...v3.6.0) (2024-11-25)
+
+
+### Bug Fixes
+
+* **deps:** update google.golang.org/genproto digest to e639e21 ([#606](https://github.com/honeydipper/honeydipper/issues/606)) ([42cc276](https://github.com/honeydipper/honeydipper/commit/42cc276e1c2255f909f7227f84715611a189eeff))
+* **deps:** update module cloud.google.com/go/secretmanager to v1.14.2 ([#608](https://github.com/honeydipper/honeydipper/issues/608)) ([b1f58ac](https://github.com/honeydipper/honeydipper/commit/b1f58ac3507c610a286815403a8fde7a4876a5b8))
+
+
+### Features
+
+* thottle parallel iteration with pooling ([#611](https://github.com/honeydipper/honeydipper/issues/611)) ([e2c1815](https://github.com/honeydipper/honeydipper/commit/e2c1815b6229045a9bba2dc243c00d5f27a957c2))
+
 # [3.5.0](https://github.com/honeydipper/honeydipper/compare/v3.4.1...v3.5.0) (2024-08-26)
 
 
