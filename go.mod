@@ -4,8 +4,8 @@ go 1.21
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
-	cloud.google.com/go/pubsub v1.44.0
-	cloud.google.com/go/spanner v1.70.0
+	cloud.google.com/go/pubsub v1.45.1
+	cloud.google.com/go/spanner v1.73.0
 	cloud.google.com/go/storage v1.43.0
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1
@@ -38,7 +38,7 @@ require (
 	golang.org/x/term v0.25.0
 	golang.org/x/text v0.19.0 // indirect
 	google.golang.org/api v0.203.0
-	google.golang.org/genproto v0.0.0-20241015192408-796eee8c2d53
+	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697
 	gopkg.in/h2non/gock.v1 v1.0.15
 	k8s.io/api v0.29.2
 	k8s.io/apimachinery v0.29.2
@@ -47,7 +47,7 @@ require (
 )
 
 require (
-	cloud.google.com/go/kms v1.20.0
+	cloud.google.com/go/kms v1.20.1
 	cloud.google.com/go/secretmanager v1.14.2
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -86,7 +86,7 @@ require (
 	golang.org/x/time v0.7.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/grpc v1.67.1 // indirect
-	google.golang.org/protobuf v1.35.1 // indirect
+	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -100,7 +100,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.2
-	cloud.google.com/go/logging v1.11.0
+	cloud.google.com/go/logging v1.12.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/go-redis/redismock/v8 v8.0.6
@@ -111,9 +111,9 @@ require (
 require (
 	cloud.google.com/go/auth v0.9.9 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
-	cloud.google.com/go/compute v1.28.1 // indirect
-	cloud.google.com/go/iam v1.2.1 // indirect
-	cloud.google.com/go/longrunning v0.6.1 // indirect
+	cloud.google.com/go/compute v1.29.0 // indirect
+	cloud.google.com/go/iam v1.2.2 // indirect
+	cloud.google.com/go/longrunning v0.6.2 // indirect
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/ProtonMail/go-crypto v1.0.0 // indirect
@@ -148,6 +148,6 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20241007155032-5fefd90f89a9 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20241113202542-65e8d215514f // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241113202542-65e8d215514f // indirect
 )
