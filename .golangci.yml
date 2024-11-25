@@ -3,11 +3,11 @@ linters:
   enable:
     - asciicheck
     - bodyclose
+    - copyloopvar
     - dogsled
     - dupl
     - err113
     - errorlint
-    - exportloopref
     - funlen
     - gci
     - gochecknoinits
@@ -53,6 +53,9 @@ linters-settings:
     statements: 80
   gocognit:
     min-complexity: 60
+  gosec:
+    excludes:
+      - G115
 
 issues:
   exclude-rules:
