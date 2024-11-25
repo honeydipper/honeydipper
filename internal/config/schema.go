@@ -81,6 +81,7 @@ type Workflow struct {
 
 	Iterate         interface{}
 	IterateParallel interface{} `json:"iterate_parallel" mapstructure:"iterate_parallel"`
+	IteratePool     string      `json:"iterate_pool" mapstructure:"iterate_pool"`
 	IterateAs       string      `json:"iterate_as" mapstructure:"iterate_as"`
 
 	Retry   string

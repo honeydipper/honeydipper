@@ -1,7 +1,7 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.21.7-alpine
+    - image: golang:1.23.3-alpine
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 version: 2.1
@@ -42,7 +42,7 @@ jobs:
     <<: *defaults
     resource_class: medium+
     docker:
-      - image: golangci/golangci-lint:v1.59-alpine
+      - image: golangci/golangci-lint:v1.62-alpine
     steps:
       - checkout
       - restore_cache:
@@ -94,7 +94,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.21.7-alpine
+      - image: golang:1.23.3-alpine
       - image: redis:7.0.11-alpine
     steps:
       - attach_workspace:
