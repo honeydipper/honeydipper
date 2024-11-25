@@ -29,7 +29,9 @@ type Session struct {
 	workflow       *config.Workflow
 	current        int32 // current thread or step
 	iteration      int32 // current item in the iteration list
-	loopCount      int   // counter for looping
+	iterationLock  *sync.Mutex
+	iterationOut   *dipper.Message
+	loopCount      int // counter for looping
 	parent         string
 	ctx            map[string]interface{}
 	ctxLock        *sync.Mutex
@@ -41,6 +43,7 @@ type Session struct {
 	loadedContexts []string
 	currentHook    string
 	savedMsg       *dipper.Message
+	origMsg        *dipper.Message
 	performing     string
 	isHook         bool
 	context        context.Context
@@ -322,6 +325,9 @@ func (w *Session) interpolateWorkflow(msg *dipper.Message) {
 	ret.IterateParallel = dipper.Interpolate(v.IterateParallel, envData)
 	if ret.IterateParallel == nil && v.IterateParallel != nil {
 		ret.IterateParallel = []interface{}{}
+	}
+	if v.IterateParallel != nil {
+		ret.IteratePool = dipper.InterpolateStr(v.IteratePool, envData)
 	}
 
 	// ret.While = v.While                     // repeatedly interpolated later
