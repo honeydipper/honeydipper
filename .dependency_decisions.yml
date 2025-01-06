@@ -251,3 +251,27 @@
     :why: Unlicense
     :versions: []
     :when: 2020-11-07 22:16:03.105598000 Z
+- - :permit
+  - Mozilla Public License 2.0
+  - :who: Charles546
+    :why: Needed to support vault
+    :versions: []
+    :when: 2025-01-06 19:45:34.965440000 Z
+- - :approve
+  - github.com/hashicorp/go-retryablehttp
+  - :who: Charles546
+    :why: Needed to support vault
+    :versions: []
+    :when: 2025-01-06 19:51:25.738123000 Z
+- - :approve
+  - github.com/hashicorp/vault/api
+  - :who: Charles546
+    :why: Needed to support vault
+    :versions: []
+    :when: 2025-01-06 19:51:46.891654000 Z
+- - :approve
+  - github.com/hashicorp/vault/api/auth/kubernetes
+  - :who: Charles546
+    :why: Needed to support vault
+    :versions: []
+    :when: 2025-01-06 19:52:12.119818000 Z
