@@ -213,7 +213,7 @@ func waitForJob(m *dipper.Message) {
 			jobStatus = StatusSuccess
 			reason    []string
 		)
-		if job.Status.Failed > 0 {
+		if job.Status.Succeeded == 0 {
 			jobStatus = StatusFailure
 			for _, condition := range job.Status.Conditions {
 				reason = append(reason, condition.Reason)
