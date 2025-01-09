@@ -116,6 +116,21 @@ func getJobLog(m *dipper.Message) {
 		nameSpace = DefaultNamespace
 	}
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
+
+	listCtx, cancelList := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	defer cancelList()
+	jobclient := k8client.BatchV1().Jobs(nameSpace)
+	watchOption := metav1.ListOptions{
+		FieldSelector: "metadata.name==" + jobName,
+	}
+	joblist, err := jobclient.List(listCtx, watchOption)
+	if err != nil || len(joblist.Items) == 0 {
+		log.Panicf("[%s] job not found [%s]: %+v", driver.Service, jobName, err)
+	}
+	job := &joblist.Items[0]
+
+	jobStatus, _, _ := getJobStatus(job)
+
 	search := metav1.ListOptions{
 		LabelSelector: "job-name==" + jobName,
 	}
@@ -130,23 +145,23 @@ func getJobLog(m *dipper.Message) {
 	}
 
 	alllogs := map[string]map[string]string{}
-	returnStatus := StatusSuccess
 	messages := []string{}
 
 	for _, pod := range pods.Items {
-		if returnStatus == StatusSuccess {
-			cStatuses := pod.Status.InitContainerStatuses
-			cStatuses = append(cStatuses, pod.Status.ContainerStatuses...)
-			for _, c := range cStatuses {
-				if c.State.Terminated == nil {
-					returnStatus = StatusFailure
-					messages = append(messages, fmt.Sprintf("container %s.%s not terminated", pod.Name, c.Name))
-				} else if c.State.Terminated.ExitCode != 0 {
-					returnStatus = StatusFailure
-					messages = append(messages, fmt.Sprintf("container %s.%s exit with code %+v", pod.Name, c.Name, c.State.Terminated.ExitCode))
-				}
+		cStatuses := pod.Status.InitContainerStatuses
+		cStatuses = append(cStatuses, pod.Status.ContainerStatuses...)
+		for _, c := range cStatuses {
+			switch {
+			case c.State.Terminated == nil:
+				messages = append(messages, fmt.Sprintf("container %s.%s not terminated", pod.Name, c.Name))
+			case c.State.Terminated.ExitCode != 0:
+				messages = append(messages, fmt.Sprintf("container %s.%s exit with code %+v", pod.Name, c.Name, c.State.Terminated.ExitCode))
+			default:
+				messages = append(messages, fmt.Sprintf("container %s.%s completed successfully", pod.Name, c.Name))
 			}
 		}
+
+		messages = append(messages, ">>>Logs<<<")
 
 		podlogs := map[string]string{}
 		for _, container := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
@@ -158,7 +173,6 @@ func getJobLog(m *dipper.Message) {
 					podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
 					messages = append(messages, podlogs[container.Name])
 					log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
-					returnStatus = StatusFailure
 				} else {
 					defer stream.Close()
 					containerlog, err := io.ReadAll(stream)
@@ -166,7 +180,6 @@ func getJobLog(m *dipper.Message) {
 						podlogs[container.Name] = fmt.Sprintf("Error: unable to read the logs from the stream %s.%s", pod.Name, container.Name)
 						messages = append(messages, podlogs[container.Name])
 						log.Warningf("[%s] unable to read logs from stream for pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
-						returnStatus = StatusFailure
 					} else {
 						podlogs[container.Name] = string(containerlog)
 						messages = append(messages, podlogs[container.Name])
@@ -176,21 +189,70 @@ func getJobLog(m *dipper.Message) {
 		}
 		alllogs[pod.Name] = podlogs
 	}
-
 	output := strings.Join(messages, "\n")
 	returnMsg := dipper.Message{
+		Labels: map[string]string{
+			"status": jobStatus,
+		},
 		Payload: map[string]interface{}{
 			"log":    alllogs,
 			"output": output,
 		},
 	}
-	if returnStatus != "success" {
-		returnMsg.Labels = map[string]string{
-			"status": returnStatus,
-			"reason": output,
-		}
+	if jobStatus != StatusSuccess {
+		returnMsg.Labels["reason"] = output
 	}
+
 	m.Reply <- returnMsg
+}
+
+func getJobStatus(job *batchv1.Job) (string, bool, []string) {
+	var (
+		jobStatus = StatusSuccess
+		completed = false
+		reason    = []string{}
+	)
+
+	for _, cond := range job.Status.Conditions {
+		if cond.Type == batchv1.JobFailed && cond.Status == corev1.ConditionTrue {
+			jobStatus = StatusFailure
+			completed = true
+			for _, condition := range job.Status.Conditions {
+				reason = append(reason, condition.Reason)
+			}
+
+			break
+		}
+		if cond.Type == batchv1.JobComplete && cond.Status == corev1.ConditionTrue {
+			jobStatus = StatusSuccess
+			completed = true
+
+			break
+		}
+		log.Infof("[%s] got condition %+v", driver.Service, cond)
+	}
+
+	return jobStatus, completed, reason
+}
+
+func returnJobStatus(m *dipper.Message, job *batchv1.Job) bool {
+	jobStatus, completed, reason := getJobStatus(job)
+
+	if !completed {
+		return false
+	}
+
+	m.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"status": job.Status,
+		},
+		Labels: map[string]string{
+			"status": jobStatus,
+			"reason": strings.Join(reason, "\n"),
+		},
+	}
+
+	return true
 }
 
 func waitForJob(m *dipper.Message) {
@@ -206,28 +268,6 @@ func waitForJob(m *dipper.Message) {
 	if timeoutStr, ok := m.Labels["timeout"]; ok {
 		timeoutInt, _ := strconv.Atoi(timeoutStr)
 		timeout = time.Duration(timeoutInt)
-	}
-
-	returnJobStatus := func(job *batchv1.Job) {
-		var (
-			jobStatus = StatusSuccess
-			reason    []string
-		)
-		if job.Status.Failed > 0 {
-			jobStatus = StatusFailure
-			for _, condition := range job.Status.Conditions {
-				reason = append(reason, condition.Reason)
-			}
-		}
-		m.Reply <- dipper.Message{
-			Payload: map[string]interface{}{
-				"status": job.Status,
-			},
-			Labels: map[string]string{
-				"status": jobStatus,
-				"reason": strings.Join(reason, "\n"),
-			},
-		}
 	}
 
 	ctxWatch, cancelWatch := context.WithTimeout(context.Background(), timeout*time.Second)
@@ -253,9 +293,7 @@ func waitForJob(m *dipper.Message) {
 			watchOption.ResourceVersion = joblist.ResourceVersion
 		}()
 
-		if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
-			returnJobStatus(job)
-
+		if returnJobStatus(m, job) {
 			break
 		}
 
@@ -264,43 +302,40 @@ func waitForJob(m *dipper.Message) {
 			log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
 		}
 
-		func() {
-			defer jobstatus.Stop()
+		defer jobstatus.Stop()
 
-		loop:
-			for {
-				select {
-				case <-ctxWatch.Done():
+	loop:
+		for {
+			select {
+			case <-ctxWatch.Done():
+				EOW = true
+
+				break loop
+			case evt := <-jobstatus.ResultChan():
+				if evt.Object == nil {
+					break loop
+				}
+
+				if evt.Type == watch.Error {
+					e := evt.Object.(*metav1.Status)
+					if e.Code == http.StatusGone {
+						log.Warningf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
+
+						break loop
+					} else {
+						log.Panicf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
+					}
+				}
+
+				job := evt.Object.(*batchv1.Job)
+				log.Debugf("[%s] receiving a event when watching for job [%s] %s: %+v", driver.Service, jobName, evt.Type, job.Status)
+				if returnJobStatus(m, job) {
 					EOW = true
 
 					break loop
-				case evt := <-jobstatus.ResultChan():
-					switch evt.Type {
-					case watch.Error:
-						e := evt.Object.(*metav1.Status)
-						if e.Code == http.StatusGone {
-							log.Warningf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
-
-							break loop
-						} else {
-							log.Panicf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
-						}
-					default:
-						if evt.Object == nil {
-							break loop
-						}
-						job := evt.Object.(*batchv1.Job)
-						log.Debugf("[%s] receiving a event when watching for job [%s] %s: %+v", driver.Service, jobName, evt.Type, job.Status)
-						if len(job.Status.Conditions) > 0 && job.Status.Active == 0 {
-							returnJobStatus(job)
-							EOW = true
-
-							break loop
-						}
-					}
 				}
 			}
-		}()
+		}
 	}
 }
 
