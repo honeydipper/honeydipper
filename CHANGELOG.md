@@ -1,3 +1,20 @@
+# [3.7.0](https://github.com/honeydipper/honeydipper/compare/v3.6.0...v3.7.0) (2025-01-09)
+
+
+### Bug Fixes
+
+* check k8s job status with conditions array ([#623](https://github.com/honeydipper/honeydipper/issues/623)) ([d4a099c](https://github.com/honeydipper/honeydipper/commit/d4a099c907140de4566de071ca68c0a81574232c))
+* **deps:** update golang.org/x/exp digest to 7588d65 ([#617](https://github.com/honeydipper/honeydipper/issues/617)) ([b657453](https://github.com/honeydipper/honeydipper/commit/b6574536be63222a2fd504d76cd9eaed3091800c))
+* **deps:** update google.golang.org/genproto digest to 5f5ef82 ([#618](https://github.com/honeydipper/honeydipper/issues/618)) ([218fe31](https://github.com/honeydipper/honeydipper/commit/218fe31ed3439ce35ca931e0e3ad5c4923f13263))
+* **deps:** update module github.com/go-git/go-git/v5 to v5.13.0 [security] ([#619](https://github.com/honeydipper/honeydipper/issues/619)) ([1765db9](https://github.com/honeydipper/honeydipper/commit/1765db914a23673d1df7527d510d9907307c22e6))
+* **deps:** update module github.com/go-git/go-git/v5 to v5.13.1 ([#621](https://github.com/honeydipper/honeydipper/issues/621)) ([0cbac6a](https://github.com/honeydipper/honeydipper/commit/0cbac6ac232f9f2a067f48eb00347a6468772d0f))
+* k8s job only fail if succeeded is 0 ([#622](https://github.com/honeydipper/honeydipper/issues/622)) ([632b72c](https://github.com/honeydipper/honeydipper/commit/632b72ce5e4b180fbe6b314be0c5a9a180b11f2a))
+
+
+### Features
+
+* accessing vault secrets ([#620](https://github.com/honeydipper/honeydipper/issues/620)) ([b56996f](https://github.com/honeydipper/honeydipper/commit/b56996f0f6bc270cf9d9aba469b1f22b9d47231b))
+
 # [3.6.0](https://github.com/honeydipper/honeydipper/compare/v3.5.0...v3.6.0) (2024-11-25)
 
 
