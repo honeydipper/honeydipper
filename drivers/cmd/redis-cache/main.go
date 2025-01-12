@@ -42,6 +42,8 @@ func main() {
 	driver.Start = start
 	driver.RPCHandlers["save"] = save
 	driver.RPCHandlers["load"] = load
+	driver.RPCHandlers["incr"] = incr
+	driver.RPCHandlers["decr"] = decr
 	driver.Run()
 }
 
@@ -53,6 +55,48 @@ func loadOptions() {
 
 func start(msg *dipper.Message) {
 	loadOptions()
+}
+
+func incr(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	val, err := client.Incr(ctx, key).Result()
+	switch {
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		msg.Reply <- dipper.Message{
+			Payload: map[string]interface{}{
+				"value": val,
+			},
+		}
+	}
+}
+
+func decr(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	val, err := client.Decr(ctx, key).Result()
+	switch {
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		msg.Reply <- dipper.Message{
+			Payload: map[string]interface{}{
+				"value": val,
+			},
+		}
+	}
 }
 
 func load(msg *dipper.Message) {
