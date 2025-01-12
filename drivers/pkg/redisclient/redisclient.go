@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/redis/go-redis/v9"
 )
 
 // Options wraps redis.Options and provide a persisted redis.Client.

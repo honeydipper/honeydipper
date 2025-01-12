@@ -15,11 +15,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
+	"github.com/redis/go-redis/v9"
 )
+
+const RedisMaxInt64 = 9223372036854775807
 
 var (
 	log          *logging.Logger
@@ -42,6 +44,8 @@ func main() {
 	driver.Start = start
 	driver.RPCHandlers["save"] = save
 	driver.RPCHandlers["load"] = load
+	driver.RPCHandlers["incr"] = incr
+	driver.RPCHandlers["decr"] = decr
 	driver.Run()
 }
 
@@ -53,6 +57,57 @@ func loadOptions() {
 
 func start(msg *dipper.Message) {
 	loadOptions()
+}
+
+func incr(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	wrap := dipper.MustGetMapDataBool(msg.Payload, "wrap")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	val, err := client.Incr(ctx, key).Result()
+	switch {
+	case wrap && err != nil && err.Error() == "ERR increment or decrement would overflow":
+		// should retry after the key is reset
+		time.Sleep(time.Millisecond)
+		incr(msg)
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		if wrap && val == RedisMaxInt64 {
+			// reset the key to 0
+			dipper.Must(client.Set(ctx, key, "0", 0).Result())
+		}
+		msg.Reply <- dipper.Message{
+			Payload: map[string]interface{}{
+				"value": val,
+			},
+		}
+	}
+}
+
+func decr(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	val, err := client.Decr(ctx, key).Result()
+	switch {
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		msg.Reply <- dipper.Message{
+			Payload: map[string]interface{}{
+				"value": val,
+			},
+		}
+	}
 }
 
 func load(msg *dipper.Message) {

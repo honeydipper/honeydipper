@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redismock/v8"
+	"github.com/go-redis/redismock/v9"
 	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/stretchr/testify/assert"
@@ -113,5 +113,57 @@ func TestLoad(t *testing.T) {
 		assert.Nil(t, reply.Payload, "load with empty return should return a nil Payload")
 	default:
 		assert.Fail(t, "load with empty return should reply a dipper message")
+	}
+}
+
+func TestIncrDecr(t *testing.T) {
+	db, mock := redismock.NewClientMock()
+	redisOptions = &redisclient.Options{
+		Client: db,
+	}
+
+	assert.Panics(t, func() { incr(&dipper.Message{}) }, "incr should panic with empty request")
+	assert.Panics(t, func() { decr(&dipper.Message{}) }, "decr should panic with empty request")
+
+	msg := &dipper.Message{
+		Payload: map[string]interface{}{
+			"key":  "foo",
+			"wrap": "true",
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+
+	mock.ExpectIncr("foo").SetVal(1)
+	assert.NotPanics(t, func() { incr(msg) }, "incr should not panic with good data")
+	select {
+	case reply := <-msg.Reply:
+		assert.Equal(t, int64(1), reply.Payload.(map[string]interface{})["value"], "incr should return correct value 1")
+	default:
+		assert.Fail(t, "incr should reply a dipper message")
+	}
+
+	mock.ClearExpect()
+
+	msg.Reply = make(chan dipper.Message, 1)
+	mock.ExpectIncr("foo").SetVal(RedisMaxInt64)
+	mock.ExpectSet("foo", "0", 0).SetVal("OK")
+	assert.NotPanics(t, func() { incr(msg) }, "incr should not panic with good data")
+	select {
+	case reply := <-msg.Reply:
+		assert.Equal(t, int64(RedisMaxInt64), reply.Payload.(map[string]interface{})["value"], "incr should return correct value 9223372036854775807")
+	default:
+		assert.Fail(t, "incr should reply a dipper message")
+	}
+
+	mock.ClearExpect()
+
+	msg.Reply = make(chan dipper.Message, 1)
+	mock.ExpectDecr("foo").SetVal(0)
+	assert.NotPanics(t, func() { decr(msg) }, "decr should not panic with good data")
+	select {
+	case reply := <-msg.Reply:
+		assert.Equal(t, int64(0), reply.Payload.(map[string]interface{})["value"], "decr should return correct value 0")
+	default:
+		assert.Fail(t, "decr should reply a dipper message")
 	}
 }
