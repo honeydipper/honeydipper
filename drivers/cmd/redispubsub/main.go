@@ -14,10 +14,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/op/go-logging"
+	"github.com/redis/go-redis/v9"
 )
 
 var (
