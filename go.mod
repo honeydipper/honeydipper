@@ -14,7 +14,6 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-errors/errors v1.5.1
 	github.com/go-logr/logr v1.4.2 // indirect
-	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gogf/gf v1.16.9
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.4
@@ -100,10 +99,11 @@ require (
 	cloud.google.com/go/logging v1.13.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/go-git/go-git/v5 v5.13.1
-	github.com/go-redis/redismock/v8 v8.0.6
+	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/hashicorp/vault/api v1.15.0
 	github.com/hashicorp/vault/api/auth/kubernetes v0.8.0
+	github.com/redis/go-redis/v9 v9.7.0
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
 )
 
