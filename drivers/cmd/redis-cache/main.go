@@ -21,6 +21,8 @@ import (
 	"github.com/op/go-logging"
 )
 
+const RedisMaxInt64 = 9223372036854775807
+
 var (
 	log          *logging.Logger
 	driver       *dipper.Driver
@@ -60,6 +62,7 @@ func start(msg *dipper.Message) {
 func incr(msg *dipper.Message) {
 	dipper.DeserializePayload(msg)
 	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	wrap := dipper.MustGetMapDataBool(msg.Payload, "wrap")
 
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
@@ -67,9 +70,17 @@ func incr(msg *dipper.Message) {
 	defer cancel()
 	val, err := client.Incr(ctx, key).Result()
 	switch {
+	case wrap && err != nil && err.Error() == "ERR increment or decrement would overflow":
+		// should retry after the key is reset
+		time.Sleep(time.Millisecond)
+		incr(msg)
 	case err != nil:
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	default:
+		if wrap && val == RedisMaxInt64 {
+			// reset the key to 0
+			dipper.Must(client.Set(ctx, key, "0", 0).Result())
+		}
 		msg.Reply <- dipper.Message{
 			Payload: map[string]interface{}{
 				"value": val,

@@ -127,7 +127,8 @@ func TestIncrDecr(t *testing.T) {
 
 	msg := &dipper.Message{
 		Payload: map[string]interface{}{
-			"key": "foo",
+			"key":  "foo",
+			"wrap": "true",
 		},
 		Reply: make(chan dipper.Message, 1),
 	}
@@ -144,6 +145,19 @@ func TestIncrDecr(t *testing.T) {
 	mock.ClearExpect()
 
 	msg.Reply = make(chan dipper.Message, 1)
+	mock.ExpectIncr("foo").SetVal(RedisMaxInt64)
+	mock.ExpectSet("foo", "0", 0).SetVal("OK")
+	assert.NotPanics(t, func() { incr(msg) }, "incr should not panic with good data")
+	select {
+	case reply := <-msg.Reply:
+		assert.Equal(t, int64(RedisMaxInt64), reply.Payload.(map[string]interface{})["value"], "incr should return correct value 9223372036854775807")
+	default:
+		assert.Fail(t, "incr should reply a dipper message")
+	}
+
+	mock.ClearExpect()
+
+	msg.Reply = make(chan dipper.Message, 1)
 	mock.ExpectDecr("foo").SetVal(0)
 	assert.NotPanics(t, func() { decr(msg) }, "decr should not panic with good data")
 	select {
@@ -152,5 +166,4 @@ func TestIncrDecr(t *testing.T) {
 	default:
 		assert.Fail(t, "decr should reply a dipper message")
 	}
-
 }
