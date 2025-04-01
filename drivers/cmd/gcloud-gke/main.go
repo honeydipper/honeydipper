@@ -120,11 +120,23 @@ func getKubeCfg(msg *dipper.Message) {
 	if err != nil {
 		panic(err)
 	}
+
+	useDNS := false
+	if cp := clusterObj.ControlPlaneEndpointsConfig; cp != nil {
+		if dnsCfg := cp.DnsEndpointConfig; dnsCfg != nil {
+			if clusterObj.Endpoint == dnsCfg.Endpoint && dnsCfg.AllowExternalTraffic {
+				// GKE DNS based control plane access.
+				useDNS = true
+			}
+		}
+	}
+
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
 			"Host":   clusterObj.Endpoint,
 			"Token":  token.AccessToken,
 			"CACert": clusterObj.MasterAuth.ClusterCaCertificate,
+			"useDNS": useDNS,
 		},
 	}
 }
