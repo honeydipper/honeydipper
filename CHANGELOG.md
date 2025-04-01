@@ -1,3 +1,15 @@
+# [3.8.0](https://github.com/honeydipper/honeydipper/compare/v3.7.0...v3.8.0) (2025-04-01)
+
+
+### Bug Fixes
+
+* secret lookup should return raw message with bytes ([#632](https://github.com/honeydipper/honeydipper/issues/632)) ([dce4f78](https://github.com/honeydipper/honeydipper/commit/dce4f78a025b2cd771a76abd2eed0529b0ac0289))
+
+
+### Features
+
+* support GKE DNS endpoint for control plane access ([#633](https://github.com/honeydipper/honeydipper/issues/633)) ([9fb489f](https://github.com/honeydipper/honeydipper/commit/9fb489fec99d580fa205035c11ac2e181b083c95))
+
 # [3.7.0](https://github.com/honeydipper/honeydipper/compare/v3.6.0...v3.7.0) (2025-01-09)
 
 
