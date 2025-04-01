@@ -576,10 +576,11 @@ func getGKEConfig(cfg map[string]interface{}) *rest.Config {
 	}
 
 	if useDNS {
-		// GKE DNS based control plane access forcing https. Use default transport to provide TLS
-		// security using system CAs instead of the master auth CA.
-		k8cfg.Transport = http.DefaultTransport
-		k8cfg.Host = "https://" + k8cfg.Host
+		// GKE DNS based control plane access forcing https. Ignore master auth CA so
+		// system CAs can be used instead.
+		if !strings.HasPrefix(k8cfg.Host, "https://") {
+			k8cfg.Host = "https://" + k8cfg.Host
+		}
 	} else {
 		cadata, _ := base64.StdEncoding.DecodeString(cacert)
 		k8cfg.CAData = cadata
