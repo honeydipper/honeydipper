@@ -44,6 +44,12 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		params = dipper.MergeMap(params, dipper.MustDeepCopyMap(trigger.Parameters))
 		match = dipper.MergeMap(match, dipper.MustDeepCopyMap(trigger.Match))
 		exports = append(exports, trigger.Export)
+
+		if current.Driver == "webhook" {
+			if sigsec, ok := sourceSys.Data["signatureSecret"]; ok && sigsec.(string) != "" {
+				match["verifiedSystem"] = trigger.Source.System
+			}
+		}
 	}
 
 	if len(sysData) > 0 {
@@ -52,10 +58,6 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		}
 		match = dipper.Interpolate(match, envData).(map[string]interface{})
 		params = dipper.Interpolate(params, envData).(map[string]interface{})
-	}
-
-	if flag, ok := params["verifySystem"]; ok && dipper.IsTruthy(flag) {
-		match["verifiedSystem"] = t.Source.System
 	}
 
 	return current, &CollapsedTrigger{

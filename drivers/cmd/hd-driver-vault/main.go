@@ -96,7 +96,7 @@ func lookup(msg *dipper.Message) {
 	}
 
 	msg.Reply <- dipper.Message{
-		Payload: value,
+		Payload: []byte(value.(string)),
 		IsRaw:   true,
 	}
 }
