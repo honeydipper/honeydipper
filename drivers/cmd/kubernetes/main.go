@@ -551,7 +551,7 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 
 	k8client, err := kubernetes.NewForConfig(kubeConfig)
 	if err != nil {
-		log.Panicf("[%s] unable to create k8 client", driver.Service)
+		log.Panicf("[%s] unable to create k8 client: %+v", driver.Service, err)
 	}
 
 	return k8client
@@ -568,14 +568,23 @@ func getGKEConfig(cfg map[string]interface{}) *rest.Config {
 	host, _ := dipper.GetMapDataStr(ret, "Host")
 	token, _ := dipper.GetMapDataStr(ret, "Token")
 	cacert, _ := dipper.GetMapDataStr(ret, "CACert")
-
-	cadata, _ := base64.StdEncoding.DecodeString(cacert)
+	useDNS, _ := dipper.GetMapDataBool(ret, "useDNS")
 
 	k8cfg := &rest.Config{
 		Host:        host,
 		BearerToken: token,
 	}
-	k8cfg.CAData = cadata
+
+	if useDNS {
+		// GKE DNS based control plane access forcing https. Ignore master auth CA so
+		// system CAs can be used instead.
+		if !strings.HasPrefix(k8cfg.Host, "https://") {
+			k8cfg.Host = "https://" + k8cfg.Host
+		}
+	} else {
+		cadata, _ := base64.StdEncoding.DecodeString(cacert)
+		k8cfg.CAData = cadata
+	}
 
 	return k8cfg
 }
