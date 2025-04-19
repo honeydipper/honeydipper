@@ -33,3 +33,6 @@ vendor/**
 # docker compose override files
 **/docker-compose.override.yml
 **/docker-compose.override.yaml
+
+# vscode file
+launch.json

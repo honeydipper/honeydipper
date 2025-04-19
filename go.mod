@@ -1,6 +1,6 @@
 module github.com/honeydipper/honeydipper
 
-go 1.23.3
+go 1.24.1
 
 require (
 	cloud.google.com/go v0.118.0 // indirect
