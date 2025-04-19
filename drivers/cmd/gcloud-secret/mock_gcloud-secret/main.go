@@ -17,7 +17,7 @@ import (
 
 	secretmanagerpb "cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	gomock "github.com/golang/mock/gomock"
-	v2 "github.com/googleapis/gax-go/v2"
+	gax "github.com/googleapis/gax-go/v2"
 )
 
 // MockSecretManagerClient is a mock of SecretManagerClient interface.
@@ -44,7 +44,7 @@ func (m *MockSecretManagerClient) EXPECT() *MockSecretManagerClientMockRecorder 
 }
 
 // AccessSecretVersion mocks base method.
-func (m *MockSecretManagerClient) AccessSecretVersion(ctx context.Context, req *secretmanagerpb.AccessSecretVersionRequest, opts ...v2.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error) {
+func (m *MockSecretManagerClient) AccessSecretVersion(ctx context.Context, req *secretmanagerpb.AccessSecretVersionRequest, opts ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error) {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{ctx, req}
 	for _, a := range opts {

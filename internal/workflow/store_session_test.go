@@ -693,3 +693,36 @@ func TestWorkflowIterate(t *testing.T) {
 	}
 	syntheticTest(t, configStr, testcase)
 }
+
+func TestWorkflowOutput(t *testing.T) {
+	testcase := map[string]interface{}{
+		"workflow": &config.Workflow{},
+		"msg": &dipper.Message{
+			Labels: map[string]string{
+				"eventID": "xyz",
+			},
+			Payload: map[string]interface{}{
+				"data": map[string]interface{}{
+					"foo": "bar",
+				},
+			},
+		},
+		"ctx": map[string]interface{}{
+			"_output": map[string]interface{}{
+				"this": "presents",
+			},
+		},
+		"steps": []map[string]interface{}{},
+		"asserts": func() {
+			mockHelper.EXPECT().GetDaemonID().AnyTimes().Return("")
+			mockHelper.EXPECT().SendMessage(gomock.Any()).Times(0)
+			mockHelper.EXPECT().EmitResult(gomock.Eq("xyz"), gomock.Eq(map[string]interface{}{
+				"output": map[string]any{
+					"this": "presents",
+				},
+				"status": "success",
+			}))
+		},
+	}
+	syntheticTest(t, configStr, testcase)
+}
