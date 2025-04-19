@@ -126,7 +126,7 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 			d.APITimeout = time.Duration(apiTimeout)
 		}
 	}
-	d.ReadySignal <- true
+	close(d.ReadySignal)
 }
 
 func (d *Driver) start(msg *Message) {
