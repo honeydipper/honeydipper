@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
+	"dario.cat/mergo"
 	"github.com/ghodss/yaml"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/imdario/mergo"
 	"github.com/op/go-logging"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"

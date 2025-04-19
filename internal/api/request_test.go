@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"dario.cat/mergo"
 	"github.com/ghodss/yaml"
 	"github.com/golang/mock/gomock"
 	"github.com/honeydipper/honeydipper/internal/api/mock_api"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/honeydipper/honeydipper/pkg/dipper/mock_dipper"
-	"github.com/imdario/mergo"
 	"github.com/mitchellh/mapstructure"
 	"github.com/stretchr/testify/assert"
 )
