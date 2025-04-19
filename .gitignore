@@ -36,3 +36,5 @@ vendor/**
 
 # vscode file
 launch.json
+settings.json
+**/__debug_bin*
