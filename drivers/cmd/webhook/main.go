@@ -154,30 +154,33 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	verifySystems(eventData)
 
 	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
-	matched := false
+	var matched map[string]any
 	for _, hook := range hooks {
 		for _, collapsed := range hook.([]interface{}) {
 			condition, _ := dipper.GetMapData(collapsed, "match")
 
 			if dipper.CompareAll(eventData, condition) {
-				matched = true
+				matched = collapsed.(map[string]any)
 
 				break
 			}
 		}
-		if matched {
+		if matched != nil {
 			break
 		}
 	}
 
-	if matched {
+	if matched != nil {
 		id := driver.EmitEvent(map[string]interface{}{
 			"events": []interface{}{"webhook."},
 			"data":   eventData,
 		})
 
-		if _, ok := dipper.GetMapDataStr(eventData, "form.accept_uuid.0"); ok {
+		if respTplt, ok := dipper.GetMapDataStr(matched, "parameters.response_payload"); ok && respTplt != "" {
+			writeCustomizedResponse(w, matched, respTplt, eventData)
+		} else if _, ok := dipper.GetMapDataStr(eventData, "form.accept_uuid.0"); ok {
 			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
 		} else {
 			w.WriteHeader(http.StatusOK)
@@ -187,6 +190,18 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.NotFound(w, r)
+}
+
+func writeCustomizedResponse(w http.ResponseWriter, matched map[string]any, tpl string, eventData interface{}) {
+	dipper.Logger.Debugf("[%s] webhook responding with template: %s", driver.Service, tpl)
+	ctype, _ := dipper.GetMapDataStr(matched, "parameters.response_content_type")
+	resp := dipper.InterpolateStr(tpl, map[string]any{"event": eventData})
+	if ctype == "" {
+		ctype = "application/text"
+	}
+	w.Header().Set("content-type", ctype)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(resp))
 }
 
 func badRequest(w http.ResponseWriter) {
@@ -218,7 +233,7 @@ func verifySignature(header, actual, secret string, eventData map[string]interfa
 		if _, ok := eventData["skip_replay_check"]; !ok {
 			current := time.Now().Unix()
 			requestedAt := dipper.Must(strconv.ParseInt(timestamp, 10, 64)).(int64)
-			if current-requestedAt > 300 || current < requestedAt {
+			if current-requestedAt > 300 || current+2 < requestedAt {
 				panic(ErrReplayAttack)
 			}
 		}
