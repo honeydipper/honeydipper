@@ -168,8 +168,12 @@ func sendRequest(m *dipper.Message) {
 		IsRaw:   false,
 	}
 	if statusCode >= http.StatusBadRequest {
+		body, ok := response["body"].(string)
+		if !ok {
+			body = "N/A"
+		}
 		ret.Labels = map[string]string{
-			"error": fmt.Sprintf("Error: got status code: %d", statusCode),
+			"error": fmt.Sprintf("Error: got status code: %d, body: %s", statusCode, body),
 		}
 	}
 
