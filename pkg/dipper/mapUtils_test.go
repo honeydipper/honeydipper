@@ -208,3 +208,61 @@ func TestCheckMapData(t *testing.T) {
 	assert.True(t, CheckMapData(data, "2.1"), `"2.1" value "true" should be true.`)
 	assert.True(t, CheckMapData(data, "2.2"), `"2.2" value boolean "true" should be true.`)
 }
+
+func TestGetMapDataInt(t *testing.T) {
+	data := map[string]interface{}{
+		"int_val":     123,
+		"int64_val":   int64(456),
+		"float64_val": float64(789.0),
+		"string_val":  "101112",
+		"bool_val":    true,
+		"string_bool": "true",
+	}
+
+	retInt, ok := GetMapDataInt(data, "int_val")
+	assert.True(t, ok)
+	assert.Equal(t, 123, retInt)
+
+	retInt, ok = GetMapDataInt(data, "int64_val")
+	assert.True(t, ok)
+	assert.Equal(t, 456, retInt)
+
+	retInt, ok = GetMapDataInt(data, "float64_val")
+	assert.True(t, ok)
+	assert.Equal(t, 789, retInt)
+
+	retInt, ok = GetMapDataInt(data, "string_val")
+	assert.True(t, ok)
+	assert.Equal(t, 101112, retInt)
+
+	retInt, ok = GetMapDataInt(data, "bool_val")
+	assert.False(t, ok)
+	assert.Equal(t, 0, retInt)
+
+	retInt, ok = GetMapDataInt(data, "not_exist")
+	assert.False(t, ok)
+	assert.Equal(t, 0, retInt)
+}
+
+func TestMustGetMapDataInt(t *testing.T) {
+	data := map[string]interface{}{
+		"int_val":     123,
+		"int64_val":   int64(456),
+		"float64_val": float64(789.0),
+		"string_val":  "101112",
+	}
+
+	retInt := MustGetMapDataInt(data, "int_val")
+	assert.Equal(t, 123, retInt)
+
+	retInt = MustGetMapDataInt(data, "int64_val")
+	assert.Equal(t, 456, retInt)
+
+	retInt = MustGetMapDataInt(data, "float64_val")
+	assert.Equal(t, 789, retInt)
+
+	retInt = MustGetMapDataInt(data, "string_val")
+	assert.Equal(t, 101112, retInt)
+
+	assert.Panics(t, func() { MustGetMapDataInt(data, "not_exist") })
+}
