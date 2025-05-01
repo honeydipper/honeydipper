@@ -128,6 +128,47 @@ func MustGetMapDataBool(from interface{}, path string) bool {
 	panic(fmt.Errorf("%w: not a bool: %s", ErrMapError, path))
 }
 
+// GetMapDataInt : get the data as int from the deep map following a KV path.
+func GetMapDataInt(from interface{}, path string) (ret int, ok bool) {
+	if data, ok := GetMapData(from, path); ok {
+		switch v := data.(type) {
+		case int:
+			return v, true
+		case int64:
+			return int(v), true
+		case float64:
+			return int(v), true
+		case string:
+			i, err := strconv.Atoi(v)
+			return i, (err == nil)
+		}
+	}
+
+	return 0, false
+}
+
+// MustGetMapDataInt : get the data as int from the deep map following a KV path, may raise errors.
+func MustGetMapDataInt(from interface{}, path string) int {
+	data, ok := GetMapData(from, path)
+	if ok {
+		switch v := data.(type) {
+		case int:
+			return v
+		case int64:
+			return int(v)
+		case float64:
+			return int(v)
+		case string:
+			i, err := strconv.Atoi(v)
+			if err != nil {
+				panic(err)
+			}
+			return i
+		}
+	}
+	panic(fmt.Errorf("%w: not an int: %s", ErrMapError, path))
+}
+
 // CheckMapData check if data exists and is truthy.
 func CheckMapData(from interface{}, path string) bool {
 	v, ok := GetMapData(from, path)
