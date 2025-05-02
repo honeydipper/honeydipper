@@ -140,6 +140,7 @@ func GetMapDataInt(from interface{}, path string) (ret int, ok bool) {
 			return int(v), true
 		case string:
 			i, err := strconv.Atoi(v)
+
 			return i, (err == nil)
 		}
 	}
@@ -163,6 +164,7 @@ func MustGetMapDataInt(from interface{}, path string) int {
 			if err != nil {
 				panic(err)
 			}
+
 			return i
 		}
 	}
