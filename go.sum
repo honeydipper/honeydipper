@@ -23,6 +23,8 @@ cloud.google.com/go/pubsub v1.47.0 h1:Ou2Qu4INnf7ykrFjGv2ntFOjVo8Nloh/+OffF4mUu9
 cloud.google.com/go/pubsub v1.47.0/go.mod h1:LaENesmga+2u0nDtLkIOILskxsfvn/BXX9Ak1NFxOs8=
 cloud.google.com/go/secretmanager v1.14.5 h1:W++V0EL9iL6T2+ec24Dm++bIti0tI6Gx6sCosDBters=
 cloud.google.com/go/secretmanager v1.14.5/go.mod h1:GXznZF3qqPZDGZQqETZwZqHw4R6KCaYVvcGiRBA+aqY=
+cloud.google.com/go/secretmanager v1.14.7 h1:VkscIRzj7GcmZyO4z9y1EH7Xf81PcoiAo7MtlD+0O80=
+cloud.google.com/go/secretmanager v1.14.7/go.mod h1:uRuB4F6NTFbg0vLQ6HsT7PSsfbY7FqHbtJP1J94qxGc=
 cloud.google.com/go/spanner v1.76.1 h1:vYbVZuXfnFwvNcvH3lhI2PeUA+kHyqKmLC7mJWaC4Ok=
 cloud.google.com/go/spanner v1.76.1/go.mod h1:YtwoE+zObKY7+ZeDCBtZ2ukM+1/iPaMfUM+KnTh/sx0=
 cloud.google.com/go/storage v1.50.0 h1:3TbVkzTooBvnZsk7WaAQfOsNrdoM8QHusXA1cpk6QJs=
