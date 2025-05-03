@@ -3,10 +3,10 @@ module github.com/honeydipper/honeydipper
 go 1.24.1
 
 require (
-	cloud.google.com/go v0.120.0 // indirect
-	cloud.google.com/go/pubsub v1.47.0
-	cloud.google.com/go/spanner v1.76.1
-	cloud.google.com/go/storage v1.50.0
+	cloud.google.com/go v0.120.1 // indirect
+	cloud.google.com/go/pubsub v1.49.0
+	cloud.google.com/go/spanner v1.80.0
+	cloud.google.com/go/storage v1.51.0
 	github.com/DataDog/datadog-go v4.8.3+incompatible
 	github.com/Masterminds/goutils v1.1.1
 	github.com/casbin/casbin/v2 v2.82.0
@@ -37,7 +37,7 @@ require (
 	golang.org/x/term v0.31.0
 	golang.org/x/text v0.24.0 // indirect
 	google.golang.org/api v0.230.0
-	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb
+	google.golang.org/genproto v0.0.0-20250428153025-10db94c68c34
 	gopkg.in/h2non/gock.v1 v1.0.15
 	k8s.io/api v0.29.2
 	k8s.io/apimachinery v0.29.2
@@ -46,7 +46,7 @@ require (
 )
 
 require (
-	cloud.google.com/go/kms v1.21.0
+	cloud.google.com/go/kms v1.21.2
 	cloud.google.com/go/secretmanager v1.14.7
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -115,10 +115,10 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/iam v1.5.2 // indirect
 	cloud.google.com/go/longrunning v0.6.7 // indirect
-	cloud.google.com/go/monitoring v1.24.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.26.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.50.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.50.0 // indirect
+	cloud.google.com/go/monitoring v1.24.2 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.27.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.51.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.51.0 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.3 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
@@ -167,7 +167,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/zeebo/errs v1.4.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/contrib/detectors/gcp v1.34.0 // indirect
+	go.opentelemetry.io/contrib/detectors/gcp v1.35.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
