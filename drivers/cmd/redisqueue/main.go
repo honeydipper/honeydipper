@@ -35,10 +35,11 @@ type EventBusOptions struct {
 }
 
 var (
-	log          *logging.Logger
-	driver       *dipper.Driver
-	eventbus     *EventBusOptions
-	redisOptions *redisclient.Options
+	log              *logging.Logger
+	driver           *dipper.Driver
+	eventbus         *EventBusOptions
+	redisOptions     *redisclient.Options
+	redisOptionsMock *redisclient.Options
 )
 
 func initFlags() {
@@ -52,7 +53,9 @@ func initFlags() {
 func main() {
 	initFlags()
 	flag.Parse()
-	driver = dipper.NewDriver(os.Args[1], "redisqueue")
+	if driver == nil {
+		driver = dipper.NewDriver(os.Args[1], "redisqueue")
+	}
 	driver.Start = start
 	switch driver.Service {
 	case "receiver":
@@ -61,6 +64,7 @@ func main() {
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
 	case "operator":
 		driver.MessageHandlers["eventbus:return"] = relayToRedis
+		driver.MessageHandlers["eventbus:message"] = relayToRedis
 	}
 	driver.MessageHandlers["eventbus:api"] = relayToRedis
 	driver.Run()
@@ -68,7 +72,11 @@ func main() {
 
 func loadOptions() {
 	log = driver.GetLogger()
-	redisOptions = redisclient.GetRedisOpts(driver)
+	if redisOptionsMock != nil {
+		redisOptions = redisOptionsMock
+	} else {
+		redisOptions = redisclient.GetRedisOpts(driver)
+	}
 	log.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
 
 	eb := &EventBusOptions{
@@ -186,8 +194,15 @@ func subscribe(topic string, subject string) {
 						})
 					}
 				}
+				if driver.State == dipper.DriverStateCompleted {
+					return
+				}
 			}
 		}()
+		if driver.State == dipper.DriverStateCompleted {
+			// allow graceful shutdown during tests.
+			return
+		}
 		time.Sleep(time.Second)
 	}
 }

@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"strings"
 
+	"dario.cat/mergo"
 	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/imdario/mergo"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -151,7 +151,7 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	switch {
 	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusCommand:
 		ret = handleEventbusCommand(msg)
-	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturn:
+	case msg.Channel == dipper.ChannelEventbus && (msg.Subject == dipper.EventbusReturn || msg.Subject == dipper.EventbusMessage):
 		ret = []RoutedMessage{
 			{
 				driverRuntime: operator.getDriverRuntime(dipper.ChannelEventbus),

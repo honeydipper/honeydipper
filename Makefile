@@ -8,7 +8,9 @@ files_require_mocking = internal/workflow/session.go \
 						pkg/dipper/rpc.go \
 						internal/api/request_context.go \
 						drivers/cmd/gcloud-secret/main.go \
-						drivers/cmd/datadog-emitter/statsd.go
+						drivers/cmd/datadog-emitter/statsd.go \
+						drivers/pkg/ai/chat_wrapper_interface.go \
+						drivers/cmd/hd-driver-gemini/session.go
 
 ifneq (,$(wildcard ./.env))
 	include ./.env

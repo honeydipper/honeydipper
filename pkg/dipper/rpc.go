@@ -17,6 +17,9 @@ import (
 // DefaultRPCTimeout is the default timeout in seconds for RPC calls.
 const DefaultRPCTimeout time.Duration = 10
 
+// RPCSkip is used to indicate no RPC return is expected.
+const RPCSkip = "skip"
+
 var (
 	// ErrTimeout indicates a timeout error.
 	ErrTimeout = errors.New("timeout")
@@ -77,7 +80,7 @@ func (c *RPCCallerBase) Call(feature string, method string, params interface{}) 
 
 // CallNoWait : making a RPC call to another driver with structured data not expecting any return.
 func (c *RPCCallerBase) CallNoWait(feature string, method string, params interface{}) error {
-	return c.CallRawNoWait(feature, method, SerializeContent(params), "skip")
+	return c.CallRawNoWait(feature, method, SerializeContent(params), RPCSkip)
 }
 
 // CallRaw : making a RPC call to another driver with raw data.
@@ -106,6 +109,64 @@ func (c *RPCCallerBase) CallRaw(feature string, method string, params []byte) ([
 	}
 }
 
+// CallWithMessage: making a RPC call with pre-built message.
+func (c *RPCCallerBase) CallWithMessage(msg *Message) ([]byte, error) {
+	// keep track the call in the map
+	result := make(chan interface{}, 1)
+	rpcID := IDMapPut(&c.Result, result)
+	defer IDMapDel(&c.Result, rpcID)
+	msg.Labels["rpcID"] = rpcID
+
+	timeout := time.Second * DefaultRPCTimeout
+	if t, ok := msg.Labels["timeout"]; ok && len(t) > 0 {
+		timeout = Must(time.ParseDuration(t)).(time.Duration)
+	}
+
+	var ret []byte
+	err := c.CallWithMessageNoWait(msg)
+	if err != nil {
+		return ret, err
+	}
+
+	// waiting for the result to come back
+	select {
+	case msg := <-result:
+		if msg == nil {
+			break
+		}
+
+		if e, ok := msg.(error); ok {
+			err = e
+		} else {
+			ret = msg.([]byte)
+		}
+	case <-time.After(timeout):
+		err = ErrTimeout
+	}
+
+	return ret, err
+}
+
+// CallWithMessageNoWait: making a RPC call with pre-built message without waiting for return.
+func (c *RPCCallerBase) CallWithMessageNoWait(msg *Message) (ret error) {
+	msg.Channel = c.Channel
+	msg.Subject = c.Subject
+	if len(msg.Labels["caller"]) == 0 {
+		msg.Labels["caller"] = "-"
+	}
+	if len(msg.Labels["rpcID"]) == 0 {
+		msg.Labels["rcpID"] = RPCSkip
+	}
+	feature := msg.Labels["feature"]
+	receiver := c.Parent.GetReceiver(feature).(MessageReceiver)
+	if receiver == nil {
+		return fmt.Errorf("%w: feature not available: %s", ErrRPCError, feature)
+	}
+	receiver.SendMessage(msg)
+
+	return nil
+}
+
 // CallRawNoWait : making a RPC call to another driver with raw data not expecting return.
 func (c *RPCCallerBase) CallRawNoWait(feature string, method string, params []byte, rpcID string) (ret error) {
 	defer func() {
@@ -115,7 +176,7 @@ func (c *RPCCallerBase) CallRawNoWait(feature string, method string, params []by
 	}()
 
 	if rpcID == "" {
-		rpcID = "skip"
+		rpcID = RPCSkip
 	}
 
 	receiver := c.Parent.GetReceiver(feature).(MessageReceiver)
@@ -143,7 +204,11 @@ func (c *RPCCallerBase) CallRawNoWait(feature string, method string, params []by
 // HandleReturn : receiving return of a RPC call.
 func (c *RPCCallerBase) HandleReturn(m *Message) {
 	rpcID := m.Labels["rpcID"]
-	result := IDMapGet(&c.Result, rpcID).(chan interface{})
+	item := IDMapGet(&c.Result, rpcID)
+	if item == nil {
+		return
+	}
+	result := item.(chan interface{})
 
 	reason, ok := m.Labels["error"]
 
@@ -208,13 +273,19 @@ func (p *RPCProvider) Return(call *Message, retval *Message) {
 // Router : route the message to rpc handlers.
 func (p *RPCProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
+	timeout := time.Second * DefaultRPCTimeout
+	if t, ok := msg.Labels["timeout"]; ok {
+		timeout = Must(time.ParseDuration(t)).(time.Duration)
+	}
 	f := p.RPCHandlers[method]
 
-	if msg.Labels["rpcID"] != "skip" {
+	returnerExited := make(chan struct{})
+
+	if msg.Labels["rpcID"] != RPCSkip {
 		msg.Reply = make(chan Message, 1)
 
 		go func() {
-			defer close(msg.Reply)
+			defer close(returnerExited)
 			select {
 			case reply := <-msg.Reply:
 				if reason, ok := reply.Labels["error"]; ok {
@@ -222,12 +293,13 @@ func (p *RPCProvider) Router(msg *Message) {
 				} else {
 					p.Return(msg, &reply)
 				}
-			case <-time.After(time.Second * DefaultRPCTimeout):
+			case <-time.After(timeout):
 				p.ReturnError(msg, "timeout")
 			}
 		}()
 
 		defer func() {
+			defer close(msg.Reply)
 			if r := recover(); r != nil {
 				msg.Reply <- Message{
 					Labels: map[string]string{
@@ -236,6 +308,7 @@ func (p *RPCProvider) Router(msg *Message) {
 				}
 				panic(r)
 			}
+			<-returnerExited
 		}()
 	}
 	f(msg)
