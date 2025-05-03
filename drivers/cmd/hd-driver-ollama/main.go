@@ -7,17 +7,20 @@
 // Package hd-driver-ollama enables Honeydipper to use ollama to run AI models.
 package main
 
+// Required imports for the driver functionality.
 import (
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
 
+	"github.com/honeydipper/honeydipper/drivers/pkg/ai"
+	"github.com/honeydipper/honeydipper/internal/config"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/mitchellh/mapstructure"
 	"github.com/ollama/ollama/api"
 )
 
+// initFlags sets up command line flags and usage information.
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -26,151 +29,64 @@ func initFlags() {
 	}
 }
 
-var (
-	driver     *dipper.Driver
-	chatStream bool = true
+// ToolSpec defines the structure for tool specifications including workflow configuration.
+type ToolSpec struct {
+	Tool     api.Tool        `json:"tool" mapstructure:"tool"`
+	Workflow config.Workflow `json:"workflow" mapstructure:"workflow"`
+}
 
-	ErrCancelled = errors.New("cancelled")
-)
+// Global driver instance.
+var driver *dipper.Driver
 
+// main initializes and runs the driver.
 func main() {
 	initFlags()
 	flag.Parse()
 
-	driver = dipper.NewDriver(os.Args[1], "ollama")
-	driver.Commands["chat"] = chat
-	driver.Commands["chatContinue"] = chatContinue
-	driver.Commands["chatStop"] = chatStop
-	driver.Commands["chatListen"] = chatListen
-	driver.Start = loadOptions
+	initDriver()
 	driver.Run()
 }
 
-func loadOptions(m *dipper.Message) {
-	setupTools()
+// initDriver sets up the driver with required commands and handlers.
+func initDriver() {
+	driver = dipper.NewDriver(os.Args[1], "ollama")
+	driver.Commands["chat"] = chat
+	driver.Commands["chatContinue"] = func(m *dipper.Message) { ai.ChatContinue(driver, m) }
+	driver.Commands["chatStop"] = func(m *dipper.Message) { ai.ChatStop(driver, m) }
+	driver.Commands["chatListen"] = func(m *dipper.Message) { ai.ChatListen(driver, m, (&ollamaSession{}).BuildUserMessage) }
+	driver.Start = setup
 }
 
-func chat(msg *dipper.Message) {
-	msg = dipper.DeserializePayload(msg)
-	// initializing
-	convID := dipper.MustGetMapDataStr(msg.Payload, "convID")
-	prefix := "ollama/conv/" + convID + "/"
-	engine, _ := dipper.GetMapDataStr(msg.Payload, "engine")
-	if engine == "" {
-		engine = "default"
-	}
-
-	// locking both the ollama instance and the conversation
-	timeout, _ := dipper.GetMapDataStr(driver.Options, fmt.Sprintf("data.engine.%s.timeout", engine))
-	if timeout == "" {
-		timeout = "10m"
-	}
-	ollamaHost, _ := dipper.GetMapDataStr(msg.Payload, "ollama_host")
-	ollamaLock := "ollama/lock" + "/" + ollamaHost
-	if _, err := driver.Call("locker", "lock", map[string]any{"name": ollamaLock, "expire": timeout}); err != nil {
-		msg.Reply <- dipper.Message{Payload: map[string]any{"busy": true}}
-
-		return
-	}
-	if _, err := driver.Call("locker", "lock", map[string]any{"name": prefix + "lock", "expire": timeout}); err != nil {
-		msg.Reply <- dipper.Message{Payload: map[string]any{"busy": true}}
-
-		return
-	}
-
-	// obtain step id (turn id) and setup cancallation flag.
-	c := dipper.Must(driver.Call("cache", "incr", map[string]any{"key": prefix + "counter"})).([]byte)
-	counter := string(c)
-	step := prefix + counter
-	dipper.Must(driver.Call("cache", "save", map[string]any{"key": step, "value": "1"}))
-
-	// start relay in chatWrapper.
-	wrapper := newWrapper(msg, engine, prefix, ollamaHost)
-	ctx, _ := wrapper.run(step)
-
-	// schedule cleanup
-	go func() {
-		defer dipper.SafeExitOnError("[ollama] failed to clean up ai chat session")
-		defer func() { dipper.Must(driver.Call("locker", "unlock", map[string]any{"name": ollamaLock})) }()
-		defer func() { dipper.Must(driver.Call("cache", "del", map[string]any{"key": step})) }()
-		defer func() { dipper.Must(driver.Call("locker", "unlock", map[string]any{"name": prefix + "lock"})) }()
-		<-ctx.Done()
-		dipper.Logger.Debugf("ollama chat session completed: %+v", ctx.Err())
-	}()
-
-	// return
-	msg.Reply <- dipper.Message{Payload: map[string]any{"counter": counter, "convID": convID}}
-}
-
-func chatContinue(msg *dipper.Message) {
-	msg.Reply <- dipper.Message{Labels: map[string]string{"no-timeout": "true"}}
-
-	msg = dipper.DeserializePayload(msg)
-	convID := dipper.MustGetMapDataStr(msg.Payload, "convID")
-	counter := dipper.MustGetMapDataStr(msg.Payload, "counter")
-	timeout := "30s"
-	if timeoutSec, ok := msg.Labels["timeout"]; ok && len(timeoutSec) > 0 {
-		timeout = timeoutSec + "s"
-	}
-	step := "ollama/conv/" + convID + "/" + counter
-
-	dipper.Logger.Debugf("chatContinue: %+v", step)
-
-	resp, _ := driver.CallWithMessage(&dipper.Message{
-		Labels: map[string]string{
-			"feature": "cache",
-			"method":  "blpop",
-			"timeout": timeout,
-		},
-		Payload: map[string]any{"key": step + "/response"},
+// chat handles new chat sessions with the AI model.
+func chat(m *dipper.Message) {
+	wrapper := ai.NewWrapper(driver, m, func(w ai.ChatWrapperInterface) ai.Chatter {
+		return newSession(driver, m, w)
 	})
+	wrapper.ChatRelay(m)
+}
 
-	ret := dipper.Message{}
-	if len(resp) == 0 {
-		cancelled := len(dipper.Must(driver.CallRaw("cache", "exists", []byte(step))).([]byte)) == 0
-		ret.Payload = map[string]any{"done": cancelled, "content": "", "type": ""}
+// setup initializes the driver by loading and processing tool configurations.
+func setup(_ *dipper.Message) {
+	toolMap := map[string]any{}
+	if toolData, ok := driver.GetOption("data.tools"); ok {
+		toolMap, _ = toolData.(map[string]any)
+	}
+	tools := []api.Tool{}
+	// Process each tool specification.
+	for k, v := range toolMap {
+		toolSpec := ToolSpec{}
+		if mapstructure.Decode(v, &toolSpec) == nil {
+			toolMap[k].(map[string]any)["workflow"] = &toolSpec.Workflow
+			tools = append(tools, toolSpec.Tool)
+		}
+		dipper.Logger.Debugf("tools loaded: %s", k)
+	}
+
+	// Store processed tools in driver options.
+	if data, ok := driver.GetOption("data"); ok {
+		data.(map[string]any)["tools_list"] = tools
 	} else {
-		ret.Payload = resp
-		ret.IsRaw = true
+		data = map[string]any{"tools_list": tools}
+		driver.Options.(map[string]any)["data"] = data
 	}
-
-	msg.Reply <- ret
-}
-
-func chatStop(msg *dipper.Message) {
-	msg = dipper.DeserializePayload(msg)
-	convID := dipper.MustGetMapDataStr(msg.Payload, "convID")
-	prefix := "ollama/conv/" + convID + "/"
-
-	counter, _ := dipper.GetMapDataStr(msg.Payload, "counter")
-	if counter == "" {
-		counter = string(dipper.Must(driver.Call("cache", "load", map[string]any{"key": prefix + "counter"})).([]byte))
-	}
-
-	step := "ollama/conv/" + convID + "/" + counter
-	dipper.Must(driver.CallNoWait("cache", "del", map[string]any{"key": step}))
-	msg.Reply <- dipper.Message{}
-}
-
-func chatListen(msg *dipper.Message) {
-	msg = dipper.DeserializePayload(msg)
-	convID := dipper.MustGetMapDataStr(msg.Payload, "convID")
-	prefix := "ollama/conv/" + convID + "/"
-	inConversation := len(dipper.Must(driver.CallRaw("cache", "exists", []byte(prefix+"history"))).([]byte)) > 0
-	if !inConversation {
-		msg.Reply <- dipper.Message{}
-
-		return
-	}
-
-	user := dipper.MustGetMapDataStr(msg.Payload, "user")
-	userMessage := api.Message{
-		Role:    "user",
-		Content: fmt.Sprintf("%s says :start quote: %s\n\n :end quote:", user, dipper.MustGetMapDataStr(msg.Payload, "prompt")),
-	}
-	jsonUserMessage := string(dipper.Must(json.Marshal(userMessage)).([]byte))
-
-	dipper.Must(driver.CallNoWait("cache", "rpush", map[string]any{"key": prefix + "history", "value": jsonUserMessage}))
-
-	msg.Reply <- dipper.Message{}
 }
