@@ -18,14 +18,15 @@ type ChatWrapper struct {
 	internalCtx    context.Context
 	internalCancel context.CancelFunc
 
-	engine  string
-	convID  string
-	prefix  string
-	counter string
-	step    string
-	ttl     string
-	user    string
-	prompt  string
+	engine    string
+	convID    string
+	prefix    string
+	counter   string
+	step      string
+	ttl       string
+	user      string
+	prompt    string
+	hideThink bool
 
 	chatter Chatter
 
@@ -60,6 +61,9 @@ func NewWrapper(d *dipper.Driver, msg *dipper.Message, factory ChatFactoryFunc) 
 	if w.ttl == "" {
 		w.ttl = "10m"
 	}
+
+	// hide think
+	w.hideThink, _ = dipper.GetMapDataBool(w.driver.Options, "data.engine."+w.engine+".hide_think")
 
 	// locking
 	func() {
@@ -147,17 +151,37 @@ func (w *ChatWrapper) ChatRelay(msg *dipper.Message) {
 	}()
 }
 
-func (w *ChatWrapper) streamHandler(text string, done bool) {
+func (w *ChatWrapper) handleThoughts(text string) (string, bool, bool) {
+	if strings.Contains(text, "<think>") {
+		w.msgType = "think"
+	}
+	typeChange := strings.Contains(text, "</think>")
+	if w.hideThink && w.msgType == "think" {
+		if !typeChange {
+			return "", typeChange, true
+		}
+
+		w.msgType = ""
+		text = strings.TrimSpace(strings.SplitN(text, "</think>", 2)[1])
+		if len(text) == 0 {
+			return "", typeChange, true
+		}
+	}
+
+	return text, typeChange, false
+}
+
+func (w *ChatWrapper) streamHandler(t string, done bool) {
 	dipper.SafeExitOnError("failed to process streamed message", func(x any) {
 		w.cancel()
 		panic(x)
 	})
 
 	// handling thoughts
-	if strings.Contains(text, "<think>") {
-		w.msgType = "think"
+	text, typeChange, skip := w.handleThoughts(t)
+	if skip {
+		return
 	}
-	typeChange := strings.Contains(text, "</think>")
 
 	// check code block and boundaries
 	codeBlockBoundary := strings.Count(text, "```")%2 != 0
