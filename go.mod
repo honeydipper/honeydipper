@@ -47,7 +47,7 @@ require (
 
 require (
 	cloud.google.com/go/kms v1.21.0
-	cloud.google.com/go/secretmanager v1.14.5
+	cloud.google.com/go/secretmanager v1.14.7
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
