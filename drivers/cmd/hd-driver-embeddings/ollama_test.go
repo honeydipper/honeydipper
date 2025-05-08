@@ -114,6 +114,7 @@ func TestOllamaWithCustomHostAndModel(t *testing.T) {
 			"data": map[string]interface{}{
 				"ollama": map[string]interface{}{
 					"model": "llama2", // This should be ignored in favor of the custom model
+					"host":  customHost,
 				},
 			},
 		},
@@ -145,9 +146,8 @@ func TestOllamaWithCustomHostAndModel(t *testing.T) {
 	// Create message with test payload including custom host and model
 	msg := &dipper.Message{
 		Payload: map[string]interface{}{
-			"questions":   questions,
-			"ollama_host": customHost,
-			"model":       customModel,
+			"questions": questions,
+			"model":     customModel,
 		},
 		Reply: make(chan dipper.Message, 1),
 	}

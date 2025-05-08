@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -17,6 +18,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/genai"
 )
+
+func TestMain(m *testing.M) {
+	if dipper.Logger == nil {
+		f, _ := os.Create("test.log")
+		defer f.Close()
+		dipper.GetLogger("test service", "DEBUG", f, f)
+	}
+	os.Exit(m.Run())
+}
 
 // TestVertexAI tests the vertexAI function with mocked GenAIClientModels.
 func TestVertexAI(t *testing.T) {
