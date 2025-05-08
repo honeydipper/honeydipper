@@ -148,7 +148,7 @@ func (w *ChatWrapper) toolCallDriverHandler(name string, args map[string]any, wo
 	if noWait {
 		dipper.Must(w.driver.CallWithMessageNoWait(msg))
 	} else {
-		envData["ret"] = string(dipper.Must(w.driver.CallWithMessage(msg)).([]byte))
+		envData["ret"] = dipper.DeserializeContent(dipper.Must(w.driver.CallWithMessage(msg)).([]byte))
 	}
 	dipper.Logger.Debugf("Got rpc result for ai: %+v", envData["ret"])
 
