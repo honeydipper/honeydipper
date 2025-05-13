@@ -5,10 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 
 	"github.com/honeydipper/honeydipper/drivers/pkg/ai"
+	"github.com/honeydipper/honeydipper/drivers/pkg/ollamahelper"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/ollama/ollama/api"
 )
@@ -23,21 +22,12 @@ type OllamaClientInterface interface {
 
 // NewOllamaClient creates a new Ollama client using the provided host or environment settings.
 func NewOllamaClient(ollamaHost string) (OllamaClientInterface, error) {
-	if len(ollamaHost) > 0 {
-		u, err := url.ParseRequestURI(ollamaHost)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ollama host: %w", err)
-		}
-
-		return api.NewClient(u, http.DefaultClient), nil
+	c, e := ollamahelper.NewOllamaClient(ollamaHost)
+	if e != nil {
+		e = fmt.Errorf("error creating ollama client: %w", e)
 	}
 
-	client, err := api.ClientFromEnvironment()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ollama client: %w", err)
-	}
-
-	return client, nil
+	return c, e
 }
 
 // ollamaSession represents an active chat session with the Ollama model.

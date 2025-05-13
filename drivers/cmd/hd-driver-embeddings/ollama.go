@@ -3,9 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/url"
 
+	"github.com/honeydipper/honeydipper/drivers/pkg/ollamahelper"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/ollama/ollama/api"
 )
@@ -18,23 +17,12 @@ type OllamaClientInterface interface {
 
 // NewOllamaClient creates a new Ollama client using the provided host or environment settings.
 var NewOllamaClient = func(ollamaHost string) (OllamaClientInterface, error) {
-	// If a host is provided, create a client with that specific host.
-	if len(ollamaHost) > 0 {
-		u, err := url.ParseRequestURI(ollamaHost)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ollama host: %w", err)
-		}
-
-		return api.NewClient(u, http.DefaultClient), nil
+	c, e := ollamahelper.NewOllamaClient(ollamaHost)
+	if e != nil {
+		e = fmt.Errorf("error creating ollama client: %w", e)
 	}
 
-	// Otherwise, create a client using environment settings.
-	client, err := api.ClientFromEnvironment()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ollama client: %w", err)
-	}
-
-	return client, nil
+	return c, e
 }
 
 // ollama handles the embedding generation request for multiple questions.
