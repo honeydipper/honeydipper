@@ -10,7 +10,8 @@ files_require_mocking = internal/workflow/session.go \
 						drivers/cmd/gcloud-secret/main.go \
 						drivers/cmd/datadog-emitter/statsd.go \
 						drivers/pkg/ai/chat_wrapper_interface.go \
-						drivers/cmd/hd-driver-gemini/session.go
+						drivers/cmd/hd-driver-embeddings/main.go \
+						drivers/cmd/hd-driver-embeddings/ollama.go
 
 ifneq (,$(wildcard ./.env))
 	include ./.env
