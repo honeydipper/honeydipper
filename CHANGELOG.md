@@ -1,3 +1,28 @@
+# [3.9.0](https://github.com/honeydipper/honeydipper/compare/v3.8.0...v3.9.0) (2025-05-14)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/exp digest to 7e4ce0a ([#635](https://github.com/honeydipper/honeydipper/issues/635)) ([f817c72](https://github.com/honeydipper/honeydipper/commit/f817c72d0a1a338d64c956c9c35c2c663467924a))
+* **deps:** update google.golang.org/genproto digest to 10db94c ([#630](https://github.com/honeydipper/honeydipper/issues/630)) ([72ab87c](https://github.com/honeydipper/honeydipper/commit/72ab87c52039c2e32f4476f27a55479e65c1a66c))
+* **deps:** update module cloud.google.com/go/secretmanager to v1.14.7 ([#643](https://github.com/honeydipper/honeydipper/issues/643)) ([0d70b29](https://github.com/honeydipper/honeydipper/commit/0d70b29a04f44160f1366f7b3ba6d901c13ee252))
+* **deps:** update module dario.cat/mergo to v1.0.1 ([#646](https://github.com/honeydipper/honeydipper/issues/646)) ([7aff60c](https://github.com/honeydipper/honeydipper/commit/7aff60c52e3f958d7693d325e21ada4be4f9a047))
+* **deps:** update module github.com/golang-jwt/jwt/v5 to v5.2.2 [security] ([#631](https://github.com/honeydipper/honeydipper/issues/631)) ([9223e14](https://github.com/honeydipper/honeydipper/commit/9223e143ef7930b7b792453ebe1d6db6ea95f9aa))
+* minor improvement in helper libs ([fffddea](https://github.com/honeydipper/honeydipper/commit/fffddea801d86f9f1dee0b9b4543fd6bf6c30189))
+
+
+### Features
+
+* allow rpc call with timeout ([c2cab4b](https://github.com/honeydipper/honeydipper/commit/c2cab4b8ba868431f535754a158e4cde60ced83d))
+* allow start dynamic workflow session from operator ([aa507c8](https://github.com/honeydipper/honeydipper/commit/aa507c8e76ea7cddf64f17b4cadac909d2b9f6d1))
+* driver to interact with gemini ([92cb41e](https://github.com/honeydipper/honeydipper/commit/92cb41e9adb9097e96fd4f5738c1469de896365c))
+* driver to interact with ollama ([e253c72](https://github.com/honeydipper/honeydipper/commit/e253c7278ee21daf7d94e765bd4522c54196918e))
+* RAG and embeddings driver using GCP vector search and Qdrant ([#650](https://github.com/honeydipper/honeydipper/issues/650)) ([0e45190](https://github.com/honeydipper/honeydipper/commit/0e45190340003e1950e87d3b13676bbbe65af0b6))
+* redis-cache handling of queues ([f15ed50](https://github.com/honeydipper/honeydipper/commit/f15ed50257eb39608fa2b02a39bface63ce45ca2))
+* sharable common AI chat logic ([0373778](https://github.com/honeydipper/honeydipper/commit/0373778fb7690517b1a86dcb5eccab9045b93857))
+* support hide thinking messages for reasoning models ([#647](https://github.com/honeydipper/honeydipper/issues/647)) ([0a1f736](https://github.com/honeydipper/honeydipper/commit/0a1f736d5f8facc9af6ead2794d471d0d8cd080d))
+* webhook customized response and replay attack ([6661317](https://github.com/honeydipper/honeydipper/commit/6661317f9417454202cec881fba325e2f09f4a1d))
+
 # [3.8.0](https://github.com/honeydipper/honeydipper/compare/v3.7.0...v3.8.0) (2025-04-01)
 
 
