@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
+	"dario.cat/mergo"
 	"github.com/go-errors/errors"
 	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/imdario/mergo"
 )
 
 const (

@@ -25,6 +25,10 @@ const (
 
 	// DefaultAPITimeout is the default timeout for making an outbound API call.
 	DefaultAPITimeout time.Duration = 10
+
+	// DriverStateCompleted indicates a driver can be gracefully shutdown. Currently,
+	// only used in tests.
+	DriverStateCompleted = "completed"
 )
 
 // Driver : the helper stuct for creating a honey-dipper driver in golang.
@@ -46,8 +50,26 @@ type Driver struct {
 	APITimeout      time.Duration
 }
 
+// DriverOption provides a way to pass parameters to NewDriver method to override
+// default settings; useful for writing tests.
+type DriverOption func(*Driver)
+
+// DriverWithReader overrides the drivers input stream so mock message can be injected.
+func DriverWithReader(r io.Reader) DriverOption {
+	return func(d *Driver) {
+		d.In = r
+	}
+}
+
+// DriverWithWriter overrides the driver output stream so output can be intercepted.
+func DriverWithWriter(w io.Writer) DriverOption {
+	return func(d *Driver) {
+		d.Out = w
+	}
+}
+
 // NewDriver : create a blank driver object.
-func NewDriver(service string, name string) *Driver {
+func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 	driver := Driver{
 		Name:        name,
 		Service:     service,
@@ -55,6 +77,10 @@ func NewDriver(service string, name string) *Driver {
 		In:          os.Stdin,
 		Out:         os.Stdout,
 		ReadySignal: make(chan bool),
+	}
+
+	for _, opt := range opts {
+		opt(&driver)
 	}
 
 	driver.RPCProvider.Init("rpc", "return", driver.Out)
@@ -83,7 +109,9 @@ func (d *Driver) Run() {
 		func() {
 			defer SafeExitOnError("[%s] Resuming driver message loop", d.Service)
 			defer CatchError(io.EOF, func() {
-				Logger.Fatalf("[%s] daemon closed channel", d.Service)
+				if d.State != DriverStateCompleted { // allow graceful shutdown during testing.
+					Logger.Fatalf("[%s] daemon closed channel", d.Service)
+				}
 			})
 			for {
 				msg := FetchRawMessage(d.In)
@@ -97,6 +125,10 @@ func (d *Driver) Run() {
 				}()
 			}
 		}()
+		// allow graceful shutdown during testing.
+		if d.State == DriverStateCompleted {
+			break
+		}
 	}
 }
 
@@ -126,11 +158,16 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 			d.APITimeout = time.Duration(apiTimeout)
 		}
 	}
-	d.ReadySignal <- true
+	if d.ReadySignal != nil {
+		close(d.ReadySignal)
+	}
 }
 
 func (d *Driver) start(msg *Message) {
-	<-d.ReadySignal
+	if d.ReadySignal != nil {
+		<-d.ReadySignal
+		d.ReadySignal = nil
+	}
 
 	if d.State == "alive" {
 		if d.Reload != nil {

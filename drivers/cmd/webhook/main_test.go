@@ -265,3 +265,42 @@ func TestHookHandler(t *testing.T) {
 	assert.Equalf(t, "sys-secret-list", dipper.MustGetMapDataStr(msg.Payload, "data.verifiedSystem.0"), "should emit webhook event with verifiedSystem")
 	assert.Equalf(t, 1, len(dipper.MustGetMapData(msg.Payload, "data.verifiedSystem").([]interface{})), "should verify only 1 system")
 }
+
+func TestCustomizedResponse(t *testing.T) {
+	buf := bytes.NewBuffer(make([]byte, 2048))
+	driver = &dipper.Driver{
+		Out: buf,
+	}
+
+	resp := &mockResponseWriter{header: http.Header{}}
+	req := &http.Request{
+		Method: "POST",
+		URL:    &url.URL{Path: "/test/sys1"},
+		Header: http.Header{
+			"Content-Type": []string{
+				"application/x-www-form-urlencoded",
+			},
+		},
+		Body: io.NopCloser(bytes.NewBufferString(`var1=foobar`)),
+	}
+
+	hooks = map[string]interface{}{
+		"sys1.webhook": []interface{}{
+			map[string]interface{}{
+				"match": map[string]interface{}{"url": "/test/sys1"},
+				"parameters": map[string]interface{}{
+					"response_content_type": "text/plain",
+					"response_payload":      "$event.form.var1.0",
+				},
+			},
+		},
+	}
+
+	hookHandler(resp, req)
+
+	msg := dipper.FetchMessage(buf)
+	assert.Equalf(t, "webhook.", msg.Payload.(map[string]interface{})["events"].([]interface{})[0], "should emit webhook event to daemon")
+	assert.Equal(t, "text/plain", resp.header.Get("Content-Type"), "should set customized response header")
+	assert.Equalf(t, 200, resp.status, "should return 200 on success with customized response")
+	assert.Equalf(t, "foobar", string(resp.content), "should return customized response")
+}

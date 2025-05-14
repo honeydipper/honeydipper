@@ -182,8 +182,8 @@ func TestServiceRemoveEmitter(t *testing.T) {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter is removed")
 	}()
 
+	daemon.Children.Add(1)
 	go func() {
-		daemon.Children.Add(1)
 		defer daemon.Children.Done()
 
 		assert.NotPanics(t, func() {
@@ -276,8 +276,8 @@ func TestServiceEmitterCrashing(t *testing.T) {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter crashes")
 	}()
 
+	daemon.Children.Add(1)
 	go func() {
-		daemon.Children.Add(1)
 		defer daemon.Children.Done()
 
 		assert.NotPanics(t, func() {
@@ -351,8 +351,8 @@ func TestServiceReplaceEmitter(t *testing.T) {
 		assert.NotPanics(t, svc.serviceLoop, "service loop should recover panic if emitter is changed")
 	}()
 
+	daemon.Children.Add(1)
 	go func() {
-		daemon.Children.Add(1)
 		defer daemon.Children.Done()
 
 		assert.NotPanics(t, func() {

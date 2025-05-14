@@ -143,6 +143,7 @@ func (w *Session) processExport(msg *dipper.Message) {
 	})
 	if w.inFlyFunction != nil && status != SessionStatusError {
 		export := config.ExportFunctionContext(w.inFlyFunction, envData, w.store.Helper.GetConfig())
+		w.ctx = dipper.MergeMap(w.ctx, export)
 		delete(envData, "sysData")
 		w.processNoExport(export)
 		if len(export) > 0 {
@@ -237,6 +238,7 @@ func (w *Session) complete(msg *dipper.Message) {
 	w.savedMsg = msg
 
 	dipper.Logger.Infof("[workflow] session [%s] completing with msg labels %+v", w.ID, dipper.SanitizedLabels(msg.Labels))
+	//nolint:nestif
 	if w.ID != "" && dipper.IDMapGet(&w.store.sessions, w.ID) != nil {
 		if w.currentHook == "" {
 			w.processExport(msg)
@@ -254,6 +256,15 @@ func (w *Session) complete(msg *dipper.Message) {
 				defer daemon.Children.Done()
 				w.store.ContinueSession(w.parent, msg, w.exported)
 			}()
+		} else if output, ok := w.ctx["_output"]; ok {
+			result := map[string]interface{}{
+				"status": msg.Labels["status"],
+				"output": output,
+			}
+			if msg.Labels["status"] != SessionStatusSuccess {
+				result["error"] = fmt.Sprintf("[%s]: %s", msg.Labels["performing"], msg.Labels["reason"])
+			}
+			w.store.EmitResult(w.EventID, result)
 		}
 	}
 

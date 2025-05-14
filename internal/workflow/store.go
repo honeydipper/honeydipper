@@ -7,6 +7,7 @@
 package workflow
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type SessionStoreHelper interface {
 	GetConfig() *config.Config
 	SendMessage(msg *dipper.Message)
 	GetDaemonID() string
+	EmitResult(UUID string, result map[string]interface{})
 }
 
 // SessionStore stores session in memory and provides helper function for session to perform.
@@ -61,6 +63,35 @@ func (s *SessionStore) newSession(parent string, eventUUID string, wf *config.Wo
 
 	performing := w.setPerforming("")
 	dipper.Logger.Infof("[workflow] workflow [%s] instantiated with parent ID [%s]", performing, parent)
+
+	return w
+}
+
+// StartDynamicSession will parse a workflow and start a session.
+func (s *SessionStore) StartDynamicSession(msg *dipper.Message, wfdata interface{}) SessionHandler {
+	eventUUID := msg.Labels["eventID"]
+	defer func() {
+		if r := recover(); r != nil {
+			dipper.Logger.Warningf("[workflow] error when creating dynamic workflow [%s]", eventUUID)
+			s.EmitResult(eventUUID, map[string]interface{}{
+				"status": "error",
+				"error":  fmt.Sprintf("creating session: %+v", r),
+			})
+		}
+	}()
+
+	wf := &config.Workflow{}
+	dipper.Must(mapstructure.Decode(wfdata, wf))
+
+	dipper.Logger.Debugf("[workflow] dynamic workflow [%s] instantiated\n%+v", eventUUID, msg.Payload)
+
+	ctx := dipper.MustGetMapData(msg.Payload, "data").(map[string]interface{})
+	if _, ok := ctx["_output"]; !ok {
+		ctx["_output"] = map[string]interface{}{}
+	}
+	w := s.newSession("", eventUUID, wf)
+	w.prepare(msg, nil, ctx)
+	w.execute(msg)
 
 	return w
 }
@@ -137,4 +168,9 @@ func (s *SessionStore) GetEvents() []SessionHandler {
 	}
 
 	return ret
+}
+
+// EmitResult emits the result of a session.
+func (s *SessionStore) EmitResult(uuid string, result map[string]interface{}) {
+	s.Helper.EmitResult(uuid, result)
 }

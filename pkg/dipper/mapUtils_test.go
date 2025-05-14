@@ -208,3 +208,41 @@ func TestCheckMapData(t *testing.T) {
 	assert.True(t, CheckMapData(data, "2.1"), `"2.1" value "true" should be true.`)
 	assert.True(t, CheckMapData(data, "2.2"), `"2.2" value boolean "true" should be true.`)
 }
+
+func TestGetMapDataInt(t *testing.T) {
+	data := map[string]any{
+		"intvalue":    12,
+		"int64value":  3000,
+		"floatvalue":  34.22202,
+		"stringvalue": "33",
+		"boolvalue":   true,
+		"nonint":      "this is no a int",
+	}
+
+	v, ok := GetMapDataInt(data, "intvalue")
+	assert.Equal(t, 12, v, "able to get int value")
+	assert.True(t, ok, "able to get int value")
+
+	v, ok = GetMapDataInt(data, "int64value")
+	assert.Equal(t, 3000, v, "able to get int64 value")
+	assert.True(t, ok, "able to get int64 value")
+
+	v, ok = GetMapDataInt(data, "floatvalue")
+	assert.Equal(t, 34, v, "able to get float value")
+	assert.True(t, ok, "able to get float value")
+
+	v, ok = GetMapDataInt(data, "stringvalue")
+	assert.Equal(t, 33, v, "able to get string value")
+	assert.True(t, ok, "able to get string value")
+
+	v, ok = GetMapDataInt(data, "boolvalue")
+	assert.Equal(t, 0, v, "error when getting bool value")
+	assert.False(t, ok, "error when getting bool value")
+
+	v, ok = GetMapDataInt(data, "nonint")
+	assert.Equal(t, 0, v, "error when getting non-int value")
+	assert.False(t, ok, "error when getting non-int value")
+
+	assert.Panics(t, func() { v = MustGetMapDataInt(data, "nonint") }, "panic when getting non-int with must prefix")
+	assert.Panics(t, func() { v = MustGetMapDataInt(data, "non-exist") }, "panic when getting non-exist with must prefix")
+}

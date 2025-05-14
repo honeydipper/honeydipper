@@ -9,10 +9,14 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -42,6 +46,12 @@ func main() {
 	driver.Start = start
 	driver.RPCHandlers["save"] = save
 	driver.RPCHandlers["load"] = load
+	driver.RPCHandlers["incr"] = incr
+	driver.RPCHandlers["lrange"] = lrange
+	driver.RPCHandlers["blpop"] = blpop
+	driver.RPCHandlers["rpush"] = rpush
+	driver.RPCHandlers["del"] = del
+	driver.RPCHandlers["exists"] = exists
 	driver.Run()
 }
 
@@ -71,9 +81,73 @@ func load(msg *dipper.Message) {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	default:
 		msg.Reply <- dipper.Message{
-			Payload: map[string]interface{}{
-				"value": val,
-			},
+			Payload: []byte(val),
+			IsRaw:   true,
+		}
+	}
+}
+
+func lrange(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	start, _ := dipper.GetMapDataInt(msg.Payload, "start")
+	raw, _ := dipper.GetMapDataBool(msg.Payload, "raw")
+	del, _ := dipper.GetMapDataBool(msg.Payload, "del")
+
+	stop := -1
+	if _, ok := msg.Payload.(map[string]any)["stop"]; ok {
+		stop = dipper.MustGetMapDataInt(msg.Payload, "stop")
+	}
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	val, err := client.LRange(ctx, key, int64(start), int64(stop)).Result()
+	switch {
+	case errors.Is(err, redis.Nil):
+		msg.Reply <- dipper.Message{}
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		var buf string
+		if raw {
+			buf = strings.Join(val, "")
+		} else {
+			buf = "[" + strings.Join(val, ", ") + "]"
+		}
+		msg.Reply <- dipper.Message{
+			Payload: []byte(buf),
+			IsRaw:   true,
+		}
+
+		if del {
+			_, e := client.Del(ctx, key).Result()
+			if e != nil {
+				dipper.Logger.Warningf("[%s] redis error deleting: %v", driver.Service, e)
+			}
+		}
+	}
+}
+
+func incr(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	val, err := client.Incr(ctx, key).Result()
+	switch {
+	case errors.Is(err, redis.Nil):
+		msg.Reply <- dipper.Message{}
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		msg.Reply <- dipper.Message{
+			Payload: []byte(strconv.Itoa(int(val))),
+			IsRaw:   true,
 		}
 	}
 }
@@ -106,4 +180,99 @@ func save(msg *dipper.Message) {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
 	msg.Reply <- dipper.Message{}
+}
+
+func rpush(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	val := dipper.MustGetMapData(msg.Payload, "value")
+	toJSON, _ := dipper.GetMapDataBool(msg.Payload, "toJson")
+	if toJSON {
+		val = string(dipper.Must(json.Marshal(val)).([]byte))
+	}
+
+	var ttl time.Duration
+	ttlData, _ := dipper.GetMapData(msg.Payload, "ttl")
+	if ttlData != nil {
+		ttl = time.Duration(ttlData.(float64))
+	}
+
+	valStr, ok := val.(string)
+	if !ok {
+		valStr = string(dipper.Must(json.Marshal(val)).([]byte))
+	}
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	if err := client.RPush(ctx, key, valStr).Err(); err != nil && !errors.Is(err, redis.Nil) {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+	if ttl > 0 {
+		if err := client.Expire(ctx, key, ttl).Err(); err != nil && !errors.Is(err, redis.Nil) {
+			log.Panicf("[%s] redis error: %v", driver.Service, err)
+		}
+	}
+	msg.Reply <- dipper.Message{}
+}
+
+func blpop(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	timeoutDuration := time.Duration(0)
+	timeout := msg.Labels["timeout"]
+	if timeout != "" {
+		timeoutDuration = dipper.Must(time.ParseDuration(timeout)).(time.Duration)
+		if timeoutDuration > time.Second*2 {
+			timeoutDuration -= time.Second * 2
+		}
+	}
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
+	defer cancel()
+	val, err := client.BLPop(ctx, timeoutDuration, key).Result()
+	if err != nil && !errors.Is(err, redis.Nil) && !errors.Is(err, context.DeadlineExceeded) {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+	ret := ""
+	if len(val) > 1 {
+		ret = val[1]
+	}
+	msg.Reply <- dipper.Message{
+		Payload: []byte(ret),
+		IsRaw:   true,
+	}
+}
+
+func del(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	if err := client.Del(ctx, key).Err(); err != nil && !errors.Is(err, redis.Nil) {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+	msg.Reply <- dipper.Message{}
+}
+
+func exists(msg *dipper.Message) {
+	key := string(msg.Payload.([]byte))
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext()
+	defer cancel()
+	found := int(dipper.Must(client.Exists(ctx, key).Result()).(int64))
+	var payload []byte
+	dipper.Logger.Debugf("[%s] redis cache exists: %s %d", driver.Service, key, found)
+	if found > 0 {
+		payload = []byte{1}
+	}
+	msg.Reply <- dipper.Message{Payload: payload, IsRaw: true}
 }

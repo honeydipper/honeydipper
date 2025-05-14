@@ -42,6 +42,18 @@ func (m *MockSessionStoreHelper) EXPECT() *MockSessionStoreHelperMockRecorder {
 	return m.recorder
 }
 
+// EmitResult mocks base method.
+func (m *MockSessionStoreHelper) EmitResult(UUID string, result map[string]interface{}) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "EmitResult", UUID, result)
+}
+
+// EmitResult indicates an expected call of EmitResult.
+func (mr *MockSessionStoreHelperMockRecorder) EmitResult(UUID, result interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitResult", reflect.TypeOf((*MockSessionStoreHelper)(nil).EmitResult), UUID, result)
+}
+
 // GetConfig mocks base method.
 func (m *MockSessionStoreHelper) GetConfig() *config.Config {
 	m.ctrl.T.Helper()

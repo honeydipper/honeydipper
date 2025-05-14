@@ -74,7 +74,10 @@ func IDMapGet(m IDMap, key string) interface{} {
 	defer meta.Lock.Unlock()
 
 	mapValue := reflect.ValueOf(m).Elem()
-	ret := mapValue.MapIndex(reflect.ValueOf(key)).Interface()
+	ret := mapValue.MapIndex(reflect.ValueOf(key))
+	if ret.IsValid() {
+		return ret.Interface()
+	}
 
-	return ret
+	return nil
 }

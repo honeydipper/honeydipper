@@ -95,6 +95,13 @@ func StartEngine(cfg *config.Config) {
 func createSessions(d *driver.Runtime, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
 	msg = dipper.DeserializePayload(msg)
+
+	if wf, ok := dipper.GetMapData(msg.Payload, "do"); ok {
+		go sessionStore.StartDynamicSession(msg, wf)
+
+		return
+	}
+
 	eventsObj, _ := dipper.GetMapData(msg.Payload, "events")
 	events := eventsObj.([]interface{})
 	dipper.Logger.Infof("[engine] fired events %+v", events)
@@ -175,4 +182,12 @@ func resumeSession(d *driver.Runtime, m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	key := dipper.MustGetMapDataStr(m.Payload, "key")
 	go sessionStore.ResumeSession(key, m)
+}
+
+func (h *WorkflowHelper) EmitResult(eventID string, result map[string]interface{}) {
+	dipper.Must(engine.CallNoWait("cache", "rpush", map[string]any{
+		"key":   "honeydipper/result/" + eventID,
+		"value": result,
+		"ttl":   time.Hour * 3,
+	}))
 }

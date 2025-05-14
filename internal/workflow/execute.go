@@ -386,7 +386,14 @@ func (w *Session) callDriver(f string, msg *dipper.Message) {
 	var locals map[string]interface{}
 	if w.workflow.Local != nil {
 		envData := w.buildEnvData(msg)
-		locals = dipper.Interpolate(w.workflow.Local, envData).(map[string]interface{})
+		if layers, ok := w.workflow.Local.([]any); ok {
+			for _, layer := range layers {
+				delta := dipper.Interpolate(layer, envData).(map[string]any)
+				locals = dipper.MergeMap(locals, delta)
+			}
+		} else {
+			locals = dipper.Interpolate(w.workflow.Local, envData).(map[string]interface{})
+		}
 	}
 
 	w.callFunction(&config.Function{

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 )
 
 // ErrMapError are all errors thrown in map manipulation.
@@ -126,6 +126,43 @@ func MustGetMapDataBool(from interface{}, path string) bool {
 		}
 	}
 	panic(fmt.Errorf("%w: not a bool: %s", ErrMapError, path))
+}
+
+// GetMapDataInt : get the data as int from the deep map following a KV path.
+func GetMapDataInt(from interface{}, path string) (ret int, ok bool) {
+	if data, ok := GetMapData(from, path); ok {
+		switch v := data.(type) {
+		case int:
+			return v, true
+		case int64:
+			return int(v), true
+		case float64:
+			return int(v), true
+		case string:
+			num, err := strconv.Atoi(v)
+
+			return num, (err == nil)
+		}
+	}
+
+	return 0, false
+}
+
+// MustGetMapDataInt : get the data as int from the deep map following a KV path.
+func MustGetMapDataInt(from interface{}, path string) int {
+	if data, ok := GetMapData(from, path); ok {
+		switch v := data.(type) {
+		case int:
+			return v
+		case int64:
+			return int(v)
+		case float64:
+			return int(v)
+		case string:
+			return Must(strconv.Atoi(v)).(int)
+		}
+	}
+	panic(fmt.Errorf("%w: not a int: %s", ErrMapError, path))
 }
 
 // CheckMapData check if data exists and is truthy.
