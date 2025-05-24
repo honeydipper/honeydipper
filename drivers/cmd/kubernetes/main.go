@@ -223,7 +223,7 @@ func getJobStatus(job *batchv1.Job) (string, bool, []string) {
 
 			break
 		}
-		if cond.Type == batchv1.JobComplete && cond.Status == corev1.ConditionTrue {
+		if (cond.Type == batchv1.JobComplete || cond.Type == batchv1.JobSuccessCriteriaMet) && cond.Status == corev1.ConditionTrue {
 			jobStatus = StatusSuccess
 			completed = true
 
@@ -308,6 +308,7 @@ func waitForJob(m *dipper.Message) {
 		for {
 			select {
 			case <-ctxWatch.Done():
+				returnJobStatus(m, job)
 				EOW = true
 
 				break loop
