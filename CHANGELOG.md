@@ -1,3 +1,10 @@
+## [3.9.1](https://github.com/honeydipper/honeydipper/compare/v3.9.0...v3.9.1) (2025-05-27)
+
+
+### Bug Fixes
+
+* use JobSuccessCriteraMet as JobComplete ([#651](https://github.com/honeydipper/honeydipper/issues/651)) ([b11a5a1](https://github.com/honeydipper/honeydipper/commit/b11a5a1f14a1bc254b580dfb0a0faf5064798fdf))
+
 # [3.9.0](https://github.com/honeydipper/honeydipper/compare/v3.8.0...v3.9.0) (2025-05-14)
 
 
