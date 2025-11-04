@@ -340,6 +340,7 @@ func (w *Session) continueAfterHook(msg *dipper.Message) {
 
 // continueExec resume a session with given dipper message.
 func (w *Session) continueExec(msg *dipper.Message, exports []map[string]interface{}) {
+	delete(w.ctx, "_wait_timer")
 	w.mergeContext(exports)
 	if w.currentHook != "" {
 		w.continueAfterHook(msg)
