@@ -94,6 +94,9 @@ func (c *RPCCallerBase) CallRaw(feature string, method string, params []byte) ([
 		return nil, err
 	}
 
+	rpcTimer := time.NewTimer(time.Second * DefaultRPCTimeout)
+	defer rpcTimer.Stop()
+
 	// waiting for the result to come back
 	select {
 	case msg := <-result:
@@ -104,7 +107,7 @@ func (c *RPCCallerBase) CallRaw(feature string, method string, params []byte) ([
 		}
 
 		return msg.([]byte), nil
-	case <-time.After(time.Second * DefaultRPCTimeout):
+	case <-rpcTimer.C:
 		return nil, ErrTimeout
 	}
 }
@@ -128,6 +131,9 @@ func (c *RPCCallerBase) CallWithMessage(msg *Message) ([]byte, error) {
 		return ret, err
 	}
 
+	waitTimer := time.NewTimer(timeout)
+	defer waitTimer.Stop()
+
 	// waiting for the result to come back
 	select {
 	case msg := <-result:
@@ -140,7 +146,7 @@ func (c *RPCCallerBase) CallWithMessage(msg *Message) ([]byte, error) {
 		} else {
 			ret = msg.([]byte)
 		}
-	case <-time.After(timeout):
+	case <-waitTimer.C:
 		err = ErrTimeout
 	}
 
@@ -285,7 +291,9 @@ func (p *RPCProvider) Router(msg *Message) {
 		msg.Reply = make(chan Message, 1)
 
 		go func() {
+			returnTimer := time.NewTimer(timeout)
 			defer close(returnerExited)
+			defer returnTimer.Stop()
 			select {
 			case reply := <-msg.Reply:
 				if reason, ok := reply.Labels["error"]; ok {
@@ -293,7 +301,7 @@ func (p *RPCProvider) Router(msg *Message) {
 				} else {
 					p.Return(msg, &reply)
 				}
-			case <-time.After(timeout):
+			case <-returnTimer.C:
 				p.ReturnError(msg, "timeout")
 			}
 		}()

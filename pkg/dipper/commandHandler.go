@@ -117,6 +117,9 @@ func (w *commandWrapper) attempt(replyChannel chan Message) {
 
 		Logger.Debugf("[operaotr] cmd labels %+v", m.Labels)
 
+		apiTimer := time.NewTimer(time.Second * w.timeout)
+		defer apiTimer.Stop()
+
 		select {
 		case reply := <-replyChannel:
 			if _, ok := reply.Labels["no-timeout"]; ok {
@@ -133,7 +136,7 @@ func (w *commandWrapper) attempt(replyChannel chan Message) {
 			} else {
 				w.provider.Return(w.msg, &reply)
 			}
-		case <-time.After(time.Second * w.timeout):
+		case <-apiTimer.C:
 			_ = w.provider.ReturnError(w.msg, "timeout")
 		}
 	}()

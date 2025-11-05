@@ -434,9 +434,11 @@ func (s *Service) serviceLoop() {
 				}
 			}
 		}()
+		tick := time.NewTimer(time.Second)
+		defer tick.Stop()
 		cases = append(cases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(time.After(time.Second)),
+			Chan: reflect.ValueOf(tick.C),
 		})
 
 		var chosen int
@@ -725,7 +727,7 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 	}
 
 	go func() {
-		<-time.After(time.Second)
+		time.Sleep(time.Second)
 		dipper.Logger.Warningf("[%s] quiting on broadcast force reload message", from.Service)
 		Services[from.Service].Drain()
 		if from.Service == masterService.name {
