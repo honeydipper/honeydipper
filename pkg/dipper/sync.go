@@ -54,8 +54,11 @@ func WaitGroupWaitTimeout(wg *sync.WaitGroup, t time.Duration) {
 		close(allDone)
 	}()
 
+	timer := time.NewTimer(t)
+	defer timer.Stop()
+
 	select {
-	case <-time.After(t):
+	case <-timer.C:
 		WaitGroupDoneAll(wg)
 	case <-allDone:
 	}

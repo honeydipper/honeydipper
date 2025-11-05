@@ -290,7 +290,8 @@ func waitForJob(msg *dipper.Message) {
 		"JOB_STATE_DRAINED":   "success",
 	}
 
-	expired := time.After(timeout * time.Second)
+	expired := time.NewTimer(timeout * time.Second)
+	defer expired.Stop()
 
 	var (
 		result *dataflow.Job
@@ -300,7 +301,7 @@ func waitForJob(msg *dipper.Message) {
 loop:
 	for {
 		select {
-		case <-expired:
+		case <-expired.C:
 			break loop
 		default:
 			func() {

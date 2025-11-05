@@ -7,6 +7,7 @@
 package workflow
 
 import (
+	"context"
 	"reflect"
 	"strconv"
 	"strings"
@@ -231,7 +232,16 @@ func (w *Session) startWait() {
 			}
 			timeoutPayload := w.ctx["return_on_timeout"]
 
-			<-time.After(d)
+			timer, cancel := context.WithTimeout(context.Background(), d)
+			defer cancel()
+			w.ctx["_wait_timer"] = timer
+			<-timer.Done()
+
+			if _, ok := w.ctx["_wait_timer"]; !ok {
+				return
+			}
+			delete(w.ctx, "_wait_timer")
+
 			dipper.Logger.Infof("[workflow] resuming session on timeout %+v", resumeToken)
 
 			daemon.Children.Add(1)
