@@ -27,7 +27,7 @@ LABEL description="Honeydipper - an event-driven orchestration framework" \
       org.label-schema.vcs-url=https://github.com/honeydipper/honeydipper \
       org.label-schema.schema-version="1.0"
 
-RUN apk add --no-cache ca-certificates git
+RUN apk add --no-cache ca-certificates git tzdata
 
 WORKDIR /opt/honeydipper/drivers/builtin
 COPY --from=build /go/bin/* ./
