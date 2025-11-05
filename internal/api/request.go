@@ -66,6 +66,9 @@ func (a *Request) Dispatch() {
 			defer close(a.ready)
 			defer a.postACK()
 
+			ackTimer := time.NewTimer(a.ackTimeout)
+			defer ackTimer.Stop()
+
 			switch a.reqType {
 			case TypeFirst:
 				// skipping ACKs
@@ -77,7 +80,7 @@ func (a *Request) Dispatch() {
 					a.firstACK = nil
 				}()
 				select {
-				case <-time.After(a.ackTimeout):
+				case <-ackTimer.C:
 				case <-a.firstACK:
 				}
 			case TypeAll:
@@ -100,6 +103,9 @@ func (a *Request) postACK() {
 		return
 	}
 
+	postACKTimer := time.NewTimer(a.timeout)
+	defer postACKTimer.Stop()
+
 	// expecting more results
 	a.received = make(chan byte)
 	defer close(a.received)
@@ -108,7 +114,7 @@ func (a *Request) postACK() {
 		a.err = ErrAPINoACK
 	case a.timeout != InfiniteDuration:
 		select {
-		case <-time.After(a.timeout):
+		case <-postACKTimer.C:
 			a.err = dipper.ErrTimeout
 		case <-a.received:
 		}

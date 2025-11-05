@@ -251,6 +251,9 @@ func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
 	r := l.GetRequest(def, c)
 	r.Dispatch()
 
+	writeTimer := time.NewTimer(l.writeTimeout - time.Millisecond)
+	defer writeTimer.Stop()
+
 	// wait for the results
 	select {
 	case <-r.ready:
@@ -263,7 +266,7 @@ func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
 		} else {
 			c.IndentedJSON(http.StatusOK, r.getResults())
 		}
-	case <-time.After(l.writeTimeout - time.Millisecond):
+	case <-writeTimer.C:
 		if r.method == http.MethodGet && (r.timeout == InfiniteDuration || r.timeout > l.writeTimeout) {
 			c.IndentedJSON(http.StatusAccepted, map[string]interface{}{"uuid": r.uuid, "results": r.getResults()})
 		} else {
