@@ -1,3 +1,14 @@
+## [3.9.2](https://github.com/honeydipper/honeydipper/compare/v3.9.1...v3.9.2) (2025-11-05)
+
+
+### Bug Fixes
+
+* **deps:** update golang.org/x/exp digest to a4bb9ff ([#653](https://github.com/honeydipper/honeydipper/issues/653)) ([29781c5](https://github.com/honeydipper/honeydipper/commit/29781c5295a479c51b3f7f24f87dfd9b7b58789a))
+* **deps:** update module dario.cat/mergo to v1.0.2 ([#656](https://github.com/honeydipper/honeydipper/issues/656)) ([f99ae0a](https://github.com/honeydipper/honeydipper/commit/f99ae0ae18239c5ae88b777dd95e2c8a9f1ba457))
+* make tzdata available ([#672](https://github.com/honeydipper/honeydipper/issues/672)) ([9f6b556](https://github.com/honeydipper/honeydipper/commit/9f6b55622a6c394803480e10641415d1ee4f6094))
+* remove use of time.After ([#673](https://github.com/honeydipper/honeydipper/issues/673)) ([5b28b5b](https://github.com/honeydipper/honeydipper/commit/5b28b5bfa0ede394cadb6b1e118caf91c7f41ce7))
+* replace time.After with context Done ([#661](https://github.com/honeydipper/honeydipper/issues/661)) ([ecb3c7a](https://github.com/honeydipper/honeydipper/commit/ecb3c7a6353333868f427c84450461f27ec0731e))
+
 ## [3.9.1](https://github.com/honeydipper/honeydipper/compare/v3.9.0...v3.9.1) (2025-05-27)
 
 
