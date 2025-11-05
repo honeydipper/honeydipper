@@ -86,6 +86,9 @@ jobs:
       - attach_workspace:
           at: /go
       - setup
+      - run:
+          name: install dependencies
+          command: apk add make xz
       - run: REPORT_TEST_COVERAGE=1 make unit-tests
       - qlty-orb/coverage_publish:
           files: c.out
@@ -104,7 +107,7 @@ jobs:
       - run:
           name: install dependencies
           command: >
-            apk add git openssh-client gcc libc-dev make xz &&
+            apk add git openssh-client gcc libc-dev make &&
             wget "$DOCKERIZE_URL" &&
             tar zxvf "$(basename "$DOCKERIZE_URL")" &&
             install dockerize /usr/local/bin
