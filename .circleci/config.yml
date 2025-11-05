@@ -6,13 +6,10 @@ defaults: &defaults
 
 version: 2.1
 
-orbs:
-  qlty-orb: qltysh/qlty-orb@0.1.1
-
 commands:
   setup:
     steps:
-      - run: apk add git openssh-client gcc libc-dev make
+      - run: apk add git openssh-client gcc libc-dev make xz
       - checkout
       - restore-mod
   restore-mod:
@@ -86,16 +83,23 @@ jobs:
       - attach_workspace:
           at: /go
       - setup
-      - run:
-          name: install dependencies
-          command: apk add make xz
       - run: REPORT_TEST_COVERAGE=1 make unit-tests
-      - qlty-orb/coverage_publish:
-          files: c.out
-          format: coverprofile
-          add_prefix: github.com/honeydipper/honeydipper
-      - store_test_results:
-          path: test-results
+      - run:
+          name: install-qlty
+          command: |
+            if command -v curl &>/dev/null; then
+              curl https://qlty.sh/install.sh | sh
+            elif command -v wget &>/dev/null; then
+              wget -O - https://qlty.sh/install.sh | sh
+            else
+              error 'curl or wget is required to install qlty'
+            fi
+
+            $HOME/.qlty/bin/qlty --version
+      - run:
+          name: qlty-coverage-publish
+          command: |
+            $HOME/.qlty/bin/qlty --add_prefix github.com/honeydipper/honeydipper --format coverprofile --files c.out
   integration:
     <<: *defaults
     docker:
