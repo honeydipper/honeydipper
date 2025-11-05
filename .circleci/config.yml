@@ -150,13 +150,17 @@ workflows:
           context: honeydipper
           filters:
             branches:
-              only: dev
+              only:
+                - dev
+                - main
           requires:
             - install
       - test:
           filters:
             branches:
-              ignore: dev
+              ignore:
+                - dev
+                - main
           requires:
             - install
       - integration:
