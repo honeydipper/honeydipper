@@ -98,7 +98,7 @@ require (
 	cloud.google.com/go/auth v0.16.1
 	cloud.google.com/go/compute/metadata v0.6.0
 	cloud.google.com/go/logging v1.13.0
-	dario.cat/mergo v1.0.1
+	dario.cat/mergo v1.0.2
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/go-git/go-git/v5 v5.13.1
 	github.com/go-redis/redismock/v8 v8.0.6
