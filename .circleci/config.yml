@@ -99,7 +99,7 @@ jobs:
       - run:
           name: qlty-coverage-publish
           command: |
-            $HOME/.qlty/bin/qlty coverage publish --add-prefix github.com/honeydipper/honeydipper --format coverprofile c.out
+            $HOME/.qlty/bin/qlty coverage publish --format coverprofile c.out
   integration:
     <<: *defaults
     docker:
