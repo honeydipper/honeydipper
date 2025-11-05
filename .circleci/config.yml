@@ -6,6 +6,9 @@ defaults: &defaults
 
 version: 2.1
 
+orbs:
+  qlty-orb: qltysh/qlty-orb@0.1.1
+
 commands:
   setup:
     steps:
@@ -78,19 +81,18 @@ jobs:
           path: test-results
   test_coverage:
     <<: *defaults
+    resource_class: medium+
     steps:
       - attach_workspace:
           at: /go
       - setup
-      - run:
-          name: Setup Code Climate test-reporter
-          command: |
-            # download test reporter as a static binary
-            wget -O cc-test-reporter https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64
-            chmod +x ./cc-test-reporter
-      - run: ./cc-test-reporter before-build
       - run: REPORT_TEST_COVERAGE=1 make unit-tests
-      - run: ./cc-test-reporter after-build --prefix=github.com/honeydipper/honeydipper
+      - qlty-orb/coverage_publish:
+          files: c.out
+          format: coverprofile
+          add_prefix: github.com/honeydipper/honeydipper
+      - store_test_results:
+          path: test-results
   integration:
     <<: *defaults
     docker:
