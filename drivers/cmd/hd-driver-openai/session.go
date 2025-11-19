@@ -8,7 +8,6 @@ import (
 	"github.com/honeydipper/honeydipper/pkg/dipper"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
-	"github.com/openai/openai-go/v3/shared"
 )
 
 // openAISession represents an active chat session with the openAI models.
@@ -31,9 +30,9 @@ func newSession(driver *dipper.Driver, msg *dipper.Message, wrapper ai.ChatWrapp
 	// Setup model configuration.
 	modelEntry := wrapper.Engine()
 	if n, ok := driver.GetOption("data.engine." + modelEntry + ".model"); ok {
-		s.chatOptions.Model = shared.ChatModel(n.(string))
+		s.chatOptions.Model = n.(string)
 	} else {
-		s.chatOptions.Model = shared.ChatModel(modelEntry)
+		s.chatOptions.Model = modelEntry
 	}
 
 	// Setup temperature for response randomness.
@@ -45,8 +44,8 @@ func newSession(driver *dipper.Driver, msg *dipper.Message, wrapper ai.ChatWrapp
 	}
 
 	// Setup tools.
-	if tools_list, ok := dipper.GetMapData(s.driver.Options, "data.tools_list"); ok {
-		s.chatOptions.Tools = tools_list.([]openai.ChatCompletionToolUnionParam)
+	if toolsList, ok := dipper.GetMapData(s.driver.Options, "data.tools_list"); ok {
+		s.chatOptions.Tools = toolsList.([]openai.ChatCompletionToolUnionParam)
 	}
 
 	// Setup client options.
