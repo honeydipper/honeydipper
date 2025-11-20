@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/honeydipper/honeydipper/drivers/pkg/ai"
@@ -74,6 +75,19 @@ func (s *openAISession) Stream(
 	s.StreamWithFunctionReturn(msg, streamHandler, toolCallHandler)
 }
 
+// Streamer interface used for mocking in tests.
+type Streamer interface {
+	Next() bool
+	Current() openai.ChatCompletionChunk
+}
+
+// _getStreamerFn returns a sse stream to receive streaming chat response chunks.
+var (
+	_getStreamerFn = func(s *openai.ChatCompletionService, ctx context.Context, body openai.ChatCompletionNewParams) Streamer {
+		return s.NewStreaming(ctx, body)
+	}
+)
+
 // StreamWithFunctionReturn handles streaming responses and tool calls from the model.
 func (s *openAISession) StreamWithFunctionReturn(
 	ret any,
@@ -85,7 +99,7 @@ func (s *openAISession) StreamWithFunctionReturn(
 	body.Messages = s.messages
 
 	acc := openai.ChatCompletionAccumulator{}
-	streamer := s.client.Chat.Completions.NewStreaming(s.wrapper.Context(), body)
+	streamer := _getStreamerFn(&s.client.Chat.Completions, s.wrapper.Context(), body)
 	for streamer.Next() {
 		chunk := streamer.Current()
 		acc.AddChunk(chunk)
@@ -109,9 +123,11 @@ func (s *openAISession) StreamWithFunctionReturn(
 
 		// stream content to client.
 		_, finished := acc.JustFinishedContent()
+		text := ""
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			streamHandler(chunk.Choices[0].Delta.Content, finished)
+			text = chunk.Choices[0].Delta.Content
 		}
+		streamHandler(text, finished)
 	}
 }
 
