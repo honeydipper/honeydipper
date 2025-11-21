@@ -19,6 +19,7 @@ type openAISession struct {
 	client      openai.Client
 	chatOptions openai.ChatCompletionNewParams
 	messages    []openai.ChatCompletionMessageParamUnion
+	isStreaming bool
 }
 
 // newSession creates a new chat session with the configured parameters.
@@ -30,10 +31,16 @@ func newSession(driver *dipper.Driver, msg *dipper.Message, wrapper ai.ChatWrapp
 
 	// Setup model configuration.
 	modelEntry := wrapper.Engine()
+	dipper.Logger.Debugf("using engine: %s", modelEntry)
 	if n, ok := driver.GetOption("data.engine." + modelEntry + ".model"); ok {
 		s.chatOptions.Model = n.(string)
 	} else {
 		s.chatOptions.Model = modelEntry
+	}
+
+	// Determine if the engine use streaming API.
+	if streaming, ok := dipper.GetMapDataBool(driver.Options, "data.engine."+modelEntry+".streaming"); ok {
+		s.isStreaming = streaming
 	}
 
 	// Setup temperature for response randomness.
@@ -51,10 +58,11 @@ func newSession(driver *dipper.Driver, msg *dipper.Message, wrapper ai.ChatWrapp
 
 	// Setup client options.
 	options := []option.RequestOption{}
-	if openaiBaseURL, ok := dipper.GetMapDataStr(msg.Payload, "base_url"); ok {
+	if openaiBaseURL, ok := dipper.GetMapDataStr(s.driver.Options, "data.engine."+modelEntry+".base_url"); ok {
+		dipper.Logger.Debugf("(%s) using base url: %s", modelEntry, openaiBaseURL)
 		options = append(options, option.WithBaseURL(openaiBaseURL))
 	}
-	if apiKey, ok := dipper.GetMapDataStr(msg.Payload, "api_key"); ok {
+	if apiKey, ok := dipper.GetMapDataStr(msg.Payload, "data.engine."+modelEntry+".api_key"); ok {
 		options = append(options, option.WithAPIKey(apiKey))
 	}
 
@@ -88,8 +96,8 @@ var (
 	}
 )
 
-// StreamWithFunctionReturn handles streaming responses and tool calls from the model.
-func (s *openAISession) StreamWithFunctionReturn(
+// relayToSteam relays a non-streaming chat response into the stream.
+func (s *openAISession) relayToStream(
 	ret any,
 	streamHandler func(string, bool),
 	toolCallHandler func(string, map[string]any, string, string),
@@ -97,11 +105,47 @@ func (s *openAISession) StreamWithFunctionReturn(
 	s.messages = append(s.messages, ret.(openai.ChatCompletionMessageParamUnion))
 	body := s.chatOptions
 	body.Messages = s.messages
+	dipper.Logger.Debugf("sending chat request :%s", dipper.Must(json.Marshal(body)).([]byte))
 
+	resp := dipper.Must(s.client.Chat.Completions.New(s.wrapper.Context(), body)).(*openai.ChatCompletion)
+
+	if resp.Choices[0].FinishReason == "tool_calls" {
+		jsonMessage := string(dipper.Must(resp.Choices[0].Message.ToParam().MarshalJSON()).([]byte))
+		args := map[string]any{}
+		tool := resp.Choices[0].Message.ToolCalls[0]
+		dipper.Must(json.Unmarshal([]byte(tool.Function.Arguments), &args))
+		toolCallHandler(jsonMessage, args, tool.Function.Name, tool.ID)
+
+		return
+	}
+
+	text := resp.Choices[0].Message.Content
+	streamHandler(text, true)
+}
+
+// StreamWithFunctionReturn handles streaming responses and tool calls from the model.
+func (s *openAISession) StreamWithFunctionReturn(
+	ret any,
+	streamHandler func(string, bool),
+	toolCallHandler func(string, map[string]any, string, string),
+) {
+	if !s.isStreaming {
+		s.relayToStream(ret, streamHandler, toolCallHandler)
+
+		return
+	}
+
+	s.messages = append(s.messages, ret.(openai.ChatCompletionMessageParamUnion))
+	body := s.chatOptions
+	body.Messages = s.messages
+
+	dipper.Logger.Debugf("sending chat request :%s", dipper.Must(json.Marshal(body)).([]byte))
 	acc := openai.ChatCompletionAccumulator{}
 	streamer := _getStreamerFn(&s.client.Chat.Completions, s.wrapper.Context(), body)
+
 	for streamer.Next() {
 		chunk := streamer.Current()
+		dipper.Logger.Debugf("[openai] got chunk %+v", chunk)
 		acc.AddChunk(chunk)
 
 		// if using tool calls
