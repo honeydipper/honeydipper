@@ -62,7 +62,7 @@ func newSession(driver *dipper.Driver, msg *dipper.Message, wrapper ai.ChatWrapp
 		dipper.Logger.Debugf("(%s) using base url: %s", modelEntry, openaiBaseURL)
 		options = append(options, option.WithBaseURL(openaiBaseURL))
 	}
-	if apiKey, ok := dipper.GetMapDataStr(msg.Payload, "data.engine."+modelEntry+".api_key"); ok {
+	if apiKey, ok := dipper.GetMapDataStr(s.driver.Options, "data.engine."+modelEntry+".api_key"); ok {
 		options = append(options, option.WithAPIKey(apiKey))
 	}
 
@@ -96,6 +96,13 @@ var (
 	}
 )
 
+// _getCompletionFn fetches the complete chat response (non-streaming).
+var (
+	_getCompletionFn = func(s *openai.ChatCompletionService, ctx context.Context, body openai.ChatCompletionNewParams) (*openai.ChatCompletion, error) {
+		return s.New(ctx, body)
+	}
+)
+
 // relayToSteam relays a non-streaming chat response into the stream.
 func (s *openAISession) relayToStream(
 	ret any,
@@ -107,7 +114,7 @@ func (s *openAISession) relayToStream(
 	body.Messages = s.messages
 	dipper.Logger.Debugf("sending chat request :%s", dipper.Must(json.Marshal(body)).([]byte))
 
-	resp := dipper.Must(s.client.Chat.Completions.New(s.wrapper.Context(), body)).(*openai.ChatCompletion)
+	resp := dipper.Must(_getCompletionFn(&s.client.Chat.Completions, s.wrapper.Context(), body)).(*openai.ChatCompletion)
 
 	if resp.Choices[0].FinishReason == "tool_calls" {
 		jsonMessage := string(dipper.Must(resp.Choices[0].Message.ToParam().MarshalJSON()).([]byte))
