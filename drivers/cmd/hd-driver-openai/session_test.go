@@ -505,8 +505,10 @@ func TestOpenAISession_Stream_RefusalChunk(t *testing.T) {
 	mockStr.EXPECT().Next().DoAndReturn(func() bool {
 		if idx < len(chunks) {
 			idx++
+
 			return true
 		}
+
 		return false
 	}).Times(len(chunks))
 	mockStr.EXPECT().Current().DoAndReturn(func() openai.ChatCompletionChunk {

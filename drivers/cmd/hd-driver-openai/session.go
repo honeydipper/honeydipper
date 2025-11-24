@@ -98,7 +98,11 @@ var (
 
 // _getCompletionFn fetches the complete chat response (non-streaming).
 var (
-	_getCompletionFn = func(s *openai.ChatCompletionService, ctx context.Context, body openai.ChatCompletionNewParams) (*openai.ChatCompletion, error) {
+	_getCompletionFn = func(
+		s *openai.ChatCompletionService,
+		ctx context.Context,
+		body openai.ChatCompletionNewParams,
+	) (*openai.ChatCompletion, error) {
 		return s.New(ctx, body)
 	}
 )
