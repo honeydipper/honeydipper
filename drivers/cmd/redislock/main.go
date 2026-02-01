@@ -8,7 +8,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -67,6 +66,7 @@ func main() {
 	l.driver.Reload = l.loadOptions
 	l.driver.RPCHandlers["lock"] = l.lock
 	l.driver.RPCHandlers["unlock"] = l.unlock
+	l.driver.RPCHandlers["getID"] = l.getID
 	l.driver.Run()
 	l.nodeID = dipper.GetIP()
 }
@@ -76,24 +76,21 @@ func (l *Locker) lock(msg *dipper.Message) {
 	expire := dipper.Must(time.ParseDuration(dipper.MustGetMapDataStr(msg.Payload, "expire"))).(time.Duration)
 	name := dipper.MustGetMapDataStr(msg.Payload, "name")
 
-	var (
-		ctx    context.Context
-		cancel context.CancelFunc
-	)
-	if attemptMsStr, ok := dipper.GetMapDataStr(msg.Payload, "attempt_ms"); ok {
-		attemptMs := dipper.Must(strconv.Atoi(attemptMsStr)).(int)
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(attemptMs)*time.Millisecond)
-	} else {
-		ctx, cancel = l.driver.GetContext()
-	}
+	ctx, cancel := l.driver.GetContext(msg)
 	defer cancel()
 
 	client := redisclient.NewClient(l.redisOptions)
 	defer client.Close()
 
-	ok := dipper.Must(client.SetNX(ctx, l.prefix+name, l.nodeID, expire).Result()).(bool)
-	if !ok {
-		panic(ErrFailToLock)
+	for {
+		if dipper.Must(client.SetNX(ctx, l.prefix+name, l.nodeID, expire).Result()).(bool) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 
 	msg.Reply <- dipper.Message{}
@@ -103,7 +100,7 @@ func (l *Locker) unlock(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	name := dipper.MustGetMapDataStr(msg.Payload, "name")
 
-	ctx, cancel := l.driver.GetContext()
+	ctx, cancel := l.driver.GetContext(msg)
 	defer cancel()
 
 	client := redisclient.NewClient(l.redisOptions)
@@ -115,4 +112,38 @@ func (l *Locker) unlock(msg *dipper.Message) {
 	}
 
 	msg.Reply <- dipper.Message{}
+}
+
+// getID return one ID or the top of a batch of IDs atomically.
+func (l *Locker) getID(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	name := dipper.MustGetMapDataStr(msg.Payload, "name")
+	wrap := dipper.MustGetMapDataInt(msg.Payload, "wrap")
+	batch, _ := dipper.GetMapDataInt(msg.Payload, "batch")
+	if batch == 0 {
+		batch = 1
+	}
+
+	ctx, cancel := l.driver.GetContext(msg)
+	defer cancel()
+
+	client := redisclient.NewClient(l.redisOptions)
+	defer client.Close()
+
+	ret := dipper.Must(client.Eval(ctx, `
+        local wrap = tonumber(ARGV[1])
+        local batch = tonumber(ARGV[2])
+        local current_value = redis.call("INCRBY", KEYS[1], batch)
+
+        if current_value > wrap then
+            redis.call("SET", KEYS[1], batch)
+            return batch
+        else
+            return current_value
+        end	`, []string{"hd_unique_id:" + name}, wrap, batch).Result()).(int64)
+
+	msg.Reply <- dipper.Message{
+		Payload: []byte(strconv.Itoa(int(ret))),
+		IsRaw:   true,
+	}
 }

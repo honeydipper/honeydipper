@@ -128,7 +128,7 @@ func TestChat(t *testing.T) {
 			},
 		},
 		toolReturn: []string{
-			"{\"test\": \"result\"}",
+			"{\"test\":\"result\"}",
 			"{\"test\":\"localresult\"}",
 		},
 		consolidated: []string{"test response"},
@@ -247,7 +247,7 @@ func TestChat(t *testing.T) {
 		Labels: map[string]string{
 			"method":    "chat",
 			"sessionID": "1",
-			"timeout":   "1000",
+			"timeout":   "1000s",
 		},
 		Payload: map[string]interface{}{
 			"convID": "test-conv",
@@ -447,20 +447,39 @@ func TestChat(t *testing.T) {
 				assert.Contains(t, string(sent.Payload.([]byte)), "{\"file\":\"abcdefg\"}", "should replace the content with cache content")
 			},
 		},
+		///////////////////////////////////////////////////
+		// wait for the workflow to finish
+		///////////////////////////////////////////////////
 		{
-			description: "get workflow result",
+			description: "get sessionID with eventID",
 			sent: &dipper.Message{
 				Channel: channelRPC,
 				Subject: "call",
 				Labels: map[string]string{
-					"method": "blpop",
+					"method": "load",
 				},
 			},
 			recv: &dipper.Message{
 				Channel: channelRPC,
 				Subject: "return",
 				IsRaw:   true,
-				Payload: []byte(`{"test": "result"}`),
+				Payload: []byte(`1010`), // fake sessionID
+			},
+		},
+		{
+			description: "get result for the sessionID",
+			sent: &dipper.Message{
+				Channel: channelRPC,
+				Subject: "call",
+				Labels: map[string]string{
+					"method": "lrange",
+				},
+			},
+			recv: &dipper.Message{
+				Channel: channelRPC,
+				Subject: "return",
+				IsRaw:   true,
+				Payload: []byte(`{"state": 29, "CurrentMsg": {"labels": {"eventID": "1010", "status": "success"}}, "Ctx": {"_output": {"test": "result"}}, "Workflow": {}}`), // fake session
 			},
 		},
 		{

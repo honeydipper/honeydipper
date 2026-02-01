@@ -39,10 +39,10 @@ const (
 func GetDefs() map[string]map[string]Def {
 	return map[string]map[string]Def{
 		"events/:eventID/wait": {
-			http.MethodGet: {Object: "event", Name: "eventWait", ReqType: TypeMatch, Service: "engine", Timeout: InfiniteDuration},
+			http.MethodGet: {Object: "event", Name: "eventWait", ReqType: TypeFirst, Service: "engine", Timeout: InfiniteDuration},
 		},
 		"events": {
-			http.MethodGet:  {Object: "event", Name: "eventList", ReqType: TypeAll, Service: "engine"},
+			http.MethodGet:  {Object: "event", Name: "eventList", ReqType: TypeFirst, Service: "engine"},
 			http.MethodPost: {Object: "event", Name: "eventAdd", ReqType: TypeFirst, Service: "receiver"},
 		},
 	}

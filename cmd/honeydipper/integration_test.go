@@ -29,7 +29,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var bootstrapPath string
+const numOfProcesses = 26
+
+// honeydipper
+// gcloud-kms receiver
+// gcloud-kms engine
+// gcloud-kms operator
+// gcloud-kms api
+// redisqueue engine
+// redisqueue receiver
+// redisqueue operator
+// redisqueue api
+// webhook receiver
+// redis-cache api
+// kubernetes operator
+// redispubsub engine
+// redispubsub operator
+// redislock api
+// redispubsub receiver
+// redis-cache engine
+// redis-cache receiver
+// auth-simple api
+// redis-cache operator
+// redispubsub api
+// redislock receiver
+// redislock operator
+// redislock engine
+// gcloud-gke operator
+// gcloud-dataflow operator
 
 func TestIntegrationStart(t *testing.T) {
 	if !t.Run("starting up daemon", intTestDaemonStartup) {
@@ -133,7 +160,7 @@ waitForProcesses:
 			}()
 			if err == nil {
 				pids = strings.Split(string(pidstr), "\n")
-				if len(pids) >= 18 {
+				if len(pids) >= numOfProcesses {
 					break waitForProcesses
 				}
 			}
@@ -143,35 +170,37 @@ waitForProcesses:
 	}
 
 	assert.Nil(t, err, "should be able to run pgrep to find all child processes")
-	assert.Lenf(t, pids, 18, "expecting 17 child processes for honeydipper process")
+	assert.Lenf(t, pids, numOfProcesses, "expecting 17 child processes for honeydipper process")
 }
 
 func intTestMakingAPICall(t *testing.T) {
 	// making an api call with wrong credentials
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", "http://localhost:9100/api/events", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:9100/api/events", nil)
 	assert.NoErrorf(t, err, "creating http request should not receive error")
 	req.Header.Add("Authorization", "bearer wrongcredentials")
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	assert.NoErrorf(t, err, "api call should not receive error")
 	assert.Equalf(t, 401, resp.StatusCode, "api call should fail with bad creds")
+	defer resp.Body.Close()
 
 	// making an api call with correct credentials
-	req, err = http.NewRequest("GET", "http://localhost:9100/api/events", nil)
+	req, err = http.NewRequestWithContext(ctx, "GET", "http://localhost:9100/api/events", nil)
 	assert.NoErrorf(t, err, "creating http request should not receive error")
 	req.Header.Add("Authorization", "bearer abcdefg")
 	resp, err = client.Do(req)
-	defer resp.Body.Close()
 	assert.NoErrorf(t, err, "api call should not receive error")
 	assert.Equalf(t, 200, resp.StatusCode, "api call should succeed with correct creds")
+	defer resp.Body.Close()
 }
 
 func intTestDrain(t *testing.T) {
 	waiting := (int32)(len(service.Services))
 	for _, s := range service.Services {
 		go func(s *service.Service) {
-			s.Drain()
+			s.WindDown()
 			atomic.AddInt32(&waiting, -1)
 		}(s)
 	}
@@ -203,14 +232,14 @@ func intTestDriverCrash(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		pidstr, err = exec.CommandContext(ctx, "pgrep", "-a", "honeydipper.test").Output()
 	} else {
-		pidstr, err = exec.CommandContext(ctx, "pgrep", "honeydipper.test").Output()
+		pidstr, err = exec.CommandContext(ctx, "pgrep", "-f", "honeydipper.*test").Output()
 	}
 	assert.Nil(t, err, "should be able to run pgrep to find honeydipper process")
 	ppid := strings.Split(string(pidstr), "\n")[0]
-	pidstr, err = exec.CommandContext(ctx, "/usr/bin/pgrep", "-P", ppid, "gcloud-dataflow").Output()
+	pidstr, err = exec.CommandContext(ctx, "pgrep", "-P", ppid, "gcloud-dataflow").Output()
 	assert.Nil(t, err, "should be able to run pgrep to find gcloud-dataflow driver processes")
 	childpid := strings.Split(string(pidstr), "\n")[0]
-	_, err = exec.CommandContext(ctx, "/bin/kill", childpid).Output()
+	_, err = exec.CommandContext(ctx, "/bin/kill", "-9", childpid).Output()
 	assert.Nil(t, err, "should be able to simulate a driver crash by killing the process")
 
 	pidstr = nil

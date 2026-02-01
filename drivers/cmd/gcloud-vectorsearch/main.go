@@ -56,7 +56,8 @@ func query(m *dipper.Message) {
 	embeddingMethod := dipper.MustGetMapDataStr(driver.Options, "data.knowledge_base."+kb+".embedding_method")
 	embeddingModel, _ := dipper.GetMapDataStr(driver.Options, "data.knowledge_base."+kb+".embedding_model")
 
-	ctx := context.Background()
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
 	var clientOptions []option.ClientOption
 	if len(serviceAccount) > 0 {
 		clientOptions = append(clientOptions, option.WithCredentialsJSON([]byte(serviceAccount)))

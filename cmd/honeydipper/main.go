@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"slices"
 
 	"github.com/honeydipper/honeydipper/v3/internal/config"
 	"github.com/honeydipper/honeydipper/v3/internal/daemon"
@@ -94,7 +95,15 @@ loop:
 			break loop
 		case "job":
 			cfg.IsJobMode = true
-			cfg.Services = []string{"engine", "operator"}
+			if !slices.Contains(cfg.Services, "engine") {
+				cfg.Services = append(cfg.Services, "engine")
+			}
+			if !slices.Contains(cfg.Services, "operator") {
+				cfg.Services = append(cfg.Services, "operator")
+			}
+
+			pos := slices.Index(cfg.Services, "job")
+			cfg.Services = slices.Delete(cfg.Services, pos, pos+1)
 
 			break loop
 		}

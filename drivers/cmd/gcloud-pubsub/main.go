@@ -48,16 +48,16 @@ func main() {
 	driver.Run()
 }
 
-func getPubsubClient(serviceAccountBytes, project string) *pubsub.Client {
+func getPubsubClient(ctx context.Context, serviceAccountBytes, project string) *pubsub.Client {
 	var (
 		client *pubsub.Client
 		err    error
 	)
 	if len(serviceAccountBytes) > 0 {
 		clientOption := option.WithCredentialsJSON([]byte(serviceAccountBytes))
-		client, err = pubsub.NewClient(context.Background(), project, clientOption)
+		client, err = pubsub.NewClient(ctx, project, clientOption)
 	} else {
-		client, err = pubsub.NewClient(context.Background(), project)
+		client, err = pubsub.NewClient(ctx, project)
 	}
 	if err != nil {
 		panic(ErrFailedCreateClient)
@@ -179,13 +179,17 @@ func subscribeAll() {
 					subscriptionName := config.SubscriptionName
 
 					defer dipper.SafeExitOnError("[%s] re-subscribing to gcloud pubsub %s", driver.Service, subscriptionName)
-					client := getPubsubClient(serviceAccount, project)
+					defer dipper.IgnoreError(context.Canceled)
+
+					ctx, cancel := driver.GetContext(nil)
+					defer cancel()
+					client := getPubsubClient(ctx, serviceAccount, project)
 
 					defer client.Close()
 					sub := client.Subscription(subscriptionName)
 
 					msgFunc := msgHandlerBuilder(config)
-					err := sub.Receive(context.Background(), func(ctx context.Context, msg *pubsub.Message) {
+					err := sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
 						msgFunc(ctx, msg)
 						msg.Ack()
 					})
@@ -193,6 +197,9 @@ func subscribeAll() {
 						dipper.Logger.Warningf("Failed to receive message from pubsub [%s]", subscriptionName)
 					}
 				}()
+				if driver.State != dipper.DriverStateAlive {
+					return
+				}
 				time.Sleep(time.Second)
 			}
 		}(subscriberConfig)

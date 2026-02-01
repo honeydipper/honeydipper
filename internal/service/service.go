@@ -7,13 +7,16 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	serrors "github.com/go-errors/errors"
@@ -74,7 +77,13 @@ type Service struct {
 	ResponseFactory    *api.ResponseFactory
 	healthy            bool
 	drainingGroup      *sync.WaitGroup
+	exitingGroup       *sync.WaitGroup
 	daemonID           string
+	ready              chan struct{}
+	context            context.Context
+	cancel             context.CancelFunc
+
+	Drain func()
 }
 
 var (
@@ -97,11 +106,14 @@ func NewService(cfg *config.Config, name string) *Service {
 		driverRuntimes: map[string]*driver.Runtime{},
 		expects:        map[string][]ExpectHandler{},
 		responders:     map[string][]MessageResponder{},
+		ready:          make(chan struct{}),
 	}
+	svc.context, svc.cancel = context.WithCancel(context.Background())
 	svc.RPCCallerBase.Init(svc, "rpc", "call")
 
 	svc.responders["state:cold"] = []MessageResponder{coldReloadDriverRuntime}
-	svc.responders["state:stopped"] = []MessageResponder{handleDriverStop}
+	svc.responders["state:completed"] = []MessageResponder{handleDriverCompleted}
+	svc.responders["state:drained"] = []MessageResponder{handleDriverDrained}
 	svc.responders["rpc:call"] = []MessageResponder{handleRPCCall}
 	svc.responders["rpc:return"] = []MessageResponder{handleRPCReturn}
 	svc.responders["broadcast:reload"] = []MessageResponder{handleReload}
@@ -112,6 +124,15 @@ func NewService(cfg *config.Config, name string) *Service {
 
 	if len(Services) == 0 {
 		masterService = svc
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGTERM, syscall.SIGINT)
+		daemon.Go(func() {
+			select {
+			case <-s:
+				go StopAll()
+			case <-masterService.context.Done():
+			}
+		})
 	}
 	Services[name] = svc
 
@@ -251,7 +272,7 @@ func (s *Service) start() {
 		s.config.AdvanceStage(s.name, config.StageBooting)
 		featureList := s.getFeatureList()
 		s.loadRequiredFeatures(featureList, true)
-		go s.serviceLoop()
+		daemon.Go(s.serviceLoop)
 		time.Sleep(time.Second)
 		s.config.AdvanceStage(s.name, config.StageDiscovering, dipper.GetDecryptFunc(s))
 		s.loadAdditionalFeatures(featureList)
@@ -260,8 +281,9 @@ func (s *Service) start() {
 			s.ServiceReload(s.config)
 		}
 		s.healthy = true
+		close(s.ready)
 		if !s.config.IsJobMode {
-			go s.metricsLoop()
+			daemon.Go(s.metricsLoop)
 		}
 	}()
 }
@@ -482,7 +504,7 @@ func (s *Service) serviceLoop() {
 				// emitter has crashed
 				delete(daemon.Emitters, s.name)
 			}
-			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive {
+			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive && s.drainingGroup == nil {
 				// only reload drivers that used to be in DriveAlive state
 				go loadFailedDriverRuntime(orderedRuntimes[chosen], 0)
 			}
@@ -491,6 +513,8 @@ func (s *Service) serviceLoop() {
 
 	s.healthy = false
 
+	s.driverLock.Lock()
+	defer s.driverLock.Unlock()
 	for fname, runtime := range s.driverRuntimes {
 		func() {
 			defer dipper.SafeExitOnError("[%s] driver runtime for feature %s already closed", s.name, fname)
@@ -699,7 +723,9 @@ func handleAPI(from *driver.Runtime, m *dipper.Message) {
 	dipper.Logger.Debugf("[%s] handling API [%s]: %+v", s.name, method, m.Labels)
 	if apiFunc, ok := s.APIs[method]; ok {
 		go func() {
-			defer dipper.SafeExitOnError("[%s] api call panic for [%s]", s.name, method)
+			defer dipper.SafeExitOnError("[%s] api call panic for [%s]", s.name, method, func(r any) {
+				resp.ReturnError(r.(error))
+			})
 			apiFunc(resp)
 		}()
 	}
@@ -729,7 +755,7 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 	go func() {
 		time.Sleep(time.Second)
 		dipper.Logger.Warningf("[%s] quiting on broadcast force reload message", from.Service)
-		Services[from.Service].Drain()
+		Services[from.Service].WindDown()
 		if from.Service == masterService.name {
 			daemon.ShutDown()
 			os.Exit(0)
@@ -737,10 +763,19 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 	}()
 }
 
-func handleDriverStop(from *driver.Runtime, m *dipper.Message) {
+func handleDriverDrained(from *driver.Runtime, m *dipper.Message) {
+	dipper.Logger.Warningf("[%s] driver %s drained received", from.Service, from.Handler.Meta().Name)
+	Services[from.Service].drainingGroup.Done()
+}
+
+func handleDriverCompleted(from *driver.Runtime, m *dipper.Message) {
 	if from.State != driver.DriverStopped {
 		from.State = driver.DriverStopped
-		Services[from.Service].drainingGroup.Done()
+		from.Handler.Close()
+		if g := Services[from.Service].exitingGroup; g != nil {
+			dipper.Logger.Warningf("[%s] driver %s completed", Services[from.Service].name, from.Handler.Meta().Name)
+			Services[from.Service].exitingGroup.Done()
+		}
 	}
 }
 
@@ -796,38 +831,73 @@ func (s *Service) metricsLoop() {
 				s.EmitMetrics()
 			}
 		}()
-		time.Sleep(time.Minute)
+		select {
+		case <-s.context.Done():
+			return
+		case <-time.After(time.Minute):
+		}
 	}
 }
 
-// Drain stops the service from accepting new requests but allow the remaining requests to complete.
-func (s *Service) Drain() {
+// WindDown stops the service from accepting new requests but allow the remaining requests to complete.
+func (s *Service) WindDown() {
 	s.healthy = false
+	s.cancel()
 
-	cnt := 0
 	s.driverLock.Lock()
+	s.drainingGroup = &sync.WaitGroup{}
 	for _, d := range s.driverRuntimes {
 		if d.State != driver.DriverFailed && d.State != driver.DriverStopped {
-			cnt++
+			s.drainingGroup.Add(1)
+			d.SendMessage(&dipper.Message{
+				Channel: "command",
+				Subject: "drain",
+			})
 		}
 	}
 	s.driverLock.Unlock()
 
-	if cnt > 0 {
-		s.drainingGroup = &sync.WaitGroup{}
-		s.drainingGroup.Add(cnt)
+	dipper.WaitGroupWaitTimeout(s.drainingGroup, time.Second*15)
+	dipper.WaitGroupWaitTimeout(&s.ResponseFactory.Live, time.Second*15)
+	dipper.Logger.Warningf("[%s] service no longer accepting new requests", s.name)
 
-		for _, d := range s.driverRuntimes {
-			if d.State != driver.DriverFailed && d.State != driver.DriverStopped {
-				d.SendMessage(&dipper.Message{
-					Channel: "command",
-					Subject: "stop",
-				})
-			}
-		}
-
-		dipper.WaitGroupWaitTimeout(s.drainingGroup, time.Second)
+	if s.Drain != nil {
+		s.Drain()
 	}
 
+	s.driverLock.Lock()
+	s.exitingGroup = &sync.WaitGroup{}
+	for _, d := range s.driverRuntimes {
+		if d.State != driver.DriverFailed && d.State != driver.DriverStopped {
+			s.exitingGroup.Add(1)
+			d.SendMessage(&dipper.Message{
+				Channel: "command",
+				Subject: "stop",
+			})
+		}
+	}
+	s.driverLock.Unlock()
+
+	dipper.WaitGroupWaitTimeout(s.exitingGroup, time.Second*5)
+	dipper.Logger.Warningf("[%s] service drained and stopped", s.name)
+
 	s.config.AdvanceStage(s.name, config.StageDrained)
+}
+
+func StopAll() {
+	drained := &sync.WaitGroup{}
+	for _, s := range Services {
+		drained.Add(1)
+		go func(s *Service) {
+			s.WindDown()
+			drained.Done()
+		}(s)
+	}
+	drained.Wait()
+	daemon.ShutDown()
+	os.Exit(0)
+}
+
+func (s *Service) Ready() <-chan struct{} {
+	return s.ready
 }

@@ -34,7 +34,7 @@ func createPVC(m *dipper.Message) {
 	}
 
 	client := k8sclient.CoreV1().PersistentVolumeClaims(nameSpace)
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(m)
 	defer cancel()
 	pvcResult, e := client.Create(ctx, &pvc, metav1.CreateOptions{})
 	if e != nil {
@@ -58,7 +58,7 @@ func deletePVC(m *dipper.Message) {
 	pvcName := dipper.MustGetMapDataStr(m.Payload, "pvc")
 
 	client := k8sclient.CoreV1().PersistentVolumeClaims(nameSpace)
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(m)
 	defer cancel()
 	e := client.Delete(ctx, pvcName, metav1.DeleteOptions{})
 	if e != nil {

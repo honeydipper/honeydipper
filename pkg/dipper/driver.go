@@ -10,6 +10,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
 	"time"
 
@@ -26,9 +27,14 @@ const (
 	// DefaultAPITimeout is the default timeout for making an outbound API call.
 	DefaultAPITimeout time.Duration = 10
 
-	// DriverStateCompleted indicates a driver can be gracefully shutdown. Currently,
-	// only used in tests.
+	// DriverStateCompleted indicates a driver can be gracefully shutdown.
 	DriverStateCompleted = "completed"
+
+	// DriverStateDraining indicates a driver is being drained.
+	DriverStateDraining = "draining"
+
+	// DriverStateAlive indicates a driver is alive and can receive commands.
+	DriverStateAlive = "alive"
 )
 
 // Driver : the helper stuct for creating a honey-dipper driver in golang.
@@ -46,8 +52,12 @@ type Driver struct {
 	Start           MessageHandler
 	Stop            MessageHandler
 	Reload          MessageHandler
+	Drain           MessageHandler
 	ReadySignal     chan bool
 	APITimeout      time.Duration
+	JobWaitTimeout  time.Duration
+	cancel          context.CancelFunc
+	ctx             context.Context
 }
 
 // DriverOption provides a way to pass parameters to NewDriver method to override
@@ -85,13 +95,15 @@ func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 
 	driver.RPCProvider.Init("rpc", "return", driver.Out)
 	driver.RPCCallerBase.Init(&driver, "rpc", "call")
-	driver.CommandProvider.Init("eventbus", "return", driver.Out)
+	driver.ctx, driver.cancel = context.WithCancel(context.Background())
+	driver.CommandProvider.Init(ChannelEventbus, EventbusReturn, EventbusReturnInterrupted, driver.Out, driver.ctx)
 
 	driver.MessageHandlers = map[string]MessageHandler{
 		"command:options":  driver.ReceiveOptions,
 		"command:ping":     driver.Ping,
 		"command:start":    driver.start,
 		"command:stop":     driver.stop,
+		"command:drain":    driver.drain,
 		"rpc:call":         driver.RPCProvider.Router,
 		"rpc:return":       driver.HandleReturn,
 		"eventbus:command": driver.CommandProvider.Router,
@@ -104,8 +116,11 @@ func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 
 // Run : start a loop to communicate with daemon.
 func (d *Driver) Run() {
+	// Ignore SIGINT, let daemon handle the graceful shutdown of the driver.
+	signal.Ignore()
+
 	Logger.Infof("[%s] driver loaded", d.Service)
-	for {
+	for d.State != DriverStateCompleted {
 		func() {
 			defer SafeExitOnError("[%s] Resuming driver message loop", d.Service)
 			defer CatchError(io.EOF, func() {
@@ -113,7 +128,7 @@ func (d *Driver) Run() {
 					Logger.Fatalf("[%s] daemon closed channel", d.Service)
 				}
 			})
-			for {
+			for d.State != DriverStateCompleted {
 				msg := FetchRawMessage(d.In)
 				go func() {
 					defer SafeExitOnError("[%s] Continuing driver message loop", d.Service)
@@ -125,10 +140,6 @@ func (d *Driver) Run() {
 				}()
 			}
 		}()
-		// allow graceful shutdown during testing.
-		if d.State == DriverStateCompleted {
-			break
-		}
 	}
 }
 
@@ -169,7 +180,7 @@ func (d *Driver) start(msg *Message) {
 		d.ReadySignal = nil
 	}
 
-	if d.State == "alive" {
+	if d.State == DriverStateAlive {
 		if d.Reload != nil {
 			d.Reload(msg)
 		} else {
@@ -179,18 +190,43 @@ func (d *Driver) start(msg *Message) {
 		if d.Start != nil {
 			d.Start(msg)
 		}
-		d.State = "alive"
+		d.State = DriverStateAlive
 	}
 	d.Ping(msg)
 }
 
 func (d *Driver) stop(msg *Message) {
-	d.State = "stopped"
+	if d.State != "drained" {
+		Logger.Warningf("[%s] driver %s received stopping while not fully drained", d.Service, d.Name)
+	}
+	d.State = "stopping"
 	if d.Stop != nil {
 		d.Stop(msg)
 	}
+	d.Flush(true)
+	WaitGroupWaitTimeout(&d.CommandProvider.Live, time.Second*2) // wait for all in-flight commands to complete before changing state to drained.
+	WaitGroupWaitTimeout(&d.RPCProvider.Live, time.Second*2)     // wait for all in-flight rpcs to complete before changing state to drained.
+	d.State = DriverStateCompleted
 	d.Ping(msg)
 	Logger.Warningf("[%s] quiting on daemon request", d.Service)
+}
+
+func (d *Driver) drain(msg *Message) {
+	if d.State != DriverStateAlive {
+		Logger.Warningf("[%s] received drain command while not alive, ignoring", d.Service)
+
+		return
+	}
+	d.State = DriverStateDraining
+	if d.Drain != nil {
+		d.Drain(msg)
+	}
+	d.Flush(false)
+	d.CommandProvider.Live.Wait() // wait for all in-flight commands to complete before changing state to drained.
+	d.RPCProvider.Live.Wait()     // wait for all in-flight rpcs to complete before changing state to drained.
+	d.State = "drained"
+	d.Ping(msg)
+	Logger.Warningf("[%s] drained on daemon request", d.Service)
 }
 
 // SendMessage : send a prepared message to daemon.
@@ -264,6 +300,41 @@ func (d *Driver) EmitEvent(payload map[string]interface{}) string {
 }
 
 // GetContext creates a context with APITimeout.
-func (d *Driver) GetContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), d.APITimeout*time.Second)
+func (d *Driver) GetContext(m *Message) (context.Context, context.CancelFunc) {
+	if m == nil {
+		return context.WithCancel(d.ctx)
+	}
+
+	timeout := d.JobWaitTimeout * time.Second
+	if m.Channel == "rpc" {
+		timeout = d.APITimeout * time.Second
+	}
+	timeoutStr, ok := m.Labels["timeout"]
+	if ok {
+		timeout = Must(time.ParseDuration(timeoutStr)).(time.Duration)
+	}
+
+	sourceCtx := d.ctx
+	if _, ok := m.Labels["interruptible"]; !ok {
+		sourceCtx = context.Background()
+	}
+
+	if timeout == 0 {
+		return context.WithCancel(sourceCtx)
+	}
+
+	return context.WithTimeout(sourceCtx, timeout)
+}
+
+func (d *Driver) Done() <-chan struct{} {
+	return d.ctx.Done()
+}
+
+func (d *Driver) Flush(shutdown bool) {
+	d.cancel()
+
+	if !shutdown {
+		d.ctx, d.cancel = context.WithCancel(context.Background())
+		d.CommandProvider.Handler = d.ctx
+	}
 }

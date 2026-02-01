@@ -54,10 +54,9 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 
 	if c.shouldLock {
 		mockRPCCaller.EXPECT().Call(gomock.Eq("locker"), gomock.Eq("lock"), gomock.Eq(map[string]interface{}{
-			"name":       fmt.Sprintf("api_candidate:%s", c.msg.Labels["uuid"]),
-			"attempt_ms": 10,
-			"expire":     "1000ms",
-		})).Return(nil, c.lockingError)
+			"name":   fmt.Sprintf("api_candidate:%s", c.msg.Labels["uuid"]),
+			"expire": "1000ms",
+		}), "timeout", "20ms").Return(nil, c.lockingError)
 	}
 
 	factory := NewResponseFactory()

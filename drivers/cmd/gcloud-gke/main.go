@@ -12,7 +12,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"golang.org/x/oauth2"
@@ -51,7 +50,7 @@ func main() {
 	driver.Run()
 }
 
-func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Token) {
+func getGKEService(ctx context.Context, serviceAccountBytes string) (*container.Service, *oauth2.Token) {
 	var (
 		containerService *container.Service
 		token            *oauth2.Token
@@ -59,17 +58,17 @@ func getGKEService(serviceAccountBytes string) (*container.Service, *oauth2.Toke
 	if len(serviceAccountBytes) > 0 {
 		containerService = dipper.Must(
 			container.NewService(
-				context.Background(),
+				ctx,
 				option.WithCredentialsJSON([]byte(serviceAccountBytes)),
 			),
 		).(*container.Service)
 		conf := dipper.Must(google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")).(*jwt.Config)
-		token = dipper.Must(conf.TokenSource(context.Background()).Token()).(*oauth2.Token)
+		token = dipper.Must(conf.TokenSource(ctx).Token()).(*oauth2.Token)
 	} else {
-		containerService = dipper.Must(container.NewService(context.Background())).(*container.Service)
+		containerService = dipper.Must(container.NewService(ctx)).(*container.Service)
 		tokenSource := dipper.Must(
 			google.DefaultTokenSource(
-				context.Background(),
+				ctx,
 				"https://www.googleapis.com/auth/cloud-platform",
 			),
 		).(oauth2.TokenSource)
@@ -106,11 +105,11 @@ func getKubeCfg(msg *dipper.Message) {
 		name = fmt.Sprintf("projects/%s/zones/%s/clusters/%s", project, location, cluster)
 	}
 
-	containerService, token := getGKEService(serviceAccountBytes)
-
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
-	clusterObj := dipper.Must(containerService.Projects.Locations.Clusters.Get(name).Context(execContext).Do()).(*container.Cluster)
+	containerService, token := getGKEService(ctx, serviceAccountBytes)
+
+	clusterObj := dipper.Must(containerService.Projects.Locations.Clusters.Get(name).Context(ctx).Do()).(*container.Cluster)
 
 	useDNS := false
 	if cp := clusterObj.ControlPlaneEndpointsConfig; cp != nil {

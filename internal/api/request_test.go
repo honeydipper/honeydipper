@@ -91,7 +91,7 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 
 	started := false
 	for _, st := range c.Steps {
-		mockRPCCaller.EXPECT().Call(gomock.Eq(st.Feature), gomock.Eq(st.Method), gomock.Eq(st.ExpectedMessage)).Times(1).DoAndReturn(func(_, _ string, _ map[string]interface{}) (interface{}, error) {
+		mockRPCCaller.EXPECT().Call(gomock.Eq(st.Feature), gomock.Eq(st.Method), gomock.Eq(st.ExpectedMessage)).Times(1).DoAndReturn(func(_, _ string, _ map[string]interface{}, labels ...string) (interface{}, error) {
 			if !started {
 				started = true
 				go func() {

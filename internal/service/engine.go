@@ -7,14 +7,14 @@
 package service
 
 import (
+	"context"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/honeydipper/honeydipper/v3/internal/config"
 	"github.com/honeydipper/honeydipper/v3/internal/driver"
-	"github.com/honeydipper/honeydipper/v3/internal/workflow"
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/workflow"
 )
 
 // CollapsedRule maps the rule to its all collapsed match and exports.
@@ -30,11 +30,12 @@ var (
 
 var (
 	engine       *Service
-	sessionStore *workflow.SessionStore
+	sessionStore workflow.Store
 )
 
 // WorkflowHelper enables workflow engine to load config and send messages.
 type WorkflowHelper struct {
+	dipper.RPCCaller
 	engine *Service
 }
 
@@ -49,45 +50,38 @@ func (h *WorkflowHelper) GetConfig() *config.Config {
 	return h.engine.config
 }
 
-// GetDaemonID method gets an identifier to the current daemon.
-func (h *WorkflowHelper) GetDaemonID() string {
-	return h.engine.daemonID
-}
-
 // StartEngine Starts the engine service.
 func StartEngine(cfg *config.Config) {
 	engine = NewService(cfg, "engine")
-	helper := &WorkflowHelper{engine: engine}
-	sessionStore = workflow.NewSessionStore(helper)
+	helper := &WorkflowHelper{engine: engine, RPCCaller: engine}
+	sessionStore = workflow.NewStore(helper)
 
 	engine.ServiceReload = buildRuleMap
 	engine.EmitMetrics = engineMetrics
-	engine.addResponder("broadcast:resume_session", resumeSession)
 	engine.addResponder("eventbus:message", createSessions)
 	engine.addResponder("eventbus:return", continueSession)
+	engine.addResponder("scheduler:session", continueSession)
+	engine.Drain = sessionStore.Wait
 	setupEngineAPIs()
 
 	engine.start()
 	if cfg.IsJobMode {
 		go func() {
-			cfg.StageWG[config.StageDiscovering].Wait()
-			for cfg.Stage != config.StageServing {
-				dipper.Logger.Info("Waiting for serving stage ...")
-				time.Sleep(time.Second)
-			}
+			<-engine.Ready()
 			msg := &dipper.Message{
 				Labels: map[string]string{
 					"eventID": "main",
 				},
 			}
-			w := sessionStore.StartSession(&config.Workflow{Workflow: "reserved/main"}, msg, map[string]interface{}{})
-			<-w.Watch()
-			dipper.Must(engine.CallNoWait("driver:redispubsub", "send", map[string]interface{}{
-				"broadcastSubject": "reload",
-				"data": map[string]interface{}{
-					"force": "true",
-				},
-			}))
+			wf, ok := engine.config.DataSet.Workflows["reserved/main"]
+			if !ok {
+				dipper.Logger.Panic("[engine] missing reserved/main workflow in job mode")
+			}
+			wf.Name = "reserved/main"
+			sessionStore.StartSession(&wf, msg, map[string]interface{}{})
+			defer dipper.IgnoreError(context.Canceled)
+			workflow.Wait(engine.context, engine, "main", "engine_in_job_mode")
+			StopAll()
 		}()
 	}
 }
@@ -96,8 +90,8 @@ func createSessions(d *driver.Runtime, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
 	msg = dipper.DeserializePayload(msg)
 
-	if wf, ok := dipper.GetMapData(msg.Payload, "do"); ok {
-		go sessionStore.StartDynamicSession(msg, wf)
+	if _, ok := dipper.GetMapData(msg.Payload, "do"); ok {
+		go sessionStore.StartDynamicSession(msg, nil)
 
 		return
 	}
@@ -142,8 +136,8 @@ func continueSession(d *driver.Runtime, msg *dipper.Message) {
 	if !ok {
 		dipper.Logger.Panic("[enigne] command return without session id")
 	}
-	dipper.Logger.Infof("[engine] command return")
-	go sessionStore.ContinueSession(sessionID, msg, nil)
+	dipper.Logger.Infof("[engine] command return for session %s", sessionID)
+	go sessionStore.ContinueSession(sessionID, msg)
 }
 
 // buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable.
@@ -174,20 +168,5 @@ func buildRuleMap(cfg *config.Config) {
 }
 
 func engineMetrics() {
-	engine.GaugeSet("honey.honeydipper.engine.sessions", strconv.Itoa(sessionStore.Len()), []string{})
-}
-
-func resumeSession(d *driver.Runtime, m *dipper.Message) {
-	defer dipper.SafeExitOnError("[engine] continue processing rules")
-	m = dipper.DeserializePayload(m)
-	key := dipper.MustGetMapDataStr(m.Payload, "key")
-	go sessionStore.ResumeSession(key, m)
-}
-
-func (h *WorkflowHelper) EmitResult(eventID string, result map[string]interface{}) {
-	dipper.Must(engine.CallNoWait("cache", "rpush", map[string]any{
-		"key":   "honeydipper/result/" + eventID,
-		"value": result,
-		"ttl":   time.Hour * 3,
-	}))
+	engine.GaugeSet("honey.honeydipper.engine.sessions", strconv.Itoa(sessionStore.GetNumSessions(false)), []string{})
 }

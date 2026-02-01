@@ -18,28 +18,14 @@ func ChatContinue(d *dipper.Driver, msg *dipper.Message) {
 	}
 	step := d.Name + "/conv/" + convID + "/" + counter
 
-	resp, _ := d.CallWithMessage(&dipper.Message{
-		Labels: map[string]string{
-			"feature": "cache",
-			"method":  "blpop",
-			"timeout": timeout,
-		},
-		Payload: map[string]any{"key": step + "/response"},
-	})
+	resp, _ := d.Call("cache", "blpop", map[string]any{"key": step + "/response"}, "timeout", timeout)
 
 	var cancelled bool
 	if len(resp) == 0 {
 		cancelled = len(dipper.Must(d.CallRaw("cache", "exists", []byte(step))).([]byte)) == 0
 		if cancelled {
 			// check the result again in case there is a race condition btween chatContinue and chatRelay.
-			resp, _ = d.CallWithMessage(&dipper.Message{
-				Labels: map[string]string{
-					"feature": "cache",
-					"method":  "blpop",
-					"timeout": "1s",
-				},
-				Payload: map[string]any{"key": step + "/response"},
-			})
+			resp, _ = d.Call("cache", "blpop", map[string]any{"key": step + "/response"}, "timeout", timeout)
 		}
 	}
 

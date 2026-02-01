@@ -71,7 +71,7 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "webhook")
 	if driver.Service == "receiver" {
 		driver.Start = startWebhook
-		driver.Stop = stopWebhook
+		driver.Drain = stopWebhook
 		driver.Reload = loadOptions
 	}
 	driver.Run()
@@ -124,7 +124,7 @@ func startWebhook(m *dipper.Message) {
 	go func() {
 		log.Infof("[%s] start listening for webhook requests", driver.Service)
 		log.Infof("[%s] listener stopped: %+v", driver.Service, server.ListenAndServe())
-		if driver.State != "stopped" && driver.State != "cold" {
+		if driver.State == dipper.DriverStateAlive {
 			startWebhook(m)
 		}
 	}()

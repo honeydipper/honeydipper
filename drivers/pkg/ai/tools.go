@@ -1,11 +1,13 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
 	"github.com/honeydipper/honeydipper/v3/internal/config"
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/workflow"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -66,16 +68,16 @@ func (w *ChatWrapper) toolCallHandler(jsonMessage string, args map[string]any, n
 
 	dipper.Recursive(args, w.fetchCache)
 
-	workflow := dipper.MustGetMapData(w.driver.Options, "data.tools."+name+".workflow").(*config.Workflow)
-	if workflow.Function.RawAction == "rpc" {
-		w.toolCallDriverHandler(name, args, workflow, callID)
+	wf := dipper.MustGetMapData(w.driver.Options, "data.tools."+name+".workflow").(*config.Workflow)
+	if wf.Function.RawAction == "rpc" {
+		w.toolCallDriverHandler(name, args, wf, callID)
 
 		return
 	}
 
 	var data any = args
-	if local, ok := dipper.GetMapData(workflow.Local, "_local"); ok {
-		delete(workflow.Local.(map[string]any), "_local")
+	if local, ok := dipper.GetMapData(wf.Local, "_local"); ok {
+		delete(wf.Local.(map[string]any), "_local")
 
 		// interpolate the fields
 		envData := map[string]any{
@@ -86,39 +88,33 @@ func (w *ChatWrapper) toolCallHandler(jsonMessage string, args map[string]any, n
 		local = dipper.Interpolate(local, envData)
 		dipper.Recursive(local, w.fetchCache)
 
-		if len(workflow.Local.(map[string]any)) > 0 {
-			workflow.Local = []any{local, workflow.Local}
+		if len(wf.Local.(map[string]any)) > 0 {
+			wf.Local = []any{local, wf.Local}
 		} else {
-			workflow.Local = local
+			wf.Local = local
 		}
 	}
 
 	id := w.driver.EmitEvent(map[string]any{
-		"do":   workflow,
+		"do":   wf,
 		"data": data,
 	})
 
 	dipper.Logger.Debugf("Waiting for event ID to finish %s", id)
-	b := dipper.Must(w.driver.CallWithMessage(&dipper.Message{
-		Labels: map[string]string{
-			"feature": "cache",
-			"method":  "blpop",
-			"timeout": "15m",
-		},
-		Payload: map[string]any{"key": "honeydipper/result/" + id},
-	})).([]byte)
-	dipper.Logger.Debugf("Got result for ai: %+v", string(b))
+	retMsg := workflow.Wait(context.Background(), w.driver, id, w.step).Dump()
+	ret, _ := dipper.GetMapData(retMsg, "data.output")
+	dipper.Logger.Debugf("Got result for ai: %+v", ret)
 
-	w.relayFuncReturn(name, callID, b)
+	w.relayFuncReturn(name, callID, dipper.SerializeContent(ret))
 }
 
-func (w *ChatWrapper) toolCallDriverHandler(name string, args map[string]any, workflow *config.Workflow, callID string) {
+func (w *ChatWrapper) toolCallDriverHandler(name string, args map[string]any, wf *config.Workflow, callID string) {
 	// build rpc calling message
 	msg := &dipper.Message{}
-	if p, found := dipper.GetMapData(workflow.Local, "parameters"); found {
+	if p, found := dipper.GetMapData(wf.Local, "parameters"); found {
 		dipper.Must(mapstructure.Decode(p, &msg.Payload))
 	}
-	if l, found := dipper.GetMapData(workflow.Local, "labels"); found {
+	if l, found := dipper.GetMapData(wf.Local, "labels"); found {
 		dipper.Must(mapstructure.Decode(l, &msg.Labels))
 	}
 
@@ -129,7 +125,7 @@ func (w *ChatWrapper) toolCallDriverHandler(name string, args map[string]any, wo
 		"step":   w.step,
 	}
 	msg.Payload = dipper.Interpolate(msg.Payload, envData)
-	noWaitData, _ := dipper.GetMapData(workflow.Local, "no_wait")
+	noWaitData, _ := dipper.GetMapData(wf.Local, "no_wait")
 	noWait := dipper.IsTruthy(dipper.Interpolate(noWaitData, envData))
 
 	// interpolate the labels
@@ -141,7 +137,7 @@ func (w *ChatWrapper) toolCallDriverHandler(name string, args map[string]any, wo
 	if msg.Labels == nil {
 		msg.Labels = map[string]string{}
 	}
-	parts := strings.Split(workflow.CallDriver, ".")
+	parts := strings.Split(wf.CallDriver, ".")
 	msg.Labels["feature"], msg.Labels["method"] = parts[0], parts[1]
 
 	// call the driver
@@ -153,7 +149,7 @@ func (w *ChatWrapper) toolCallDriverHandler(name string, args map[string]any, wo
 	dipper.Logger.Debugf("Got rpc result for ai: %+v", envData["ret"])
 
 	// interpolate the return
-	o, _ := dipper.GetMapData(workflow.Local, "output")
+	o, _ := dipper.GetMapData(wf.Local, "output")
 	o = dipper.Interpolate(o, envData)
 
 	w.relayFuncReturn(name, callID, dipper.Must(json.Marshal(o)).([]byte))

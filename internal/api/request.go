@@ -47,14 +47,14 @@ func (a *Request) Dispatch() {
 		a.store.SaveRequest(a)
 
 		dipper.Must(a.store.caller.Call("api-broadcast", "send", map[string]interface{}{
-			"broadcastSubject": "call",
+			"subject": "call",
 			"labels": map[string]interface{}{
 				"fn":           a.fn,
 				"uuid":         a.uuid,
 				"service":      a.service,
 				"content-type": a.contentType,
 			},
-			"data": a.params,
+			"payload": a.params,
 		}))
 
 		go func() {

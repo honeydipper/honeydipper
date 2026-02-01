@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -40,6 +41,7 @@ var (
 	eventbus         *EventBusOptions
 	redisOptions     *redisclient.Options
 	redisOptionsMock *redisclient.Options
+	outbox           sync.WaitGroup
 )
 
 func initFlags() {
@@ -57,12 +59,14 @@ func main() {
 		driver = dipper.NewDriver(os.Args[1], "redisqueue")
 	}
 	driver.Start = start
+	driver.Stop = func(_ *dipper.Message) { outbox.Wait() }
 	switch driver.Service {
 	case "receiver":
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
 	case "engine":
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
 	case "operator":
+		driver.MessageHandlers["eventbus:command"] = relayToRedis
 		driver.MessageHandlers["eventbus:return"] = relayToRedis
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
 	}
@@ -82,7 +86,7 @@ func loadOptions() {
 	eb := &EventBusOptions{
 		CommandTopic: "honeydipper:commands",
 		EventTopic:   "honeydipper:events",
-		ReturnTopic:  "honeydipper:return:",
+		ReturnTopic:  "honeydipper:return",
 		APITopic:     "honeydipper:api:",
 	}
 	if commandTopic, ok := driver.GetOptionStr("data.topics.command"); ok {
@@ -113,15 +117,15 @@ func start(msg *dipper.Message) {
 	case "receiver":
 		client := redisclient.NewClient(redisOptions)
 		defer client.Close()
-		ctx, cancel := driver.GetContext()
-		defer cancel()
-		if err := client.Ping(ctx).Err(); err != nil {
+		if err := client.Ping(context.Background()).Err(); err != nil {
 			log.Panicf("[%s] redis error: %v", driver.Service, err)
 		}
 	}
 }
 
 func relayToRedis(msg *dipper.Message) {
+	outbox.Add(1)
+	defer outbox.Done()
 	returnTo := msg.Labels["from"]
 	msg.Labels["from"] = dipper.GetIP()
 	topic := eventbus.EventTopic
@@ -135,10 +139,7 @@ func relayToRedis(msg *dipper.Message) {
 			log.Panicf("[%s] api return message without receipient", driver.Service)
 		}
 	case "return":
-		if returnTo == "" {
-			log.Panicf("[%s] return message without receipient", driver.Service)
-		}
-		topic = eventbus.ReturnTopic + returnTo
+		topic = eventbus.ReturnTopic
 	}
 
 	payload := map[string]interface{}{
@@ -150,29 +151,32 @@ func relayToRedis(msg *dipper.Message) {
 	buf := dipper.SerializeContent(payload)
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
-	defer cancel()
-	if err := client.RPush(ctx, topic, string(buf)).Err(); err != nil {
+	if err := client.RPush(context.Background(), topic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
-	client.Expire(ctx, topic, TopicExpireTimeout)
+	client.Expire(context.Background(), topic, TopicExpireTimeout)
 }
 
 func subscribe(topic string, subject string) {
+	ctx, cancel := driver.GetContext(nil)
+	defer cancel()
 	for {
 		func() {
 			defer dipper.SafeExitOnError("[%s] re-subscribing to redis %s", driver.Service, topic)
+			defer dipper.CatchError(context.Canceled, func() {
+				log.Warningf("[%s] subscriber stopped on %s", driver.Service, topic)
+			})
 			client := redisclient.NewClient(redisOptions)
 			defer client.Close()
 			realTopic := topic
-			if topic == eventbus.ReturnTopic || topic == eventbus.APITopic {
+			if topic == eventbus.APITopic {
 				realTopic = topic + dipper.GetIP()
 			}
 			log.Infof("[%s] start receiving messages on topic: %s", driver.Service, realTopic)
 			for {
-				messages, err := client.BLPop(context.Background(), time.Second, realTopic).Result()
+				messages, err := client.BLPop(ctx, time.Second, realTopic).Result()
 				if err != nil && !errors.Is(err, redis.Nil) {
-					log.Panicf("[%s] redis error: %v", driver.Service, err)
+					panic(err)
 				}
 				if len(messages) > 1 {
 					for _, m := range messages[1:] {
@@ -194,13 +198,17 @@ func subscribe(topic string, subject string) {
 						})
 					}
 				}
-				if driver.State == dipper.DriverStateCompleted {
+				if driver.State != dipper.DriverStateAlive {
+					log.Warningf("[%s] gracefully shutting down subscriber %s inner loop", driver.Service, topic)
+
 					return
 				}
 			}
 		}()
-		if driver.State == dipper.DriverStateCompleted {
+		if driver.State != dipper.DriverStateAlive {
 			// allow graceful shutdown during tests.
+			log.Warningf("[%s] gracefully shutting down subscriber %s", driver.Service, topic)
+
 			return
 		}
 		time.Sleep(time.Second)

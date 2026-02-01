@@ -27,7 +27,6 @@ func testStartDriver(t *testing.T, service string, i *io.PipeReader, o *io.PipeW
 	go func() {
 		assert.NotPanics(t, main, "driver main should not panic")
 		close(done)
-		driver = nil
 	}()
 
 	return done

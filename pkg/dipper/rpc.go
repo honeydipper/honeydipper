@@ -39,10 +39,10 @@ type RPCCallerStub interface {
 
 // RPCCaller defines all method required for making rpc alls.
 type RPCCaller interface {
-	Call(feature string, method string, params interface{}) ([]byte, error)
-	CallNoWait(feature string, method string, params interface{}) error
-	CallRaw(feature string, method string, params []byte) ([]byte, error)
-	CallRawNoWait(feature string, method string, params []byte, rpcID string) (ret error)
+	Call(feature string, method string, params interface{}, labelsKV ...string) ([]byte, error)
+	CallNoWait(feature string, method string, params interface{}, labelsKV ...string) error
+	CallRaw(feature string, method string, params []byte, labelsKV ...string) ([]byte, error)
+	CallRawNoWait(feature string, method string, params []byte, rpcID string, labelsKV ...string) (ret error)
 	GetName() string
 }
 
@@ -72,25 +72,25 @@ func (c *RPCCallerBase) GetName() string {
 }
 
 // Call : making a RPC call to another driver with structured data.
-func (c *RPCCallerBase) Call(feature string, method string, params interface{}) ([]byte, error) {
-	ret, err := c.CallRaw(feature, method, SerializeContent(params))
+func (c *RPCCallerBase) Call(feature string, method string, params interface{}, labelsKV ...string) ([]byte, error) {
+	ret, err := c.CallRaw(feature, method, SerializeContent(params), labelsKV...)
 
 	return ret, err
 }
 
 // CallNoWait : making a RPC call to another driver with structured data not expecting any return.
-func (c *RPCCallerBase) CallNoWait(feature string, method string, params interface{}) error {
-	return c.CallRawNoWait(feature, method, SerializeContent(params), RPCSkip)
+func (c *RPCCallerBase) CallNoWait(feature string, method string, params interface{}, labelsKV ...string) error {
+	return c.CallRawNoWait(feature, method, SerializeContent(params), RPCSkip, labelsKV...)
 }
 
 // CallRaw : making a RPC call to another driver with raw data.
-func (c *RPCCallerBase) CallRaw(feature string, method string, params []byte) ([]byte, error) {
+func (c *RPCCallerBase) CallRaw(feature string, method string, params []byte, labelsKV ...string) ([]byte, error) {
 	// keep track the call in the map
 	result := make(chan interface{}, 1)
 	rpcID := IDMapPut(&c.Result, result)
 	defer IDMapDel(&c.Result, rpcID)
 
-	if err := c.CallRawNoWait(feature, method, params, rpcID); err != nil {
+	if err := c.CallRawNoWait(feature, method, params, rpcID, labelsKV...); err != nil {
 		return nil, err
 	}
 
@@ -174,7 +174,7 @@ func (c *RPCCallerBase) CallWithMessageNoWait(msg *Message) (ret error) {
 }
 
 // CallRawNoWait : making a RPC call to another driver with raw data not expecting return.
-func (c *RPCCallerBase) CallRawNoWait(feature string, method string, params []byte, rpcID string) (ret error) {
+func (c *RPCCallerBase) CallRawNoWait(feature string, method string, params []byte, rpcID string, labelsKV ...string) (ret error) {
 	defer func() {
 		if r := recover(); r != nil {
 			ret = r.(error)
@@ -190,16 +190,21 @@ func (c *RPCCallerBase) CallRawNoWait(feature string, method string, params []by
 		return fmt.Errorf("%w: feature not available: %s", ErrRPCError, feature)
 	}
 
+	labels := map[string]string{}
+	for i := 0; len(labelsKV) > i; i += 2 {
+		labels[labelsKV[i]] = labelsKV[i+1]
+	}
+
+	labels["rpcID"] = rpcID
+	labels["feature"] = feature
+	labels["method"] = method
+	labels["caller"] = "-"
+
 	// making the call by sending a message
 	receiver.SendMessage(&Message{
 		Channel: c.Channel,
 		Subject: c.Subject,
-		Labels: map[string]string{
-			"rpcID":   rpcID,
-			"feature": feature,
-			"method":  method,
-			"caller":  "-",
-		},
+		Labels:  labels,
 		Payload: params,
 		IsRaw:   true,
 	})
@@ -218,15 +223,19 @@ func (c *RPCCallerBase) HandleReturn(m *Message) {
 
 	reason, ok := m.Labels["error"]
 
-	if ok {
+	switch {
+	case reason == "timeout":
+		result <- fmt.Errorf("%w: client", ErrTimeout)
+	case ok:
 		result <- fmt.Errorf("%w: reason: %s", ErrRPCError, reason)
-	} else {
+	default:
 		result <- m.Payload
 	}
 }
 
 // RPCProvider : an interface for providing RPC handling feature.
 type RPCProvider struct {
+	Live          sync.WaitGroup
 	RPCHandlers   map[string]MessageHandler
 	DefaultReturn io.Writer
 	Channel       string
@@ -243,6 +252,7 @@ func (p *RPCProvider) Init(channel string, subject string, defaultWriter io.Writ
 
 // ReturnError : return error to rpc caller.
 func (p *RPCProvider) ReturnError(call *Message, reason string) {
+	defer p.Live.Done()
 	returnTo := call.ReturnTo
 	if returnTo == nil {
 		returnTo = p.DefaultReturn
@@ -260,6 +270,7 @@ func (p *RPCProvider) ReturnError(call *Message, reason string) {
 
 // Return : return a value to rpc caller.
 func (p *RPCProvider) Return(call *Message, retval *Message) {
+	defer p.Live.Done()
 	returnTo := call.ReturnTo
 	if returnTo == nil {
 		returnTo = p.DefaultReturn
@@ -283,11 +294,21 @@ func (p *RPCProvider) Router(msg *Message) {
 	if t, ok := msg.Labels["timeout"]; ok {
 		timeout = Must(time.ParseDuration(t)).(time.Duration)
 	}
-	f := p.RPCHandlers[method]
+	f, ok := p.RPCHandlers[method]
+	if !ok {
+		f, ok = p.RPCHandlers[method+"|interruptible"]
+		if !ok {
+			p.ReturnError(msg, "unknown method "+method)
+
+			return
+		}
+		msg.Labels["interruptible"] = "true"
+	}
 
 	returnerExited := make(chan struct{})
 
 	if msg.Labels["rpcID"] != RPCSkip {
+		p.Live.Add(1)
 		msg.Reply = make(chan Message, 1)
 
 		go func() {
@@ -314,7 +335,7 @@ func (p *RPCProvider) Router(msg *Message) {
 						"error": fmt.Sprintf("%+v", r),
 					},
 				}
-				panic(r)
+				// panic(r)
 			}
 			<-returnerExited
 		}()

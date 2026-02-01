@@ -192,6 +192,9 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		providers, ok := dipper.GetMapData(l.config, "auth-providers")
 		if !ok || providers == nil || len(providers.([]interface{})) == 0 {
+			c.Set("subject", "guest")
+			c.Set("provider", "none")
+
 			c.Next()
 
 			return

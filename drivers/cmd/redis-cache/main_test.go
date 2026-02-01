@@ -144,7 +144,7 @@ func TestIncr(t *testing.T) {
 		Reply: make(chan dipper.Message, 1),
 	}
 
-	mock.ExpectIncr("foo").SetVal(1)
+	mock.ExpectEval(incrScript, []string{"foo"}, 0).SetVal(int64(1))
 	assert.NotPanics(t, func() { incr(msg) }, "incr should not panic with good data")
 	select {
 	case reply := <-msg.Reply:
@@ -161,7 +161,7 @@ func TestIncr(t *testing.T) {
 		},
 		Reply: make(chan dipper.Message, 1),
 	}
-	mock.ExpectIncr("foo2").SetVal(2)
+	mock.ExpectEval(incrScript, []string{"foo2"}, 0).SetVal(int64(2))
 	assert.NotPanics(t, func() { incr(msg2) }, "incr should not panic with good data")
 	select {
 	case reply := <-msg2.Reply:

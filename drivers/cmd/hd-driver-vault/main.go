@@ -8,7 +8,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -73,21 +72,24 @@ func lookup(msg *dipper.Message) {
 	path := parts[1]
 	mount := parts[0]
 
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
 	cfg := vault.DefaultConfig()
 	cfg.Address = addr
 	client := dipper.Must(vault.NewClient(cfg)).(*vault.Client)
 	if k8sRole != "" {
 		k8sAuth := dipper.Must(auth.NewKubernetesAuth(k8sRole)).(*auth.KubernetesAuth)
-		_ = dipper.Must(client.Auth().Login(context.Background(), k8sAuth))
+		_ = dipper.Must(client.Auth().Login(ctx, k8sAuth))
 	} else {
 		client.SetToken(token)
 	}
 
 	var secret *vault.KVSecret
 	if version >= 0 {
-		secret = dipper.Must(client.KVv2(mount).GetVersion(context.Background(), path, version)).(*vault.KVSecret)
+		secret = dipper.Must(client.KVv2(mount).GetVersion(ctx, path, version)).(*vault.KVSecret)
 	} else {
-		secret = dipper.Must(client.KVv2(mount).Get(context.Background(), path)).(*vault.KVSecret)
+		secret = dipper.Must(client.KVv2(mount).Get(ctx, path)).(*vault.KVSecret)
 	}
 
 	value, found := secret.Data[key]

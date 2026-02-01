@@ -69,7 +69,8 @@ func vertexAI(m *dipper.Message) {
 	location := dipper.MustGetMapDataStr(driver.Options, "data.vertex-ai.location")
 	serviceAccount, _ := dipper.GetMapDataStr(driver.Options, "data.vertex-ai.service_account")
 
-	ctx := context.Background()
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
 
 	// Configure the embedding model client.
 	embCfg := &genai.ClientConfig{

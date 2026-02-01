@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"dario.cat/mergo"
 	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/internal/daemon"
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 )
@@ -20,6 +22,7 @@ import (
 var (
 	// ErrOperatorError is the base for all operator related error.
 	ErrOperatorError = errors.New("operator error")
+	drainingFuncs    = sync.WaitGroup{}
 
 	operator *Service
 )
@@ -28,6 +31,7 @@ var (
 func StartOperator(cfg *config.Config) {
 	operator = NewService(cfg, "operator")
 	operator.Route = operatorRoute
+	operator.Drain = drainingFuncs.Wait
 	operator.start()
 }
 
@@ -50,8 +54,23 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 		}
 	}()
 
+	<-operator.Ready()
+
+	if msg.Labels["interrupted"] == "true" {
+		delete(msg.Labels, "interrupted")
+		feature := msg.Labels["feature"]
+		worker := operator.getDriverRuntime(feature)
+
+		return []RoutedMessage{
+			{
+				driverRuntime: worker,
+				message:       msg,
+			},
+		}
+	}
+
 	msg = dipper.DeserializePayload(msg)
-	dipper.Logger.Debugf("[operator] function call payload %+v", msg.Payload)
+	dipper.Logger.Debugf("[operator] function call payload %+v", msg.Labels)
 	function := config.Function{}
 	data, _ := dipper.GetMapData(msg.Payload, "data")
 	if data == nil {
@@ -59,14 +78,8 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 	}
 	event, _ := dipper.GetMapData(msg.Payload, "event")
 	ctx, _ := dipper.GetMapData(msg.Payload, "ctx")
-	funcDef, ok := dipper.GetMapData(msg.Payload, "function")
-	if !ok {
-		dipper.Logger.Panicf("[operator] no function received")
-	}
-	err := mapstructure.Decode(funcDef, &function)
-	if err != nil {
-		dipper.Logger.Panicf("[operator] invalid function received")
-	}
+	funcDef := dipper.MustGetMapData(msg.Payload, "function")
+	dipper.Must(mapstructure.Decode(funcDef, &function))
 
 	dipper.Logger.Debugf("[operator] collapsing function %s %s %+v", function.Target.System, function.Target.Function, function.Parameters)
 	driver, rawaction, params, sysData := collapseFunction(nil, &function)
@@ -112,6 +125,7 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 		msg.Labels = map[string]string{}
 	}
 	msg.Labels["method"] = rawaction
+	msg.Labels["feature"] = feature
 	retry := dipper.InterpolateStr("$?ctx.retry,params.retry", map[string]interface{}{
 		"ctx":    ctx,
 		"params": finalParams,
@@ -151,6 +165,8 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	switch {
 	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusCommand:
 		ret = handleEventbusCommand(msg)
+	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturnInterrupted:
+		retryInterruptedSession(msg)
 	case msg.Channel == dipper.ChannelEventbus && (msg.Subject == dipper.EventbusReturn || msg.Subject == dipper.EventbusMessage):
 		ret = []RoutedMessage{
 			{
@@ -216,4 +232,17 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 	}
 
 	return driver, rawaction, params, sysData
+}
+
+func retryInterruptedSession(msg *dipper.Message) {
+	drainingFuncs.Add(1)
+	daemon.Go(func() {
+		defer drainingFuncs.Done()
+		if engine.drainingGroup != nil {
+			engine.drainingGroup.Wait()
+		}
+		msg.Subject = dipper.EventbusCommand
+		msg.Labels["interrupted"] = "true"
+		engine.getDriverRuntime(dipper.ChannelEventbus).SendMessage(msg)
+	})
 }

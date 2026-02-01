@@ -48,6 +48,7 @@ func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*
 	}
 
 	dipper.Must(mergeDataSet(assembled, c.DataSet))
+	dipper.MergeModifier(assembled.Drivers)
 
 	return assembled, assembledList
 }

@@ -42,7 +42,8 @@ func ollama(msg *dipper.Message) {
 	// Extract questions from payload and prepare return slice.
 	q := dipper.MustGetMapData(msg.Payload, "questions")
 	ret := make([][]float64, len(q.([]interface{})))
-	ctx := context.Background()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
 
 	// Generate embeddings for each question in the payload.
 	for i, question := range q.([]interface{}) {

@@ -388,7 +388,7 @@ func CombineMap(dst map[string]interface{}, src interface{}) map[string]interfac
 	return dst
 }
 
-func mergeModifier(dst map[string]interface{}) {
+func MergeModifier(dst map[string]interface{}) {
 	for k, v := range dst {
 		if k[len(k)-1] == '-' { // set default
 			if ev, ok := dst[k[:len(k)-1]]; !ok || ev == nil {
@@ -418,7 +418,7 @@ func mergeModifier(dst map[string]interface{}) {
 			dst[k[:len(k)-1]] = v
 			delete(dst, k)
 		case ok:
-			mergeModifier(vmap)
+			MergeModifier(vmap)
 		}
 	}
 }
@@ -427,7 +427,7 @@ func mergeModifier(dst map[string]interface{}) {
 func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
 	dst = CombineMap(dst, src)
 
-	mergeModifier(dst)
+	MergeModifier(dst)
 
 	return dst
 }

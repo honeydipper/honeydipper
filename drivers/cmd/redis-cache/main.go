@@ -25,6 +25,29 @@ import (
 	"github.com/op/go-logging"
 )
 
+const (
+	incrScript = `
+        local remove_zero = tonumber(ARGV[1])
+        local current_value = redis.call("INCR", KEYS[1])
+
+        if current_value == 0 and remove_zero > 0 then
+            redis.call("DEL", KEYS[1])
+        end
+        
+		return current_value
+	`
+	decrScript = `
+        local remove_zero = tonumber(ARGV[1])
+        local current_value = redis.call("DECR", KEYS[1])
+
+        if current_value == 0 and remove_zero > 0 then
+            redis.call("DEL", KEYS[1])
+        end
+        
+		return current_value
+	`
+)
+
 var (
 	log          *logging.Logger
 	driver       *dipper.Driver
@@ -47,11 +70,14 @@ func main() {
 	driver.RPCHandlers["save"] = save
 	driver.RPCHandlers["load"] = load
 	driver.RPCHandlers["incr"] = incr
+	driver.RPCHandlers["decr"] = decr
 	driver.RPCHandlers["lrange"] = lrange
 	driver.RPCHandlers["blpop"] = blpop
 	driver.RPCHandlers["rpush"] = rpush
 	driver.RPCHandlers["del"] = del
 	driver.RPCHandlers["exists"] = exists
+	driver.RPCHandlers["scan"] = scan
+	driver.RPCHandlers["expire"] = expire
 	driver.Run()
 }
 
@@ -65,13 +91,44 @@ func start(msg *dipper.Message) {
 	loadOptions()
 }
 
+func scan(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	pattern := dipper.MustGetMapDataStr(msg.Payload, "pattern")
+	var cursor uint64
+	if v, ok := dipper.GetMapDataStr(msg.Payload, "cursor"); ok && v != "" {
+		cursor = uint64(dipper.Must(strconv.Atoi(v)).(int))
+	}
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	keys := []string{}
+	for len(keys) < 100 {
+		res := dipper.Must(client.Scan(ctx, cursor, pattern, 0).Result()).([]any)
+		keys = append(keys, res[0].([]string)...)
+		cursor = res[1].(uint64)
+		if cursor == 0 {
+			break
+		}
+	}
+
+	msg.Reply <- dipper.Message{
+		Payload: map[string]any{
+			"keys":   keys,
+			"cursor": cursor,
+		},
+	}
+}
+
 func load(msg *dipper.Message) {
 	dipper.DeserializePayload(msg)
 	key := dipper.MustGetMapDataStr(msg.Payload, "key")
 
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	val, err := client.Get(ctx, key).Result()
 	switch {
@@ -101,7 +158,7 @@ func lrange(msg *dipper.Message) {
 
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	val, err := client.LRange(ctx, key, int64(start), int64(stop)).Result()
 	switch {
@@ -112,7 +169,7 @@ func lrange(msg *dipper.Message) {
 	default:
 		var buf string
 		if raw {
-			buf = strings.Join(val, "")
+			buf = strings.Join(val, "\n")
 		} else {
 			buf = "[" + strings.Join(val, ", ") + "]"
 		}
@@ -133,22 +190,36 @@ func lrange(msg *dipper.Message) {
 func incr(msg *dipper.Message) {
 	dipper.DeserializePayload(msg)
 	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	removeZero, _ := dipper.GetMapDataInt(msg.Payload, "remove_zero")
 
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
-	val, err := client.Incr(ctx, key).Result()
-	switch {
-	case errors.Is(err, redis.Nil):
-		msg.Reply <- dipper.Message{}
-	case err != nil:
-		log.Panicf("[%s] redis error: %v", driver.Service, err)
-	default:
-		msg.Reply <- dipper.Message{
-			Payload: []byte(strconv.Itoa(int(val))),
-			IsRaw:   true,
-		}
+
+	val := dipper.Must(client.Eval(ctx, incrScript, []string{key}, removeZero).Result()).(int64)
+
+	msg.Reply <- dipper.Message{
+		Payload: []byte(strconv.Itoa(int(val))),
+		IsRaw:   true,
+	}
+}
+
+func decr(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	removeZero, _ := dipper.GetMapDataInt(msg.Payload, "remove_zero")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	val := dipper.Must(client.Eval(ctx, decrScript, []string{key}, removeZero).Result()).(int64)
+
+	msg.Reply <- dipper.Message{
+		Payload: []byte(strconv.Itoa(int(val))),
+		IsRaw:   true,
 	}
 }
 
@@ -174,7 +245,7 @@ func save(msg *dipper.Message) {
 
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	if err := client.Set(ctx, key, val, exp).Err(); err != nil && !errors.Is(err, redis.Nil) {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
@@ -204,7 +275,7 @@ func rpush(msg *dipper.Message) {
 
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	if err := client.RPush(ctx, key, valStr).Err(); err != nil && !errors.Is(err, redis.Nil) {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
@@ -214,6 +285,28 @@ func rpush(msg *dipper.Message) {
 			log.Panicf("[%s] redis error: %v", driver.Service, err)
 		}
 	}
+	msg.Reply <- dipper.Message{}
+}
+
+func expire(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+
+	var ttl time.Duration
+	ttlData, _ := dipper.GetMapData(msg.Payload, "ttl")
+	if ttlData != nil {
+		ttl = time.Duration(ttlData.(float64))
+	}
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	if err := client.Expire(ctx, key, ttl).Err(); err != nil && !errors.Is(err, redis.Nil) {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+
 	msg.Reply <- dipper.Message{}
 }
 
@@ -253,7 +346,7 @@ func del(msg *dipper.Message) {
 
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	if err := client.Del(ctx, key).Err(); err != nil && !errors.Is(err, redis.Nil) {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
@@ -266,7 +359,7 @@ func exists(msg *dipper.Message) {
 
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	found := int(dipper.Must(client.Exists(ctx, key).Result()).(int64))
 	var payload []byte

@@ -116,7 +116,7 @@ func lookup(msg *dipper.Message) {
 		panic(ErrSecretNameInvalid)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	req := &secretmanagerpb.AccessSecretVersionRequest{
 		Name: name,

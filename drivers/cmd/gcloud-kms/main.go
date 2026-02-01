@@ -8,12 +8,10 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
@@ -48,7 +46,7 @@ func decrypt(msg *dipper.Message) {
 	if !ok {
 		panic(ErrKeyNameMissing)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	req := &kmspb.DecryptRequest{
 		Name:       name,
