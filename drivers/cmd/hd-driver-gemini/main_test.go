@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/genai"
 )

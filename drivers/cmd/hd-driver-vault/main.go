@@ -18,7 +18,7 @@ import (
 
 	vault "github.com/hashicorp/vault/api"
 	auth "github.com/hashicorp/vault/api/auth/kubernetes"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // ErrSecretKeyNotFound means the secret is found but the key is not found.

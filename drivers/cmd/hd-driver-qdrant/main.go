@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/qdrant/go-client/qdrant"
 )
 

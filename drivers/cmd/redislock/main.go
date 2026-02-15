@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // DefaultPrefix is the prefix used for naming the locking topic.

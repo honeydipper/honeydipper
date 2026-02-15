@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 const (

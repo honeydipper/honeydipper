@@ -13,7 +13,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // ErrFileError is all errors when accessing a file.

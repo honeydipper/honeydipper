@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/h2non/gock.v1"
 )

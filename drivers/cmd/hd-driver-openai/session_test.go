@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	mockhd "github.com/honeydipper/honeydipper/drivers/cmd/hd-driver-openai/mock_hd-driver-openai"
-	"github.com/honeydipper/honeydipper/drivers/pkg/ai/mock_ai"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	mockhd "github.com/honeydipper/honeydipper/v3/drivers/cmd/hd-driver-openai/mock_hd-driver-openai"
+	"github.com/honeydipper/honeydipper/v3/drivers/pkg/ai/mock_ai"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/stretchr/testify/assert"

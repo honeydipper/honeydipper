@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	"github.com/honeydipper/honeydipper/drivers/pkg/ai/mock_ai"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/drivers/pkg/ai/mock_ai"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 )

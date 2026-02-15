@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/op/go-logging"
 )
 

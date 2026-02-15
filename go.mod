@@ -1,4 +1,4 @@
-module github.com/honeydipper/honeydipper
+module github.com/honeydipper/honeydipper/v3
 
 go 1.24.1
 

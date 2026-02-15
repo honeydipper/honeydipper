@@ -9,8 +9,8 @@ package service
 import (
 	"time"
 
-	"github.com/honeydipper/honeydipper/internal/api"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/api"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 func setupEngineAPIs() {

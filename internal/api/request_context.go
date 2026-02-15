@@ -10,7 +10,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // RequestContext includes all functions store requires to work with a HttpRequest.

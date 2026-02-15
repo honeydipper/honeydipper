@@ -15,7 +15,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"golang.org/x/crypto/bcrypt"
 )
 

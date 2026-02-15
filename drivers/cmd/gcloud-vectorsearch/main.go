@@ -9,8 +9,8 @@ import (
 
 	aiplatform "cloud.google.com/go/aiplatform/apiv1beta1"
 	"cloud.google.com/go/aiplatform/apiv1beta1/aiplatformpb"
-	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"google.golang.org/api/option"
 )
 

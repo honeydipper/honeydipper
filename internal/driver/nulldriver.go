@@ -7,7 +7,7 @@
 package driver
 
 import (
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // NullDriverHandler provides support for null driver.

@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/honeydipper/honeydipper/drivers/pkg/ai"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/drivers/pkg/ai"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )

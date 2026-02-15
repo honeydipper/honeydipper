@@ -16,7 +16,7 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
-	dipper "github.com/honeydipper/honeydipper/pkg/dipper"
+	dipper "github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // MockChatWrapperInterface is a mock of ChatWrapperInterface interface.

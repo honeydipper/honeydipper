@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"cloud.google.com/go/auth"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"google.golang.org/genai"
 )
 

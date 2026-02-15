@@ -15,8 +15,8 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/golang/mock/gomock"
-	mock_storage "github.com/honeydipper/honeydipper/drivers/cmd/gcloud-storage/mocks"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	mock_storage "github.com/honeydipper/honeydipper/v3/drivers/cmd/gcloud-storage/mocks"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/iterator"
 )

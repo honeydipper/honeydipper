@@ -20,7 +20,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/ghodss/yaml"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )

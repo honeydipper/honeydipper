@@ -7,7 +7,7 @@
 package config
 
 import (
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // CollapsedTrigger is a trigger with collapsed matching criteria, parameters, merged sysData and stack of exports.

@@ -18,9 +18,9 @@ import (
 	"dario.cat/mergo"
 	"github.com/ghodss/yaml"
 	"github.com/golang/mock/gomock"
-	"github.com/honeydipper/honeydipper/internal/api/mock_api"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
-	"github.com/honeydipper/honeydipper/pkg/dipper/mock_dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/api/mock_api"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper/mock_dipper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/stretchr/testify/assert"
 )

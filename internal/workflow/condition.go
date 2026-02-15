@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // isTruthy is a helper function to check if string represents Truey value.

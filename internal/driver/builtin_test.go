@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -9,7 +9,7 @@ package api
 import (
 	"time"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // DefaultAPIReapTimeout is the timeout in seconds before a API result is abandoned.
