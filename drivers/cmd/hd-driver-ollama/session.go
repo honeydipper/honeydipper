@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/honeydipper/honeydipper/v3/drivers/pkg/ai"
-	"github.com/honeydipper/honeydipper/v3/drivers/pkg/ollamahelper"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/drivers/pkg/ai"
+	"github.com/honeydipper/honeydipper/v4/drivers/pkg/ollamahelper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/ollama/ollama/api"
 )
 

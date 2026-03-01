@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	cfg "github.com/honeydipper/honeydipper/v3/internal/config"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	cfg "github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // reuse newSession from other tests and customStore defined elsewhere

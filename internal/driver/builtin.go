@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/v3/internal/daemon"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/daemon"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // BuiltinDriver are compiled and delivered with daemon binary in the same container image.

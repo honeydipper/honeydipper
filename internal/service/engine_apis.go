@@ -9,9 +9,9 @@ package service
 import (
 	"errors"
 
-	"github.com/honeydipper/honeydipper/v3/internal/api"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
-	"github.com/honeydipper/honeydipper/v3/pkg/workflow"
+	"github.com/honeydipper/honeydipper/v4/internal/api"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/workflow"
 )
 
 var ErrSessionNotFound = errors.New("session not found")

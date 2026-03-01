@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"google.golang.org/api/idtoken"
 )
 

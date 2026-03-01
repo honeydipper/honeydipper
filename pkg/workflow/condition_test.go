@@ -12,7 +12,7 @@ package workflow
 import (
 	"testing"
 
-	cfg "github.com/honeydipper/honeydipper/v3/internal/config"
+	cfg "github.com/honeydipper/honeydipper/v4/internal/config"
 )
 
 func TestIsTruthy(t *testing.T) {

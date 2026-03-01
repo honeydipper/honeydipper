@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	cfg "github.com/honeydipper/honeydipper/v3/internal/config"
+	cfg "github.com/honeydipper/honeydipper/v4/internal/config"
 )
 
 // TestMarshal tests the Marshal method which converts a session to JSON bytes.

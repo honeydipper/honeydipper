@@ -9,7 +9,7 @@ package config
 import (
 	"strings"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // ExportFunctionContext create a context data structure based on the collapsed function exports.

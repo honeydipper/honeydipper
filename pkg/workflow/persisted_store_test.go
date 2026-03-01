@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/honeydipper/honeydipper/v3/internal/config"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // fakeHelper implements StoreHelper for persisted store tests. It returns

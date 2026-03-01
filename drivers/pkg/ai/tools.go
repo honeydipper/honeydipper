@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/v3/internal/config"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
-	"github.com/honeydipper/honeydipper/v3/pkg/workflow"
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/workflow"
 	"github.com/mitchellh/mapstructure"
 )
 
