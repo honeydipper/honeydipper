@@ -27,6 +27,14 @@ type Error struct {
 	File  string
 }
 
+// _honeydipperVersion represents the version of honeydipper.
+var _honeydipperVersion string
+
+// SetVersion sets the version of the running honeydipper instance.
+func SetVersion(v string) {
+	_honeydipperVersion = v
+}
+
 // Repo contains runtime repo info used to track what has been loaded in a repo.
 type Repo struct {
 	parent  *Config
@@ -96,6 +104,13 @@ func (c *Repo) loadFile(filename string) {
 		"env": dipper.Getenv(),
 		"local": map[string]interface{}{
 			"filename": strings.TrimPrefix(filename, c.root),
+			"repo":     c.repo.Repo,
+			"branch":   c.repo.Branch,
+		},
+		"version": _honeydipperVersion,
+		"init": map[string]interface{}{
+			"repo":   c.parent.InitRepo.Repo,
+			"branch": c.parent.InitRepo.Branch,
 		},
 	}
 	switch ret := dipper.InterpolateGoTemplate(true, filename, string(yamlFile), envData).(type) {

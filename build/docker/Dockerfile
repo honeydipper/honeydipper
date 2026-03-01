@@ -1,7 +1,9 @@
 FROM golang:1.26.0-alpine AS build
 
-ARG GOINSTALLOPTS
-ARG GOGC
+ARG GOINSTALLOPTS=""
+ARG GOGC=""
+
+ARG HD_VERSION=""
 
 ENV GOGC=$GOGC
 
@@ -18,7 +20,8 @@ RUN go install -v ./drivers/cmd/gcloud-storage
 RUN go install -v ./drivers/cmd/kubernetes
 RUN go install -v ./drivers/cmd/redisqueue
 RUN go install -v ./drivers/cmd/redispubsub
-RUN go install -v ./cmd/...
+RUN if [[ -z "$HD_VERSION" ]]; then HD_VERSION="$(git describe --tags)"; fi && \
+    go install -v -ldflags='-X main._honeydipperVersion='$HD_VERSION ./cmd/...
 RUN go install -v ./drivers/...
 
 FROM alpine:3.22

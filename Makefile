@@ -12,6 +12,8 @@ files_require_mocking = pkg/dipper/rpc.go \
 						drivers/cmd/hd-driver-embeddings/ollama.go \
 						drivers/cmd/hd-driver-openai/session.go
 
+HD_VERSION := $(shell echo "$${HD_VERSION-$$(git describe --tags)}")
+
 ifneq (,$(wildcard ./.env))
 	include ./.env
 	export
@@ -21,7 +23,7 @@ endif
 
 build:
 	@printf "$(BOLD)Building$(RESET)\n"
-	@go install ./...
+	go install -ldflags='-X main._honeydipperVersion=$(HD_VERSION)' ./...
 
 lint:
 	@printf "$(BOLD)Linting source code$(RESET)\n"

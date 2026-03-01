@@ -22,6 +22,8 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
+var _honeydipperVersion string
+
 var cfg config.Config
 
 func initFlags() {
@@ -62,6 +64,16 @@ DOCDST:         defaults to docs/dst, specify the directory to store generated f
 func initEnv() {
 	initFlags()
 	flag.Parse()
+	if _honeydipperVersion == "" {
+		_honeydipperVersion = "dev"
+	}
+
+	if len(flag.Args()) == 1 && flag.Args()[0] == "version" {
+		fmt.Println(_honeydipperVersion)
+		os.Exit(0)
+	}
+
+	config.SetVersion(_honeydipperVersion)
 	cfg = config.Config{InitRepo: config.RepoInfo{}, Services: flag.Args()}
 	if len(cfg.Services) == 0 {
 		cfg.Services = []string{"engine", "receiver", "operator", "api"}
