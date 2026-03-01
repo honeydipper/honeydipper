@@ -175,4 +175,4 @@ workflows:
           context: honeydipper
           filters:
             branches:
-              only: main
+              only: ^(main|v4)$
