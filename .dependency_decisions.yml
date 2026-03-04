@@ -275,3 +275,15 @@
     :why: Needed to support vault
     :versions: []
     :when: 2025-01-06 19:52:12.119818000 Z
+- - :approve
+  - github.com/hashicorp/go-secure-stdlib/parseutil
+  - :who: Charles546
+    :why: Allowing MPL 2.0 for now
+    :versions: []
+    :when: 2026-03-06 18:52:49.045160000 Z
+- - :approve
+  - github.com/hashicorp/vault/api/auth/approle
+  - :who: Charles546
+    :why: Allowing MPL 2.0 for now
+    :versions: []
+    :when: 2026-03-06 18:52:49.045160000 Z

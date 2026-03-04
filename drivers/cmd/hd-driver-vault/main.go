@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	vault "github.com/hashicorp/vault/api"
+	approle "github.com/hashicorp/vault/api/auth/approle"
 	auth "github.com/hashicorp/vault/api/auth/kubernetes"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
@@ -46,17 +47,30 @@ func lookup(msg *dipper.Message) {
 	query := string(msg.Payload.([]byte))
 	parts := strings.SplitN(query, ":", 2)
 
-	var addr, token, k8sRole string
+	var addr, token, k8sRole, appRoleID, appSecretID string
 	if len(parts) > 1 {
 		query = parts[1]
 		server := parts[0]
 		addr = dipper.MustGetMapDataStr(driver.Options, "data."+server+".addr")
 		token, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".token")
 		k8sRole, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".k8sRole")
+		appRoleID, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".approle.role_id")
+		appSecretID, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".approle.secret_id")
 	} else {
 		addr = dipper.MustGetMapDataStr(driver.Options, "data.addr")
+		if addr == "" {
+			addr = os.Getenv("VAULT_ADDR")
+		}
 		token, _ = dipper.GetMapDataStr(driver.Options, "data.token")
 		k8sRole, _ = dipper.GetMapDataStr(driver.Options, "data.k8sRole")
+		appRoleID, _ = dipper.GetMapDataStr(driver.Options, "data.approle.role_id")
+		if appRoleID == "" {
+			appRoleID = os.Getenv("VAULT_ROLE_ID")
+		}
+		appSecretID, _ = dipper.GetMapDataStr(driver.Options, "data.approle.secret_id")
+		if appSecretID == "" {
+			appSecretID = os.Getenv("VAULT_SECRET_ID")
+		}
 	}
 
 	version := -1
@@ -78,10 +92,14 @@ func lookup(msg *dipper.Message) {
 	cfg := vault.DefaultConfig()
 	cfg.Address = addr
 	client := dipper.Must(vault.NewClient(cfg)).(*vault.Client)
-	if k8sRole != "" {
+	switch {
+	case k8sRole != "":
 		k8sAuth := dipper.Must(auth.NewKubernetesAuth(k8sRole)).(*auth.KubernetesAuth)
 		_ = dipper.Must(client.Auth().Login(ctx, k8sAuth))
-	} else {
+	case appRoleID != "":
+		appRoleAuth := dipper.Must(approle.NewAppRoleAuth(appRoleID, &approle.SecretID{FromString: appSecretID})).(*approle.AppRoleAuth)
+		_ = dipper.Must(client.Auth().Login(ctx, appRoleAuth))
+	default:
 		client.SetToken(token)
 	}
 
