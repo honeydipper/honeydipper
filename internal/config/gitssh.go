@@ -34,12 +34,12 @@ func GetGitSSHAuth(keyfile, keypassEnv string) transport.AuthMethod {
 		return loaded
 	}
 
+	keybytes := os.Getenv("DIPPER_SSH_KEY")
 	keysock := os.Getenv("SSH_AUTH_SOCK")
-	if keyfile == "" && keysock == "" {
+
+	if keyfile == "" && keysock == "" && keybytes == "" {
 		dipper.Logger.Panicf("Unable load ssh key: no key file specified")
 	}
-
-	keybytes := os.Getenv("DIPPER_SSH_KEY")
 
 	switch {
 	case keybytes != "":
