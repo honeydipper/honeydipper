@@ -43,6 +43,7 @@ type Repo struct {
 	files   map[string]bool
 	root    string
 	Errors  []Error
+	hash    string
 }
 
 func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*DataSet, map[RepoInfo]*Repo) {
@@ -58,7 +59,35 @@ func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*
 	dipper.Must(mergeDataSet(assembled, c.DataSet))
 	dipper.MergeModifier(assembled.Drivers)
 
+	c.updateBuiltinCtxs(assembled)
+
 	return assembled, assembledList
+}
+
+func (c *Repo) updateBuiltinCtxs(assembled *DataSet) {
+	parts := strings.Split(c.repo.Repo, ":")
+	tail := parts[len(parts)-1]
+	gitRepo := filepath.Base(filepath.Dir(tail)) + "/" + strings.TrimSuffix(filepath.Base(tail), ".git")
+
+	gitRef := "refs/heads/main"
+	if c.repo.Branch != "" {
+		gitRef = "refs/heads/" + c.repo.Branch
+	}
+
+	if assembled.Contexts == nil {
+		assembled.Contexts = map[string]any{}
+	}
+
+	dipper.MapAppend(assembled.Contexts, "_loaded.*.repo_matcher", map[string]any{
+		"git_repo": gitRepo,
+		"git_ref":  gitRef,
+	})
+	dipper.MapAppend(assembled.Contexts, "_loaded.*.loaded_repos", map[string]any{
+		"repo":        c.repo.Repo,
+		"branch":      c.repo.Branch,
+		"path":        c.repo.Path,
+		"commit_hash": c.hash,
+	})
 }
 
 func (c *Repo) isFileLoaded(filename string) bool {
@@ -146,7 +175,7 @@ func (c *Repo) loadFile(filename string) {
 }
 
 func newRepo(c *Config, repo RepoInfo) *Repo {
-	return &(Repo{c, &repo, DataSet{}, map[string]bool{}, "", []Error{}})
+	return &(Repo{c, &repo, DataSet{}, map[string]bool{}, "", []Error{}, ""})
 }
 
 func (c *Repo) cloneFetchRepo() {
@@ -172,7 +201,8 @@ func (c *Repo) cloneFetchRepo() {
 	}
 
 	dipper.Logger.Infof("fetching repo [%v]", c.repo.Repo)
-	_ = dipper.Must(git.PlainClone(c.root, false, opts))
+	r := dipper.Must(git.PlainClone(c.root, false, opts)).(*git.Repository)
+	c.hash = dipper.Must(r.Head()).(*plumbing.Reference).Hash().String()
 }
 
 func (c *Repo) loadRepo() {

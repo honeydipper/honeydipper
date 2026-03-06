@@ -431,3 +431,45 @@ func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{
 
 	return dst
 }
+
+// MapSet : set the value in the map using the dot notation.
+func MapSet(dst interface{}, path string, value interface{}) {
+	components := strings.Split(path, ".")
+	last := len(components) - 1
+	current := dst.(map[string]interface{})
+	for i, component := range components {
+		if i == last {
+			current[component] = value
+		} else {
+			next, ok := current[component]
+			if !ok {
+				next = map[string]interface{}{}
+				current[component] = next
+			}
+			current = next.(map[string]interface{})
+		}
+	}
+}
+
+// MapAppend : append the value to a list in the map.
+func MapAppend(dst interface{}, path string, value interface{}) {
+	components := strings.Split(path, ".")
+	last := len(components) - 1
+	current := dst.(map[string]interface{})
+	for i, component := range components {
+		if i == last {
+			if current[component] == nil {
+				current[component] = []interface{}{value}
+			} else {
+				current[component] = append(current[component].([]interface{}), value)
+			}
+		} else {
+			next, ok := current[component]
+			if !ok {
+				next = map[string]interface{}{}
+				current[component] = next
+			}
+			current = next.(map[string]interface{})
+		}
+	}
+}
