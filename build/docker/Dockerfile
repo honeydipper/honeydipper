@@ -34,7 +34,8 @@ RUN apk add --no-cache ca-certificates git tzdata
 
 WORKDIR /opt/honeydipper/drivers/builtin
 COPY --from=build /go/bin/* ./
+COPY ./build/docker/docker-entrypoint.sh ./
 
-ENTRYPOINT ["./honeydipper"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
 EXPOSE 8080
 EXPOSE 9000

@@ -21,6 +21,7 @@ import (
 	"github.com/gogf/gf/container/gpool"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	secureexec "github.com/honeydipper/honeydipper/v4/pkg/secure-exec"
 )
 
 // DefaultClientTTLSeconds specifies the TTL for reusable google clients.
@@ -51,7 +52,7 @@ func initFlags() {
 }
 
 var (
-	driver      *dipper.Driver
+	driver      *secureexec.SecureExec
 	_clientPool *gpool.Pool
 )
 
@@ -84,7 +85,7 @@ func main() {
 	initFlags()
 	flag.Parse()
 
-	driver = dipper.NewDriver(os.Args[1], "google-secret")
+	driver = secureexec.NewDriver(os.Args[1], "google-secret")
 	driver.RPCHandlers["lookup"] = lookup
 	driver.Reload = loadOptions
 	driver.Start = loadOptions

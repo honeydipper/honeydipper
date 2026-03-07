@@ -19,6 +19,7 @@ import (
 	approle "github.com/hashicorp/vault/api/auth/approle"
 	auth "github.com/hashicorp/vault/api/auth/kubernetes"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	secureexec "github.com/honeydipper/honeydipper/v4/pkg/secure-exec"
 )
 
 // ErrSecretKeyNotFound means the secret is found but the key is not found.
@@ -32,13 +33,13 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
+var driver *secureexec.SecureExec
 
 func main() {
 	initFlags()
 	flag.Parse()
 
-	driver = dipper.NewDriver(os.Args[1], "vault")
+	driver = secureexec.NewDriver(os.Args[1], "vault")
 	driver.RPCHandlers["lookup"] = lookup
 	driver.Run()
 }
@@ -48,6 +49,8 @@ func lookup(msg *dipper.Message) {
 	parts := strings.SplitN(query, ":", 2)
 
 	var addr, token, k8sRole, appRoleID, appSecretID string
+	// Go away you freaking linter! This is easy enough to understand!
+	//nolint:nestif
 	if len(parts) > 1 {
 		query = parts[1]
 		server := parts[0]
@@ -57,11 +60,14 @@ func lookup(msg *dipper.Message) {
 		appRoleID, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".approle.role_id")
 		appSecretID, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".approle.secret_id")
 	} else {
-		addr = dipper.MustGetMapDataStr(driver.Options, "data.addr")
+		addr, _ = dipper.GetMapDataStr(driver.Options, "data.addr")
 		if addr == "" {
 			addr = os.Getenv("VAULT_ADDR")
 		}
 		token, _ = dipper.GetMapDataStr(driver.Options, "data.token")
+		if token == "" {
+			token = os.Getenv("VAULT_TOKEN")
+		}
 		k8sRole, _ = dipper.GetMapDataStr(driver.Options, "data.k8sRole")
 		appRoleID, _ = dipper.GetMapDataStr(driver.Options, "data.approle.role_id")
 		if appRoleID == "" {

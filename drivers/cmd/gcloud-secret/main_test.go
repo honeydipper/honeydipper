@@ -13,11 +13,12 @@ import (
 	"os"
 	"testing"
 
+	secretmanagerpb "cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"github.com/golang/mock/gomock"
 	mock_driver "github.com/honeydipper/honeydipper/v4/drivers/cmd/gcloud-secret/mock_gcloud-secret"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	secureexec "github.com/honeydipper/honeydipper/v4/pkg/secure-exec"
 	"github.com/stretchr/testify/assert"
-	secretmanagerpb "google.golang.org/genproto/googleapis/cloud/secretmanager/v1"
 )
 
 func TestMain(m *testing.M) {
@@ -30,7 +31,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestLookupWithoutName(t *testing.T) {
-	driver = dipper.NewDriver(os.Args[1], "secretmanager")
+	driver = secureexec.NewDriver(os.Args[1], "secretmanager")
 	ctrl := gomock.NewController(t)
 	client := mock_driver.NewMockSecretManagerClient(ctrl)
 	loadOptions(&dipper.Message{})
@@ -43,7 +44,7 @@ func TestLookupWithoutName(t *testing.T) {
 }
 
 func TestLookupWithName(t *testing.T) {
-	driver = dipper.NewDriver(os.Args[1], "secretmanager")
+	driver = secureexec.NewDriver(os.Args[1], "secretmanager")
 	ctrl := gomock.NewController(t)
 	client := mock_driver.NewMockSecretManagerClient(ctrl)
 	loadOptions(&dipper.Message{})
