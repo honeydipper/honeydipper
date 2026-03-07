@@ -17,7 +17,6 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/go-errors/errors"
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
@@ -178,31 +177,24 @@ func newRepo(c *Config, repo RepoInfo) *Repo {
 	return &(Repo{c, &repo, DataSet{}, map[string]bool{}, "", []Error{}, ""})
 }
 
+// cloneFetchRepo clones and fetches a git repository.
 func (c *Repo) cloneFetchRepo() {
+	c.cloneFetchRepoWithDeps(&DefaultGitClient{}, &DefaultTempDirCreator{}, DefaultHeadGetter)
+}
+
+// cloneFetchRepoWithDeps clones and fetches a git repository with dependency injection for testing.
+func (c *Repo) cloneFetchRepoWithDeps(gitClient GitClient, tempDirCreator TempDirCreator, headGetter func(*git.Repository) string) {
 	dipper.Logger.Infof("cloning repo [%v]", c.repo.Repo)
 	var err error
-	if c.root, err = os.MkdirTemp(c.parent.WorkingDir, "git"); err != nil {
+	if c.root, err = tempDirCreator.MkdirTemp(c.parent.WorkingDir, "git"); err != nil {
 		dipper.Logger.Errorf("%v", err)
 		dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
 	}
 
-	branch := plumbing.Main.Short()
-	if c.repo.Branch != "" {
-		branch = c.repo.Branch
-	}
-	opts := &git.CloneOptions{
-		ReferenceName: plumbing.NewBranchReferenceName(branch),
-		URL:           c.repo.Repo,
-	}
-	if strings.HasPrefix(c.repo.Repo, "git@") {
-		if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
-			opts.Auth = auth
-		}
-	}
-
+	opts := BuildCloneOptions(*c.repo)
 	dipper.Logger.Infof("fetching repo [%v]", c.repo.Repo)
-	r := dipper.Must(git.PlainClone(c.root, false, opts)).(*git.Repository)
-	c.hash = dipper.Must(r.Head()).(*plumbing.Reference).Hash().String()
+	r := dipper.Must(gitClient.PlainClone(c.root, false, opts)).(*git.Repository)
+	c.hash = headGetter(r)
 }
 
 func (c *Repo) loadRepo() {
@@ -244,25 +236,7 @@ func (c *Repo) refreshRepo() bool {
 	if !overridden && !usingUncommitted {
 		repoObj := dipper.Must(git.PlainOpen(c.root)).(*git.Repository)
 		tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
-		opts := &git.PullOptions{
-			RemoteName:   "origin",
-			RemoteURL:    c.repo.Repo,
-			Force:        true,
-			SingleBranch: true,
-		}
-
-		switch c.repo.Branch {
-		case "":
-			opts.ReferenceName = plumbing.Main
-		default:
-			opts.ReferenceName = plumbing.NewBranchReferenceName(c.repo.Branch)
-		}
-
-		if strings.HasPrefix(c.repo.Repo, "git@") {
-			if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
-				opts.Auth = auth
-			}
-		}
+		opts := BuildPullOptions(*c.repo)
 
 		err := tree.Pull(opts)
 		switch {

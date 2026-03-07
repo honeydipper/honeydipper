@@ -121,11 +121,15 @@ type RepoInfo struct {
 	Repo        string
 	Branch      string
 	Path        string
-	InitFile    string
+	InitFile    string `json:"init_file" mapstructure:"init_file"`
 	Name        string
 	Description string
-	KeyFile     string
-	KeyPassEnv  string
+	KeyFile     string `json:"key_file" mapstructure:"key_file"`
+	KeyPassEnv  string `json:"key_pass_env" mapstructure:"key_pass_env"`
+
+	TokenSource string `json:"token_source" mapstructure:"token_source"`
+	Username    string
+	PassEnv     string `json:"pass_env" mapstructure:"pass_env"`
 }
 
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.

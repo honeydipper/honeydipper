@@ -146,6 +146,10 @@ loop:
 		}
 		cfg.InitRepo.Branch, _ = os.LookupEnv("BRANCH")
 		cfg.InitRepo.InitFile, _ = os.LookupEnv("BOOTSTRAP_FILE")
+
+		cfg.InitRepo.PassEnv, _ = os.LookupEnv("GIT_PASS_ENV")
+		cfg.InitRepo.Username, _ = os.LookupEnv("GIT_USER_NAME")
+		cfg.InitRepo.TokenSource, _ = os.LookupEnv("GIT_TOKEN_SOURCE")
 	}
 }
 
