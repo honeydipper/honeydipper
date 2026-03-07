@@ -64,7 +64,6 @@ func Must(args ...interface{}) interface{} {
 	switch l {
 	case 1:
 		return nil
-	//nolint:gomnd
 	case 2:
 		return args[0]
 	}

@@ -48,7 +48,6 @@ func (s *activateTestStore) CallRawNoWait(feature, method string, params []byte,
 	return nil
 }
 
-//nolint:goconst
 func (s *activateTestStore) GetName() string { return "test" }
 
 func (s *activateTestStore) CallWithMessage(msg *dipper.Message) ([]byte, error) {
@@ -222,7 +221,8 @@ func TestActivateChild_ChildWithCurrentHook(t *testing.T) {
 	s := makeActivateSession(SessionStateInit)
 	childStore := &activateTestStore{childSessionID: "grandchild"}
 	s.child = &Session{
-		ID:          "child",
+		ID: "child",
+
 		CurrentHook: "on_session",
 		CurrentMsg: &dipper.Message{
 			Labels: map[string]string{
@@ -247,7 +247,7 @@ func TestActivateChild_ChildWithCurrentHook(t *testing.T) {
 // TestActivateChild_InjectionWithHook tests activateChild when parent has CurrentHook set.
 func TestActivateChild_InjectionWithHook(t *testing.T) {
 	s := makeActivateSession(SessionStateInit)
-	//nolint:goconst
+
 	s.CurrentHook = "on_session"
 	childStore := &activateTestStore{childSessionID: "grandchild"}
 	s.child = &Session{
@@ -545,6 +545,7 @@ func TestResume_TransitionsState(t *testing.T) {
 // TestResume_WithCurrentHook tests resume returns when CurrentHook is set.
 func TestResume_WithCurrentHook(t *testing.T) {
 	s := makeActivateSession(SessionStateCheckCondition)
+
 	s.CurrentHook = "on_session"
 
 	oldState := s.State

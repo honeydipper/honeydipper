@@ -100,14 +100,14 @@ func lookup(msg *dipper.Message) {
 
 	parts := strings.Split(name, "/")
 	switch {
-	case len(parts) == 6: //nolint:gomnd
+	case len(parts) == 6:
 		if parts[0] != "projects" || parts[2] != "secrets" || parts[4] != "versions" {
 			dipper.Logger.Warningf("incorrect secret key format %s", name)
 			panic(ErrSecretNameInvalid)
 		}
 	case len(parts) == 2 || len(parts) == 3:
 		version := "latest"
-		if len(parts) == 3 { //nolint:gomnd
+		if len(parts) == 3 {
 			version = parts[2]
 		}
 		name = fmt.Sprintf("projects/%s/secrets/%s/versions/%s", parts[0], parts[1], version)

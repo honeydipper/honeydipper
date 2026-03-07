@@ -9,6 +9,7 @@ package tokenhelper
 
 import (
 	"bytes"
+	"context"
 	"crypto/rsa"
 	"encoding/json"
 	"errors"
@@ -26,10 +27,8 @@ const _globalGitHubURL = "https://api.github.com"
 var ErrRetrieveToken = errors.New("unable to fetch token")
 
 func getGitHubJWT(s map[string]interface{}) (string, time.Time) {
-	//nolint: gomnd
 	expiresAt := time.Now().Add(time.Minute * 10).Truncate(time.Second)
 	claims := &jwt.RegisteredClaims{
-		//nolint: gomnd
 		IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Second * 30).Truncate(time.Second)),
 		ExpiresAt: jwt.NewNumericDate(expiresAt),
 		Issuer:    s["app_id"].(string),
@@ -60,7 +59,6 @@ func GetGitHubToken(s map[string]interface{}) string {
 	saved, ok := s["_saved"]
 	if ok {
 		exp := dipper.MustGetMapData(s, "_expiresAt").(time.Time)
-		//nolint: gomnd
 		if time.Now().Add(2 * time.Second).Before(exp) {
 			return saved.(string)
 		}
@@ -85,7 +83,9 @@ func GetGitHubToken(s map[string]interface{}) string {
 	if !ok {
 		u = _globalGitHubURL
 	}
-	req := dipper.Must(http.NewRequest("POST", u.(string)+"/app/installations/"+instID+"/access_tokens", buf)).(*http.Request)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	req := dipper.Must(http.NewRequestWithContext(ctx, "POST", u.(string)+"/app/installations/"+instID+"/access_tokens", buf)).(*http.Request)
 	req.Header = header
 	client := http.Client{}
 	//nolint: bodyClose

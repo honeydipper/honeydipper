@@ -72,6 +72,7 @@ func ReceiverFeatures(c *config.DataSet) map[string]interface{} {
 			}
 
 			list, found := driverData["collapsedEvents"].(map[string]interface{})[eventName]
+			//nolint:prealloc
 			var collapsedEvent []interface{}
 			if !found {
 				collapsedEvent = []interface{}{}

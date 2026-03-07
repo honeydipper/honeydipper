@@ -13,6 +13,8 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
+const foo = "foo"
+
 // dummyHelper implements just enough of StoreHelper for NewStore tests.
 // We keep methods no-op since NewStore doesn't actually call them.
 type dummyHelper struct{}
@@ -99,17 +101,17 @@ func TestNewStore_Basics(t *testing.T) {
 }
 
 func TestGetStoredSession_HappyPath(t *testing.T) {
-	w := &Session{ID: "foo", State: SessionStateDone}
+	w := &Session{ID: foo, State: SessionStateDone}
 	data := w.Marshal()
 	call := &sequenceCaller{
 		results: [][]byte{data},
 		errs:    []error{nil},
 	}
-	sess := GetStoredSession(call, "foo")
+	sess := GetStoredSession(call, foo)
 	if sess == nil {
 		t.Fatal("expected session, got nil")
 	}
-	if sess.ID != "foo" {
+	if sess.ID != foo {
 		t.Errorf("unexpected ID %s", sess.ID)
 	}
 }

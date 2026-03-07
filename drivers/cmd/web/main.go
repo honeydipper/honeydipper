@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -49,7 +50,7 @@ func main() {
 	}
 }
 
-func prepareRequest(m *dipper.Message) *http.Request {
+func prepareRequest(ctx context.Context, m *dipper.Message) *http.Request {
 	rurl, ok := dipper.GetMapDataStr(m.Payload, "URL")
 	if !ok {
 		log.Panicf("[%s] URL is required but missing", driver.Service)
@@ -88,7 +89,7 @@ func prepareRequest(m *dipper.Message) *http.Request {
 		method = "GET"
 	}
 
-	return createRequest(method, rurl, header, form, m)
+	return createRequest(ctx, method, rurl, header, form, m)
 }
 
 func prepareRequestBody(form url.Values, header http.Header, m *dipper.Message) io.Reader {
@@ -121,7 +122,7 @@ func prepareRequestBody(form url.Values, header http.Header, m *dipper.Message) 
 	return buf
 }
 
-func createRequest(method, rurl string, header http.Header, form url.Values, m *dipper.Message) *http.Request {
+func createRequest(ctx context.Context, method, rurl string, header http.Header, form url.Values, m *dipper.Message) *http.Request {
 	var req *http.Request
 
 	switch method {
@@ -131,9 +132,9 @@ func createRequest(method, rurl string, header http.Header, form url.Values, m *
 		fallthrough
 	case "PUT":
 		buf := prepareRequestBody(form, header, m)
-		req = dipper.Must(http.NewRequest(method, rurl, buf)).(*http.Request)
+		req = dipper.Must(http.NewRequestWithContext(ctx, method, rurl, buf)).(*http.Request)
 	default: // GET
-		req = dipper.Must(http.NewRequest(method, rurl, nil)).(*http.Request)
+		req = dipper.Must(http.NewRequestWithContext(ctx, method, rurl, nil)).(*http.Request)
 		if len(req.URL.RawQuery) > 0 {
 			req.URL.RawQuery += "&"
 		}
@@ -150,7 +151,11 @@ func sendRequest(m *dipper.Message) {
 		log = driver.GetLogger()
 	}
 	m = dipper.DeserializePayload(m)
-	req := prepareRequest(m)
+
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
+
+	req := prepareRequest(ctx, m)
 
 	client := http.Client{}
 	resp, err := client.Do(req)

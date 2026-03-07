@@ -190,7 +190,7 @@ func (w *Session) Brief() string {
 	case wf.Description != "":
 		brief = wf.Description
 	case w.isIteration():
-		//nolint:goconst
+
 		brief = "iteration"
 	case w.isLoop():
 		brief = "looping"

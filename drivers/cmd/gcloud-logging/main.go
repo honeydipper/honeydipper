@@ -55,9 +55,7 @@ func getGCPLogger(loggerPath string) *logging.Logger {
 	l, ok := driver.GetOption("_runtime.loggers." + loggerPath)
 	if !ok {
 		var loggerName, parent string
-		//nolint:gomnd
 		parts := strings.SplitN(loggerPath, "|", 2)
-		//nolint:gomnd
 		if len(parts) < 2 {
 			loggerName = strings.TrimSpace(parts[0])
 			parent, _ = metadata.ProjectIDWithContext(context.Background())

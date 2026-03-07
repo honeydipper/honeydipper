@@ -302,6 +302,8 @@ func (d *Driver) EmitEvent(payload map[string]interface{}) string {
 // GetContext creates a context with APITimeout.
 func (d *Driver) GetContext(m *Message) (context.Context, context.CancelFunc) {
 	if m == nil {
+		// this is a wrapper func
+		//nolint:gosec
 		return context.WithCancel(d.ctx)
 	}
 
@@ -320,9 +322,13 @@ func (d *Driver) GetContext(m *Message) (context.Context, context.CancelFunc) {
 	}
 
 	if timeout == 0 {
+		// this is a wrapper func
+		//nolint:gosec
 		return context.WithCancel(sourceCtx)
 	}
 
+	// this is a wrapper func
+	//nolint:gosec
 	return context.WithTimeout(sourceCtx, timeout)
 }
 
@@ -335,6 +341,6 @@ func (d *Driver) Flush(shutdown bool) {
 
 	if !shutdown {
 		d.ctx, d.cancel = context.WithCancel(context.Background())
-		d.CommandProvider.Handler = d.ctx
+		d.Handler = d.ctx
 	}
 }

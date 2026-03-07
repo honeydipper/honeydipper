@@ -190,7 +190,6 @@ func getLogger() {
 	dipper.Logger = nil
 	if cfg.IsConfigCheck {
 		// suppress logging for less cluttered output for configcheck
-		//nolint:gomnd
 		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 		dipper.GetLogger("daemon", levelstr, f, f)
 	} else {

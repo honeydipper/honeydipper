@@ -181,7 +181,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 		} else if _, ok := dipper.GetMapDataStr(eventData, "form.accept_uuid.0"); ok {
 			w.Header().Set("content-type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
+			_, _ = fmt.Fprintf(w, "{\"eventID\": \"%s\"}", id)
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}
@@ -250,12 +250,14 @@ func verifySignature(header, actual, secret string, eventData map[string]interfa
 	var hashes []string
 	switch header {
 	case "X-Slack-Signature":
+		//nolint:prealloc
 		hashes = []string{strings.TrimPrefix(actual, "v0=")}
 	case "X-PagerDuty-Signature":
 		for _, sig := range strings.Split(actual, ",") {
 			hashes = append(hashes, strings.TrimPrefix(sig, "v1="))
 		}
 	case "X-Hub-Signature-256": // github signature
+
 		hashes = []string{strings.TrimPrefix(actual, "sha256=")}
 	}
 

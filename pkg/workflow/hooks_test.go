@@ -42,7 +42,7 @@ func (s *hookTrackingStore) CallRawNoWait(feature, method string, params []byte,
 	return nil
 }
 
-func (s *hookTrackingStore) GetName() string { return "test" }
+func (s *hookTrackingStore) GetName() string { return _testModule }
 
 func (s *hookTrackingStore) CallWithMessage(msg *dipper.Message) ([]byte, error) {
 	return nil, nil
@@ -111,7 +111,7 @@ func (s *hookTrackingStore) Wait() {}
 
 func (s *hookTrackingStore) GetLogger() *logging.Logger {
 	if dipper.Logger == nil {
-		dipper.GetLogger("test", "ERROR")
+		dipper.GetLogger(_testModule, "ERROR")
 	}
 
 	return dipper.Logger
@@ -548,6 +548,7 @@ func TestSessionEntryHooks_Structure(t *testing.T) {
 		}
 	}
 
+	//nolint:goconst
 	if len(SessionEntryHooks[SessionStateCheckCondition]) == 0 || SessionEntryHooks[SessionStateCheckCondition][0] != "on_session" {
 		t.Error("SessionStateCheckCondition should have on_session hook")
 	}

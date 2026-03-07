@@ -40,7 +40,7 @@ func (s *customStore) CallRaw(feature, method string, params []byte, labelsKV ..
 func (s *customStore) CallRawNoWait(feature, method string, params []byte, rpcID string, labelsKV ...string) error {
 	return nil
 }
-func (s *customStore) GetName() string { return "test" }
+func (s *customStore) GetName() string { return _testModule }
 
 func (s *customStore) CallWithMessage(msg *dipper.Message) ([]byte, error) { return nil, nil }
 func (s *customStore) CallWithMessageNoWait(msg *dipper.Message) error     { return nil }
@@ -72,7 +72,7 @@ func (s *customStore) DumpSessions(cursor string) map[string]any                
 func (s *customStore) Wait()                                                                {}
 func (s *customStore) GetLogger() *logging.Logger {
 	if s.logger == nil {
-		return dipper.GetLogger("test", "ERROR")
+		return dipper.GetLogger(_testModule, "ERROR")
 	}
 
 	return s.logger

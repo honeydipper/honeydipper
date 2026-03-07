@@ -213,16 +213,16 @@ func TestCloneFetchRepoAuthSetup(t *testing.T) {
 	}
 
 	// Test GitHub token auth setup
-	repo.repo.TokenSource = "github"
+	repo.repo.TokenSource = _providerGitHub
 	repo.repo.Repo = "https://github.com/user/repo"
 
 	// Reset the condition checks
 	switch {
 	case strings.HasPrefix(repo.repo.Repo, "git@"):
 		t.Error("Should not detect SSH for HTTPS URL")
-	case repo.repo.TokenSource == "github":
+	case repo.repo.TokenSource == _providerGitHub:
 		// This would normally set up GitHub token auth
-		assert.Equal(t, "github", repo.repo.TokenSource, "GitHub token source should be detected")
+		assert.Equal(t, _providerGitHub, repo.repo.TokenSource, "GitHub token source should be detected")
 	case repo.repo.PassEnv != "":
 		t.Error("Should not detect password auth when not set")
 	}
@@ -235,7 +235,7 @@ func TestCloneFetchRepoAuthSetup(t *testing.T) {
 	switch {
 	case strings.HasPrefix(repo.repo.Repo, "git@"):
 		t.Error("Should not detect SSH")
-	case repo.repo.TokenSource == "github":
+	case repo.repo.TokenSource == _providerGitHub:
 		t.Error("Should not detect GitHub token")
 	case repo.repo.PassEnv != "":
 		// This would normally set up basic auth
@@ -405,7 +405,7 @@ func TestSetupAuth(t *testing.T) {
 
 		repoInfo := RepoInfo{
 			Repo:        "https://github.com/user/repo",
-			TokenSource: "github",
+			TokenSource: _providerGitHub,
 		}
 
 		auth := SetupAuth(&repoInfo)
@@ -425,7 +425,7 @@ func TestSetupAuth(t *testing.T) {
 
 		repoInfo := RepoInfo{
 			Repo:        "https://github.com/user/repo",
-			TokenSource: "github",
+			TokenSource: _providerGitHub,
 		}
 
 		// This should panic without proper env vars, so we test that it does panic
@@ -568,7 +568,7 @@ func TestSetupAuth(t *testing.T) {
 
 		repoInfo := RepoInfo{
 			Repo:        "https://github.com/user/repo",
-			TokenSource: "github",
+			TokenSource: _providerGitHub,
 			PassEnv:     "SOME_PASS",
 			Username:    "testuser",
 		}
@@ -623,7 +623,7 @@ func TestBuildPullOptions(t *testing.T) {
 
 		repoInfo := RepoInfo{
 			Repo:        "https://github.com/user/repo",
-			TokenSource: "github",
+			TokenSource: _providerGitHub,
 		}
 
 		opts := BuildPullOptions(repoInfo)

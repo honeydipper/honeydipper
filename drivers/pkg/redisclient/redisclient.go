@@ -75,6 +75,7 @@ func setupTLSConfig(driver *dipper.Driver) *tls.Config {
 			// so we can use google memorystore redis with TLS.
 
 			config.InsecureSkipVerify = true
+			//nolint:gosec
 			config.VerifyPeerCertificate = func(rawCerts [][]byte, chains [][]*x509.Certificate) error {
 				return verifyPeerCertificate(config, rawCerts, chains)
 			}

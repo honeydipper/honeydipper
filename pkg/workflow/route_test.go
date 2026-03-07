@@ -35,7 +35,7 @@ func (t *testStore) CallRaw(feature, method string, params []byte, labelsKV ...s
 func (t *testStore) CallRawNoWait(feature, method string, params []byte, rpcID string, labelsKV ...string) error {
 	return nil
 }
-func (t *testStore) GetName() string { return "test" }
+func (t *testStore) GetName() string { return _testModule }
 
 func (t *testStore) CallWithMessage(msg *dipper.Message) ([]byte, error) { return nil, nil }
 func (t *testStore) CallWithMessageNoWait(msg *dipper.Message) error {
@@ -60,7 +60,7 @@ func (t *testStore) ResumeSession(key string, msg *dipper.Message) bool         
 func (t *testStore) GetNumSessions(getAll bool) int                                       { return 0 }
 func (t *testStore) DumpSessions(cursor string) map[string]any                            { return nil }
 func (t *testStore) Wait()                                                                {}
-func (t *testStore) GetLogger() *logging.Logger                                           { return dipper.GetLogger("test", "ERROR") }
+func (t *testStore) GetLogger() *logging.Logger                                           { return dipper.GetLogger(_testModule, "ERROR") }
 
 func newSession(wf *cfg.Workflow) *Session {
 	return &Session{

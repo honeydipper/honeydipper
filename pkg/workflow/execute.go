@@ -219,7 +219,6 @@ func (w *Session) callDriver(f string) {
 // callShorthandFunction makes a call to a function defined in short hand fashion.
 // It splits the function string into system and function names.
 func (w *Session) callShorthandFunction(f string) {
-	//nolint:gomnd
 	interpolatedNames := strings.SplitN(f, ".", 2)
 	systemName, funcName := interpolatedNames[0], interpolatedNames[1]
 

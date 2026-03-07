@@ -19,12 +19,14 @@ import (
 	cfg "github.com/honeydipper/honeydipper/v4/internal/config"
 )
 
+const _value = "value"
+
 // TestMarshal tests the Marshal method which converts a session to JSON bytes.
 func TestMarshal(t *testing.T) {
 	s := newSession(&cfg.Workflow{Name: "test"})
 	//nolint:goconst
 	s.ID, s.EventID = "test-id", "event-id"
-	s.Ctx["key"] = "value"
+	s.Ctx["key"] = _value
 
 	data := s.Marshal()
 
@@ -48,7 +50,7 @@ func TestUnmarshal(t *testing.T) {
 	original := newSession(&cfg.Workflow{Name: "test"})
 	original.ID = "test-id"
 	original.EventID = "event-id"
-	original.Ctx["key"] = "value"
+	original.Ctx["key"] = _value
 	original.Current = 5
 	original.Iteration = 3
 
@@ -227,6 +229,7 @@ func TestBrief_WithIteration(t *testing.T) {
 
 	brief := s.Brief()
 
+	//nolint:goconst
 	if brief != "iteration" {
 		t.Errorf("expected 'iteration', got '%s'", brief)
 	}
@@ -406,7 +409,7 @@ func TestIsLoop_WithUntilAll(t *testing.T) {
 
 // TestIsLoop_WithWhileMatch tests the isLoop method with whileMatch.
 func TestIsLoop_WithWhileMatch(t *testing.T) {
-	wf := &cfg.Workflow{WhileMatch: map[string]interface{}{"key": "value"}}
+	wf := &cfg.Workflow{WhileMatch: map[string]interface{}{"key": _value}}
 	s := newSession(wf)
 
 	if !s.isLoop() {
@@ -416,7 +419,7 @@ func TestIsLoop_WithWhileMatch(t *testing.T) {
 
 // TestIsLoop_WithUntilMatch tests the isLoop method with untilMatch.
 func TestIsLoop_WithUntilMatch(t *testing.T) {
-	wf := &cfg.Workflow{UntilMatch: map[string]interface{}{"key": "value"}}
+	wf := &cfg.Workflow{UntilMatch: map[string]interface{}{"key": _value}}
 	s := newSession(wf)
 
 	if !s.isLoop() {

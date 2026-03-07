@@ -18,6 +18,8 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/tokenhelper"
 )
 
+const _providerGitHub = "github"
+
 // _GHAppInfo stores the GH App info used for cloning the code.
 var _GHAppInfo map[string]any = nil
 
@@ -93,7 +95,7 @@ func SetupAuth(repo *RepoInfo) transport.AuthMethod {
 	switch {
 	case strings.HasPrefix(repo.Repo, "git@"):
 		auth = GetGitSSHAuth(repo.KeyFile, repo.KeyPassEnv)
-	case repo.TokenSource == "github":
+	case repo.TokenSource == _providerGitHub:
 		if _GHAppInfo == nil || _GHAppInfo["mock"] != nil {
 			newAppInfo := map[string]any{
 				"app_id":          os.Getenv("GH_APP_ID"),

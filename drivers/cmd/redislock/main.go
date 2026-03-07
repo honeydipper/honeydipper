@@ -82,10 +82,7 @@ func (l *Locker) lock(msg *dipper.Message) {
 	client := redisclient.NewClient(l.redisOptions)
 	defer client.Close()
 
-	for {
-		if dipper.Must(client.SetNX(ctx, l.prefix+name, l.nodeID, expire).Result()).(bool) {
-			break
-		}
+	for !dipper.Must(client.SetNX(ctx, l.prefix+name, l.nodeID, expire).Result()).(bool) {
 		select {
 		case <-ctx.Done():
 			return

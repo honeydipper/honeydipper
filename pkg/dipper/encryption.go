@@ -22,7 +22,6 @@ func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
 
 		switch {
 		case strings.HasPrefix(str, "ENC["):
-			//nolint:gomnd
 			parts := strings.SplitN(str[4:len(str)-1], ",", 2)
 			encDriver := parts[0]
 			if encDriver == "deferred" {
@@ -36,7 +35,6 @@ func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
 
 			return string(decrypted), true
 		case strings.HasPrefix(str, "LOOKUP["):
-			//nolint:gomnd
 			parts := strings.SplitN(str[7:len(str)-1], ",", 2)
 			lookupDriver := parts[0]
 			if lookupDriver == "deferred" {

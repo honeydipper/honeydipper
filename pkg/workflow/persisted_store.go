@@ -312,7 +312,7 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message) *Ses
 	dipper.Must(json.Unmarshal(resp, &stack))
 	if len(stack) == 0 {
 		// stop further processing, let global error handler deal with it.
-		s.Logger.Warningf("session %s not found in cache", sessionID)
+		s.Warningf("session %s not found in cache", sessionID)
 		dipper.Must(s.Call("locker", "unlock", map[string]interface{}{
 			"name": key,
 		}))

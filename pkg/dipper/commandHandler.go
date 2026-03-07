@@ -215,7 +215,7 @@ func (p *CommandProvider) Router(msg *Message) {
 		f, ok = p.Commands[method+"|interruptible"]
 		if ok {
 			interruptible = true
-			//nolint:goconst
+
 			msg.Labels["interruptible"] = "true"
 		}
 	}

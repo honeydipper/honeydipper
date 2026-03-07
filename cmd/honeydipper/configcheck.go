@@ -407,7 +407,7 @@ func checkObjectExists(t, name string, m interface{}) {
 func hasLiteral(param string) bool {
 	s := strings.TrimSpace(param)
 
-	return s != "" && s[0] != '$' && !(strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}")) && !strings.HasPrefix(s, ":yaml:")
+	return s != "" && s[0] != '$' && (!strings.HasPrefix(s, "{{") || !strings.HasSuffix(s, "}}")) && !strings.HasPrefix(s, ":yaml:")
 }
 
 func hasInterpolation(param string) bool {

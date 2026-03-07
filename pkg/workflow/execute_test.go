@@ -13,6 +13,8 @@ import (
 	"github.com/op/go-logging"
 )
 
+const _testModule = "test"
+
 // execTestStore implements the Store interface with hooks for inspecting calls.
 type execTestStore struct {
 	lastSentMessages []*dipper.Message
@@ -53,7 +55,7 @@ func (s *execTestStore) CallRaw(feature, method string, params []byte, labelsKV 
 func (s *execTestStore) CallRawNoWait(feature, method string, params []byte, rpcID string, labelsKV ...string) error {
 	return nil
 }
-func (s *execTestStore) GetName() string                                     { return "test" }
+func (s *execTestStore) GetName() string                                     { return _testModule }
 func (s *execTestStore) CallWithMessage(msg *dipper.Message) ([]byte, error) { return nil, nil }
 func (s *execTestStore) CallWithMessageNoWait(msg *dipper.Message) error     { return nil }
 func (s *execTestStore) GetConfig() *config.Config {
@@ -98,7 +100,7 @@ func (s *execTestStore) DumpSessions(cursor string) map[string]any { return nil 
 func (s *execTestStore) Wait()                                     {}
 func (s *execTestStore) GetLogger() *logging.Logger {
 	if dipper.Logger == nil {
-		dipper.GetLogger("test", "ERROR")
+		dipper.GetLogger(_testModule, "ERROR")
 	}
 
 	return dipper.Logger
@@ -108,7 +110,7 @@ func (s *execTestStore) GetLogger() *logging.Logger {
 func makeExecuteSession() *Session {
 	state := SessionStateAction
 	if dipper.Logger == nil {
-		dipper.GetLogger("test", "ERROR")
+		dipper.GetLogger(_testModule, "ERROR")
 	}
 	wg := &sync.WaitGroup{}
 
@@ -234,7 +236,7 @@ func TestTriggerResume(t *testing.T) {
 	s := makeExecuteSession()
 	es := &execTestStore{resumeReturn: true}
 	s.store = es
-	//nolint:goconst
+
 	s.Workflow.Resume = "foo"
 	s.Ctx["resume_message"] = map[string]any{"labels": map[string]string{"a": "b"}}
 

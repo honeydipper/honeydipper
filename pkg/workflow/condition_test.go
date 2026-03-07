@@ -154,14 +154,13 @@ func TestCheckCondition_UnlessAll(t *testing.T) {
 
 func TestCheckCondition_Match(t *testing.T) {
 	// Match: uses CompareAll
-	s := newSession(&cfg.Workflow{Match: map[string]interface{}{"key": "value"}})
-	//nolint:goconst
-	s.Ctx["key"] = "value"
+	s := newSession(&cfg.Workflow{Match: map[string]interface{}{"key": _value}})
+	s.Ctx["key"] = _value
 	if !s.checkCondition() {
 		t.Fatal("expected true when Match succeeds")
 	}
 
-	s = newSession(&cfg.Workflow{Match: map[string]interface{}{"key": "value"}})
+	s = newSession(&cfg.Workflow{Match: map[string]interface{}{"key": _value}})
 	//nolint:goconst
 	s.Ctx["key"] = "other"
 	if s.checkCondition() {
@@ -171,13 +170,13 @@ func TestCheckCondition_Match(t *testing.T) {
 
 func TestCheckCondition_UnlessMatch(t *testing.T) {
 	// UnlessMatch: inverts match result
-	s := newSession(&cfg.Workflow{UnlessMatch: map[string]interface{}{"key": "value"}})
-	s.Ctx["key"] = "value"
+	s := newSession(&cfg.Workflow{UnlessMatch: map[string]interface{}{"key": _value}})
+	s.Ctx["key"] = _value
 	if s.checkCondition() {
 		t.Fatal("expected false when UnlessMatch condition met")
 	}
 
-	s = newSession(&cfg.Workflow{UnlessMatch: map[string]interface{}{"key": "value"}})
+	s = newSession(&cfg.Workflow{UnlessMatch: map[string]interface{}{"key": _value}})
 	s.Ctx["key"] = "other"
 	if !s.checkCondition() {
 		t.Fatal("expected true when UnlessMatch condition not met")
@@ -276,13 +275,13 @@ func TestCheckLoopCondition_UntilAll(t *testing.T) {
 
 func TestCheckLoopCondition_WhileMatch(t *testing.T) {
 	// WhileMatch: interpolate then compare
-	s := newSession(&cfg.Workflow{WhileMatch: map[string]interface{}{"key": "value"}})
-	s.Ctx["key"] = "value"
+	s := newSession(&cfg.Workflow{WhileMatch: map[string]interface{}{"key": _value}})
+	s.Ctx["key"] = _value
 	if !s.checkLoopCondition() {
 		t.Fatal("expected true when WhileMatch succeeds")
 	}
 
-	s = newSession(&cfg.Workflow{WhileMatch: map[string]interface{}{"key": "value"}})
+	s = newSession(&cfg.Workflow{WhileMatch: map[string]interface{}{"key": _value}})
 	s.Ctx["key"] = "other"
 	if s.checkLoopCondition() {
 		t.Fatal("expected false when WhileMatch fails")
@@ -291,13 +290,13 @@ func TestCheckLoopCondition_WhileMatch(t *testing.T) {
 
 func TestCheckLoopCondition_UntilMatch(t *testing.T) {
 	// UntilMatch: interpolate then negate compare
-	s := newSession(&cfg.Workflow{UntilMatch: map[string]interface{}{"key": "value"}})
-	s.Ctx["key"] = "value"
+	s := newSession(&cfg.Workflow{UntilMatch: map[string]interface{}{"key": _value}})
+	s.Ctx["key"] = _value
 	if s.checkLoopCondition() {
 		t.Fatal("expected false when UntilMatch condition met")
 	}
 
-	s = newSession(&cfg.Workflow{UntilMatch: map[string]interface{}{"key": "value"}})
+	s = newSession(&cfg.Workflow{UntilMatch: map[string]interface{}{"key": _value}})
 	s.Ctx["key"] = "other"
 	if !s.checkLoopCondition() {
 		t.Fatal("expected true when UntilMatch condition not met")

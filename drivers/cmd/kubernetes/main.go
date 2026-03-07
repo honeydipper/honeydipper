@@ -314,7 +314,7 @@ func waitForJob(m *dipper.Message) {
 }
 
 func getExistingJob(ctx context.Context, jobSpec *batchv1.Job, jobclient batchv1client.JobInterface) *batchv1.Job {
-	uniqID, ok := jobSpec.ObjectMeta.Labels[LabelHoneydipperUniqueIdentifier]
+	uniqID, ok := jobSpec.Labels[LabelHoneydipperUniqueIdentifier]
 	if !ok {
 		return nil
 	}

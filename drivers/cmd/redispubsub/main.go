@@ -177,6 +177,8 @@ func subscribeOnce(ctx context.Context, topic string, key string, fn func(rpaylo
 		daemon.Go(func() {
 			client := redisclient.NewClient(redisOptions)
 			defer client.Close()
+			// the cancel func is managed asynchorizely outside of the go routine.
+			//nolint:gosec
 			subcriberCtx, cancel := context.WithCancel(context.Background())
 			cancelers[topic] = cancel
 			pubsub := client.PSubscribe(subcriberCtx, topic)

@@ -109,7 +109,7 @@ func NewService(cfg *config.Config, name string) *Service {
 		ready:          make(chan struct{}),
 	}
 	svc.context, svc.cancel = context.WithCancel(context.Background())
-	svc.RPCCallerBase.Init(svc, "rpc", "call")
+	svc.Init(svc, "rpc", "call")
 
 	svc.responders["state:cold"] = []MessageResponder{coldReloadDriverRuntime}
 	svc.responders["state:completed"] = []MessageResponder{handleDriverCompleted}
@@ -444,7 +444,7 @@ func (s *Service) serviceLoop() {
 		func() {
 			s.driverLock.Lock()
 			defer s.driverLock.Unlock()
-			cases = []reflect.SelectCase{}
+			cases = make([]reflect.SelectCase, 0, len(s.driverRuntimes))
 			orderedRuntimes = []*driver.Runtime{}
 			for _, runtime := range s.driverRuntimes {
 				if runtime.State != driver.DriverFailed {
