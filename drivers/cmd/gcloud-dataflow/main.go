@@ -65,7 +65,8 @@ func main() {
 func getDataflowService(ctx context.Context, serviceAccountBytes string) *dataflow.Service {
 	var dataflowService *dataflow.Service
 	if len(serviceAccountBytes) > 0 {
-		dataflowService = dipper.Must(dataflow.NewService(ctx, option.WithCredentialsJSON([]byte(serviceAccountBytes)))).(*dataflow.Service)
+		dataflowService = dipper.Must(dataflow.NewService(ctx, option.WithAuthCredentialsJSON(
+			option.ServiceAccount, []byte(serviceAccountBytes)))).(*dataflow.Service)
 	} else {
 		dataflowService = dipper.Must(dataflow.NewService(ctx)).(*dataflow.Service)
 	}

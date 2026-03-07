@@ -59,7 +59,7 @@ func getGKEService(ctx context.Context, serviceAccountBytes string) (*container.
 		containerService = dipper.Must(
 			container.NewService(
 				ctx,
-				option.WithCredentialsJSON([]byte(serviceAccountBytes)),
+				option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes)),
 			),
 		).(*container.Service)
 		conf := dipper.Must(google.JWTConfigFromJSON([]byte(serviceAccountBytes), "https://www.googleapis.com/auth/cloud-platform")).(*jwt.Config)

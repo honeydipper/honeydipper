@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"google.golang.org/api/option"
 )
@@ -54,7 +54,7 @@ func getPubsubClient(ctx context.Context, serviceAccountBytes, project string) *
 		err    error
 	)
 	if len(serviceAccountBytes) > 0 {
-		clientOption := option.WithCredentialsJSON([]byte(serviceAccountBytes))
+		clientOption := option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes))
 		client, err = pubsub.NewClient(ctx, project, clientOption)
 	} else {
 		client, err = pubsub.NewClient(ctx, project)
@@ -186,7 +186,7 @@ func subscribeAll() {
 					client := getPubsubClient(ctx, serviceAccount, project)
 
 					defer client.Close()
-					sub := client.Subscription(subscriptionName)
+					sub := client.Subscriber(subscriptionName)
 
 					msgFunc := msgHandlerBuilder(config)
 					err := sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {

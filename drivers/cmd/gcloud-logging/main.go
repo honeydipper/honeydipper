@@ -66,7 +66,7 @@ func getGCPLogger(loggerPath string) *logging.Logger {
 		options := []option.ClientOption{}
 		serviceAccount, _ := driver.GetOptionStr("loggers." + loggerPath + ".service_account")
 		if serviceAccount != "" {
-			options = append(options, option.WithCredentialsJSON([]byte(serviceAccount)))
+			options = append(options, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccount)))
 		}
 		client := dipper.Must(logging.NewClient(context.Background(), parent, options...)).(*logging.Client)
 		l = client.Logger(loggerName)

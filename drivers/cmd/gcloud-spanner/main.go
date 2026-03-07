@@ -86,7 +86,7 @@ func backup(m *dipper.Message) {
 		err    error
 	)
 	if len(serviceAccountBytes) > 0 {
-		clientOption := option.WithCredentialsJSON([]byte(serviceAccountBytes))
+		clientOption := option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes))
 		client, err = spannerAdmin.NewDatabaseAdminClient(context.Background(), clientOption)
 	} else {
 		client, err = spannerAdmin.NewDatabaseAdminClient(context.Background())
@@ -137,7 +137,7 @@ func waitForBackup(m *dipper.Message) {
 		err    error
 	)
 	if len(serviceAccountBytes) > 0 {
-		clientOption := option.WithCredentialsJSON([]byte(serviceAccountBytes))
+		clientOption := option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes))
 		client, err = spannerAdmin.NewDatabaseAdminClient(context.Background(), clientOption)
 	} else {
 		client, err = spannerAdmin.NewDatabaseAdminClient(context.Background())

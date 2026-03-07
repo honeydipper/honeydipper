@@ -60,7 +60,7 @@ func query(m *dipper.Message) {
 	defer cancel()
 	var clientOptions []option.ClientOption
 	if len(serviceAccount) > 0 {
-		clientOptions = append(clientOptions, option.WithCredentialsJSON([]byte(serviceAccount)))
+		clientOptions = append(clientOptions, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccount)))
 	}
 
 	// Generate embeddings for the question.
