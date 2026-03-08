@@ -91,7 +91,7 @@ func (s *execTestStore) EmitResult(w *Session)      {}
 func (s *execTestStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
 }
 func (s *execTestStore) StartDynamicSession(spec *dipper.Message, ctx map[string]interface{}) {}
-func (s *execTestStore) ContinueSession(ID string, msg *dipper.Message)                       {}
+func (s *execTestStore) ContinueSession(ID string, msg *dipper.Message, child *Session)       {}
 func (s *execTestStore) ResumeSession(key string, msg *dipper.Message) bool {
 	return s.resumeReturn
 }

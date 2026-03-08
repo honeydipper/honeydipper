@@ -99,7 +99,7 @@ func (s *activateTestStore) StartSession(wf *cfg.Workflow, msg *dipper.Message, 
 
 func (s *activateTestStore) StartDynamicSession(spec *dipper.Message, ctx map[string]interface{}) {}
 
-func (s *activateTestStore) ContinueSession(ID string, msg *dipper.Message) {
+func (s *activateTestStore) ContinueSession(ID string, msg *dipper.Message, child *Session) {
 	s.continueCount++
 	s.lastContinuedMsg = msg
 }
@@ -382,6 +382,12 @@ func TestProgress_UpdateState(t *testing.T) {
 		Exported: []map[string]interface{}{
 			{"key": "value"},
 		},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"sessionID": "child",
+				"cursor":    "cursor",
+			},
+		},
 		Ctx:     map[string]interface{}{},
 		threads: &sync.WaitGroup{},
 	}
@@ -487,6 +493,12 @@ func TestProcessUpdateState_MergesExportedData(t *testing.T) {
 			{"new": "data"},
 			{"more": "stuff"},
 		},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"sessionID": "child",
+				"cursor":    "cursor",
+			},
+		},
 		Ctx:     map[string]interface{}{},
 		threads: &sync.WaitGroup{},
 	}
@@ -515,6 +527,12 @@ func TestProcessUpdateState_WithElseBranch(t *testing.T) {
 	s.child = &Session{
 		Exported: []map[string]interface{}{
 			{"key": "value"},
+		},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"sessionID": "child",
+				"cursor":    "cursor",
+			},
 		},
 		Ctx:     map[string]interface{}{},
 		threads: &sync.WaitGroup{},

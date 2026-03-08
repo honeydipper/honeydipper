@@ -188,9 +188,9 @@ func (s *PersistedStore) StartDynamicSession(spec *dipper.Message, ctx map[strin
 }
 
 // ContinueSession continues a session with given dipper message.
-func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message) {
+func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message, child *Session) {
 	defer dipper.SafeExitOnError("[workflow] error when loading workflow session %s", sessionID)
-	w := s.loadSession(sessionID, msg)
+	w := s.loadSession(sessionID, msg, child)
 	if w == nil {
 		return
 	}
@@ -225,7 +225,7 @@ func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
 		msg.Labels["status"] = SessionStatusSuccess
 	}
 
-	daemon.Go(func() { s.ContinueSession(sessionID, msg) })
+	daemon.Go(func() { s.ContinueSession(sessionID, msg, nil) })
 
 	return true
 }
@@ -248,7 +248,6 @@ func (s *PersistedStore) persist(w *Session) {
 	var ttl time.Duration = 0
 	if root.State == SessionStateDone {
 		ttl = time.Hour * 24
-		w.Exported = nil
 	}
 
 	current := root
@@ -297,7 +296,7 @@ func (s *PersistedStore) persist(w *Session) {
 }
 
 // loadSession loads the session from the cache.
-func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message) *Session {
+func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, child *Session) *Session {
 	key := StoreSessionPrefix + sessionID
 
 	dipper.Must(s.Call("locker", "lock", map[string]interface{}{
@@ -321,7 +320,12 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message) *Ses
 	}
 	tail := stack[len(stack)-1]
 	w := stack[0]
-	s.Infof("session [%s.%s] loaded from cache", w.ID, tail.CurrentMsg.Labels["cursor"])
+	if child != nil {
+		s.Infof("session [%s.%s] loaded from cache return from [%s.%s]", w.ID, tail.CurrentMsg.Labels["cursor"],
+			child.ID, child.CurrentMsg.Labels["cursor"])
+	} else {
+		s.Infof("session [%s.%s] loaded from cache", w.ID, tail.CurrentMsg.Labels["cursor"])
+	}
 	if tail.CurrentMsg.Labels["cursor"] != msg.Labels["cursor"] {
 		s.Warningf("session %s ignoring mismatched cursor: expected %s, got %s",
 			sessionID,
@@ -349,6 +353,7 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message) *Ses
 		current = w
 	}
 	current.CurrentMsg = msg
+	current.child = child
 
 	return stack[0]
 }

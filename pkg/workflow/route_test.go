@@ -55,7 +55,7 @@ func (t *testStore) EmitResult(w *Session)      {}
 func (t *testStore) StartSession(wf *cfg.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
 }
 func (t *testStore) StartDynamicSession(spec *dipper.Message, ctx map[string]interface{}) {}
-func (t *testStore) ContinueSession(ID string, msg *dipper.Message)                       {}
+func (t *testStore) ContinueSession(ID string, msg *dipper.Message, child *Session)       {}
 func (t *testStore) ResumeSession(key string, msg *dipper.Message) bool                   { return false }
 func (t *testStore) GetNumSessions(getAll bool) int                                       { return 0 }
 func (t *testStore) DumpSessions(cursor string) map[string]any                            { return nil }

@@ -64,7 +64,7 @@ type Store interface {
 	// StartDynamicSession starts a workflow constructed from a message payload.
 	StartDynamicSession(spec *dipper.Message, ctx map[string]interface{})
 	// ContinueSession continues a session with given dipper message.
-	ContinueSession(ID string, msg *dipper.Message)
+	ContinueSession(ID string, msg *dipper.Message, child *Session)
 	// ResumeSession resumes a session that is in waiting state.
 	ResumeSession(key string, msg *dipper.Message) bool
 

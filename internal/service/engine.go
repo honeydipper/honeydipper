@@ -137,7 +137,7 @@ func continueSession(d *driver.Runtime, msg *dipper.Message) {
 		dipper.Logger.Panic("[enigne] command return without session id")
 	}
 	dipper.Logger.Infof("[engine] command return for session %s", sessionID)
-	go sessionStore.ContinueSession(sessionID, msg)
+	go sessionStore.ContinueSession(sessionID, msg, nil)
 }
 
 // buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable.

@@ -148,7 +148,7 @@ func (w *Session) activate() {
 			w.progress()
 		})
 
-		if w.child != nil && (w.child.pending || w.child.CurrentHook != "") {
+		if w.child != nil && w.child.State != SessionStateDone && (w.child.pending || w.child.CurrentHook != "") {
 			w.activateChild()
 			if w.child.pending || w.child.CurrentHook != "" {
 				w.pending = true
@@ -266,6 +266,14 @@ func (w *Session) processUpdateState() {
 		}
 		w.processNoExport(e)
 		if len(e) > 0 {
+			w.store.GetLogger().Debugf("session [%s.%s] depth %d from [%s.%s] depth %d exported: %+v",
+				w.ID,
+				w.CurrentMsg.Labels["cursor"],
+				w.depth,
+				w.child.ID,
+				w.child.CurrentMsg.Labels["cursor"],
+				w.child.depth,
+				e)
 			w.Exported = append(w.Exported, e)
 		}
 	}
@@ -332,7 +340,7 @@ func (w *Session) resume() {
 		}
 		msg.Labels["cursor"] = w.Parent[pos+1:]
 		daemon.Go(func() {
-			w.store.ContinueSession(parentID, &msg)
+			w.store.ContinueSession(parentID, &msg, w)
 		})
 	} else {
 		daemon.Go(func() {

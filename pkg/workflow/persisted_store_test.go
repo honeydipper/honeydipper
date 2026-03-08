@@ -240,14 +240,14 @@ func Test_loadSession_mismatch_and_happy(t *testing.T) {
 	fh.resp["cache:lrange:"+StoreSessionPrefix+"sid"] = buf
 	// mismatched cursor
 	msg := &dipper.Message{Labels: map[string]string{"cursor": "X"}}
-	res := ps.loadSession("sid", msg)
+	res := ps.loadSession("sid", msg, nil)
 	if res != nil {
 		t.Fatalf("expected nil due to cursor mismatch, got %+v", res)
 	}
 
 	// matched cursor
 	msg.Labels["cursor"] = "1"
-	res2 := ps.loadSession("sid", msg)
+	res2 := ps.loadSession("sid", msg, nil)
 	if res2 == nil {
 		t.Fatalf("expected a loaded session, got nil")
 	}
@@ -410,7 +410,7 @@ func TestLoadSession_EmptyStack(t *testing.T) {
 	fh.resp["cache:lrange:"+StoreSessionPrefix+"emptysid"] = []byte("[]")
 
 	msg := &dipper.Message{Labels: map[string]string{"cursor": "0"}}
-	res := ps.loadSession("emptysid", msg)
+	res := ps.loadSession("emptysid", msg, nil)
 	if res != nil {
 		t.Fatalf("expected nil for empty stack, got %+v", res)
 	}
@@ -472,7 +472,7 @@ func TestContinueSession_Basic(t *testing.T) {
 	msg := &dipper.Message{Labels: map[string]string{"cursor": "0"}}
 
 	fh.calls = nil
-	ps.ContinueSession("csid", msg)
+	ps.ContinueSession("csid", msg, nil)
 
 	// At minimum, should have attempted to load the session
 	if len(fh.calls) == 0 {

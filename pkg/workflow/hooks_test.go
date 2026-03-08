@@ -93,7 +93,7 @@ func (s *hookTrackingStore) StartSession(wf *cfg.Workflow, msg *dipper.Message, 
 
 func (s *hookTrackingStore) StartDynamicSession(spec *dipper.Message, ctx map[string]interface{}) {}
 
-func (s *hookTrackingStore) ContinueSession(ID string, msg *dipper.Message) {}
+func (s *hookTrackingStore) ContinueSession(ID string, msg *dipper.Message, child *Session) {}
 
 func (s *hookTrackingStore) ResumeSession(key string, msg *dipper.Message) bool {
 	return false
