@@ -14,7 +14,6 @@ import (
 // GetDecryptFunc returns a function used in recursive decryption.
 func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
 	return func(key string, val interface{}) (interface{}, bool) {
-		Logger.Debugf("[%s] decrypting %s", rpc.GetName(), key)
 		str, ok := val.(string)
 		if !ok {
 			return nil, false
@@ -22,6 +21,7 @@ func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
 
 		switch {
 		case strings.HasPrefix(str, "ENC["):
+			Logger.Debugf("[%s] decrypting %s", rpc.GetName(), key)
 			parts := strings.SplitN(str[4:len(str)-1], ",", 2)
 			encDriver := parts[0]
 			if encDriver == "deferred" {
@@ -31,16 +31,17 @@ func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
 			if err != nil {
 				Logger.Panicf("encrypted data should be base64 encoded")
 			}
-			decrypted, _ := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
+			decrypted := Must(rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)).([]byte)
 
 			return string(decrypted), true
 		case strings.HasPrefix(str, "LOOKUP["):
+			Logger.Debugf("[%s] looking up %s", rpc.GetName(), key)
 			parts := strings.SplitN(str[7:len(str)-1], ",", 2)
 			lookupDriver := parts[0]
 			if lookupDriver == "deferred" {
 				return "LOOKUP[" + parts[1] + "]", true
 			}
-			lookupValue, _ := rpc.CallRaw("driver:"+lookupDriver, "lookup", []byte(parts[1]))
+			lookupValue := Must(rpc.CallRaw("driver:"+lookupDriver, "lookup", []byte(parts[1]))).([]byte)
 
 			return string(lookupValue), true
 		}

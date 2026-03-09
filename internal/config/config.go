@@ -287,12 +287,12 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 	processor = func(name string, val interface{}) (interface{}, bool) {
 		switch v := val.(type) {
 		case string:
-			nv, ok := f(name, val)
-			if stage {
-				return nv, ok
+			if !stage {
+				return nil, false
 			}
 			// only staged data can be changed.
-			return nil, false
+
+			return f(name, val)
 		case Rule:
 			dipper.Recursive(&v.Do, processor)
 			dipper.Recursive(&v.When, processor)
@@ -336,11 +336,6 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 // RecursiveStaged recursively process staged data.
 func (c *Config) RecursiveStaged(f dipper.ItemProcessor) {
 	c.recursive(f, true)
-}
-
-// Recursive recursively process readonly config data.
-func (c *Config) Recursive(f dipper.ItemProcessor) {
-	c.recursive(f, false)
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
