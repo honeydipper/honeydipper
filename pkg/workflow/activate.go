@@ -135,7 +135,6 @@ func (w *Session) activateChild() {
 func (w *Session) activate() {
 	w.threads.Add(1)
 	go func() {
-		defer w.threads.Done()
 		defer dipper.SafeExitOnError("[%s] panic progressing through state [%s]", w.ID, SessionStates[w.State], func(r any) {
 			w.pending = false
 			w.CurrentMsg.Labels["status"] = SessionStatusError
@@ -147,6 +146,7 @@ func (w *Session) activate() {
 			defer dipper.SafeExitOnError("[%s] panic exporting error", w.ID)
 			w.progress()
 		})
+		defer w.threads.Done()
 
 		if w.child != nil && w.child.State != SessionStateDone && (w.child.pending || w.child.CurrentHook != "") {
 			w.activateChild()
@@ -344,6 +344,7 @@ func (w *Session) resume() {
 		})
 	} else {
 		daemon.Go(func() {
+			dipper.SafeExitOnError("[%s.%s] failed to emit result.", w.ID, w.CurrentMsg.Labels["cursor"])
 			w.store.EmitResult(w)
 		})
 	}

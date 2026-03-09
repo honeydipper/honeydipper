@@ -100,6 +100,7 @@ func (s *PersistedStore) ActivateSession(w *Session) {
 	if w.parent == nil {
 		s.Live.Add(1)
 		daemon.Go(func() {
+			dipper.SafeExitOnError("[%s] panic when waiting for the session.", w.ID)
 			defer s.Live.Done()
 			defer s.persist(w)
 			w.Wait()
