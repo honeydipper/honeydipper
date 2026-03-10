@@ -27,6 +27,7 @@ func (w *Session) processNoExport(exported map[string]interface{}) {
 		delete(exported, key)
 		delete(exported, key+"-")
 		delete(exported, key+"+")
+		delete(exported, key+"*")
 	}
 }
 

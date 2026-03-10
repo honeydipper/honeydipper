@@ -53,15 +53,12 @@ func (h *WorkflowHelper) GetConfig() *config.Config {
 // StartEngine Starts the engine service.
 func StartEngine(cfg *config.Config) {
 	engine = NewService(cfg, "engine")
-	helper := &WorkflowHelper{engine: engine, RPCCaller: engine}
-	sessionStore = workflow.NewStore(helper)
 
 	engine.ServiceReload = buildRuleMap
 	engine.EmitMetrics = engineMetrics
 	engine.addResponder("eventbus:message", createSessions)
 	engine.addResponder("eventbus:return", continueSession)
 	engine.addResponder("scheduler:session", continueSession)
-	engine.Drain = sessionStore.Wait
 	setupEngineAPIs()
 
 	engine.start()
@@ -88,6 +85,7 @@ func StartEngine(cfg *config.Config) {
 
 func createSessions(d *driver.Runtime, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
+	<-engine.Ready()
 	msg = dipper.DeserializePayload(msg)
 
 	if _, ok := dipper.GetMapData(msg.Payload, "do"); ok {
@@ -131,6 +129,7 @@ func createSessions(d *driver.Runtime, msg *dipper.Message) {
 
 func continueSession(d *driver.Runtime, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[engine] continue processing rules")
+	<-engine.Ready()
 	msg = dipper.DeserializePayload(msg)
 	sessionID, ok := msg.Labels["sessionID"]
 	if !ok {
@@ -142,6 +141,12 @@ func continueSession(d *driver.Runtime, msg *dipper.Message) {
 
 // buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable.
 func buildRuleMap(cfg *config.Config) {
+	if sessionStore == nil {
+		helper := &WorkflowHelper{engine: engine, RPCCaller: engine}
+		sessionStore = workflow.NewStore(helper)
+		engine.Drain = sessionStore.Stop
+	}
+
 	ruleMapLock.Lock()
 	defer ruleMapLock.Unlock()
 	ruleMap = map[string][]*CollapsedRule{}
@@ -168,5 +173,7 @@ func buildRuleMap(cfg *config.Config) {
 }
 
 func engineMetrics() {
-	engine.GaugeSet("honey.honeydipper.engine.sessions", strconv.Itoa(sessionStore.GetNumSessions(false)), []string{})
+	if sessionStore != nil {
+		engine.GaugeSet("honey.honeydipper.engine.sessions", strconv.Itoa(sessionStore.GetNumSessions(false)), []string{})
+	}
 }

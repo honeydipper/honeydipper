@@ -217,6 +217,8 @@ func (w *Session) interpolateWorkflow() {
 	ret.CallFunction = dipper.InterpolateStr(v.CallFunction, envData)
 	ret.CallDriver = dipper.InterpolateStr(v.CallDriver, envData)
 	ret.Resume = dipper.InterpolateStr(v.Resume, envData)
+	ret.CacheKey = dipper.InterpolateStr(v.CacheKey, envData)
+	ret.CacheTTL = dipper.InterpolateStr(v.CacheTTL, envData)
 
 	ret.Iterate = dipper.Interpolate(v.Iterate, envData)
 	if ret.Iterate == nil && v.Iterate != nil {

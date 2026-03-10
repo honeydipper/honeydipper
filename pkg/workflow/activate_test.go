@@ -16,6 +16,7 @@ import (
 
 	cfg "github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/op/go-logging"
 )
 
@@ -118,6 +119,8 @@ func (s *activateTestStore) DumpSessions(cursor string) map[string]any {
 
 func (s *activateTestStore) Wait() {}
 
+func (s *activateTestStore) Stop() {}
+
 func (s *activateTestStore) GetLogger() *logging.Logger {
 	if s.logger == nil {
 		if dipper.Logger == nil {
@@ -127,6 +130,10 @@ func (s *activateTestStore) GetLogger() *logging.Logger {
 	}
 
 	return s.logger
+}
+
+func (s *activateTestStore) GetCache() *ttlcache.Cache[string, map[string]any] {
+	return nil
 }
 
 // makeActivateSession creates a session suitable for activate tests.

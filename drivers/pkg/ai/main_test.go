@@ -1,12 +1,14 @@
 package ai
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"testing"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/workflow"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -479,7 +481,7 @@ func TestChat(t *testing.T) {
 				Channel: channelRPC,
 				Subject: "return",
 				IsRaw:   true,
-				Payload: []byte(`{"state": 29, "CurrentMsg": {"labels": {"eventID": "1010", "status": "success"}}, "Ctx": {"_output": {"test": "result"}}, "Workflow": {}}`), // fake session
+				Payload: []byte(fmt.Sprintf(`{"state": %d, "CurrentMsg": {"labels": {"eventID": "1010", "status": "success"}}, "Ctx": {"_output": {"test": "result"}}, "Workflow": {}}`, workflow.SessionStateDone)), // fake session
 			},
 		},
 		{

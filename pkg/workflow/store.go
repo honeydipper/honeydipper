@@ -11,9 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/op/go-logging"
 )
 
@@ -74,6 +76,11 @@ type Store interface {
 	DumpSessions(cursor string) map[string]any
 	// Wait waits for a session to be done.
 	Wait()
+	// Stop stops the store.
+	Stop()
+
+	// GetCache returns a cache for storing data in memory.
+	GetCache() *ttlcache.Cache[string, map[string]any]
 
 	// GetLogger returns the logger  used by the session store.
 	GetLogger() *logging.Logger
@@ -86,6 +93,14 @@ func NewStore(helper StoreHelper) Store {
 		Logger:      dipper.GetLogger("workflow", "INFO"),
 		storeID:     dipper.GetIP(),
 		idLock:      &sync.Mutex{},
+	}
+
+	enableMemCache, _ := dipper.GetMapDataBool(helper.GetConfig().DataSet.Drivers, "daemon.workflow.enable_memcache")
+	if enableMemCache {
+		s.cache = ttlcache.New(
+			ttlcache.WithTTL[string, map[string]any](time.Hour),
+		)
+		s.cache.Start()
 	}
 
 	return s

@@ -103,6 +103,9 @@ type Workflow struct {
 	Cases   map[string]interface{}
 	Default interface{}
 
+	CacheKey string `json:"cache_key" mapstructure:"cache_key"`
+	CacheTTL string `json:"cache_ttl" mapstructure:"cache_ttl"`
+
 	Export          map[string]interface{}
 	ExportOnSuccess map[string]interface{} `json:"export_on_success" mapstructure:"export_on_success"`
 	ExportOnFailure map[string]interface{} `json:"export_on_failure" mapstructure:"export_on_failure"`

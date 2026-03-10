@@ -13,6 +13,8 @@ func (w *Session) determineNextState() int {
 	switch w.State {
 	case SessionStateCheckCondition:
 		return w.routeCheckConditionState()
+	case SessionStateCheckCache:
+		return w.routeCheckCacheState()
 	case SessionStateCheckLoopCondition:
 		return w.routeCheckLoopConditionState()
 	case SessionStateElse:
@@ -41,6 +43,8 @@ func (w *Session) determineNextState() int {
 		return w.routeEndRoundState()
 	case SessionStateExport:
 		return w.routeExportState()
+	case SessionStateSaveCache:
+		return SessionStateSuccess
 	case SessionStateFailure, SessionStateError, SessionStateSuccess:
 		return SessionStateDone
 	default:
@@ -56,7 +60,22 @@ func (w *Session) routeCheckConditionState() int {
 		return SessionStateElse
 	case !meet:
 		return SessionStateDone
+	case w.Workflow.CacheKey != "":
+		return SessionStateCheckCache
 	case w.isLoop():
+		return SessionStateCheckLoopCondition
+	}
+
+	return SessionStateCheckIteration
+}
+
+// routeCheckCacheState handles cache-related state transitions.
+func (w *Session) routeCheckCacheState() int {
+	if _, ok := w.CurrentMsg.Labels[LabelFromCache]; ok {
+		return SessionStateDone
+	}
+
+	if w.isLoop() {
 		return SessionStateCheckLoopCondition
 	}
 
@@ -66,7 +85,11 @@ func (w *Session) routeCheckConditionState() int {
 // routeCheckLoopConditionState handles loop condition evaluation and routing.
 func (w *Session) routeCheckLoopConditionState() int {
 	if !w.checkLoopCondition() {
-		return SessionStateElse
+		if w.LoopCount == 0 {
+			return SessionStateElse
+		}
+
+		return SessionStateExport
 	}
 
 	return SessionStateFirstRound
@@ -217,6 +240,9 @@ func (w *Session) routeExportState() int {
 	}
 	if w.CurrentMsg.Labels["status"] == SessionStatusError {
 		return SessionStateError
+	}
+	if w.Workflow.CacheKey != "" {
+		return SessionStateSaveCache
 	}
 
 	return SessionStateSuccess

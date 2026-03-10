@@ -10,6 +10,7 @@ import (
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/op/go-logging"
 )
 
@@ -104,6 +105,10 @@ func (s *execTestStore) GetLogger() *logging.Logger {
 	}
 
 	return dipper.Logger
+}
+func (s *execTestStore) Stop() {}
+func (s *execTestStore) GetCache() *ttlcache.Cache[string, map[string]any] {
+	return nil
 }
 
 // makeExecuteSession builds a basic session ready for execute tests.

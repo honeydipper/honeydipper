@@ -15,6 +15,7 @@ import (
 
 	cfg "github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/op/go-logging"
 )
 
@@ -115,6 +116,12 @@ func (s *hookTrackingStore) GetLogger() *logging.Logger {
 	}
 
 	return dipper.Logger
+}
+
+func (s *hookTrackingStore) Stop() {}
+
+func (s *hookTrackingStore) GetCache() *ttlcache.Cache[string, map[string]any] {
+	return nil
 }
 
 // makeHookSession creates a session suitable for testing hooks.

@@ -37,7 +37,7 @@ func (d *dummyHelper) CallRawNoWait(feature, method string, params []byte, rpcID
 func (d *dummyHelper) GetName() string                                     { return "" }
 func (d *dummyHelper) CallWithMessage(msg *dipper.Message) ([]byte, error) { return nil, nil }
 func (d *dummyHelper) CallWithMessageNoWait(msg *dipper.Message) error     { return nil }
-func (d *dummyHelper) GetConfig() *config.Config                           { return &config.Config{} }
+func (d *dummyHelper) GetConfig() *config.Config                           { return &config.Config{DataSet: &config.DataSet{}} }
 func (d *dummyHelper) SendMessage(msg *dipper.Message)                     {}
 
 // sequenceCaller allows returning a pre-cooked sequence of results/errors.  Each

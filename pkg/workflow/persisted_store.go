@@ -17,6 +17,7 @@ import (
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/internal/daemon"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/mitchellh/mapstructure"
 	"github.com/op/go-logging"
 )
@@ -35,6 +36,8 @@ type PersistedStore struct {
 	maxID   int
 	idLock  sync.Locker
 	storeID string
+
+	cache *ttlcache.Cache[string, map[string]any]
 }
 
 // CreateSession creates and initializes a workflow session.
@@ -451,4 +454,17 @@ func (s *PersistedStore) DumpSessions(cursor string) map[string]any {
 // Wait blocks until all sessions are done.
 func (s *PersistedStore) Wait() {
 	s.Live.Wait()
+}
+
+// Stop blocks until all sessions are done and shut down the cache.
+func (s *PersistedStore) Stop() {
+	s.Wait()
+	if s.cache != nil {
+		s.cache.Stop()
+	}
+}
+
+// GetCache returns the cache instance used by the session store.
+func (s *PersistedStore) GetCache() *ttlcache.Cache[string, map[string]any] {
+	return s.cache
 }

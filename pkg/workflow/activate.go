@@ -23,14 +23,16 @@ const (
 	SessionStateInit = iota
 	// SessionStateCheckCondition means the session is checking the conditions.
 	SessionStateCheckCondition
+	// SessionStateElse represents the state when condition is not met, the alternative branch is being executed.
+	SessionStateElse
+	// SessionCheckCache checks the cache to see if results are available already.
+	SessionStateCheckCache
 	// SessionCheckLoopCondition means the session is checking the loop condition.
 	SessionStateCheckLoopCondition
 	// SessionStateFirstRound means the session is starting the first round of the loop.
 	SessionStateFirstRound
 	// SessionStateNextRound means the session is starting the next round of the loop.
 	SessionStateNextRound
-	// SessionStateElse represents the state when condition is not met, the alternative branch is being executed.
-	SessionStateElse
 	// SessionStateCheckIteration means the session is checking the iteration.
 	SessionStateCheckIteration
 	// SessionStateFirstItem means the session is starting the first item of the iteration.
@@ -75,6 +77,8 @@ const (
 	SessionStateFailure
 	// SessionStateError represents the state when the session has completed with error.
 	SessionStateError
+	// SessionStateSaveCache saves the exported data to cache.
+	SessionStateSaveCache
 	// SessionStateSuccess represents the state when the session has completed successfully.
 	SessionStateSuccess
 	// SessionStateDone represents the state when the session has fully completed.
@@ -86,6 +90,7 @@ var SessionStates = []string{
 	"init",
 	"check-condition",
 	"else",
+	"check-cache",
 	"check-loop-condition",
 	"first-round",
 	"next-round",
@@ -111,6 +116,7 @@ var SessionStates = []string{
 	"export",
 	"failure",
 	"error",
+	"save-cache",
 	"success",
 	"done",
 }
@@ -189,6 +195,8 @@ func (w *Session) progress() {
 	switch w.State {
 	case SessionStateElse:
 		w.processElseState()
+	case SessionStateCheckCache:
+		w.processCheckCacheState()
 	case SessionStateNextItem:
 		w.setPerforming("processing next iteration item")
 		if w.Workflow.Iterate != nil {
@@ -219,6 +227,8 @@ func (w *Session) progress() {
 		}
 
 		w.processWorkflowExport()
+	case SessionStateSaveCache:
+		w.processSaveCacheState()
 	default:
 		w.setPerforming("processing state: " + SessionStates[w.State])
 	}
@@ -239,6 +249,10 @@ func (w *Session) progress() {
 func (w *Session) processElseState() {
 	w.setPerforming("executing else branch")
 	dipper.Must(mapstructure.Decode(w.Workflow.Else, &w.ElseBranch))
+	if w.ElseBranch == nil {
+		return
+	}
+
 	w.child = w.store.CreateChildSession(w, w.ElseBranch, w.CurrentMsg)
 	w.store.ActivateSession(w.child)
 

@@ -15,6 +15,7 @@ import (
 
 	cfg "github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/op/go-logging"
 	"golang.org/x/exp/slices"
 )
@@ -77,6 +78,10 @@ func (s *customStore) GetLogger() *logging.Logger {
 	}
 
 	return s.logger
+}
+func (s *customStore) Stop() {}
+func (s *customStore) GetCache() *ttlcache.Cache[string, map[string]any] {
+	return nil
 }
 
 // helper for building minimal session via NewSession.

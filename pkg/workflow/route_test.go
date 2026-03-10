@@ -10,6 +10,7 @@ import (
 
 	cfg "github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/op/go-logging"
 )
 
@@ -61,6 +62,10 @@ func (t *testStore) GetNumSessions(getAll bool) int                             
 func (t *testStore) DumpSessions(cursor string) map[string]any                            { return nil }
 func (t *testStore) Wait()                                                                {}
 func (t *testStore) GetLogger() *logging.Logger                                           { return dipper.GetLogger(_testModule, "ERROR") }
+func (s *testStore) Stop()                                                                {}
+func (s *testStore) GetCache() *ttlcache.Cache[string, map[string]any] {
+	return nil
+}
 
 func newSession(wf *cfg.Workflow) *Session {
 	return &Session{
