@@ -10,10 +10,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"text/template"
 	"time"
 
+	"cuelang.org/go/cue/ast"
+	"cuelang.org/go/cue/cuecontext"
+	cueerrors "cuelang.org/go/cue/errors"
+	cueyaml "cuelang.org/go/encoding/yaml"
 	"github.com/Masterminds/sprig/v3"
 	"github.com/ghodss/yaml"
 )
@@ -25,15 +30,28 @@ var ErrInterpolationError = errors.New("config error")
 var FuncMap = template.FuncMap{
 	"fromPath": MustGetMapData,
 	"now":      time.Now,
-	"duration": time.ParseDuration,
 	"ISO8601":  func(t time.Time) string { return t.Format(time.RFC3339) },
-	"toYaml": func(v interface{}) string {
-		s, err := yaml.Marshal(v)
-		if err != nil {
-			panic(err)
+	"toYaml":   func(v interface{}) string { return string(Must(yaml.Marshal(v)).([]byte)) },
+
+	"cue_validate_error": func(schema, name string, content any) string {
+		cctx := cuecontext.New()
+		s := cctx.CompileString(schema)
+		if e := s.Validate(); e != nil {
+			return fmt.Sprintf("schema: %s", cueerrors.Details(e, nil))
+		}
+		if str, ok := content.(string); ok {
+			c := cctx.BuildExpr(Must(cueyaml.NewDecoder(name, strings.NewReader(str)).Extract()).(ast.Expr))
+			if e := s.Unify(c).Validate(); e != nil {
+				return fmt.Sprintf("%s: %s", name, cueerrors.Details(e, nil))
+			}
+		} else {
+			c := cctx.Encode(content)
+			if e := s.Unify(c).Validate(); e != nil {
+				return fmt.Sprintf("%s: %s", name, cueerrors.Details(e, nil))
+			}
 		}
 
-		return string(s)
+		return ""
 	},
 }
 
@@ -59,6 +77,12 @@ func InterpolateGoTemplate(isLoading bool, title string, pattern string, data in
 		var ret interface{}
 		useRet := false
 		returnFuncMap := template.FuncMap{
+			"duration": func(s string) string {
+				ret = Must(time.ParseDuration(s)).(time.Duration)
+				useRet = true
+
+				return ""
+			},
 			"return": func(v interface{}) string {
 				useRet = true
 				ret = v
@@ -128,7 +152,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 
 	for _, key := range keys {
 		ret, _ := GetMapData(data, key)
-		if ret != nil {
+		if rv := reflect.ValueOf(ret); rv.IsValid() && !rv.IsZero() {
 			if strings.HasPrefix(key, "sysData.") {
 				return Interpolate(ret, data)
 			}

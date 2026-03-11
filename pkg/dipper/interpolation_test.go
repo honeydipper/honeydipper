@@ -12,6 +12,7 @@ package dipper
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -81,4 +82,64 @@ func TestInterpolateGoTemplate(t *testing.T) {
 	assert.Equal(t, "test", InterpolateGoTemplate(true, "test.yml", "{% .env.TEST_ENV %}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}).(*bytes.Buffer).String(), "should interpolate {%%} in loading time")
 	assert.Equal(t, true, InterpolateGoTemplate(false, "go", "{{ return true }}", map[string]interface{}{}), "should return a boolean type")
 	assert.Equal(t, map[string]interface{}{"foo": "bar"}, InterpolateGoTemplate(false, "go", "{{ dict \"foo\" \"bar\" | return }}", map[string]interface{}{}), "should return a map type")
+}
+
+func TestFuncMap_FromPath(t *testing.T) {
+	data := map[string]interface{}{
+		"nested": map[string]interface{}{
+			"key": "value",
+		},
+	}
+	result := InterpolateStr(`{{ fromPath . "nested.key" }}`, data)
+	assert.Equal(t, "value", result, "fromPath should extract nested value")
+}
+
+func TestFuncMap_Now(t *testing.T) {
+	result := InterpolateGoTemplate(false, "test", "{{ now | ISO8601 }}", map[string]interface{}{})
+	assert.NotEmpty(t, result.(*bytes.Buffer).String(), "now should return current time")
+}
+
+func TestFuncMap_Duration(t *testing.T) {
+	result := InterpolateGoTemplate(false, "test", `{{ duration "1h" }}`, map[string]interface{}{})
+	assert.Equal(t, time.Duration(3600000000000), result.(time.Duration), "duration should parse duration string")
+}
+
+func TestFuncMap_ISO8601(t *testing.T) {
+	data := map[string]interface{}{
+		"time": "2024-01-15T10:30:00Z",
+	}
+	result := InterpolateStr("{{ now | ISO8601 }}", data)
+	assert.Contains(t, result, "T", "ISO8601 should format time in RFC3339")
+	assert.Contains(t, result, ":", "ISO8601 should include time separators")
+}
+
+func TestFuncMap_ToYaml(t *testing.T) {
+	data := map[string]interface{}{
+		"obj": map[string]interface{}{
+			"key": "value",
+			"num": 42,
+		},
+	}
+	result := InterpolateStr("{{ toYaml .obj }}", data)
+	assert.Contains(t, result, "key: value", "toYaml should convert to YAML")
+	assert.Contains(t, result, "num: 42", "toYaml should include all fields")
+}
+
+func TestFuncMap_CueValidateError(t *testing.T) {
+	if Logger == nil {
+		GetLogger("test", "ERROR")
+	}
+	schema := `{name: string, age: int}`
+
+	result := InterpolateGoTemplate(false, "test", `{{ cue_validate_error .schema "test" .data }}`, map[string]interface{}{
+		"schema": schema,
+		"data":   map[string]interface{}{"name": "John", "age": 30},
+	})
+	assert.Equal(t, "", result.(*bytes.Buffer).String(), "cue_validate_error should return empty string for valid data")
+
+	result = InterpolateGoTemplate(false, "test", `{{ cue_validate_error .schema "test" .data }}`, map[string]interface{}{
+		"schema": schema,
+		"data":   map[string]interface{}{"name": "John", "age": "thirty"},
+	})
+	assert.NotEqual(t, "", result.(*bytes.Buffer).String(), "cue_validate_error should return error for invalid data")
 }

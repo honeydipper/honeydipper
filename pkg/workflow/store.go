@@ -100,7 +100,7 @@ func NewStore(helper StoreHelper) Store {
 		s.cache = ttlcache.New(
 			ttlcache.WithTTL[string, map[string]any](time.Hour),
 		)
-		s.cache.Start()
+		go s.cache.Start()
 	}
 
 	return s
