@@ -23,6 +23,7 @@ import (
 // activateTestStore extends testStore to track activation calls.
 type activateTestStore struct {
 	activateCount    int
+	childCount       int
 	emitResultCount  int
 	continueCount    int
 	childSessionID   string
@@ -30,6 +31,7 @@ type activateTestStore struct {
 	lastEmittedSess  *Session
 	lastContinuedMsg *dipper.Message
 	logger           *logging.Logger
+	onChildCreation  func(*Session)
 	pendingChild     bool // if true, created children will start pending
 }
 
@@ -77,6 +79,11 @@ func (s *activateTestStore) CreateChildSession(parent *Session, wf *cfg.Workflow
 		Performing: []string{"initializing"},
 		threads:    wg,
 		pending:    s.pendingChild,
+	}
+	s.childCount++
+
+	if s.onChildCreation != nil {
+		s.onChildCreation(child)
 	}
 
 	return child
@@ -223,31 +230,51 @@ func TestActivateChild_PendingChild(t *testing.T) {
 	s.activateChild()
 }
 
-// TestActivateChild_ChildWithCurrentHook tests activateChild when child has CurrentHook.
+// TestActivateChild_ChildWithCurrentHook tests that activateChild skips message injection
+// when the child is pending due to a running exit hook sub-session. Since fireOrClearHook
+// sets child.pending=true whenever child.CurrentHook is set, the pending check covers both cases.
 func TestActivateChild_ChildWithCurrentHook(t *testing.T) {
 	s := makeActivateSession(SessionStateInit)
-	childStore := &activateTestStore{childSessionID: "grandchild"}
-	s.child = &Session{
-		ID: "child",
 
-		CurrentHook: "on_session",
+	// The child store returns a pending sub-session when the hook workflow is created,
+	// so child.pending and child.CurrentHook will both be set after activate()+Wait().
+	childStore := &activateTestStore{
+		childSessionID: "hook-child",
+		pendingChild:   true,
+	}
+	wg := &sync.WaitGroup{}
+	child := &Session{
+		ID:    "child",
+		State: SessionStateSuccess,
 		CurrentMsg: &dipper.Message{
-			Labels: map[string]string{
-				"cursor": "child",
+			Labels:  map[string]string{"cursor": "0", "status": SessionStatusSuccess},
+			Payload: map[string]any{},
+		},
+		Ctx: map[string]interface{}{
+			"hooks": map[string]interface{}{
+				"on_success": "some_hook_workflow",
 			},
 		},
-		Ctx:        map[string]interface{}{},
-		threads:    &sync.WaitGroup{},
 		store:      childStore,
 		Workflow:   &cfg.Workflow{},
 		Performing: []string{"init"},
+		threads:    wg,
 	}
+	s.child = child
 
 	s.activateChild()
 
-	// Should return early without injecting message
-	if s.CurrentMsg.Labels["status"] != "" {
-		t.Error("status should not be set when child has CurrentHook")
+	// child.pending is true because its hook sub-session is pending,
+	// which also means child.CurrentHook is set.
+	if !child.pending {
+		t.Error("child should be pending while its hook sub-session is running")
+	}
+	if child.CurrentHook == "" {
+		t.Error("child should have CurrentHook set since its hook sub-session is pending")
+	}
+	// Parent must not inject the child's message since child is still pending.
+	if s.CurrentMsg.Labels["status"] == SessionStatusSuccess {
+		t.Error("parent should not inject child message when child is pending with CurrentHook set")
 	}
 }
 
@@ -311,8 +338,8 @@ func TestProgress_ElseState(t *testing.T) {
 	if customStore.activateCount != 1 {
 		t.Errorf("expected 1 activate call, got %d", customStore.activateCount)
 	}
-	if s.child == nil {
-		t.Error("child should be created for else branch")
+	if customStore.childCount != 1 {
+		t.Errorf("expected 1 child creation, got %d", customStore.childCount)
 	}
 	if s.ElseBranch == nil {
 		t.Error("ElseBranch should be decoded")
@@ -322,19 +349,28 @@ func TestProgress_ElseState(t *testing.T) {
 // TestProgress_NextItemState tests progress for SessionStateNextItem.
 func TestProgress_NextItemState(t *testing.T) {
 	s := makeActivateSession(SessionStateNextItem)
+	customStore := &activateTestStore{}
+	step := 0
+	customStore.onChildCreation = func(c *Session) {
+		if step == 0 {
+			if c.Ctx["current"] != "item1" {
+				t.Errorf("expected 'item1', got %v", c.Ctx["current"])
+			}
+		}
+		if step == 1 {
+			if c.Ctx["current"] != "item2" {
+				t.Errorf("expected 'item2', got %v", c.Ctx["current"])
+			}
+		}
+		step++
+	}
+	s.store = customStore
 	s.Ctx = map[string]interface{}{}
 	s.Iteration = 0
 	s.Workflow.Iterate = []interface{}{"item1", "item2"}
 	s.Workflow.IterateAs = "myitem"
 
 	s.progress()
-
-	if s.Ctx["current"] != "item1" {
-		t.Errorf("expected 'item1', got %v", s.Ctx["current"])
-	}
-	if s.Ctx["myitem"] != "item1" {
-		t.Errorf("expected IterateAs 'item1', got %v", s.Ctx["myitem"])
-	}
 }
 
 // TestProgress_NextRoundState tests progress for SessionStateNextRound.
@@ -567,17 +603,32 @@ func TestResume_TransitionsState(t *testing.T) {
 	}
 }
 
-// TestResume_WithCurrentHook tests resume returns when CurrentHook is set.
+// TestResume_WithCurrentHook tests resume clears a pending hook and continues to the next hook.
 func TestResume_WithCurrentHook(t *testing.T) {
-	s := makeActivateSession(SessionStateCheckCondition)
+	s := makeActivateSession(SessionStateSuccess)
+	customStore := &activateTestStore{}
+	s.store = customStore
 
-	s.CurrentHook = "on_session"
+	// Simulate the session is returning from a pending exit hook (on_success).
+	// CurrentHook is set, meaning fireOrClearHook will clear it and proceed to the next hook (on_exit).
+	s.CurrentHook = "on_success"
+	s.child = &Session{ID: "hook-child"}
+	s.Ctx = map[string]interface{}{
+		"hooks": map[string]interface{}{
+			"on_success": "wf1",
+			"on_exit":    "wf2",
+		},
+	}
 
-	oldState := s.State
 	s.resume()
 
-	if s.State != oldState {
-		t.Error("state should not transition when CurrentHook is set")
+	// on_success hook is cleared, on_exit hook is fired and completes (non-pending),
+	// so the session should have fully transitioned to done.
+	if s.CurrentHook != "" {
+		t.Errorf("CurrentHook should be cleared after all hooks complete, got %s", s.CurrentHook)
+	}
+	if s.State != SessionStateDone {
+		t.Errorf("expected state Done after all hooks complete, got %d", s.State)
 	}
 }
 

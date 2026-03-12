@@ -312,7 +312,7 @@ func (w *Session) resume() {
 	w.State = w.determineNextState()
 
 	if w.State != SessionStateDone {
-		w.activate()
+		w.progress()
 
 		return
 	}
