@@ -202,7 +202,7 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 				}
 			}()
 
-			return ParseYaml(ret[6:])
+			return Interpolate(ParseYaml(ret[6:]), data)
 		}
 
 		return strings.TrimPrefix(ret, "\\")
