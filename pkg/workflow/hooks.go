@@ -39,28 +39,36 @@ func (w *Session) fireOrClearHook(entry bool) bool {
 		w.setPerforming("processing entry hooks for state: " + SessionStates[w.State])
 	}
 
-	ret := false
+	handled := false
 
 	for _, hook := range hooks[w.State] {
 		if w.CurrentHook == "" {
-			w.setPerforming("processing hook:" + hook)
-			ret = true
+			// try entering hook
+			if !w.pending {
+				handled = true
 			w.CurrentHook = hook
-			if pending := w.executeHook(hook); pending {
-				w.pending = true
-
+				if w.pending = w.executeHook(hook); w.pending {
 				break
+				}
 			}
 		}
 		if hook == w.CurrentHook {
-			w.setPerforming("exiting hook:" + hook)
-			ret = true
+			// exiting hook
 			w.CurrentHook = ""
+			handled = true
+			if w.pending {
+				w.setPerforming("exiting hook:" + hook)
+				if w.child != nil {
+					// moving forward with cursor even without carrying over the message from the hook.
+					w.CurrentMsg.Labels["cursor"] = w.child.CurrentMsg.Labels["cursor"]
 			w.child = nil
+				}
+				w.pending = false
+			}
 		}
 	}
 
-	return ret
+	return handled
 }
 
 // executeHook executes the hook and set session to pending if needed.

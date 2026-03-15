@@ -173,12 +173,10 @@ func (w *Session) progress() {
 	if status := w.CurrentMsg.Labels["status"]; status != SessionStatusSuccess && status != "" && w.CurrentMsg.Labels["performing"] == "" {
 		w.CurrentMsg.Labels["performing"] = strings.Join(w.Performing, "\n")
 	}
-	isEntryHook := w.fireOrClearHook(true) // Fire or clear entry hooks for current state.
+	handled := w.fireOrClearHook(true) // Fire or clear entry hooks for current state.
 	switch {
-	case w.CurrentHook != "" && isEntryHook:
+	case w.pending && handled:
 		return
-	case w.CurrentHook != "" && !isEntryHook:
-		fallthrough
 	case w.pending:
 		w.resume()
 
@@ -274,6 +272,12 @@ func (w *Session) processUpdateState() {
 		return
 	}
 
+	if w.CurrentMsg != w.child.CurrentMsg {
+		w.CurrentMsg.Labels["status"] = w.child.CurrentMsg.Labels["status"]
+		w.CurrentMsg.Labels["reason"] = w.child.CurrentMsg.Labels["reason"]
+		w.CurrentMsg.Payload = w.child.CurrentMsg.Payload
+	}
+
 	for _, e := range w.child.Exported {
 		if w.ElseBranch == nil {
 			w.Ctx = dipper.MergeMap(w.Ctx, e)
@@ -303,11 +307,12 @@ func (w *Session) resume() {
 		w.depth,
 		SessionStates[w.State],
 	)
-	w.pending = false
-	w.fireOrClearHook(false) // Fire or clear exit hooks for current state.
-	if w.CurrentHook != "" {
+
+	handled := w.fireOrClearHook(false) // Fire or clear exit hooks for current state.
+	if w.pending && handled {
 		return
 	}
+	w.pending = false
 
 	w.State = w.determineNextState()
 

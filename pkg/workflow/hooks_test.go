@@ -263,7 +263,8 @@ func TestFireClearHook_PendingChild(t *testing.T) {
 	}
 }
 
-// TestFireClearHook_ClearingHook tests clearing a hook in a subsequent call.
+// TestFireClearHook_ClearingHook tests that when CurrentHook is set (returning from a pending hook),
+// the hook is cleared and the next hook in sequence is fired.
 func TestFireClearHook_ClearingHook(t *testing.T) {
 	s := makeHookSession(SessionStateSuccess)
 	customStore := &hookTrackingStore{}
@@ -275,18 +276,21 @@ func TestFireClearHook_ClearingHook(t *testing.T) {
 			"on_exit":    "hk2",
 		},
 	}
+	// Simulate returning from a previously pending on_success hook.
 	s.CurrentHook = "on_success"
-	s.child = &Session{ID: "child"}
+	s.pending = false
 
 	ret := s.fireOrClearHook(false)
 	if !ret {
 		t.Error("should return true when clearing hook")
 	}
+	// on_success is cleared, then on_exit is fired and completes (non-pending), so CurrentHook ends up empty.
 	if s.CurrentHook != "" {
-		t.Errorf("CurrentHook should be cleared, got %s", s.CurrentHook)
+		t.Errorf("CurrentHook should be cleared after on_exit completes, got %s", s.CurrentHook)
 	}
-	if s.child != nil {
-		t.Error("child should be nil after clearing")
+	// on_exit child was created by executeHook.
+	if customStore.createdChildCount != 1 {
+		t.Errorf("expected 1 child created for on_exit, got %d", customStore.createdChildCount)
 	}
 }
 
