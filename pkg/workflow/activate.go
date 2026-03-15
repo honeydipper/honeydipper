@@ -183,13 +183,6 @@ func (w *Session) progress() {
 		return
 	}
 
-	w.store.GetLogger().Debugf(
-		"session [%s.%s] depth %d progressing through state %s",
-		w.ID,
-		w.CurrentMsg.Labels["cursor"],
-		w.depth,
-		SessionStates[w.State],
-	)
 	switch w.State {
 	case SessionStateElse:
 		w.processElseState()
@@ -214,7 +207,9 @@ func (w *Session) progress() {
 			break
 		}
 		w.execute()
-		w.store.GetLogger().Debugf("[%s.%d] action execution launched with status", w.ID, w.depth)
+		if w.pending {
+			w.store.GetLogger().Debugf("[%s.%s] depth %d action execution launched and pending", w.ID, w.CurrentMsg.Labels["cursor"], w.depth)
+		}
 	case SessionStateUpdate:
 		w.processUpdateState()
 	case SessionStateExport:

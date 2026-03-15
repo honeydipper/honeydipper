@@ -33,10 +33,7 @@ var SessionExitHooks = map[int][]string{
 func (w *Session) fireOrClearHook(entry bool) bool {
 	hooks := SessionEntryHooks
 	if !entry {
-		w.setPerforming("processing exit hooks for state: " + SessionStates[w.State])
 		hooks = SessionExitHooks
-	} else {
-		w.setPerforming("processing entry hooks for state: " + SessionStates[w.State])
 	}
 
 	handled := false
@@ -46,9 +43,9 @@ func (w *Session) fireOrClearHook(entry bool) bool {
 			// try entering hook
 			if !w.pending {
 				handled = true
-			w.CurrentHook = hook
+				w.CurrentHook = hook
 				if w.pending = w.executeHook(hook); w.pending {
-				break
+					break
 				}
 			}
 		}
@@ -61,7 +58,7 @@ func (w *Session) fireOrClearHook(entry bool) bool {
 				if w.child != nil {
 					// moving forward with cursor even without carrying over the message from the hook.
 					w.CurrentMsg.Labels["cursor"] = w.child.CurrentMsg.Labels["cursor"]
-			w.child = nil
+					w.child = nil
 				}
 				w.pending = false
 			}
@@ -77,6 +74,7 @@ func (w *Session) executeHook(name string) bool {
 	if !ok {
 		return false
 	}
+	w.setPerforming("entering hook:" + name)
 
 	work := &config.Workflow{
 		Context: SessionContextHooks,

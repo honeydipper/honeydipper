@@ -102,7 +102,7 @@ func (w *Session) callWorkflow() {
 
 	src, ok := w.store.GetConfig().DataSet.Workflows[name]
 	if !ok {
-		w.store.GetLogger().Panicf("[%s.%d] workflow %s not found", w.ID, w.depth, name)
+		w.store.GetLogger().Panicf("[%s.%s] depth %d workflow %s not found", w.ID, w.CurrentMsg.Labels["cursor"], w.depth, name)
 	}
 	src.Name = name
 	w.child = w.store.CreateChildSession(w, &src, w.CurrentMsg)
