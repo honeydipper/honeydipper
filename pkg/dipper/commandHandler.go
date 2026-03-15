@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -186,21 +187,41 @@ func (w *commandWrapper) attempt(replyChannel chan Message) {
 	}()
 
 	defer func() {
-		if r := recover(); r != nil && replyChannel != nil {
-			if e, ok := r.(error); ok {
-				if errors.Is(e, context.Canceled) && w.interruptible && errors.Is(w.provider.Handler.Err(), context.Canceled) {
-					Logger.Warningf("Command interrupted: %+v", *w.msg)
+		r := recover()
+		if r == nil {
+			return
+		}
 
-					return
-				}
+		if e, ok := r.(error); ok {
+			if errors.Is(e, context.Canceled) && w.interruptible && errors.Is(w.provider.Handler.Err(), context.Canceled) {
+				Logger.Warningf("Command interrupted: %+v", *w.msg)
+
+				return
 			}
-			Logger.Warningf("Resuming after command error: %v", r)
-			Logger.Warning(errors.Wrap(r, 1).ErrorStack())
-			replyChannel <- Message{
-				Labels: map[string]string{
-					"error": fmt.Sprintf("%+v", r),
-				},
+		}
+
+		stack := errors.Wrap(r, 1).ErrorStack()
+		Logger.Warningf("Resuming after command error: %v", r)
+		if replyChannel == nil {
+			Logger.Warning("Reply channel not exists. Error ignored!")
+
+			return
+		}
+		Logger.Warning(stack)
+
+		errMsg := fmt.Sprintf("%+v", r)
+		if errMsg == "" {
+			lines := strings.Split(stack, "\n")
+			l := 8
+			if len(lines) < 8 {
+				l = len(lines)
 			}
+			errMsg = "unknown error: " + strings.Join(lines[:l], "\n")
+		}
+		replyChannel <- Message{
+			Labels: map[string]string{
+				"error": errMsg,
+			},
 		}
 	}()
 	w.f(&m)
