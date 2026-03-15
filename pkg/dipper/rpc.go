@@ -94,7 +94,18 @@ func (c *RPCCallerBase) CallRaw(feature string, method string, params []byte, la
 		return nil, err
 	}
 
-	rpcTimer := time.NewTimer(time.Second * DefaultRPCTimeout)
+	timeout := time.Second * DefaultRPCTimeout
+	if len(labelsKV) > 0 {
+		for i, k, v := 0, labelsKV[0], labelsKV[1]; i < len(labelsKV); i, k, v = i+2, labelsKV[i+2], labelsKV[i+3] {
+			if k == "timeout" {
+				timeout, _ = time.ParseDuration(v)
+
+				break
+			}
+		}
+	}
+
+	rpcTimer := time.NewTimer(timeout)
 	defer rpcTimer.Stop()
 
 	// waiting for the result to come back
