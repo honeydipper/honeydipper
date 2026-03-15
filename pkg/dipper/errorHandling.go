@@ -14,7 +14,7 @@ func SafeExitOnError(args ...interface{}) {
 		l := len(args)
 		if handler, ok := args[l-1].(func(interface{})); ok {
 			l--
-			handler(r)
+			defer handler(r)
 		}
 		Logger.Warningf("Resuming after error: %v", r)
 		Logger.Warning(errors.Wrap(r, 1).ErrorStack())
