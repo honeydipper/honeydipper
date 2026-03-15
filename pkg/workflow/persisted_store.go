@@ -199,10 +199,6 @@ func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message, 
 		return
 	}
 
-	if w.State == SessionStateDone {
-		panic(fmt.Errorf("%w: %s", ErrSessionTerminated, sessionID))
-	}
-
 	defer dipper.SafeExitOnError("[workflow] error when starting workflow session", s.uncaughtErrorHandler(w, msg))
 
 	s.ActivateSession(w)
@@ -306,7 +302,7 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 	dipper.Must(s.Call("locker", "lock", map[string]interface{}{
 		"name":   key,
 		"expire": "3600s",
-	}, "timeout", "3600s"))
+	}))
 	resp := dipper.Must(s.Call("cache", "lrange", map[string]interface{}{
 		"key": key,
 	})).([]byte)
@@ -343,6 +339,15 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 		return nil
 	}
 
+	if stack[0].State == SessionStateDone {
+		s.Warningf("session is already done: %s", sessionID)
+		dipper.Must(s.Call("locker", "unlock", map[string]interface{}{
+			"name": key,
+		}))
+
+		return nil
+	}
+
 	var current *Session
 	for depth, w := range stack {
 		w.depth = depth
@@ -356,7 +361,15 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 		w.pending = true
 		current = w
 	}
-	current.CurrentMsg = msg
+
+	// return msg data to parent early to avoid losing during hook
+	// handling, but preventing cursor from being contaminated.
+	if current.CurrentHook == "" {
+		current.CurrentMsg = msg
+	} else {
+		current.CurrentMsg.Labels["cursor"] = msg.Labels["cursor"]
+	}
+
 	current.child = child
 
 	return stack[0]
