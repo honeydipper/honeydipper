@@ -12,9 +12,9 @@ func ChatContinue(d *dipper.Driver, msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	convID := dipper.MustGetMapDataStr(msg.Payload, "convID")
 	counter := dipper.MustGetMapDataStr(msg.Payload, "counter")
-	timeout := "30s"
-	if timeoutSec, ok := msg.Labels["timeout"]; ok && len(timeoutSec) > 0 {
-		timeout = timeoutSec + "s"
+	timeout, ok := msg.Labels["timeout"]
+	if !ok || len(timeout) == 0 {
+		timeout = "30s"
 	}
 	step := d.Name + "/conv/" + convID + "/" + counter
 
