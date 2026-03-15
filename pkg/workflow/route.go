@@ -59,6 +59,8 @@ func (w *Session) routeCheckConditionState() int {
 	case !meet && w.Workflow.Else != nil:
 		return SessionStateElse
 	case !meet:
+		w.CurrentMsg.Labels["status"] = SessionStatusSuccess
+
 		return SessionStateDone
 	case w.Workflow.CacheKey != "":
 		return SessionStateCheckCache
@@ -72,6 +74,8 @@ func (w *Session) routeCheckConditionState() int {
 // routeCheckCacheState handles cache-related state transitions.
 func (w *Session) routeCheckCacheState() int {
 	if _, ok := w.CurrentMsg.Labels[LabelFromCache]; ok {
+		w.CurrentMsg.Labels["status"] = SessionStatusSuccess
+
 		return SessionStateDone
 	}
 
