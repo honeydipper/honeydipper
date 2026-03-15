@@ -368,16 +368,22 @@ func TestInherentParentSettings(t *testing.T) {
 	if s.ID != "parent" {
 		t.Error("ID not copied")
 	}
-	if s.Workflow.OnError != "e" || s.Workflow.OnFailure != "f" {
-		t.Error("settings not inherited")
+	if s.Workflow.OnError != "" {
+		t.Error("OnError should not be inherited from parent")
+	}
+	if s.Workflow.OnFailure != "" {
+		t.Error("OnFailure should not be inherited from parent")
 	}
 
-	// when child already has values, parent should not override
-	s.Workflow.OnError = "child"
-	p.Workflow.OnError = "p2"
+	// even when child already has values, they should remain unchanged
+	s.Workflow.OnError = "child-error"
+	s.Workflow.OnFailure = "child-failure"
 	s.inherentParentSettings(p)
-	if s.Workflow.OnError != "child" {
-		t.Error("existing onError should not be overwritten")
+	if s.Workflow.OnError != "child-error" {
+		t.Error("existing OnError should not be overwritten")
+	}
+	if s.Workflow.OnFailure != "child-failure" {
+		t.Error("existing OnFailure should not be overwritten")
 	}
 }
 

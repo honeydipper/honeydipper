@@ -266,12 +266,12 @@ func (w *Session) interpolateWorkflow() {
 // inheritParentSettings copies some workflow settings from the parent session.
 func (w *Session) inherentParentSettings(p *Session) {
 	w.ID = p.ID
-	if w.Workflow.OnError == "" {
-		w.Workflow.OnError = p.Workflow.OnError
-	}
-	if w.Workflow.OnFailure == "" {
-		w.Workflow.OnFailure = p.Workflow.OnFailure
-	}
+	// if w.Workflow.OnError == "" {
+	// 	w.Workflow.OnError = p.Workflow.OnError
+	// }
+	// if w.Workflow.OnFailure == "" {
+	// 	w.Workflow.OnFailure = p.Workflow.OnFailure
+	// }
 }
 
 // Init initializes the session for execution.
