@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
-	"github.com/honeydipper/honeydipper/v4/internal/daemon"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 )
@@ -63,9 +62,7 @@ func (w *Session) execute() {
 			for i, t := range w.Workflow.Threads {
 				child := w.store.CreateAsyncChildSession(w, &t, w.CurrentMsg)
 				child.Ctx["thread_number"] = i
-				func(child *Session) {
-					daemon.Go(func() { w.store.ActivateSession(child) })
-				}(child)
+				w.store.ActivateSession(child)
 			}
 		}
 		w.setPerforming(fmt.Sprintf("Waiting for threads (%d/%d done)", w.Current, len(w.Workflow.Threads)))
@@ -327,7 +324,5 @@ func (w *Session) launchParallelIteration(i int) {
 		child,
 	)
 
-	daemon.Go(func() {
-		w.store.ActivateSession(child)
-	})
+	w.store.ActivateSession(child)
 }

@@ -90,7 +90,8 @@ func (s *PersistedStore) CreateChildSession(parent *Session, wf *config.Workflow
 
 // CreateAsyncChildSession creates a child async workflow session.
 func (s *PersistedStore) CreateAsyncChildSession(parent *Session, wf *config.Workflow, msg *dipper.Message) *Session {
-	w := s.CreateChildSession(parent, wf, msg)
+	m := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
+	w := s.CreateChildSession(parent, wf, m)
 	w.Parent = parent.ID + "." + parent.CurrentMsg.Labels["cursor"]
 	s.DetachSession(w)
 
@@ -158,10 +159,11 @@ func (s *PersistedStore) uncaughtErrorHandler(w *Session, msg *dipper.Message) f
 
 // StartSession starts a predefined workflow with a message and context variables.
 func (s *PersistedStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
-	defer dipper.SafeExitOnError("[workflow] error when creating workflow session", s.uncaughtErrorHandler(nil, msg))
+	m := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
+	defer dipper.SafeExitOnError("[workflow] error when creating workflow session", s.uncaughtErrorHandler(nil, m))
 
-	w := s.CreateSession(wf, msg, ctx)
-	defer dipper.SafeExitOnError("[workflow] error when starting workflow session", s.uncaughtErrorHandler(w, msg))
+	w := s.CreateSession(wf, m, ctx)
+	defer dipper.SafeExitOnError("[workflow] error when starting workflow session", s.uncaughtErrorHandler(w, m))
 	s.ActivateSession(w)
 }
 
@@ -206,9 +208,11 @@ func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message, 
 
 // ResumeSession resume a session that is in waiting state.
 func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
+	m := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
 	data, _ := s.Call("scheduler", "cancel", map[string]any{"type": "session", "key": key})
 	if data == nil {
 		s.Warningf("unable to resume for key %s, no payload received from waiter.", key)
+
 		return false
 	}
 
@@ -217,16 +221,16 @@ func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
 	sessionID := dipper.MustGetMapDataStr(payload, "labels.sessionID")
 	cursor := dipper.MustGetMapDataStr(payload, "labels.cursor")
 
-	if msg.Labels == nil {
-		msg.Labels = map[string]string{}
+	if m.Labels == nil {
+		m.Labels = map[string]string{}
 	}
-	msg.Labels["sessionID"] = sessionID
-	msg.Labels["cursor"] = cursor
-	if _, ok := msg.Labels["status"]; !ok {
-		msg.Labels["status"] = SessionStatusSuccess
+	m.Labels["sessionID"] = sessionID
+	m.Labels["cursor"] = cursor
+	if _, ok := m.Labels["status"]; !ok {
+		m.Labels["status"] = SessionStatusSuccess
 	}
 
-	daemon.Go(func() { s.ContinueSession(sessionID, msg, nil) })
+	daemon.Go(func() { s.ContinueSession(sessionID, m, nil) })
 
 	return true
 }
