@@ -22,47 +22,56 @@ func isTruthy(c string) bool {
 
 // checkCondition check if meet the condition to execute the Workflow.
 func (w *Session) checkCondition() bool {
-	switch {
-	case len(w.Workflow.If) > 0:
+	if len(w.Workflow.If) > 0 {
 		for _, c := range w.Workflow.If {
 			if !isTruthy(c) {
 				return false
 			}
 		}
+	}
 
-		return true
-	case len(w.Workflow.IfAny) > 0:
+	if len(w.Workflow.IfAny) > 0 {
+		ret := false
 		for _, c := range w.Workflow.IfAny {
 			if isTruthy(c) {
-				return true
+				ret = true
+
+				break
 			}
 		}
+		if !ret {
+			return false
+		}
+	}
 
-		return false
-	case len(w.Workflow.Unless) > 0:
+	if len(w.Workflow.Unless) > 0 {
 		for _, c := range w.Workflow.Unless {
 			if isTruthy(c) {
 				return false
 			}
 		}
+	}
 
-		return true
-	case len(w.Workflow.UnlessAll) > 0:
+	if len(w.Workflow.UnlessAll) > 0 {
+		ret := false
 		for _, c := range w.Workflow.UnlessAll {
 			if !isTruthy(c) {
-				return true
+				ret = true
+
+				break
 			}
 		}
-
-		return false
-	case w.Workflow.Match != nil:
-		return dipper.CompareAll(w.Ctx, w.Workflow.Match)
-	case w.Workflow.UnlessMatch != nil:
-		if reflect.ValueOf(w.Workflow.UnlessMatch).Len() > 0 {
-			return !dipper.CompareAll(w.Ctx, w.Workflow.UnlessMatch)
+		if !ret {
+			return false
 		}
+	}
 
-		return true
+	if w.Workflow.Match != nil && !dipper.CompareAll(w.Ctx, w.Workflow.Match) {
+		return false
+	}
+
+	if w.Workflow.UnlessMatch != nil && reflect.ValueOf(w.Workflow.UnlessMatch).Len() > 0 {
+		return !dipper.CompareAll(w.Ctx, w.Workflow.UnlessMatch)
 	}
 
 	return true
