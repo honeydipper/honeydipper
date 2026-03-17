@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
 )

@@ -16,7 +16,7 @@ import (
 	time "time"
 
 	gomock "github.com/golang/mock/gomock"
-	dipper "github.com/honeydipper/honeydipper/pkg/dipper"
+	dipper "github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // MockSessionHandler is a mock of SessionHandler interface.

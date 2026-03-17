@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/pubsub"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"google.golang.org/api/option"
 )
 

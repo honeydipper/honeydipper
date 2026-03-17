@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/honeydipper/honeydipper/pkg/dipper/mock_dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper/mock_dipper"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/honeydipper/honeydipper/drivers/pkg/redisclient"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/op/go-logging"
 )
 

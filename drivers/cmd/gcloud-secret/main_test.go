@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	mock_driver "github.com/honeydipper/honeydipper/drivers/cmd/gcloud-secret/mock_gcloud-secret"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	mock_driver "github.com/honeydipper/honeydipper/v3/drivers/cmd/gcloud-secret/mock_gcloud-secret"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 	secretmanagerpb "google.golang.org/genproto/googleapis/cloud/secretmanager/v1"
 )

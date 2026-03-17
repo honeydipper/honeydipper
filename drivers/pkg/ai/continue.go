@@ -3,7 +3,7 @@ package ai
 import (
 	"encoding/json"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 func ChatContinue(d *dipper.Driver, msg *dipper.Message) {

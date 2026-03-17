@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // ChatWrapper wraps around the chat client and sessions handles streaming, emitting and error handling.

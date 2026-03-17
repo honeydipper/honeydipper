@@ -15,8 +15,8 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
-	config "github.com/honeydipper/honeydipper/internal/config"
-	dipper "github.com/honeydipper/honeydipper/pkg/dipper"
+	config "github.com/honeydipper/honeydipper/v3/internal/config"
+	dipper "github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // MockSessionStoreHelper is a mock of SessionStoreHelper interface.

@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	mock_main "github.com/honeydipper/honeydipper/drivers/cmd/hd-driver-embeddings/mock_hd-driver-embeddings"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	mock_main "github.com/honeydipper/honeydipper/v3/drivers/cmd/hd-driver-embeddings/mock_hd-driver-embeddings"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/genai"
 )

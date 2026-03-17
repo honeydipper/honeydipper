@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/honeydipper/honeydipper/internal/daemon"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/daemon"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 )
 

@@ -22,10 +22,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/internal/daemon"
-	"github.com/honeydipper/honeydipper/internal/service"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/internal/daemon"
+	"github.com/honeydipper/honeydipper/v3/internal/service"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 

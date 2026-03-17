@@ -9,8 +9,8 @@ package service
 import (
 	"strconv"
 
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 var (

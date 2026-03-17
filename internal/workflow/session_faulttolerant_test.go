@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 func TestWorkflowErrorContextNotDefined(t *testing.T) {

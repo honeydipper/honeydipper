@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/internal/driver"
-	"github.com/honeydipper/honeydipper/internal/workflow"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/internal/driver"
+	"github.com/honeydipper/honeydipper/v3/internal/workflow"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // CollapsedRule maps the rule to its all collapsed match and exports.

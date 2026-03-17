@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/internal/config"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 

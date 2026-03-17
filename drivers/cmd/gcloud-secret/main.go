@@ -20,7 +20,7 @@ import (
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"github.com/gogf/gf/container/gpool"
 	gax "github.com/googleapis/gax-go/v2"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // DefaultClientTTLSeconds specifies the TTL for reusable google clients.

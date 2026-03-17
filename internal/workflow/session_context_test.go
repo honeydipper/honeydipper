@@ -14,9 +14,9 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/golang/mock/gomock"
-	"github.com/honeydipper/honeydipper/internal/config"
-	"github.com/honeydipper/honeydipper/internal/workflow/mock_workflow"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/internal/workflow/mock_workflow"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
 // ChatWrapperInterface defines the behavior of a chat wrapper.

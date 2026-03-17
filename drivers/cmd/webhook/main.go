@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/go-errors/errors"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/op/go-logging"
 )
 

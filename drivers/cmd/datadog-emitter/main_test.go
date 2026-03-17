@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	mock_driver "github.com/honeydipper/honeydipper/drivers/cmd/datadog-emitter/mock_datadog-emitter"
-	"github.com/honeydipper/honeydipper/pkg/dipper"
+	mock_driver "github.com/honeydipper/honeydipper/v3/drivers/cmd/datadog-emitter/mock_datadog-emitter"
+	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 

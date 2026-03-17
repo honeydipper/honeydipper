@@ -1,3 +1,19 @@
+# [3.10.0](https://github.com/honeydipper/honeydipper/compare/v3.9.2...v3.10.0) (2026-02-13)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v5 to v5.16.5 [security] ([#680](https://github.com/honeydipper/honeydipper/issues/680)) ([0bdc406](https://github.com/honeydipper/honeydipper/commit/0bdc4060c71d0ff2a45da9bbaba12612595b7f38))
+* **deps:** update module golang.org/x/crypto to v0.45.0 [security] ([8cab2d7](https://github.com/honeydipper/honeydipper/commit/8cab2d7b6c1255ab32342f3017ca46d01ef37f7d))
+* openai in non-streaming mode ([aca7e40](https://github.com/honeydipper/honeydipper/commit/aca7e40461adbcba3cf8bf385bb76d79156a6089))
+* tested successfully ([d37a79a](https://github.com/honeydipper/honeydipper/commit/d37a79a63149893fe1b0c8bab20bbd3e8c1d8575))
+* tests and changes to support tests ([a0ea244](https://github.com/honeydipper/honeydipper/commit/a0ea244c90b4d3cf35c2ad88e07aa2f22dd26d1c))
+
+
+### Features
+
+* add openai driver ([6ff362d](https://github.com/honeydipper/honeydipper/commit/6ff362dde6a4db7255fb6ffa480afad5fb1cb9ec))
+
 ## [3.9.2](https://github.com/honeydipper/honeydipper/compare/v3.9.1...v3.9.2) (2025-11-05)
 
 
