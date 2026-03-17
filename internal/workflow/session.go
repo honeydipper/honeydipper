@@ -156,6 +156,21 @@ func (w *Session) injectMsg(msg *dipper.Message) {
 	}
 }
 
+// safeInterpolateCtx wraps dipper.Interpolate with panic recovery for context injection.
+// If interpolation panics (e.g. a required $path reference is missing), the error is logged
+// and the context section is skipped instead of crashing the entire workflow session.
+func safeInterpolateCtx(source interface{}, data interface{}, ctxName string, section string) (result interface{}, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			dipper.Logger.Errorf("[workflow] skipping context [%s] section [%s]: interpolation failed: %v", ctxName, section, r)
+			result = nil
+			ok = false
+		}
+	}()
+
+	return dipper.Interpolate(source, data), true
+}
+
 // injectNamedCTX inject a named context into the workflow.
 func (w *Session) injectNamedCTX(name string, msg *dipper.Message, firstTime bool) {
 	contexts := w.store.Helper.GetConfig().DataSet.Contexts
@@ -173,18 +188,20 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message, firstTime boo
 	ctx, ok := namedCTXs.(map[string]interface{})["*"]
 	if firstTime && ok {
 		ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
-		ctx = dipper.Interpolate(ctx, envData)
-		w.ctx = dipper.MergeMap(w.ctx, ctx)
-		dipper.Logger.Infof("merged global values (*) from named context %s to workflow", name)
+		if interpolated, interpOk := safeInterpolateCtx(ctx, envData, name, "*"); interpOk {
+			w.ctx = dipper.MergeMap(w.ctx, interpolated)
+			dipper.Logger.Infof("merged global values (*) from named context %s to workflow", name)
+		}
 	}
 
 	if w.parent == "" {
 		ctx, ok := namedCTXs.(map[string]interface{})["_events"]
 		if ok {
 			ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
-			ctx = dipper.Interpolate(ctx, envData)
-			w.ctx = dipper.MergeMap(w.ctx, ctx)
-			dipper.Logger.Infof("[workflow] merged _events section of context [%s] to workflow [%s]", name, w.workflow.Name)
+			if interpolated, interpOk := safeInterpolateCtx(ctx, envData, name, "_events"); interpOk {
+				w.ctx = dipper.MergeMap(w.ctx, interpolated)
+				dipper.Logger.Infof("[workflow] merged _events section of context [%s] to workflow [%s]", name, w.workflow.Name)
+			}
 		}
 	}
 
@@ -192,9 +209,10 @@ func (w *Session) injectNamedCTX(name string, msg *dipper.Message, firstTime boo
 		ctx, ok := namedCTXs.(map[string]interface{})[w.workflow.Name]
 		if ok {
 			ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
-			ctx = dipper.Interpolate(ctx, envData)
-			w.ctx = dipper.MergeMap(w.ctx, ctx)
-			dipper.Logger.Infof("[workflow] merged named context [%s] to workflow [%s]", name, w.workflow.Name)
+			if interpolated, interpOk := safeInterpolateCtx(ctx, envData, name, w.workflow.Name); interpOk {
+				w.ctx = dipper.MergeMap(w.ctx, interpolated)
+				dipper.Logger.Infof("[workflow] merged named context [%s] to workflow [%s]", name, w.workflow.Name)
+			}
 		}
 	}
 }

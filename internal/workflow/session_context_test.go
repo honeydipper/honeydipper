@@ -124,6 +124,62 @@ contexts:
 	assert.Equal(t, "error", m.Labels["status"], "failed export should set message status to fail")
 }
 
+func TestSafeInterpolateCtx(t *testing.T) {
+	t.Run("returns interpolated result on success", func(t *testing.T) {
+		source := map[string]interface{}{"key": "$ctx.value"}
+		data := map[string]interface{}{"ctx": map[string]interface{}{"value": "hello"}}
+		result, ok := safeInterpolateCtx(source, data, "test_ctx", "*")
+		assert.True(t, ok)
+		assert.Equal(t, map[string]interface{}{"key": "hello"}, result)
+	})
+
+	t.Run("recovers from panic on missing required path", func(t *testing.T) {
+		source := map[string]interface{}{"key": "$ctx.nonexistent.path"}
+		data := map[string]interface{}{"ctx": map[string]interface{}{}}
+		result, ok := safeInterpolateCtx(source, data, "bad_ctx", "*")
+		assert.False(t, ok)
+		assert.Nil(t, result)
+	})
+}
+
+func TestSessionWithBadContextInterpolation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockHelper := mock_workflow.NewMockSessionStoreHelper(ctrl)
+	s := NewSessionStore(mockHelper)
+
+	defer delete(dipper.IDMapMetadata, &s.sessions)
+
+	configStr := `
+---
+contexts:
+  _default:
+    "*":
+      good_value: bar_default
+  bad_context:
+    "*":
+      bad_ref: $ctx.nonexistent.path
+`
+	testDataSet := &config.DataSet{}
+	err := yaml.Unmarshal([]byte(configStr), testDataSet)
+	assert.Nil(t, err, "test config")
+	testConfig := &config.Config{DataSet: testDataSet}
+
+	mockHelper.EXPECT().GetConfig().AnyTimes().Return(testConfig)
+
+	// A workflow that loads the bad context should not panic.
+	// The bad context is skipped, but the session still gets the good defaults.
+	w := s.newSession("", "uuid_bad", &config.Workflow{
+		Name:     "test_wf",
+		Contexts: []interface{}{"bad_context"},
+	}).(*Session)
+	assert.NotPanics(t, func() {
+		w.prepare(&dipper.Message{}, nil, map[string]interface{}{})
+	}, "bad context interpolation should not crash the session")
+	assert.Equal(t, "bar_default", w.ctx["good_value"], "good default context values should still be present")
+}
+
 var configStrWithEventContexts = `
 ---
 systems:
