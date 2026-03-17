@@ -11,14 +11,14 @@ else
     prog="$BINPATH/honeydipper"
 fi
 
-while IFS='=' read -r -d '' k v; do
+while IFS='=' read -r k v; do
     case "$v" in
         "hd-secret-file://"*)
-            f="/var/hd-secrets/${v:17}"
+            f="/var/hd-secrets/$(echo "$v" | cut -c 18-)"
             f="$(realpath "$f")"
             ;;
         "docker-secret-file://"*)
-            f="/run/secrets/${v:21}"
+            f="/run/secrets/$(echo "$v" | cut -c 22-)"
             f="$(realpath "$f")"
             ;;
         *)
@@ -41,7 +41,9 @@ while IFS='=' read -r -d '' k v; do
             exit 1
             ;;
     esac
-done </proc/$$/environ
+done <<EOF
+$(env)
+EOF
 
 if [ -n "$HD_SECURE_LOADER" ]; then
     if command -v "$HD_SECURE_LOADER" >/dev/null 2>&1; then
