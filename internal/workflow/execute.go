@@ -165,7 +165,7 @@ func (w *Session) launchParallelIterations(msg *dipper.Message) {
 	}
 }
 
-// createParallelIteration starts one of the iteration.
+// createParallelIteration creates and prepares a child Session for one parallel iteration.
 func (w *Session) createParallelIteration(i int) *Session {
 	single := config.Workflow{
 		Workflow:     w.workflow.Workflow,
