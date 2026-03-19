@@ -19,6 +19,8 @@ func (w *Session) determineNextState() int {
 		return w.routeCheckLoopConditionState()
 	case SessionStateElse:
 		return SessionStateUpdate
+	case SessionStateFirstRound:
+		return w.routeCheckFirstRound()
 	case SessionStateCheckIteration:
 		return w.routeCheckIterationState()
 	case SessionStateNextItem:
@@ -97,6 +99,17 @@ func (w *Session) routeCheckLoopConditionState() int {
 	}
 
 	return SessionStateFirstRound
+}
+
+// routeCheckFirstRound determines the state for the first loop iteration.
+func (w *Session) routeCheckFirstRound() int {
+	if w.checkIsNoop() {
+		w.CurrentMsg.Labels["status"] = SessionStatusSuccess
+
+		return SessionStateExport
+	}
+
+	return SessionStateCheckIteration
 }
 
 // routeCheckIterationState determines if and how to handle iterations.
