@@ -121,7 +121,20 @@ func (w *Session) triggerResume() {
 		dipper.Must(mapstructure.Decode(m, msg))
 	}
 	failIfMissing, _ := dipper.GetMapDataBool(w.Ctx, "fail_if_missing")
+
+	backoffLimits, _ := dipper.GetMapDataInt(w.Ctx, "backoff_limits")
+	interval, _ := dipper.GetMapDataInt(w.Ctx, "interval")
+	if interval <= 0 {
+		interval = 1
+	}
 	succeed := w.store.ResumeSession(w.Workflow.Resume, msg)
+	for !succeed && backoffLimits > 0 {
+		duration := time.Duration(interval) * time.Second
+		time.Sleep(duration)
+		interval *= 2
+		succeed = w.store.ResumeSession(w.Workflow.Resume, msg)
+		backoffLimits--
+	}
 
 	if !succeed && failIfMissing {
 		w.CurrentMsg.Labels["status"] = SessionStatusFailure

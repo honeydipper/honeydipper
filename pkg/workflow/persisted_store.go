@@ -208,6 +208,7 @@ func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message, 
 func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
 	data, _ := s.Call("scheduler", "cancel", map[string]any{"type": "session", "key": key})
 	if data == nil {
+		s.Warningf("unable to resume for key %s, no payload received from waiter.", key)
 		return false
 	}
 
