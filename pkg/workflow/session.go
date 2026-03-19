@@ -101,6 +101,7 @@ type Session struct {
 	child      *Session
 	depth      int
 	pending    bool
+	brief      string
 }
 
 // Marshal converts the live session into a byte array for persistence.
@@ -177,42 +178,46 @@ func (w *Session) setPerforming(action string) {
 
 // Brief derives the brief description of the workflow.
 func (w *Session) Brief() string {
-	brief := "unamed workflow"
+	if w.brief != "" {
+		return w.brief
+	}
+
+	w.brief = "unamed workflow"
 
 	wf := w.Workflow
 	if wf == nil {
-		return brief
+		return w.brief
 	}
 
 	switch {
 	case wf.Name != "":
-		brief = wf.Name
+		w.brief = wf.Name
 	case wf.Description != "":
-		brief = wf.Description
+		w.brief = wf.Description
 	case w.isIteration():
 
-		brief = "iteration"
+		w.brief = "iteration"
 	case w.isLoop():
-		brief = "looping"
+		w.brief = "looping"
 	case wf.Function.Target.System != "":
-		brief = "system func: " + wf.Function.Target.System + "." + wf.Function.Target.Function
+		w.brief = "system func: " + wf.Function.Target.System + "." + wf.Function.Target.Function
 	case wf.Function.Driver != "":
-		brief = "driver func: " + wf.Function.Driver + "." + wf.Function.RawAction
+		w.brief = "driver func: " + wf.Function.Driver + "." + wf.Function.RawAction
 	case wf.CallFunction != "":
-		brief = "system func: " + wf.CallFunction
+		w.brief = "system func: " + wf.CallFunction
 	case wf.CallDriver != "":
-		brief = "driver func: " + wf.CallDriver
+		w.brief = "driver func: " + wf.CallDriver
 	case wf.Workflow != "":
-		brief = "wrapper: " + wf.Workflow
+		w.brief = "wrapper: " + wf.Workflow
 	case len(wf.Steps) > 0:
-		brief = "steps"
+		w.brief = "steps"
 	case len(wf.Threads) > 0:
-		brief = "threads"
+		w.brief = "threads"
 	case len(wf.Cases) > 0:
-		brief = "switch"
+		w.brief = "switch"
 	}
 
-	return brief
+	return w.brief
 }
 
 // isLoop checks if the workflow uses looping statements while and until.

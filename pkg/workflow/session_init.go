@@ -287,5 +287,6 @@ func (w *Session) Init(msg *dipper.Message, parent *Session, ctx map[string]inte
 	w.initCTX(ctx)
 	w.injectLocalCTX()
 	w.interpolateWorkflow()
+	w.brief = "" // refreshing the brief after interpolation
 	w.store.GetLogger().Infof("session [%s.%s] depth %d initialized: %s", w.ID, w.CurrentMsg.Labels["cursor"], w.depth, w.Brief())
 }
