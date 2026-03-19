@@ -27,6 +27,8 @@ import (
 
 const SCHEDULEKEY = "honeydipper:schedule"
 
+var ErrCancelingSchedule = fmt.Errorf("unable to cancel schedule")
+
 var (
 	log          *logging.Logger
 	driver       *dipper.Driver
@@ -180,7 +182,9 @@ func cancelSchedule(msg *dipper.Message) {
 	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 
-	dipper.Must(client.ZRem(ctx, scheduleKey, member).Result())
+	if removed := dipper.Must(client.ZRem(ctx, scheduleKey, member).Result()).(int64); removed == 0 {
+		panic(fmt.Errorf("%w: resume key not found: %s", ErrCancelingSchedule, member))
+	}
 	payload := dipper.Must(client.Eval(ctx, `
 		local x = redis.call('GET', KEYS[1])
 		redis.call('DEL', KEYS[1])
