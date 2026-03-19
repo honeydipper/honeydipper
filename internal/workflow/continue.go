@@ -366,7 +366,18 @@ func (w *Session) continueExec(msg *dipper.Message, exports []map[string]interfa
 				i := poolCount + int(w.iteration)
 				if i < w.lenOfIterate() {
 					daemon.Children.Add(1)
-					go w.launchParallelIteration(i)
+					// Create the child session synchronously under ctxLock to avoid
+					// concurrent read/write on w.ctx during deep-copy in createParallelIteration.
+					w.ctxLock.Lock()
+					defer w.ctxLock.Unlock()
+					child := w.createParallelIteration(i)
+
+					go func(child *Session) {
+						defer daemon.Children.Done()
+						defer dipper.SafeExitOnError("Failed in execute child thread with %+v", child.workflow)
+						defer w.onError()
+						child.execute(w.origMsg)
+					}(child)
 				}
 			}
 		}

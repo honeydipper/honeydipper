@@ -151,16 +151,26 @@ func (w *Session) launchParallelIterations(msg *dipper.Message) {
 	}
 
 	w.origMsg = msg
+	children := make([]*Session, poolCount)
+	w.ctxLock.Lock()
+	defer w.ctxLock.Unlock()
+	for i := 0; i < poolCount; i++ {
+		children[i] = w.createParallelIteration(i)
+	}
+
 	for i := 0; i < poolCount; i++ {
 		daemon.Children.Add(1)
-		go w.launchParallelIteration(i)
+		go func(i int) {
+			defer daemon.Children.Done()
+			defer dipper.SafeExitOnError("Failed in execute child thread with %+v", children[i].workflow)
+			defer w.onError()
+			children[i].execute(w.origMsg)
+		}(i)
 	}
 }
 
-// launchParallelIteration starts one of the iteration.
-func (w *Session) launchParallelIteration(i int) {
-	defer daemon.Children.Done()
-
+// createParallelIteration creates and prepares a child Session for one parallel iteration.
+func (w *Session) createParallelIteration(i int) *Session {
 	single := config.Workflow{
 		Workflow:     w.workflow.Workflow,
 		Function:     w.workflow.Function,
@@ -184,7 +194,7 @@ func (w *Session) launchParallelIteration(i int) {
 	}
 	delete(child.ctx, "resume_token")
 
-	child.execute(w.origMsg)
+	return child
 }
 
 // executeIteration takes actions for items in iteration list.
