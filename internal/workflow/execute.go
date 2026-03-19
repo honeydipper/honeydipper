@@ -152,6 +152,8 @@ func (w *Session) launchParallelIterations(msg *dipper.Message) {
 
 	w.origMsg = msg
 	children := make([]*Session, poolCount)
+	w.ctxLock.Lock()
+	defer w.ctxLock.Unlock()
 	for i := 0; i < poolCount; i++ {
 		children[i] = w.createParallelIteration(i)
 	}
