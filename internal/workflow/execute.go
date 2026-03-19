@@ -151,16 +151,22 @@ func (w *Session) launchParallelIterations(msg *dipper.Message) {
 	}
 
 	w.origMsg = msg
+	children := make([]*Session, poolCount)
+	for i := 0; i < poolCount; i++ {
+		children[i] = w.createParallelIteration(i)
+	}
+
 	for i := 0; i < poolCount; i++ {
 		daemon.Children.Add(1)
-		go w.launchParallelIteration(i)
+		go func(i int) {
+			children[i].execute(w.origMsg)
+			defer daemon.Children.Done()
+		}(i)
 	}
 }
 
-// launchParallelIteration starts one of the iteration.
-func (w *Session) launchParallelIteration(i int) {
-	defer daemon.Children.Done()
-
+// createParallelIteration starts one of the iteration.
+func (w *Session) createParallelIteration(i int) *Session {
 	single := config.Workflow{
 		Workflow:     w.workflow.Workflow,
 		Function:     w.workflow.Function,
@@ -184,7 +190,7 @@ func (w *Session) launchParallelIteration(i int) {
 	}
 	delete(child.ctx, "resume_token")
 
-	child.execute(w.origMsg)
+	return child
 }
 
 // executeIteration takes actions for items in iteration list.
