@@ -27,7 +27,7 @@ const _globalGitHubURL = "https://api.github.com"
 var ErrRetrieveToken = errors.New("unable to fetch token")
 
 func getGitHubJWT(s map[string]interface{}) (string, time.Time) {
-	expiresAt := time.Now().Add(time.Minute * 10).Truncate(time.Second)
+	expiresAt := time.Now().Add(time.Minute * 9).Truncate(time.Second)
 	claims := &jwt.RegisteredClaims{
 		IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Second * 30).Truncate(time.Second)),
 		ExpiresAt: jwt.NewNumericDate(expiresAt),
