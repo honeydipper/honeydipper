@@ -1,3 +1,10 @@
+## [3.10.1](https://github.com/honeydipper/honeydipper/compare/v3.10.0...v3.10.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* sync creating parallel childs to avoid concurrent map access ([#687](https://github.com/honeydipper/honeydipper/issues/687)) ([aa8651b](https://github.com/honeydipper/honeydipper/commit/aa8651b3ff0f8029dfdeb317095d4f8b4fbbefef))
+
 # [3.10.0](https://github.com/honeydipper/honeydipper/compare/v3.9.2...v3.10.0) (2026-02-15)
 
 
