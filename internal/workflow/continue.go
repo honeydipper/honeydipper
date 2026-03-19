@@ -366,7 +366,10 @@ func (w *Session) continueExec(msg *dipper.Message, exports []map[string]interfa
 				i := poolCount + int(w.iteration)
 				if i < w.lenOfIterate() {
 					daemon.Children.Add(1)
-					go w.launchParallelIteration(i)
+					go func() {
+						defer daemon.Children.Done()
+						w.createParallelIteration(i).execute(w.origMsg)
+					}()
 				}
 			}
 		}
