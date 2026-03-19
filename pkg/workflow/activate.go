@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/internal/daemon"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
@@ -243,6 +244,8 @@ func (w *Session) processElseState() {
 	w.setPerforming("executing else branch")
 	dipper.Must(mapstructure.Decode(w.Workflow.Else, &w.ElseBranch))
 	if w.ElseBranch == nil {
+		w.ElseBranch = &config.Workflow{}
+
 		return
 	}
 

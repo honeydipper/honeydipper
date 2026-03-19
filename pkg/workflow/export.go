@@ -33,6 +33,10 @@ func (w *Session) processNoExport(exported map[string]interface{}) {
 
 // processWorkflowExport populates the exported data to be used by parent workflows.
 func (w *Session) processWorkflowExport() {
+	if w.ElseBranch != nil {
+		return
+	}
+
 	envData := w.buildEnvData()
 	status := w.CurrentMsg.Labels["status"]
 
