@@ -160,6 +160,8 @@ func (w *Session) launchParallelIterations(msg *dipper.Message) {
 		daemon.Children.Add(1)
 		go func(i int) {
 			defer daemon.Children.Done()
+			defer dipper.SafeExitOnError("Failed in execute child thread with %+v", children[i].workflow)
+			defer w.onError()
 			children[i].execute(w.origMsg)
 		}(i)
 	}
