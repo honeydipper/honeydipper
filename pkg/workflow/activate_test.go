@@ -717,6 +717,115 @@ func TestResumeClearsPendingFlag(t *testing.T) {
 	}
 }
 
+// TestProgress_PendingResumeFiresHook tests that progress returns when resume fires an exit hook
+// while the session was already pending from an entry hook (the new explicit return path).
+func TestProgress_PendingResumeFiresHook(t *testing.T) {
+	s := makeActivateSession(SessionStateSuccess)
+	customStore := &activateTestStore{childSessionID: "hook-child", pendingChild: true}
+	s.store = customStore
+	// Entry hook fires and sets pending=true, handled=false (hook sub-session is pending).
+	s.Ctx = map[string]interface{}{
+		"hooks": map[string]interface{}{
+			"on_success": "wf1",
+			"on_exit":    "wf2",
+		},
+	}
+
+	s.progress()
+
+	// resume() fired the on_exit hook which is also pending, so progress must have returned
+	// with pending=true rather than looping.
+	if !s.pending {
+		t.Error("expected pending=true after resume fires a hook")
+	}
+}
+
+// TestProgress_ResumeSetsPending tests that progress returns when resume sets pending
+// (exit hook fires) on the normal (non-pending-entry) path.
+func TestProgress_ResumeSetsPending(t *testing.T) {
+	s := makeActivateSession(SessionStateCheckCondition)
+	customStore := &activateTestStore{childSessionID: "hook-child", pendingChild: true}
+	s.store = customStore
+	s.Ctx = map[string]interface{}{
+		"hooks": map[string]interface{}{
+			"on_exit": "wf1",
+		},
+	}
+
+	s.progress()
+
+	if !s.pending {
+		t.Error("expected pending=true when resume fires an exit hook")
+	}
+}
+
+// TestProcessState_NextItem tests processState for SessionStateNextItem.
+func TestProcessState_NextItem(t *testing.T) {
+	s := makeActivateSession(SessionStateNextItem)
+	s.Ctx = map[string]interface{}{}
+	s.Iteration = 1
+	s.Workflow.Iterate = []interface{}{"a", "b"}
+	s.Workflow.IterateAs = "it"
+
+	s.processState()
+
+	if s.Ctx["current"] != "b" {
+		t.Errorf("expected current=b, got %v", s.Ctx["current"])
+	}
+	if s.Ctx["it"] != "b" {
+		t.Errorf("expected it=b, got %v", s.Ctx["it"])
+	}
+}
+
+// TestProcessState_NextRound tests processState for SessionStateNextRound.
+func TestProcessState_NextRound(t *testing.T) {
+	s := makeActivateSession(SessionStateNextRound)
+	s.Ctx = map[string]interface{}{}
+	s.LoopCount = 3
+
+	s.processState()
+
+	if s.Ctx["loop_count"] != 3 {
+		t.Errorf("expected loop_count=3, got %v", s.Ctx["loop_count"])
+	}
+}
+
+// TestProcessState_ActionMultiThread tests processState sets pending for multi-thread with Current>0.
+func TestProcessState_ActionMultiThread(t *testing.T) {
+	s := makeActivateSession(SessionStateAction)
+	s.Workflow.Threads = []cfg.Workflow{{}, {}}
+	s.Current = 1
+
+	s.processState()
+
+	if !s.pending {
+		t.Error("expected pending=true for multi-thread with Current>0")
+	}
+}
+
+// TestProcessState_ExportWithElseBranch tests processState skips export when ElseBranch is set.
+func TestProcessState_ExportWithElseBranch(t *testing.T) {
+	s := makeActivateSession(SessionStateExport)
+	s.ElseBranch = &cfg.Workflow{}
+
+	s.processState() // should not panic or call processWorkflowExport
+
+	if s.pending {
+		t.Error("should not be pending after export with else branch")
+	}
+}
+
+// TestProcessState_Default tests processState for an unmapped state sets performing.
+func TestProcessState_Default(t *testing.T) {
+	s := makeActivateSession(SessionStateCheckCondition)
+
+	s.processState()
+
+	if s.Performing[0] == "initializing" {
+		t.Error("expected Performing to be updated for default state")
+	}
+}
+
 // TestProgress_InitStatus tests progress sets status based on successful flow.
 func TestProgress_InitStatus(t *testing.T) {
 	s := makeActivateSession(SessionStateInit)

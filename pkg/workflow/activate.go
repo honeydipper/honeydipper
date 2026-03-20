@@ -171,19 +171,45 @@ func (w *Session) activate() {
 // progress operates the session based on its current state then transitions the state forward.
 // It handles hooks, state transitions, and execution of workflow operations.
 func (w *Session) progress() {
-	if status := w.CurrentMsg.Labels["status"]; status != SessionStatusSuccess && status != "" && w.CurrentMsg.Labels["performing"] == "" {
-		w.CurrentMsg.Labels["performing"] = strings.Join(w.Performing, "\n")
-	}
-	handled := w.fireOrClearHook(true) // Fire or clear entry hooks for current state.
-	switch {
-	case w.pending && handled:
-		return
-	case w.pending:
+	for {
+		if status := w.CurrentMsg.Labels["status"]; status != SessionStatusSuccess && status != "" && w.CurrentMsg.Labels["performing"] == "" {
+			w.CurrentMsg.Labels["performing"] = strings.Join(w.Performing, "\n")
+		}
+		handled := w.fireOrClearHook(true) // Fire or clear entry hooks for current state.
+		switch {
+		case w.pending && handled:
+			return
+		case w.pending:
+			w.resume()
+			if w.pending {
+				// a hook is fired in resume and the session is still pending.
+				return
+			}
+
+			continue
+		}
+
+		w.processState()
+		if w.pending {
+			w.store.GetLogger().Debugf("session [%s.%s] depth %d pending in state [%s]",
+				w.ID,
+				w.CurrentMsg.Labels["cursor"],
+				w.depth,
+				SessionStates[w.State],
+			)
+
+			return
+		}
+
 		w.resume()
-
-		return
+		if w.pending || w.State == SessionStateDone {
+			return
+		}
 	}
+}
 
+// processState handles the logic for each specific state in the workflow execution.
+func (w *Session) processState() {
 	switch w.State {
 	case SessionStateElse:
 		w.processElseState()
@@ -225,17 +251,6 @@ func (w *Session) progress() {
 		w.processSaveCacheState()
 	default:
 		w.setPerforming("processing state: " + SessionStates[w.State])
-	}
-
-	if w.pending {
-		w.store.GetLogger().Debugf("session [%s.%s] depth %d pending in state [%s]",
-			w.ID,
-			w.CurrentMsg.Labels["cursor"],
-			w.depth,
-			SessionStates[w.State],
-		)
-	} else {
-		w.resume()
 	}
 }
 
@@ -315,8 +330,6 @@ func (w *Session) resume() {
 	w.State = w.determineNextState()
 
 	if w.State != SessionStateDone {
-		w.progress()
-
 		return
 	}
 

@@ -49,6 +49,8 @@ func (w *Session) determineNextState() int {
 		return SessionStateSuccess
 	case SessionStateFailure, SessionStateError, SessionStateSuccess:
 		return SessionStateDone
+	case SessionStateDone:
+		return SessionStateDone
 	default:
 		return w.State + 1
 	}
