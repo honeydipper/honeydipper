@@ -53,7 +53,7 @@ func (w *Session) processWorkflowExport() {
 
 	if w.InFlyFunction != nil && status != SessionStatusError {
 		export := config.ExportFunctionContext(w.InFlyFunction, envData, w.store.GetConfig())
-		w.Ctx = dipper.MergeMap(w.Ctx, export)
+		w.Ctx = dipper.MergeMap(w.Ctx, dipper.MustDeepCopy(export))
 		delete(envData, "sysData")
 		w.processNoExport(export)
 		if len(export) > 0 {
@@ -76,7 +76,7 @@ func (w *Session) processWorkflowExport() {
 // processExport interpolate the given data and add it to the export stack.
 func (w *Session) processExport(exportMap map[string]interface{}, envData map[string]interface{}) {
 	delta := dipper.Interpolate(exportMap, envData).(map[string]interface{})
-	w.Ctx = dipper.MergeMap(w.Ctx, delta)
+	w.Ctx = dipper.MergeMap(w.Ctx, dipper.MustDeepCopy(delta))
 	envData["ctx"] = w.Ctx
 	w.processNoExport(delta)
 	if len(delta) > 0 {

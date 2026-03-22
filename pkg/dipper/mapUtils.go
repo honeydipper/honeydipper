@@ -388,17 +388,26 @@ func CombineMap(dst map[string]interface{}, src interface{}) map[string]interfac
 	return dst
 }
 
-func MergeModifier(dst map[string]interface{}) {
-	for k, v := range dst {
+func MergeModifier(dst map[string]interface{}, src map[string]interface{}) {
+	originalKeys := make([]string, len(src))
+	numKeys := 0
+	for k, v := range src {
 		if k[len(k)-1] == '-' { // set default
 			if ev, ok := dst[k[:len(k)-1]]; !ok || ev == nil {
 				dst[k[:len(k)-1]] = v
 			}
 			delete(dst, k)
+		} else {
+			originalKeys[numKeys] = k
+			numKeys++
 		}
 	}
 
-	for k, v := range dst {
+	for i, k := range originalKeys {
+		if i >= numKeys {
+			break
+		}
+		v := src[originalKeys[i]]
 		vmap, ok := v.(map[string]interface{})
 
 		switch {
@@ -418,7 +427,7 @@ func MergeModifier(dst map[string]interface{}) {
 			dst[k[:len(k)-1]] = v
 			delete(dst, k)
 		case ok:
-			MergeModifier(vmap)
+			MergeModifier(dst[k].(map[string]interface{}), vmap)
 		}
 	}
 }
@@ -427,7 +436,9 @@ func MergeModifier(dst map[string]interface{}) {
 func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
 	dst = CombineMap(dst, src)
 
-	MergeModifier(dst)
+	if srcmap, ok := src.(map[string]interface{}); ok {
+		MergeModifier(dst, srcmap)
+	}
 
 	return dst
 }

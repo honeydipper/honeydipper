@@ -293,7 +293,7 @@ func (w *Session) processUpdateState() {
 
 	for _, e := range w.child.Exported {
 		if w.ElseBranch == nil {
-			w.Ctx = dipper.MergeMap(w.Ctx, e)
+			w.Ctx = dipper.MergeMap(w.Ctx, dipper.MustDeepCopy(e))
 		}
 		w.processNoExport(e)
 		if len(e) > 0 {

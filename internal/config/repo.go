@@ -56,7 +56,7 @@ func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*
 	}
 
 	dipper.Must(mergeDataSet(assembled, c.DataSet))
-	dipper.MergeModifier(assembled.Drivers)
+	dipper.MergeModifier(assembled.Drivers, c.DataSet.Drivers)
 
 	c.updateBuiltinCtxs(assembled)
 
