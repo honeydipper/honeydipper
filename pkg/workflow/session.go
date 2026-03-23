@@ -331,6 +331,7 @@ func (w *Session) Dump() map[string]interface{} {
 			"description": w.Workflow.Description,
 			"state":       SessionStates[w.State],
 			"output":      w.Ctx["_output"],
+			"is_noop":     w.IsNoop == nil || *w.IsNoop,
 		},
 		"labels": labels,
 	}
