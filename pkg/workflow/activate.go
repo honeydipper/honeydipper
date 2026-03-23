@@ -344,8 +344,6 @@ func (w *Session) resume() {
 	}
 
 	w.CompletionTime = time.Now()
-	w.CurrentMsg.Labels["start"] = w.StartTime.Format(time.RFC3339Nano)
-	w.CurrentMsg.Labels["end"] = w.CompletionTime.Format(time.RFC3339Nano)
 
 	if w.Parent != "" {
 		w.store.GetLogger().Infof("session [%s.%s] depth %d return to parent [%s]",

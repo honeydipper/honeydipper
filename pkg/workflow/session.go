@@ -325,6 +325,13 @@ func (w *Session) Dump() map[string]interface{} {
 	}
 	delete(labels, "performing")
 
+	if !w.StartTime.IsZero() {
+		labels["start"] = w.StartTime.Format(time.RFC3339Nano)
+	}
+	if !w.CompletionTime.IsZero() {
+		labels["end"] = w.CompletionTime.Format(time.RFC3339Nano)
+	}
+
 	ret := map[string]interface{}{
 		"data": map[string]any{
 			"brief":       w.Brief(),
