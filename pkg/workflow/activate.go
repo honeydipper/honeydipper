@@ -285,6 +285,8 @@ func (w *Session) processUpdateState() {
 		return
 	}
 
+	w.Action += w.child.Action
+
 	if w.CurrentMsg != w.child.CurrentMsg {
 		w.CurrentMsg.Labels["status"] = w.child.CurrentMsg.Labels["status"]
 		w.CurrentMsg.Labels["reason"] = w.child.CurrentMsg.Labels["reason"]

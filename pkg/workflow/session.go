@@ -92,6 +92,8 @@ type Session struct {
 	State int
 	// IsNoop is a flag that indicates if the workflow is a noop.
 	IsNoop *bool
+	// Action is a counter to track how many actions have been performed, used for displaying.
+	Action int
 
 	threads    *sync.WaitGroup
 	cancelFunc context.CancelFunc
@@ -352,15 +354,25 @@ func (w *Session) Dump() map[string]interface{} {
 		labels["end"] = w.CompletionTime.Format(time.RFC3339Nano)
 	}
 
+	isNoop := w.IsNoop == nil || *w.IsNoop
+	if w.State == SessionStateDone {
+		isNoop = w.Action == 0
+
+		if !isNoop {
+			isNoop, _ = dipper.GetMapDataBool(w.Ctx, "_effectively_noop")
+		}
+	}
+
 	ret := map[string]interface{}{
 		"data": map[string]any{
 			"brief":       w.Brief(),
 			"description": w.Workflow.Description,
 			"state":       SessionStates[w.State],
 			"output":      w.Ctx["_output"],
-			"is_noop":     w.IsNoop == nil || *w.IsNoop,
+			"is_noop":     isNoop,
 			"session_id":  w.ID,
 			"event_id":    w.EventID,
+			"event_name":  w.GetEventName(),
 		},
 		"labels": labels,
 	}

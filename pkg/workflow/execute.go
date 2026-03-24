@@ -32,16 +32,19 @@ func (w *Session) execute() {
 		// Handle direct function execution.
 		f := w.interpolateFunction(&w.Workflow.Function)
 		w.setPerforming("running function: " + f.Target.System + "." + f.Target.Function)
+		w.Action++
 		w.callFunction(f)
 		w.pending = true
 	case w.Workflow.CallDriver != "":
 		// Handle driver function calls.
 		w.setPerforming("invoking driver function: " + w.Workflow.CallDriver)
+		w.Action++
 		w.callDriver(w.Workflow.CallDriver)
 		w.pending = true
 	case w.Workflow.CallFunction != "":
 		// Handle shorthand function calls.
 		w.setPerforming("calling function: " + w.Workflow.CallFunction)
+		w.Action++
 		w.callShorthandFunction(w.Workflow.CallFunction)
 		w.pending = true
 	case w.Workflow.Steps != nil:
@@ -68,6 +71,7 @@ func (w *Session) execute() {
 		w.setPerforming(fmt.Sprintf("Waiting for threads (%d/%d done)", w.Current, len(w.Workflow.Threads)))
 		w.pending = true
 	case w.Workflow.Wait != "":
+		w.Action++
 		w.enterWait()
 	case w.Workflow.Switch != "":
 		// Handle conditional branching.
@@ -79,6 +83,7 @@ func (w *Session) execute() {
 			}
 		}
 	case w.Workflow.Resume != "":
+		w.Action++
 		// Handle session resumption.
 		w.triggerResume()
 	}
