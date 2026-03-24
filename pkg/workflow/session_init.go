@@ -25,7 +25,7 @@ func NewSession(id string, wf *config.Workflow, store Store) *Session {
 		Workflow:   &replica,
 		StartTime:  time.Now(),
 		store:      store,
-		Performing: []string{"initializing"},
+		Performing: &[]string{"initializing"},
 
 		Ctx: map[string]any{
 			"_meta_desc": wf.Description,
@@ -42,8 +42,8 @@ func (w *Session) inherentParentData(parent *Session) {
 	w.Event = parent.Event
 	w.EventID = parent.EventID
 	w.Ctx = dipper.MustDeepCopyMap(parent.Ctx)
+	*parent.Performing = append(*parent.Performing, "initializing")
 	w.Performing = parent.Performing
-	w.Performing = append(w.Performing, "initializing")
 	w.LoadedContexts = parent.LoadedContexts
 	w.depth = parent.depth + 1
 	w.IsHook = w.IsHook || parent.IsHook
@@ -64,6 +64,9 @@ func (w *Session) injectMsg(msg *dipper.Message) {
 			w.Event = map[string]interface{}{}
 		}
 		w.EventID = msg.Labels["eventID"]
+	}
+	if w.EventID != "" {
+		w.CurrentMsg.Labels["eventID"] = w.EventID
 	}
 }
 

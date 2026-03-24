@@ -70,7 +70,7 @@ type Session struct {
 	Workflow *config.Workflow
 
 	// Performing describes the current action being performed.
-	Performing []string
+	Performing *[]string
 
 	// LoadedContexts is the list of context names that have been loaded.
 	LoadedContexts []string
@@ -161,6 +161,24 @@ func (w *Session) interpolateFunction(f *config.Function) *config.Function {
 	return &interpolatedFunc
 }
 
+func (w *Session) performingValues() []string {
+	if w.Performing == nil {
+		return []string{}
+	}
+
+	return *w.Performing
+}
+
+func (w *Session) trimPerformingToCurrentDepth() {
+	if w.Performing == nil {
+		return
+	}
+	target := w.depth + 1
+	if len(*w.Performing) > target {
+		*w.Performing = (*w.Performing)[:target]
+	}
+}
+
 // setPerforming sets the current performing action.
 func (w *Session) setPerforming(action string) {
 	p := w.Brief() + " - " + action
@@ -173,7 +191,7 @@ func (w *Session) setPerforming(action string) {
 			p,
 		)
 	}
-	w.Performing[w.depth] = p
+	(*w.Performing)[w.depth] = p
 }
 
 // Brief derives the brief description of the workflow.
@@ -324,6 +342,8 @@ func (w *Session) Dump() map[string]interface{} {
 		labels[k] = v
 	}
 	delete(labels, "performing")
+	delete(labels, "sessionID")
+	delete(labels, "eventID")
 
 	if !w.StartTime.IsZero() {
 		labels["start"] = w.StartTime.Format(time.RFC3339Nano)
@@ -339,16 +359,14 @@ func (w *Session) Dump() map[string]interface{} {
 			"state":       SessionStates[w.State],
 			"output":      w.Ctx["_output"],
 			"is_noop":     w.IsNoop == nil || *w.IsNoop,
+			"session_id":  w.ID,
+			"event_id":    w.EventID,
 		},
 		"labels": labels,
 	}
 
 	if w.State != SessionStateDone {
-		current := w
-		for current.child != nil {
-			current = current.child
-		}
-		ret["performing"] = current.Performing
+		ret["performing"] = w.performingValues()
 	} else if labels["status"] == SessionStatusError || labels["status"] == SessionStatusFailure {
 		ret["performing"] = strings.Split(w.CurrentMsg.Labels["performing"], "\n")
 	}

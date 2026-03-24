@@ -189,6 +189,9 @@ func (w *Session) callFunction(f *config.Function) {
 	delete(labels, "performing")
 	labels["sessionID"] = w.ID
 	labels["cursor"] = w.CurrentMsg.Labels["cursor"]
+	if w.EventID != "" {
+		labels["eventID"] = w.EventID
+	}
 
 	cmdmsg := &dipper.Message{
 		Channel: dipper.ChannelEventbus,

@@ -178,8 +178,11 @@ func TestCreateSession_and_EmitResult_and_Detach(t *testing.T) {
 	// DetachSession: create child with parent set without calling Init to avoid
 	// deep initialization logic; verify DetachSession clears parent and resets cursor.
 	parent := &Session{ID: "p1", CurrentMsg: &dipper.Message{Labels: map[string]string{"cursor": "0"}}, store: ps, Workflow: &config.Workflow{}}
+	parent.depth = 0
+	sharedPerforming := []string{"parent", "child"}
+	parent.Performing = &sharedPerforming
 	parent.context, parent.cancelFunc = context.WithCancel(context.Background())
-	child := &Session{parent: parent, Performing: []string{"init", "child"}, depth: 1, CurrentMsg: &dipper.Message{Labels: map[string]string{"cursor": "1"}}, store: ps, Workflow: &config.Workflow{}}
+	child := &Session{parent: parent, Performing: parent.Performing, depth: 1, CurrentMsg: &dipper.Message{Labels: map[string]string{"cursor": "1"}}, store: ps, Workflow: &config.Workflow{}}
 	ps.nextID = 999
 	ps.DetachSession(child)
 	if child.parent != nil {
@@ -187,6 +190,12 @@ func TestCreateSession_and_EmitResult_and_Detach(t *testing.T) {
 	}
 	if child.CurrentMsg.Labels["cursor"] != "0" {
 		t.Fatalf("detach did not reset cursor, got %s", child.CurrentMsg.Labels["cursor"])
+	}
+	if len(*parent.Performing) != 1 || (*parent.Performing)[0] != "parent" {
+		t.Fatalf("detach should trim parent performing stack, got %+v", *parent.Performing)
+	}
+	if len(*child.Performing) != 1 || (*child.Performing)[0] != "child" {
+		t.Fatalf("detach should isolate child performing stack, got %+v", *child.Performing)
 	}
 }
 

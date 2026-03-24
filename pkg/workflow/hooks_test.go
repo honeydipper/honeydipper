@@ -74,7 +74,7 @@ func (s *hookTrackingStore) CreateChildSession(parent *Session, wf *cfg.Workflow
 		Ctx:         map[string]interface{}{},
 		pending:     s.makePendingChild,
 		CurrentHook: "",
-		Performing:  []string{"initializing"},
+		Performing:  &[]string{"initializing"},
 		threads:     wg,
 	}
 
@@ -138,7 +138,7 @@ func makeHookSession(state int) *Session {
 		store:      &hookTrackingStore{},
 		Ctx:        map[string]interface{}{},
 		State:      state,
-		Performing: []string{"initializing"},
+		Performing: &[]string{"initializing"},
 		threads:    wg,
 	}
 }

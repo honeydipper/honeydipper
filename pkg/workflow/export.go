@@ -47,7 +47,7 @@ func (w *Session) processWorkflowExport() {
 		}
 		w.CurrentMsg.Labels["reason"] += fmt.Sprintf("Error on exporting data %+v", r)
 		if w.CurrentMsg.Labels["performing"] == "" {
-			w.CurrentMsg.Labels["performing"] = strings.Join(w.Performing, "\n")
+			w.CurrentMsg.Labels["performing"] = strings.Join(w.performingValues(), "\n")
 		}
 	})
 

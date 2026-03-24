@@ -169,7 +169,7 @@ func TestProcessWorkflowExport_InFly_Skipped(t *testing.T) {
 func TestProcessWorkflowExport_PanicHandled(t *testing.T) {
 	wf := &cfg.Workflow{}
 	s := makeExportSession(wf)
-	s.Performing = []string{"act"}
+	s.Performing = &[]string{"act"}
 	s.InFlyFunction = &cfg.Function{Target: cfg.Action{System: "nope", Function: "f"}}
 	s.CurrentMsg.Labels["status"] = SessionStatusSuccess
 	// pre-populate reason to exercise the newline concatenation logic in the

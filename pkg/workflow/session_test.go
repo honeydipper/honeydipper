@@ -188,12 +188,13 @@ func TestInterpolateFunction(t *testing.T) {
 // TestSetPerforming tests the setPerforming method.
 func TestSetPerforming(t *testing.T) {
 	s := newSession(&cfg.Workflow{Name: "test"})
-	s.Performing = make([]string, 10)
+	p := make([]string, 10)
+	s.Performing = &p
 	s.depth = 0
 
 	s.setPerforming("test action")
 
-	if s.Performing[0] == "" {
+	if (*s.Performing)[0] == "" {
 		t.Fatal("expected performing message to be set")
 	}
 }
@@ -790,8 +791,9 @@ func TestDump_NotDone(t *testing.T) {
 	wf := &cfg.Workflow{Description: "test workflow"}
 	s := newSession(wf)
 	s.State = SessionStateInit
-	s.Performing = make([]string, 1)
-	s.Performing[0] = "action"
+	p := make([]string, 1)
+	s.Performing = &p
+	(*s.Performing)[0] = "action"
 	s.Ctx["_output"] = "result"
 
 	dump := s.Dump()
@@ -910,13 +912,13 @@ func TestDump_WithChild(t *testing.T) {
 	wf := &cfg.Workflow{}
 	s := newSession(wf)
 	s.State = SessionStateInit
-	s.Performing = make([]string, 2)
-	s.Performing[0] = "parent_action"
+	p := make([]string, 2)
+	s.Performing = &p
+	(*s.Performing)[0] = "parent_action"
 
 	childWf := &cfg.Workflow{}
 	s.child = newSession(childWf)
-	s.child.Performing = make([]string, 2)
-	s.child.Performing[1] = "child_action"
+	(*s.Performing)[1] = "child_action"
 
 	dump := s.Dump()
 

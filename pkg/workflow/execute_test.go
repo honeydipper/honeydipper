@@ -126,7 +126,7 @@ func makeExecuteSession() *Session {
 		store:      &execTestStore{},
 		Ctx:        map[string]interface{}{},
 		State:      state,
-		Performing: []string{"init"},
+		Performing: &[]string{"init"},
 		threads:    wg,
 		StartTime:  time.Now(),
 	}

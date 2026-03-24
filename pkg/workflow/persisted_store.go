@@ -59,8 +59,12 @@ func (s *PersistedStore) DetachSession(w *Session) {
 	w.ID = s.GetNextID()
 
 	s.Infof("session [%s.%s] spin off session %s", w.parent.ID, w.CurrentMsg.Labels["cursor"], w.ID)
+	frame := (*w.Performing)[w.depth]
+	if w.parent != nil {
+		w.parent.trimPerformingToCurrentDepth()
+	}
 
-	w.Performing = []string{w.Performing[w.depth]}
+	w.Performing = &[]string{frame}
 	w.depth = 0
 	w.EventID = w.EventID + ":" + w.ID
 
@@ -258,11 +262,19 @@ func (s *PersistedStore) persist(w *Session) {
 	current := root
 	cursor := ""
 	for {
+		var savedPerforming *[]string
+		if current != root {
+			savedPerforming = current.Performing
+			current.Performing = nil
+		}
 		dipper.Must(s.Call("cache", "rpush", map[string]interface{}{
 			"key":   key,
 			"value": string(current.Marshal()),
 			"ttl":   ttl,
 		}))
+		if current != root {
+			current.Performing = savedPerforming
+		}
 		cursor = current.CurrentMsg.Labels["cursor"]
 		if current.child == nil {
 			break
@@ -365,6 +377,11 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 		w.store = s
 		w.pending = true
 		current = w
+	}
+
+	// Share the Performing stack from the root with all sessions.
+	for _, session := range stack {
+		session.Performing = stack[0].Performing
 	}
 
 	// return msg data to parent early to avoid losing during hook

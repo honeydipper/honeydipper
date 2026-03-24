@@ -58,6 +58,7 @@ func (w *Session) fireOrClearHook(entry bool) bool {
 				if w.child != nil {
 					// moving forward with cursor even without carrying over the message from the hook.
 					w.CurrentMsg.Labels["cursor"] = w.child.CurrentMsg.Labels["cursor"]
+					w.trimPerformingToCurrentDepth()
 					w.child = nil
 				}
 				w.pending = false

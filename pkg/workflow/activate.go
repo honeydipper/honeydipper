@@ -147,7 +147,7 @@ func (w *Session) activate() {
 			w.pending = false
 			w.CurrentMsg.Labels["status"] = SessionStatusError
 			w.CurrentMsg.Labels["reason"] = fmt.Sprintf("panic progressing through state [%s]: %v", SessionStates[w.State], r)
-			w.CurrentMsg.Labels["performing"] = strings.Join(w.Performing, "\n")
+			w.CurrentMsg.Labels["performing"] = strings.Join(w.performingValues(), "\n")
 			w.CurrentHook = ""
 
 			w.State = SessionStateExport
@@ -173,7 +173,7 @@ func (w *Session) activate() {
 func (w *Session) progress() {
 	for {
 		if status := w.CurrentMsg.Labels["status"]; status != SessionStatusSuccess && status != "" && w.CurrentMsg.Labels["performing"] == "" {
-			w.CurrentMsg.Labels["performing"] = strings.Join(w.Performing, "\n")
+			w.CurrentMsg.Labels["performing"] = strings.Join(w.performingValues(), "\n")
 		}
 		handled := w.fireOrClearHook(true) // Fire or clear entry hooks for current state.
 		switch {
@@ -308,6 +308,7 @@ func (w *Session) processUpdateState() {
 			w.Exported = append(w.Exported, e)
 		}
 	}
+	w.trimPerformingToCurrentDepth()
 	w.child = nil
 }
 

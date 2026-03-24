@@ -76,7 +76,7 @@ func (s *activateTestStore) CreateChildSession(parent *Session, wf *cfg.Workflow
 		CurrentMsg: msg,
 		store:      s,
 		Ctx:        map[string]interface{}{},
-		Performing: []string{"initializing"},
+		Performing: &[]string{"initializing"},
 		threads:    wg,
 		pending:    s.pendingChild,
 	}
@@ -162,7 +162,7 @@ func makeActivateSession(state int) *Session {
 		store:      &activateTestStore{childSessionID: "child"},
 		Ctx:        map[string]interface{}{},
 		State:      state,
-		Performing: []string{"initializing"},
+		Performing: &[]string{"initializing"},
 		threads:    wg,
 		StartTime:  time.Now(),
 	}
@@ -189,7 +189,7 @@ func TestActivateChild_NonPendingChild(t *testing.T) {
 		threads:    &sync.WaitGroup{},
 		store:      childStore,
 		Workflow:   &cfg.Workflow{},
-		Performing: []string{"init"},
+		Performing: &[]string{"init"},
 	}
 
 	s.activateChild()
@@ -223,7 +223,7 @@ func TestActivateChild_PendingChild(t *testing.T) {
 		threads:    &sync.WaitGroup{},
 		store:      childStore,
 		Workflow:   &cfg.Workflow{},
-		Performing: []string{"init"},
+		Performing: &[]string{"init"},
 	}
 
 	// activateChild should handle pending children without panic
@@ -257,7 +257,7 @@ func TestActivateChild_ChildWithCurrentHook(t *testing.T) {
 		},
 		store:      childStore,
 		Workflow:   &cfg.Workflow{},
-		Performing: []string{"init"},
+		Performing: &[]string{"init"},
 		threads:    wg,
 	}
 	s.child = child
@@ -297,7 +297,7 @@ func TestActivateChild_InjectionWithHook(t *testing.T) {
 		threads:    &sync.WaitGroup{},
 		store:      childStore,
 		Workflow:   &cfg.Workflow{},
-		Performing: []string{"init"},
+		Performing: &[]string{"init"},
 	}
 
 	s.activateChild()
@@ -483,7 +483,7 @@ func TestProgress_WithStatus(t *testing.T) {
 	s := makeActivateSession(SessionStateCheckCondition)
 	s.CurrentMsg.Labels["status"] = SessionStatusFailure
 	s.CurrentMsg.Labels["performing"] = ""
-	s.Performing = []string{"step1", "step2"}
+	s.Performing = &[]string{"step1", "step2"}
 
 	s.progress()
 
@@ -821,7 +821,7 @@ func TestProcessState_Default(t *testing.T) {
 
 	s.processState()
 
-	if s.Performing[0] == "initializing" {
+	if (*s.Performing)[0] == "initializing" {
 		t.Error("expected Performing to be updated for default state")
 	}
 }

@@ -101,7 +101,7 @@ func TestNewSession_Basic(t *testing.T) {
 	if s.Ctx["_meta_desc"] != "desc" {
 		t.Errorf("_meta_desc not initialized")
 	}
-	if len(s.Performing) != 1 || s.Performing[0] != "initializing" {
+	if len(*s.Performing) != 1 || (*s.Performing)[0] != "initializing" {
 		t.Error("performing slice not initialized")
 	}
 	if s.threads == nil {
@@ -122,7 +122,7 @@ func TestInherentParentData(t *testing.T) {
 	parent.Event = map[string]interface{}{"foo": "bar"}
 	parent.EventID = "ev1"
 	parent.Ctx = map[string]interface{}{"a": 1, "hooks": "bad"}
-	parent.Performing = []string{"p"}
+	parent.Performing = &[]string{"p"}
 	parent.LoadedContexts = []string{"ctx1"}
 	parent.depth = 2
 	parent.IsHook = true
@@ -141,7 +141,7 @@ func TestInherentParentData(t *testing.T) {
 	if _, ok := child.Ctx["hooks"]; ok {
 		t.Error("hooks should be dropped")
 	}
-	if len(child.Performing) != 2 || child.Performing[1] != "initializing" {
+	if len(*child.Performing) != 2 || (*child.Performing)[1] != "initializing" {
 		t.Error("performing not appended")
 	}
 	if child.depth != 3 {
