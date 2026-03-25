@@ -384,14 +384,7 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 		session.Performing = stack[0].Performing
 	}
 
-	// return msg data to parent early to avoid losing during hook
-	// handling, but preventing cursor from being contaminated.
-	if current.CurrentHook == "" {
-		current.CurrentMsg = msg
-	} else {
-		current.CurrentMsg.Labels["cursor"] = msg.Labels["cursor"]
-	}
-
+	current.CurrentMsg = msg
 	current.child = child
 
 	return stack[0]

@@ -67,9 +67,10 @@ func TestProcessExport_Basic(t *testing.T) {
 	if len(s.Exported) != 1 {
 		t.Fatalf("expected 1 exported entry, got %d", len(s.Exported))
 	}
-	// exported slice should not contain the no-export key
-	if e, ok := s.Exported[0]["bad"]; ok {
-		t.Errorf("exported entry should not include bad, got %v", e)
+	// exported slice should include all keys from the export map, even no-export keys
+	// no-export is only applied to child exports, not the session's own exports
+	if _, ok := s.Exported[0]["bad"]; !ok {
+		t.Errorf("exported entry should include bad")
 	}
 	// empty delta shouldn't append
 	s.Exported = nil

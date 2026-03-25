@@ -78,6 +78,8 @@ type Session struct {
 	CurrentMsg *dipper.Message
 	// OrigMsg is the original return message before hook execution.
 	OrigMsg *dipper.Message
+	// OrigChild is the original child session before hook execution.
+	OrigChild *Session
 
 	// CurrentHook is the current hook that is being executed.
 	CurrentHook string

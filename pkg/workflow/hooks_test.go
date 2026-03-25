@@ -527,6 +527,8 @@ func TestExecuteHook_ChildWithCurrentHook(t *testing.T) {
 	s := makeHookSession(SessionStateCheckCondition)
 	customStore := &hookTrackingStore{}
 	s.store = customStore
+	// Set makePendingChild to true so the child remains after executeHook
+	customStore.makePendingChild = true
 
 	s.Ctx = map[string]interface{}{
 		"hooks": map[string]interface{}{
@@ -534,7 +536,14 @@ func TestExecuteHook_ChildWithCurrentHook(t *testing.T) {
 		},
 	}
 
-	s.executeHook("test_hook")
+	ret := s.executeHook("test_hook")
+
+	// When child has CurrentHook, executeHook should return true (pending)
+	if !ret {
+		t.Error("executeHook should return true when child is pending")
+	}
+
+	// Set CurrentHook on the pending child
 	s.child.CurrentHook = "some_hook"
 
 	if !(s.child.pending || s.child.CurrentHook != "") {

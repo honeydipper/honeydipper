@@ -55,12 +55,7 @@ func (w *Session) fireOrClearHook(entry bool) bool {
 			handled = true
 			if w.pending {
 				w.setPerforming("exiting hook:" + hook)
-				if w.child != nil {
-					// moving forward with cursor even without carrying over the message from the hook.
-					w.CurrentMsg.Labels["cursor"] = w.child.CurrentMsg.Labels["cursor"]
-					w.trimPerformingToCurrentDepth()
-					w.child = nil
-				}
+				w.restoreFromHook()
 				w.pending = false
 			}
 		}
@@ -98,6 +93,9 @@ func (w *Session) executeHook(name string) bool {
 		return false
 	}
 
+	w.OrigMsg = w.CurrentMsg
+	w.OrigChild = w.child
+
 	msg := *w.CurrentMsg
 	msg.Labels = map[string]string{}
 	for k, v := range w.CurrentMsg.Labels {
@@ -107,5 +105,44 @@ func (w *Session) executeHook(name string) bool {
 	w.store.ActivateSession(w.child)
 	w.child.Wait()
 
-	return w.child.pending || w.child.CurrentHook != ""
+	pending := w.child.pending || w.child.CurrentHook != ""
+
+	if !pending {
+		w.restoreFromHook()
+	}
+
+	return pending
+}
+
+// restoreFromHook restores the session state from the hook if the session is still pending.
+func (w *Session) restoreFromHook() {
+	// allowing hooks to export data.
+	for _, e := range w.child.Exported {
+		if w.ElseBranch == nil {
+			w.Ctx = dipper.MergeMap(w.Ctx, dipper.MustDeepCopy(e))
+		}
+		w.processNoExport(e)
+		if len(e) > 0 {
+			w.store.GetLogger().Debugf("session [%s.%s] depth %d from hook [%s.%s] depth %d exported: %+v",
+				w.ID,
+				w.CurrentMsg.Labels["cursor"],
+				w.depth,
+				w.child.ID,
+				w.child.CurrentMsg.Labels["cursor"],
+				w.child.depth,
+				e)
+			w.Exported = append(w.Exported, e)
+		}
+	}
+
+	// moving forward with cursor but without carrying over the message from the hook.
+	cursor := w.child.CurrentMsg.Labels["cursor"]
+
+	w.CurrentMsg = w.OrigMsg
+	w.CurrentMsg.Labels["cursor"] = cursor
+	w.OrigMsg = nil
+	w.child = w.OrigChild
+	w.OrigChild = nil
+
+	w.trimPerformingToCurrentDepth()
 }

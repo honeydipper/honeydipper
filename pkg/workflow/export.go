@@ -55,7 +55,6 @@ func (w *Session) processWorkflowExport() {
 		export := config.ExportFunctionContext(w.InFlyFunction, envData, w.store.GetConfig())
 		w.Ctx = dipper.MergeMap(w.Ctx, dipper.MustDeepCopy(export))
 		delete(envData, "sysData")
-		w.processNoExport(export)
 		if len(export) > 0 {
 			w.Exported = append(w.Exported, export)
 		}
@@ -78,7 +77,6 @@ func (w *Session) processExport(exportMap map[string]interface{}, envData map[st
 	delta := dipper.Interpolate(exportMap, envData).(map[string]interface{})
 	w.Ctx = dipper.MergeMap(w.Ctx, dipper.MustDeepCopy(delta))
 	envData["ctx"] = w.Ctx
-	w.processNoExport(delta)
 	if len(delta) > 0 {
 		w.Exported = append(w.Exported, delta)
 	}
