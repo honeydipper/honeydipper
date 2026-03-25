@@ -378,9 +378,11 @@ func (w *Session) Dump() map[string]interface{} {
 			"state":       SessionStates[w.State],
 			"output":      w.Ctx["_output"],
 			"is_noop":     isNoop,
+			"is_hook":     w.IsHook,
 			"session_id":  w.ID,
 			"event_id":    w.EventID,
 			"event_name":  w.GetEventName(),
+			"parent":      w.Parent,
 		},
 		"labels": labels,
 	}

@@ -45,6 +45,7 @@ func (resp *Response) Ack() {
 
 // Return returns data to api service.
 func (resp *Response) Return(data interface{}) {
+	_, isRaw := data.([]byte)
 	resp.EventBus.SendMessage(&dipper.Message{
 		Channel: "eventbus",
 		Subject: "api",
@@ -53,6 +54,7 @@ func (resp *Response) Return(data interface{}) {
 			"uuid": resp.Request.Labels["uuid"],
 			"from": resp.Request.Labels["from"],
 		},
+		IsRaw:   isRaw,
 		Payload: data,
 	})
 	resp.Factrory.Live.Done()

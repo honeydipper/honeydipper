@@ -8,6 +8,8 @@ package service
 
 import (
 	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/honeydipper/honeydipper/v4/internal/api"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -32,6 +34,18 @@ func handleEventWait(resp *api.Response) {
 
 func handleEventList(resp *api.Response) {
 	resp.Request = dipper.DeserializePayload(resp.Request)
-	cursor, _ := dipper.GetMapDataStr(resp.Request.Payload, "cursor")
-	resp.Return(sessionStore.DumpSessions(cursor))
+	lookBackStr, _ := dipper.GetMapDataStr(resp.Request.Payload, "look_back")
+	asOf, _ := dipper.GetMapDataStr(resp.Request.Payload, "as_of")
+
+	lookBack := 12 // 12 blocks by default, 24 hours of session history
+	if lookBackStr != "" {
+		lookBack = dipper.Must(strconv.Atoi(lookBackStr)).(int)
+	}
+
+	if asOf != "" {
+		asOfParts := strings.Split(asOf, "_")
+		asOf = asOfParts[len(asOfParts)-1]
+	}
+
+	resp.Return(sessionStore.DumpSessions(lookBack, asOf))
 }

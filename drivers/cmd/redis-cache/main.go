@@ -78,6 +78,11 @@ func main() {
 	driver.RPCHandlers["exists"] = exists
 	driver.RPCHandlers["scan"] = scan
 	driver.RPCHandlers["expire"] = expire
+	driver.RPCHandlers["hset"] = hset
+	driver.RPCHandlers["hvals"] = hvals
+	driver.RPCHandlers["hmget"] = hmget
+	driver.RPCHandlers["stream_hset"] = streamHset
+	driver.RPCHandlers["stream_hvals"] = streamHvals
 	driver.Run()
 }
 
@@ -94,6 +99,10 @@ func start(msg *dipper.Message) {
 func scan(msg *dipper.Message) {
 	dipper.DeserializePayload(msg)
 	pattern := dipper.MustGetMapDataStr(msg.Payload, "pattern")
+	count := int64(100)
+	if v, ok := dipper.GetMapDataInt(msg.Payload, "count"); ok && v > 0 {
+		count = int64(v)
+	}
 	var cursor uint64
 	if v, ok := dipper.GetMapDataStr(msg.Payload, "cursor"); ok && v != "" {
 		cursor = uint64(dipper.Must(strconv.Atoi(v)).(int))
@@ -105,8 +114,9 @@ func scan(msg *dipper.Message) {
 	defer cancel()
 
 	keys := []string{}
-	for len(keys) < 100 {
-		res := dipper.Must(client.Scan(ctx, cursor, pattern, 0).Result()).([]any)
+	for int64(len(keys)) < count {
+		remaining := count - int64(len(keys))
+		res := dipper.Must(client.Scan(ctx, cursor, pattern, remaining).Result()).([]any)
 		keys = append(keys, res[0].([]string)...)
 		cursor = res[1].(uint64)
 		if cursor == 0 {

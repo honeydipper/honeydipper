@@ -100,23 +100,22 @@ func TestGetNumSessions_and_DumpSessions(t *testing.T) {
 		t.Fatalf("expected 0 got %d", n)
 	}
 
-	// DumpSessions: craft a scan payload and an associated stack entry
-	// create a session and marshal it for lrange response
+	// DumpSessions: craft a stream_hvals response with session data
+	// create a session and marshal it for stream_hvals response
 	s := NewSession("x1", &config.Workflow{}, ps)
-	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "0"}}
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"test": "data"}}
 	buf := s.Marshal()
 
-	scan := map[string]any{"cursor": "0", "keys": []any{StoreSessionPrefix + "x1"}}
-	fh.resp["cache:scan"] = dipper.SerializeContent(scan)
-	fh.resp["cache:lrange:"+StoreSessionPrefix+"x1"] = buf
+	// stream_hvals returns data as a bracketed, comma-separated list string
+	streamHvalsResponse := "[" + string(buf) + "]"
+	fh.resp["cache:stream_hvals"] = []byte(streamHvalsResponse)
 
-	out := ps.DumpSessions("0")
-	if out["cursor"] != "0" {
-		t.Fatalf("unexpected cursor: %+v", out["cursor"])
+	out := ps.DumpSessions(12, "")
+	if out == nil {
+		t.Fatalf("expected non-nil output from DumpSessions")
 	}
-	sessArr := out["sessions"].([]map[string]any)
-	if len(sessArr) != 1 {
-		t.Fatalf("expected one dumped session, got %d", len(sessArr))
+	if string(out) != streamHvalsResponse {
+		t.Fatalf("expected %s got %s", streamHvalsResponse, string(out))
 	}
 }
 
@@ -240,8 +239,11 @@ func Test_loadSession_mismatch_and_happy(t *testing.T) {
 
 	// prepare two sessions in a stack for the lrange response
 	s1 := NewSession("sid", &config.Workflow{}, ps)
+	event := map[string]interface{}{"foo": "bar"}
+	s1.Event = event
 	s1.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "0"}}
 	s2 := NewSession("sid", &config.Workflow{}, ps)
+	s2.Event = nil
 	s2.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "1"}}
 	stack := []*Session{s1, s2}
 	buf, _ := json.Marshal(stack)
@@ -259,6 +261,19 @@ func Test_loadSession_mismatch_and_happy(t *testing.T) {
 	res2 := ps.loadSession("sid", msg, nil)
 	if res2 == nil {
 		t.Fatalf("expected a loaded session, got nil")
+	}
+	if res2.child == nil {
+		t.Fatalf("expected loaded child session")
+	}
+	if res2.Event == nil || res2.child.Event == nil {
+		t.Fatalf("expected shared event to be restored across stack")
+	}
+	if res2.Event["foo"] != "bar" || res2.child.Event["foo"] != "bar" {
+		t.Fatalf("expected shared event data to be restored, got parent=%+v child=%+v", res2.Event, res2.child.Event)
+	}
+	res2.child.Event["foo"] = "baz"
+	if res2.Event["foo"] != "baz" {
+		t.Fatalf("expected parent and child to share same event map after load")
 	}
 }
 

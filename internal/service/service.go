@@ -724,7 +724,11 @@ func handleAPI(from *driver.Runtime, m *dipper.Message) {
 	if apiFunc, ok := s.APIs[method]; ok {
 		go func() {
 			defer dipper.SafeExitOnError("[%s] api call panic for [%s]", s.name, method, func(r any) {
-				resp.ReturnError(r.(error))
+				err, ok := r.(error)
+				if !ok {
+					err = fmt.Errorf("%w: %+v", ErrServiceError, r)
+				}
+				resp.ReturnError(err)
 			})
 			apiFunc(resp)
 		}()

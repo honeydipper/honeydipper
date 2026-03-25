@@ -70,7 +70,7 @@ func (s *customStore) ContinueSession(ID string, msg *dipper.Message, child *Ses
 }
 func (s *customStore) ResumeSession(key string, msg *dipper.Message) bool { return false }
 func (s *customStore) GetNumSessions(getAll bool) int                     { return 0 }
-func (s *customStore) DumpSessions(cursor string) map[string]any          { return nil }
+func (s *customStore) DumpSessions(_ int, _ string) []byte                { return nil }
 func (s *customStore) Wait()                                              {}
 func (s *customStore) GetLogger() *logging.Logger {
 	if s.logger == nil {

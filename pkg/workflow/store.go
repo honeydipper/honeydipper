@@ -73,7 +73,7 @@ type Store interface {
 	// GetNumSessions returns the number of live sessions in the system.
 	GetNumSessions(getAll bool) int
 	// DumpSessions dumps the information of sessions for debugging.
-	DumpSessions(cursor string) map[string]any
+	DumpSessions(lookBack int, asOf string) []byte
 	// Wait waits for a session to be done.
 	Wait()
 	// Stop stops the store.

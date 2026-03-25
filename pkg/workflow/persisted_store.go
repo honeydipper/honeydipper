@@ -22,7 +22,14 @@ import (
 	"github.com/op/go-logging"
 )
 
-const BroadcaseSubjectResult = "result"
+const (
+	// BroadcaseSubjectResult is the subject for broadcasting session result.
+	BroadcaseSubjectResult = "result"
+	// SessionStream is used to stream changes of the sessions for debugging.
+	SessionStream = "session_stream_"
+	// SessionStreamRetention is the retention period for the session stream.
+	SessionStreamRetention = "48h"
+)
 
 // PersistredStore stores session using the cache driver to persist the sessions.
 type PersistedStore struct {
@@ -263,9 +270,12 @@ func (s *PersistedStore) persist(w *Session) {
 	cursor := ""
 	for {
 		var savedPerforming *[]string
+		var savedEvent map[string]interface{}
 		if current != root {
 			savedPerforming = current.Performing
+			savedEvent = current.Event
 			current.Performing = nil
+			current.Event = nil
 		}
 		dipper.Must(s.Call("cache", "rpush", map[string]interface{}{
 			"key":   key,
@@ -274,6 +284,7 @@ func (s *PersistedStore) persist(w *Session) {
 		}))
 		if current != root {
 			current.Performing = savedPerforming
+			current.Event = savedEvent
 		}
 		cursor = current.CurrentMsg.Labels["cursor"]
 		if current.child == nil {
@@ -281,6 +292,12 @@ func (s *PersistedStore) persist(w *Session) {
 		}
 		current = current.child
 	}
+
+	dipper.Must(s.Call("cache", "stream_hset", map[string]interface{}{
+		"prefix": SessionStream,
+		"key":    w.ID,
+		"value":  string(dipper.SerializeContent(w.Dump())),
+	}))
 
 	if root.State == SessionStateInit {
 		dipper.Must(s.Call("locker", "lock", map[string]interface{}{
@@ -382,6 +399,7 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 	// Share the Performing stack from the root with all sessions.
 	for _, session := range stack {
 		session.Performing = stack[0].Performing
+		session.Event = stack[0].Event
 	}
 
 	current.CurrentMsg = msg
@@ -453,30 +471,12 @@ func (s *PersistedStore) GetNumSessions(getAll bool) int {
 }
 
 // DumpSessions dumps the information of sessions for debugging.
-func (s *PersistedStore) DumpSessions(cursor string) map[string]any {
-	res := dipper.Must(s.Call("cache", "scan", map[string]any{"pattern": StoreSessionPrefix + "*", "cursor": cursor})).([]byte)
-	data := dipper.DeserializeContent(res).(map[string]any)
-	keys := data["keys"].([]any)
-
-	ret := []map[string]any{}
-
-	for _, key := range keys {
-		buf := dipper.Must(s.Call("cache", "lrange", map[string]any{
-			"key":  key,
-			"stop": 0,
-			"raw":  true,
-		})).([]byte)
-		w := &Session{}
-		w.Unmarshal(buf)
-		if w.Parent == "" {
-			ret = append(ret, w.Dump())
-		}
-	}
-
-	return map[string]any{
-		"cursor":   data["cursor"],
-		"sessions": ret,
-	}
+func (s *PersistedStore) DumpSessions(lookBack int, asOf string) []byte {
+	return dipper.Must(s.Call("cache", "stream_hvals", map[string]any{
+		"prefix":    SessionStream,
+		"look_back": lookBack,
+		"asOf":      asOf,
+	})).([]byte)
 }
 
 // Wait blocks until all sessions are done.

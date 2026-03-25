@@ -104,7 +104,7 @@ func (s *hookTrackingStore) GetNumSessions(getAll bool) int {
 	return 0
 }
 
-func (s *hookTrackingStore) DumpSessions(cursor string) map[string]any {
+func (s *hookTrackingStore) DumpSessions(_ int, _ string) []byte {
 	return nil
 }
 

@@ -1,0 +1,330 @@
+// Copyright 2026 PayPal Inc.
+
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT License was not distributed with this file,
+// you can obtain one at https://mit-license.org/.
+
+// Package redis-cache enables Honeydipper to use redis as a temporary
+// external cache storage.
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"github.com/honeydipper/honeydipper/v4/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+)
+
+const (
+	StreamHsetIntervalHours = 2
+	StreamHsetTTLHours      = 48
+
+	streamHvalsScript = `
+	    local sessions = {'"'..KEYS[1]..'"', '"'..KEYS[#KEYS]..'"'}
+
+		for i, key in ipairs(KEYS) do
+			local parts = redis.call("HVALS", key)
+			for _, item in ipairs(parts) do
+				table.insert(sessions, item)
+			end
+		end
+
+		return sessions
+	`
+	hexpireScript = `
+		local ttl = ARGV[1]
+		local field_count = ARGV[2]
+		local fields = {}
+		for i = 1, tonumber(field_count) do
+			fields[i] = ARGV[i+2]
+		end
+		return redis.call("HEXPIRE", KEYS[1], ttl, "FIELDS", field_count, unpack(fields))
+	`
+)
+
+func streamHset(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	prefix := dipper.MustGetMapDataStr(msg.Payload, "prefix")
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	val := dipper.MustGetMapDataStr(msg.Payload, "value")
+	ttl, _ := dipper.GetMapData(msg.Payload, "ttl")
+
+	exp := StreamHsetTTLHours * time.Hour
+	if ttl != nil {
+		switch t := ttl.(type) {
+		case int64:
+			exp = time.Second * time.Duration(t)
+		case int:
+			exp = time.Second * time.Duration(t)
+		case float64:
+			exp = time.Second * time.Duration(int64(t))
+		case string:
+			exp = dipper.Must(time.ParseDuration(t)).(time.Duration)
+		default:
+			log.Panicf("[%s] redis cache unknown TTL type %+v", driver.Service, t)
+		}
+	}
+
+	curr := time.Now().Truncate(time.Hour)
+	if df := curr.Hour() % StreamHsetIntervalHours; df != 0 {
+		curr = curr.Add(time.Duration(-df) * time.Hour)
+	}
+
+	setName := prefix + curr.Format("2006010215")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	if err := client.HSet(ctx, setName, []string{key, val}).Err(); err != nil && !errors.Is(err, redis.Nil) {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+
+	dipper.Must(client.Expire(ctx, setName, exp).Err())
+
+	msg.Reply <- dipper.Message{}
+}
+
+func streamHvals(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	prefix := dipper.MustGetMapDataStr(msg.Payload, "prefix")
+	lookBack, _ := dipper.GetMapData(msg.Payload, "look_back")
+	asOf, _ := dipper.GetMapDataStr(msg.Payload, "asOf")
+	raw, _ := dipper.GetMapDataBool(msg.Payload, "raw")
+
+	end := time.Now().Truncate(time.Hour)
+	oldest := end.Add(-StreamHsetTTLHours * time.Hour)
+	if df := oldest.Hour() % StreamHsetIntervalHours; df != 0 {
+		oldest = oldest.Add(time.Duration(-df) * time.Hour)
+	}
+
+	if asOf != "" {
+		end = dipper.Must(time.ParseInLocation("2006010215", asOf, oldest.Location())).(time.Time)
+	}
+	if df := end.Hour() % StreamHsetIntervalHours; df != 0 {
+		end = end.Add(time.Duration(-df) * time.Hour)
+	}
+
+	if end.Before(oldest) {
+		end = oldest
+	}
+
+	earliest := end
+
+	if lookBack != nil {
+		blocks := 1
+		switch t := lookBack.(type) {
+		case int64:
+			blocks = int(t)
+		case int:
+			blocks = t
+		case float64:
+			blocks = int(t)
+		case string:
+			blocks = dipper.Must(strconv.Atoi(t)).(int)
+		default:
+			log.Panicf("[%s] redis cache unknown look_back type %+v", driver.Service, t)
+		}
+		if blocks < 0 {
+			blocks = 0
+		}
+		earliest = end.Add(time.Duration(-blocks*StreamHsetIntervalHours) * time.Hour)
+		if earliest.Before(oldest) {
+			earliest = oldest
+		}
+	}
+
+	size := int(end.Sub(earliest).Hours()/StreamHsetIntervalHours) + 1
+	keys := make([]string, size)
+	for i := 0; i < size; i++ {
+		t := earliest.Add(time.Duration(i*StreamHsetIntervalHours) * time.Hour)
+		keys[i] = prefix + t.Format("2006010215")
+	}
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	ret := dipper.Must(client.Eval(ctx, streamHvalsScript, keys).Result())
+	var result []string
+	switch items := ret.(type) {
+	case []string:
+		result = items
+	case []interface{}:
+		result = make([]string, 0, len(items))
+		for _, item := range items {
+			result = append(result, fmt.Sprint(item))
+		}
+	default:
+		log.Panicf("[%s] redis cache unexpected stream_hvals return type %T", driver.Service, ret)
+	}
+
+	buf := ""
+	if raw {
+		buf = strings.Join(result, "\n")
+	} else {
+		buf = "[" + strings.Join(result, ",") + "]"
+	}
+
+	msg.Reply <- dipper.Message{
+		Payload: []byte(buf),
+		IsRaw:   true,
+	}
+}
+
+func hset(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	val := dipper.MustGetMapData(msg.Payload, "value")
+	ttl, _ := dipper.GetMapData(msg.Payload, "ttl")
+	fields := []string{}
+	switch f := val.(type) {
+	case map[string]interface{}:
+		for name := range f {
+			fields = append(fields, name)
+		}
+	case map[string]string:
+		for name := range f {
+			fields = append(fields, name)
+		}
+	case []interface{}:
+		for i := 0; i < len(f); i += 2 {
+			if name, ok := f[i].(string); ok {
+				fields = append(fields, name)
+			}
+		}
+	case []string:
+		for i := 0; i < len(f); i += 2 {
+			fields = append(fields, f[i])
+		}
+	}
+
+	exp := 24 * time.Hour
+	if ttl != nil {
+		switch t := ttl.(type) {
+		case int64:
+			exp = time.Second * time.Duration(t)
+		case int:
+			exp = time.Second * time.Duration(t)
+		case float64:
+			exp = time.Second * time.Duration(int64(t))
+		case string:
+			exp = dipper.Must(time.ParseDuration(t)).(time.Duration)
+		default:
+			log.Panicf("[%s] redis cache unknown TTL type %+v", driver.Service, t)
+		}
+	}
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	if err := client.HSet(ctx, key, val).Err(); err != nil && !errors.Is(err, redis.Nil) {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+	if len(fields) > 0 {
+		ttlSeconds := int64(exp / time.Second)
+		args := make([]interface{}, 2+len(fields))
+		args[0] = ttlSeconds
+		args[1] = len(fields)
+		for i, field := range fields {
+			args[2+i] = field
+		}
+		if _, err := client.Eval(ctx, hexpireScript, []string{key}, args...).Result(); err != nil && !errors.Is(err, redis.Nil) {
+			log.Panicf("[%s] redis error: %v", driver.Service, err)
+		}
+	}
+
+	msg.Reply <- dipper.Message{}
+}
+
+func hvals(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	raw, _ := dipper.GetMapDataBool(msg.Payload, "raw")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	val, err := client.HVals(ctx, key).Result()
+	switch {
+	case errors.Is(err, redis.Nil):
+		msg.Reply <- dipper.Message{}
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		var buf string
+		if raw {
+			buf = strings.Join(val, "\n")
+		} else {
+			buf = "[" + strings.Join(val, ", ") + "]"
+		}
+		msg.Reply <- dipper.Message{
+			Payload: []byte(buf),
+			IsRaw:   true,
+		}
+	}
+}
+
+func hmget(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	fieldsData := dipper.MustGetMapData(msg.Payload, "fields")
+	raw, _ := dipper.GetMapDataBool(msg.Payload, "raw")
+
+	var fields []string
+	switch f := fieldsData.(type) {
+	case []interface{}:
+		for _, field := range f {
+			if str, ok := field.(string); ok {
+				fields = append(fields, str)
+			}
+		}
+	case []string:
+		fields = f
+	}
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	val, err := client.HMGet(ctx, key, fields...).Result()
+	switch {
+	case errors.Is(err, redis.Nil):
+		msg.Reply <- dipper.Message{}
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		// Convert interface{} results to strings
+		valStrs := make([]string, len(val))
+		i := 0
+		for _, v := range val {
+			if v != nil {
+				valStrs[i] = v.(string)
+				i++
+			}
+		}
+		valStrs = valStrs[:i]
+		var buf string
+		if raw {
+			buf = strings.Join(valStrs, "\n")
+		} else {
+			buf = "[" + strings.Join(valStrs, ", ") + "]"
+		}
+		msg.Reply <- dipper.Message{
+			Payload: []byte(buf),
+			IsRaw:   true,
+		}
+	}
+}

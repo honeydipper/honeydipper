@@ -120,7 +120,7 @@ func (s *activateTestStore) GetNumSessions(getAll bool) int {
 	return 0
 }
 
-func (s *activateTestStore) DumpSessions(cursor string) map[string]any {
+func (s *activateTestStore) DumpSessions(_ int, _ string) []byte {
 	return nil
 }
 

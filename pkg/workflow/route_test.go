@@ -59,7 +59,7 @@ func (t *testStore) StartDynamicSession(spec *dipper.Message, ctx map[string]int
 func (t *testStore) ContinueSession(ID string, msg *dipper.Message, child *Session)       {}
 func (t *testStore) ResumeSession(key string, msg *dipper.Message) bool                   { return false }
 func (t *testStore) GetNumSessions(getAll bool) int                                       { return 0 }
-func (t *testStore) DumpSessions(cursor string) map[string]any                            { return nil }
+func (t *testStore) DumpSessions(_ int, _ string) []byte                                  { return nil }
 func (t *testStore) Wait()                                                                {}
 func (t *testStore) GetLogger() *logging.Logger                                           { return dipper.GetLogger(_testModule, "ERROR") }
 func (s *testStore) Stop()                                                                {}

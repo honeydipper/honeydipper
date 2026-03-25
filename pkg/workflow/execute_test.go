@@ -96,9 +96,9 @@ func (s *execTestStore) ContinueSession(ID string, msg *dipper.Message, child *S
 func (s *execTestStore) ResumeSession(key string, msg *dipper.Message) bool {
 	return s.resumeReturn
 }
-func (s *execTestStore) GetNumSessions(getAll bool) int            { return 0 }
-func (s *execTestStore) DumpSessions(cursor string) map[string]any { return nil }
-func (s *execTestStore) Wait()                                     {}
+func (s *execTestStore) GetNumSessions(getAll bool) int      { return 0 }
+func (s *execTestStore) DumpSessions(_ int, _ string) []byte { return nil }
+func (s *execTestStore) Wait()                               {}
 func (s *execTestStore) GetLogger() *logging.Logger {
 	if dipper.Logger == nil {
 		dipper.GetLogger(_testModule, "ERROR")
