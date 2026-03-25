@@ -317,12 +317,17 @@ func (w *Session) launchParallelIteration(i int) {
 		Default:      w.Workflow.Default,
 		Steps:        w.Workflow.Steps,
 		Threads:      w.Workflow.Threads,
+		Description:  w.Workflow.Description,
 	}
 
-	child := w.store.CreateAsyncChildSession(w, &single, w.CurrentMsg)
-	child.Ctx["current"] = w.Workflow.IterateParallel.([]any)[i]
+	w.Ctx["current"] = w.Workflow.IterateParallel.([]any)[i]
 	if w.Workflow.IterateAs != "" {
-		child.Ctx[w.Workflow.IterateAs] = child.Ctx["current"]
+		w.Ctx[w.Workflow.IterateAs] = w.Ctx["current"]
+	}
+	child := w.store.CreateAsyncChildSession(w, &single, w.CurrentMsg)
+	delete(w.Ctx, "current")
+	if w.Workflow.IterateAs != "" {
+		delete(w.Ctx, w.Workflow.IterateAs)
 	}
 	w.store.GetLogger().Debugf("session [%s.%s] depth %d launching parallel iteration %d:\n %+v",
 		w.ID,

@@ -248,6 +248,37 @@ func TestBrief_WithIterateParallel(t *testing.T) {
 	}
 }
 
+func TestBrief_WithIterateParallelAndDescription(t *testing.T) {
+	wf := &cfg.Workflow{Description: "item {{.ctx.current}}", IterateParallel: []string{"a", "b"}}
+	s := newSession(wf)
+
+	brief := s.Brief()
+
+	if brief != "parallel iteration" {
+		t.Errorf("expected 'parallel iteration', got '%s'", brief)
+	}
+}
+
+func TestBrief_ParallelIterationChildUsesDescription(t *testing.T) {
+	store := &customStore{}
+	parent := NewSession("parent", &cfg.Workflow{
+		Description:     "item {{.ctx.current}}",
+		IterateParallel: []any{"a"},
+	}, store)
+	parent.CurrentMsg = newMsg()
+	parent.context = context.Background()
+	parent.Ctx["current"] = "a"
+
+	child := NewSession("child", &cfg.Workflow{Description: parent.Workflow.Description}, store)
+	child.Init(newMsg(), parent, nil)
+
+	brief := child.Brief()
+
+	if brief != "item a" {
+		t.Errorf("expected 'item a', got '%s'", brief)
+	}
+}
+
 // TestBrief_WithLoop tests the Brief method with loop.
 func TestBrief_WithLoop(t *testing.T) {
 	wf := &cfg.Workflow{While: []string{"true"}}

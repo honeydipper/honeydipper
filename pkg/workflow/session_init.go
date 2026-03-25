@@ -207,7 +207,12 @@ func (w *Session) interpolateWorkflow() {
 	ret := *v
 
 	ret.Name = dipper.InterpolateStr(v.Name, envData)
-	ret.Description = dipper.InterpolateStr(v.Description, envData)
+	if v.IterateParallel == nil {
+		// for iterate parallel workflow, description is interpolated in each child session to
+		// include the current item value. For non-iterate parallel workflow, we can interpolate
+		// description here.
+		ret.Description = dipper.InterpolateStr(v.Description, envData)
+	}
 	ret.If = dipper.Interpolate(v.If, envData).([]string)
 	ret.IfAny = dipper.Interpolate(v.IfAny, envData).([]string)
 	ret.Unless = dipper.Interpolate(v.Unless, envData).([]string)

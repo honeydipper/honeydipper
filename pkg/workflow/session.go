@@ -213,9 +213,15 @@ func (w *Session) Brief() string {
 	case wf.Name != "":
 		w.brief = wf.Name
 	case wf.Description != "":
-		w.brief = wf.Description
+		if wf.IterateParallel == nil {
+			// for iterate parallel workflow, description is interpolated in each child session to
+			// include the current item value. For non-iterate parallel workflow, we can use the
+			// workflow description as brief.
+			w.brief = wf.Description
+		} else {
+			w.brief = "parallel iteration"
+		}
 	case w.isIteration():
-
 		w.brief = "iteration"
 	case w.isLoop():
 		w.brief = "looping"

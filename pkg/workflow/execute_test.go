@@ -82,7 +82,7 @@ func (s *execTestStore) CreateChildSession(parent *Session, wf *config.Workflow,
 func (s *execTestStore) CreateAsyncChildSession(parent *Session, wf *config.Workflow, msg *dipper.Message) *Session {
 	s.asyncCreateCalls++
 	wg := &sync.WaitGroup{}
-	child := &Session{ID: "async", Workflow: wf, CurrentMsg: msg, store: s, threads: wg, Ctx: map[string]interface{}{}}
+	child := &Session{ID: "async", Workflow: wf, CurrentMsg: msg, store: s, threads: wg, Ctx: dipper.MustDeepCopyMap(parent.Ctx)}
 	s.lastAsyncChild = child
 
 	return child

@@ -341,8 +341,11 @@ func TestInterpolateWorkflow(t *testing.T) {
 	s.Workflow = wf
 	s.CurrentMsg = newMsg()
 	s.interpolateWorkflow()
-	if s.Workflow.Name != "n" || s.Workflow.Description != "d" {
-		t.Error("name/desc not interpolated")
+	if s.Workflow.Name != "n" {
+		t.Error("name not interpolated")
+	}
+	if s.Workflow.Description != "{{.ctx.desc}}" {
+		t.Error("iterate-parallel description should remain deferred for child interpolation")
 	}
 	if s.Workflow.If[0] != "i" || s.Workflow.IfAny[0] != "a" {
 		t.Error("If/IfAny not interpolated")
