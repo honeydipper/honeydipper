@@ -21,10 +21,7 @@ import (
 	"strings"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
-	"github.com/op/go-logging"
 )
-
-var log *logging.Logger
 
 func initFlags() {
 	flag.Usage = func() {
@@ -42,9 +39,7 @@ func main() {
 
 	driver = dipper.NewDriver(os.Args[1], "web")
 	if driver.Service == "operator" {
-		driver.Reload = func(*dipper.Message) {
-			log = nil
-		} // allow hot reload
+		driver.Reload = func(*dipper.Message) {} // allow hot reload
 		driver.Commands["request"] = sendRequest
 		driver.Run()
 	}
@@ -53,7 +48,7 @@ func main() {
 func prepareRequest(ctx context.Context, m *dipper.Message) *http.Request {
 	rurl, ok := dipper.GetMapDataStr(m.Payload, "URL")
 	if !ok {
-		log.Panicf("[%s] URL is required but missing", driver.Service)
+		driver.GetLogger().Panicf("[%s] URL is required but missing", driver.Service)
 	}
 
 	form := url.Values{}
@@ -147,9 +142,6 @@ func createRequest(ctx context.Context, method, rurl string, header http.Header,
 }
 
 func sendRequest(m *dipper.Message) {
-	if log == nil {
-		log = driver.GetLogger()
-	}
 	m = dipper.DeserializePayload(m)
 
 	ctx, cancel := driver.GetContext(m)
@@ -184,7 +176,7 @@ func sendRequest(m *dipper.Message) {
 func extractHTTPResponseData(r *http.Response) map[string]interface{} {
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Panicf("[%s] unable to read resp body", driver.Service)
+		driver.GetLogger().Panicf("[%s] unable to read resp body", driver.Service)
 	}
 
 	cookies := map[string]interface{}{}
@@ -204,12 +196,12 @@ func extractHTTPResponseData(r *http.Response) map[string]interface{} {
 		var bodyObj interface{}
 		err := json.Unmarshal(bodyBytes, &bodyObj)
 		if err != nil {
-			log.Panicf("[%s] invalid json in response body", driver.Service)
+			driver.GetLogger().Panicf("[%s] invalid json in response body", driver.Service)
 		}
 		respData["json"] = bodyObj
 	}
 
-	log.Debugf("[%s] web response data: %+v", driver.Service, respData)
+	driver.GetLogger().Debugf("[%s] web response data: %+v", driver.Service, respData)
 
 	return respData
 }

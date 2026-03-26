@@ -19,7 +19,7 @@ func getToken(source string) string {
 
 		return tokenhelper.GetGitHubToken(s)
 	default:
-		log.Panicf("[%s] unknown token source type: %+v", driver.Service, s["type"])
+		driver.GetLogger().Panicf("[%s] unknown token source type: %+v", driver.Service, s["type"])
 	}
 
 	return ""
