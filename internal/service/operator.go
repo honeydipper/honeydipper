@@ -96,18 +96,6 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 	}
 	finalParams := params
 	if params != nil {
-		// interpolate twice for giving an chance for using sysData in ctx
-		if ctx != nil {
-			ctx = dipper.Interpolate(ctx, map[string]interface{}{
-				"sysData": sysData,
-				"data":    data,
-				"event":   event,
-				"labels":  msg.Labels,
-				"ctx":     ctx,
-				"params":  params,
-			}).(map[string]interface{})
-		}
-		// use interpolated ctx to assemble final params
 		finalParams = dipper.Interpolate(params, map[string]interface{}{
 			"sysData": sysData,
 			"data":    data,
