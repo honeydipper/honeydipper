@@ -59,6 +59,7 @@ func (s *execTestStore) CallRawNoWait(feature, method string, params []byte, rpc
 func (s *execTestStore) GetName() string                                     { return _testModule }
 func (s *execTestStore) CallWithMessage(msg *dipper.Message) ([]byte, error) { return nil, nil }
 func (s *execTestStore) CallWithMessageNoWait(msg *dipper.Message) error     { return nil }
+func (s *execTestStore) RunAsync(task func())                                { go task() }
 func (s *execTestStore) GetConfig() *config.Config {
 	return &config.Config{DataSet: &config.DataSet{Workflows: s.workflows}}
 }

@@ -158,9 +158,11 @@ func (w *Session) enterWait() {
 	}
 	dueMsg := map[string]any{}
 	if data, ok := w.Ctx["timeout_message"]; ok && data != nil {
-		dueMsg = data.(map[string]any)
+		if m, ok := data.(map[string]any); ok {
+			dueMsg = m
+		}
 	}
-	if dueMsg["labels"] == nil {
+	if _, ok := dueMsg["labels"].(map[string]any); !ok {
 		dueMsg["labels"] = map[string]any{}
 	}
 	dueMsg["labels"].(map[string]any)["sessionID"] = w.ID
@@ -211,7 +213,10 @@ func (w *Session) callFunction(f *config.Function) {
 // callDriver makes a call to a driver function defined in short hand fashion.
 // It parses the driver name and action, processes local parameters, and calls the function.
 func (w *Session) callDriver(f string) {
-	interpolatedNames := strings.Split(f, ".")
+	interpolatedNames := strings.SplitN(f, ".", 2)
+	if len(interpolatedNames) < 2 {
+		w.store.GetLogger().Panicf("[%s] call_driver must be in 'driver.action' format, got: %s", w.ID, f)
+	}
 	driverName, rawActionName := interpolatedNames[0], interpolatedNames[1]
 
 	var locals map[string]interface{}
@@ -238,6 +243,9 @@ func (w *Session) callDriver(f string) {
 // It splits the function string into system and function names.
 func (w *Session) callShorthandFunction(f string) {
 	interpolatedNames := strings.SplitN(f, ".", 2)
+	if len(interpolatedNames) < 2 {
+		w.store.GetLogger().Panicf("[%s] call_function must be in 'system.function' format, got: %s", w.ID, f)
+	}
 	systemName, funcName := interpolatedNames[0], interpolatedNames[1]
 
 	w.callFunction(&config.Function{

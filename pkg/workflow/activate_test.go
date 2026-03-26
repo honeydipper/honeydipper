@@ -61,6 +61,10 @@ func (s *activateTestStore) CallWithMessageNoWait(msg *dipper.Message) error {
 	return nil
 }
 
+func (s *activateTestStore) RunAsync(task func()) {
+	go task()
+}
+
 func (s *activateTestStore) GetConfig() *cfg.Config {
 	return &cfg.Config{}
 }

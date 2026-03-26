@@ -33,8 +33,6 @@ const (
 
 // PersistredStore stores session using the cache driver to persist the sessions.
 type PersistedStore struct {
-	// Live is a flag used for draining the live sessions.
-	Live sync.WaitGroup
 	// StoreHelper provides the methods for workflow to access daemon.
 	StoreHelper
 
@@ -44,7 +42,53 @@ type PersistedStore struct {
 	idLock  sync.Locker
 	storeID string
 
+	lifecycleOnce sync.Once
+	lifecycleMu   sync.Mutex
+	lifecycleCond *sync.Cond
+	activeTasks   int
+
 	cache *ttlcache.Cache[string, map[string]any]
+}
+
+func (s *PersistedStore) initLifecycle() {
+	s.lifecycleOnce.Do(func() {
+		s.lifecycleCond = sync.NewCond(&s.lifecycleMu)
+	})
+}
+
+func (s *PersistedStore) taskStart() {
+	s.initLifecycle()
+	s.lifecycleMu.Lock()
+	s.activeTasks++
+	s.lifecycleMu.Unlock()
+}
+
+func (s *PersistedStore) taskDone() {
+	s.initLifecycle()
+	s.lifecycleMu.Lock()
+	s.activeTasks--
+	if s.activeTasks == 0 {
+		s.lifecycleCond.Broadcast()
+	}
+	s.lifecycleMu.Unlock()
+}
+
+func (s *PersistedStore) waitForTasks() {
+	s.initLifecycle()
+	s.lifecycleMu.Lock()
+	for s.activeTasks > 0 {
+		s.lifecycleCond.Wait()
+	}
+	s.lifecycleMu.Unlock()
+}
+
+// RunAsync starts a store-owned background task and tracks it for draining.
+func (s *PersistedStore) RunAsync(task func()) {
+	s.taskStart()
+	daemon.Go(func() {
+		defer s.taskDone()
+		task()
+	})
 }
 
 // CreateSession creates and initializes a workflow session.
@@ -113,10 +157,8 @@ func (s *PersistedStore) CreateAsyncChildSession(parent *Session, wf *config.Wor
 func (s *PersistedStore) ActivateSession(w *Session) {
 	w.activate()
 	if w.parent == nil {
-		s.Live.Add(1)
-		daemon.Go(func() {
+		s.RunAsync(func() {
 			dipper.SafeExitOnError("[%s] panic when waiting for the session.", w.ID)
-			defer s.Live.Done()
 			defer s.persist(w)
 			w.Wait()
 		})
@@ -125,7 +167,6 @@ func (s *PersistedStore) ActivateSession(w *Session) {
 
 // EmitResult emits the result of the session to a storage watched by consumers.
 func (s *PersistedStore) EmitResult(w *Session) {
-	w.CurrentMsg.Labels["sessionID"] = w.ID
 	mesg := w.Dump()
 	mesg["topic"] = "workflow"
 	mesg["subject"] = BroadcaseSubjectResult
@@ -144,6 +185,9 @@ func (s *PersistedStore) uncaughtErrorHandler(w *Session, msg *dipper.Message) f
 		}
 		if w.CurrentMsg == nil {
 			w.CurrentMsg = msg
+		}
+		if w.CurrentMsg == nil {
+			w.CurrentMsg = &dipper.Message{}
 		}
 		if w.CurrentMsg.Labels == nil {
 			w.CurrentMsg.Labels = map[string]string{}
@@ -241,7 +285,7 @@ func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
 		m.Labels["status"] = SessionStatusSuccess
 	}
 
-	daemon.Go(func() { s.ContinueSession(sessionID, m, nil) })
+	s.RunAsync(func() { s.ContinueSession(sessionID, m, nil) })
 
 	return true
 }
@@ -337,12 +381,16 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 		"name":   key,
 		"expire": "3600s",
 	}))
-	resp := dipper.Must(s.Call("cache", "lrange", map[string]interface{}{
+
+	raw := dipper.Must(s.Call("cache", "lrange", map[string]interface{}{
 		"key": key,
-	})).([]byte)
+	}))
+	resp, _ := raw.([]byte)
 
 	stack := []*Session{}
-	dipper.Must(json.Unmarshal(resp, &stack))
+	if len(resp) > 0 {
+		dipper.Must(json.Unmarshal(resp, &stack))
+	}
 	if len(stack) == 0 {
 		// stop further processing, let global error handler deal with it.
 		s.Warningf("session %s not found in cache", sessionID)
@@ -437,7 +485,7 @@ func (s *PersistedStore) GetNextID() string {
 	if s.nextID > s.maxID {
 		s.nextID = 0
 		s.maxID = 0
-		daemon.Go(func() {
+		s.RunAsync(func() {
 			dipper.SafeExitOnError("failed to pre-book batch of session IDs", func(_ any) {
 			})
 			s.getIDBatch(true)
@@ -481,7 +529,7 @@ func (s *PersistedStore) DumpSessions(lookBack int, asOf string) []byte {
 
 // Wait blocks until all sessions are done.
 func (s *PersistedStore) Wait() {
-	s.Live.Wait()
+	s.waitForTasks()
 }
 
 // Stop blocks until all sessions are done and shut down the cache.

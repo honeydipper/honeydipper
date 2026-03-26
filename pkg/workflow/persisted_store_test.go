@@ -168,10 +168,16 @@ func TestCreateSession_and_EmitResult_and_Detach(t *testing.T) {
 	// EmitResult should send to redispubsub via CallNoWait
 	fh.calls = nil
 	s.ID = "sid"
-	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}}
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"existing": "value"}}
 	ps.EmitResult(s)
 	if len(fh.calls) == 0 {
 		t.Fatalf("expected EmitResult to record driver call, calls: %v", fh.calls)
+	}
+	if s.CurrentMsg.Labels["existing"] != "value" {
+		t.Fatalf("EmitResult unexpectedly changed existing labels: %+v", s.CurrentMsg.Labels)
+	}
+	if _, ok := s.CurrentMsg.Labels["sessionID"]; ok {
+		t.Fatalf("EmitResult should not mutate session labels, got %+v", s.CurrentMsg.Labels)
 	}
 
 	// DetachSession: create child with parent set without calling Init to avoid
@@ -366,63 +372,67 @@ func TestUncaughtErrorHandler_GeneratesIDAndEmits(t *testing.T) {
 	}
 }
 
-func TestWait_BlocksUntilDone(t *testing.T) {
+func TestWait_BlocksUntilTrackedTaskDone(t *testing.T) {
 	ps := makePersistedStoreWithFake()
+	release := make(chan struct{})
+	done := make(chan struct{})
 
-	// ps.Wait() calls ps.Live.Wait() internally
-	// Add work to the WaitGroup
-	ps.Live.Add(1)
+	ps.RunAsync(func() {
+		<-release
+	})
 
-	// Create a channel to signal when Wait returns
-	done := make(chan bool, 1)
 	go func() {
 		ps.Wait()
-		done <- true
+		close(done)
 	}()
 
-	// Wait should be blocking; give it time
-	time.Sleep(50 * time.Millisecond)
-
-	// Done work
-	ps.Live.Done()
-
-	// Now Wait should return
 	select {
 	case <-done:
-		// Success
+		t.Fatal("Wait returned before tracked task completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+
+	select {
+	case <-done:
 	case <-time.After(200 * time.Millisecond):
-		t.Fatal("Wait did not return after WaitGroup became empty")
+		t.Fatal("Wait did not return after tracked task completed")
 	}
 }
 
-func TestWait_ContextCancellation(t *testing.T) {
+func TestStop_WaitsForChainedTrackedTask(t *testing.T) {
 	ps := makePersistedStoreWithFake()
+	firstStarted := make(chan struct{})
+	releaseSecond := make(chan struct{})
+	stopped := make(chan struct{})
 
-	// ps.Wait() doesn't take a context - it just calls ps.Live.Wait()
-	// But we can test that it blocks until the WaitGroup is done
-	ps.Live.Add(1)
+	ps.RunAsync(func() {
+		close(firstStarted)
+		ps.RunAsync(func() {
+			<-releaseSecond
+		})
+	})
 
-	returned := false
+	<-firstStarted
+
 	go func() {
-		ps.Wait()
-		returned = true
+		ps.Stop()
+		close(stopped)
 	}()
 
-	// Give it time (no timeout since Wait doesn't support context)
-	time.Sleep(50 * time.Millisecond)
-
-	// Should still be waiting
-	if returned {
-		t.Fatal("Wait returned too early")
+	select {
+	case <-stopped:
+		t.Fatal("Stop returned before chained tracked task completed")
+	case <-time.After(50 * time.Millisecond):
 	}
 
-	// Complete the work
-	ps.Live.Done()
+	close(releaseSecond)
 
-	// Now it should return
-	time.Sleep(50 * time.Millisecond)
-	if !returned {
-		t.Fatal("Wait did not return after WaitGroup was done")
+	select {
+	case <-stopped:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Stop did not wait for chained tracked task")
 	}
 }
 

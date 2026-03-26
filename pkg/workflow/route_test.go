@@ -38,6 +38,10 @@ func (t *testStore) CallRawNoWait(feature, method string, params []byte, rpcID s
 }
 func (t *testStore) GetName() string { return _testModule }
 
+func (t *testStore) RunAsync(task func()) {
+	go task()
+}
+
 func (t *testStore) CallWithMessage(msg *dipper.Message) ([]byte, error) { return nil, nil }
 func (t *testStore) CallWithMessageNoWait(msg *dipper.Message) error {
 	return nil

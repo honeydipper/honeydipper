@@ -43,6 +43,10 @@ func (s *customStore) CallRawNoWait(feature, method string, params []byte, rpcID
 }
 func (s *customStore) GetName() string { return _testModule }
 
+func (s *customStore) RunAsync(task func()) {
+	go task()
+}
+
 func (s *customStore) CallWithMessage(msg *dipper.Message) ([]byte, error) { return nil, nil }
 func (s *customStore) CallWithMessageNoWait(msg *dipper.Message) error     { return nil }
 

@@ -371,10 +371,14 @@ func (w *Session) Dump() map[string]interface{} {
 		}
 	}
 
+	description := ""
+	if w.Workflow != nil {
+		description = w.Workflow.Description
+	}
 	ret := map[string]interface{}{
 		"data": map[string]any{
 			"brief":       w.Brief(),
-			"description": w.Workflow.Description,
+			"description": description,
 			"state":       SessionStates[w.State],
 			"output":      w.Ctx["_output"],
 			"is_noop":     isNoop,

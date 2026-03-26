@@ -49,6 +49,10 @@ func (s *hookTrackingStore) CallWithMessage(msg *dipper.Message) ([]byte, error)
 	return nil, nil
 }
 
+func (s *hookTrackingStore) RunAsync(task func()) {
+	go task()
+}
+
 func (s *hookTrackingStore) CallWithMessageNoWait(msg *dipper.Message) error {
 	return nil
 }

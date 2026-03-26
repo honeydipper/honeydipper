@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
-	"github.com/honeydipper/honeydipper/v4/internal/daemon"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 )
@@ -370,11 +369,11 @@ func (w *Session) resume() {
 			msg.Labels[k] = v
 		}
 		msg.Labels["cursor"] = w.Parent[pos+1:]
-		daemon.Go(func() {
+		w.store.RunAsync(func() {
 			w.store.ContinueSession(parentID, &msg, w)
 		})
 	} else {
-		daemon.Go(func() {
+		w.store.RunAsync(func() {
 			dipper.SafeExitOnError("[%s.%s] failed to emit result.", w.ID, w.CurrentMsg.Labels["cursor"])
 			w.store.EmitResult(w)
 		})

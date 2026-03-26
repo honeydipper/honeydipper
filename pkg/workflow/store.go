@@ -52,6 +52,9 @@ type StoreHelper interface {
 type Store interface {
 	StoreHelper
 
+	// RunAsync starts a store-owned background task and tracks it for draining.
+	RunAsync(task func())
+
 	// CreateChildSession creates a child session with the given parent.
 	CreateChildSession(parent *Session, wf *config.Workflow, msg *dipper.Message) *Session
 	// CreateAsyncChildSession creates a child session that is detached from the parent.
