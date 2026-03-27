@@ -67,18 +67,28 @@ func authWebRequest(m *dipper.Message) {
 
 	var err error
 	var subject string
+	profileName := ""
 	for _, scheme := range schemes {
 		switch scheme.(string) {
 		case "basic":
 			subject, err = basicAuth(m)
+			if err == nil {
+				profileName = subject
+			}
 		case "token":
 			subject, err = tokenAuth(m)
+			if err == nil {
+				profileName = subject
+			}
 		default:
 			panic(ErrUnsupportedScheme)
 		}
 		if err == nil {
 			m.Reply <- dipper.Message{
-				Payload: subject,
+				Payload: map[string]interface{}{
+					"Subject":     subject,
+					"ProfileName": profileName,
+				},
 			}
 
 			return

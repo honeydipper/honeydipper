@@ -61,8 +61,11 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 	defer ctrl.Finish()
 
 	mockReqCtx := mock_api.NewMockRequestContext(ctrl)
-	mockReqCtx.EXPECT().Get(gomock.Eq("subject")).Times(1).Return(c.Subject, c.Subject != "")
-	mockReqCtx.EXPECT().Get(gomock.Eq("provider")).Times(1).Return(c.Provider, c.Provider != "")
+	principal := Principal{
+		Subject:  c.Subject,
+		Provider: c.Provider,
+	}
+	mockReqCtx.EXPECT().Get(gomock.Eq("principal")).Times(1).Return(principal, c.Subject != "" || c.Provider != "")
 	if c.ShouldAuthorize {
 		mockReqCtx.EXPECT().GetPath().Times(1).Return(c.Path)
 		mockReqCtx.EXPECT().GetPayload(gomock.Eq(c.Def.Method)).Times(1).Return(c.Payload)

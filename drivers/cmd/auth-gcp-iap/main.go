@@ -46,8 +46,15 @@ func authWebRequest(m *dipper.Message) {
 	payload := dipper.Must(idtoken.Validate(context.Background(), token, audience)).(*idtoken.Payload)
 	driver.GetLogger().Debugf("claims are: %+v", payload.Claims)
 	subject := dipper.MustGetMapDataStr(payload.Claims, "email")
+	profileName := subject
+	if name, ok := dipper.GetMapDataStr(payload.Claims, "name"); ok && name != "" {
+		profileName = name
+	}
 
 	m.Reply <- dipper.Message{
-		Payload: subject,
+		Payload: map[string]interface{}{
+			"Subject":     subject,
+			"ProfileName": profileName,
+		},
 	}
 }

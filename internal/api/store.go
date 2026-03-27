@@ -7,6 +7,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -55,6 +56,13 @@ type Store struct {
 	enforcer        *casbin.Enforcer
 
 	writeTimeout time.Duration
+}
+
+// Principal represents the subject making the API call.
+type Principal struct {
+	Subject     string
+	ProfileName string
+	Provider    string
 }
 
 // HandleAPIACK handles the call ACK from the eventbus.
@@ -191,30 +199,46 @@ func (l *Store) Enforce(args ...interface{}) (bool, error) {
 func (l *Store) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		providers, ok := dipper.GetMapData(l.config, "auth-providers")
-		if !ok || providers == nil || len(providers.([]interface{})) == 0 {
-			c.Set("subject", "guest")
-			c.Set("provider", "none")
 
+		principal := Principal{
+			Subject:     "guest",
+			ProfileName: "Guest",
+			Provider:    "none",
+		}
+		if !ok || providers == nil || len(providers.([]interface{})) == 0 {
+			c.Set("principal", principal)
 			c.Next()
 
 			return
 		}
 
 		allErrors := map[string]string{}
-		for _, p := range providers.([]interface{}) {
-			parts := strings.Split(p.(string), ".")
+		for _, providerEntry := range providers.([]interface{}) {
+			providerName := providerEntry.(string)
+			parts := strings.Split(providerName, ".")
 			provider := parts[0]
 			fn := "auth_web_request"
 			if len(parts) > 1 {
 				fn = parts[1]
 			}
 
-			subject, err := l.caller.Call("driver:"+provider, fn, dipper.ExtractWebRequestExceptBody(c.Request))
-			if err != nil || subject == nil {
-				allErrors[p.(string)] = err.Error()
+			answer, err := l.caller.Call("driver:"+provider, fn, dipper.ExtractWebRequestExceptBody(c.Request))
+			if err != nil {
+				allErrors[providerName] = err.Error()
+				continue
+			}
+			if answer == nil {
+				allErrors[providerName] = "empty auth response"
+				continue
+			}
+
+			principal = Principal{}
+			if err := json.Unmarshal(answer, &principal); err != nil {
+				allErrors[providerName] = err.Error()
+				continue
 			} else {
-				c.Set("subject", dipper.DeserializeContent(subject))
-				c.Set("provider", provider)
+				principal.Provider = provider
+				c.Set("principal", principal)
 				c.Next()
 
 				return
@@ -226,14 +250,16 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 
 // Authorize determines if a subject is allowed to call a API.
 func (l *Store) Authorize(c RequestContext, def Def) bool {
-	subject, ok := c.Get("subject")
+	p, ok := c.Get("principal")
 	if !ok {
 		return false
 	}
-	provider, _ := c.Get("provider")
+	principal := p.(Principal)
+	subject := principal.Subject
+	provider := principal.Provider
 
-	dipper.Logger.Warningf("'%s' , '%s', '%s', '%s'", subject, def.Object, def.Method, provider)
-	if res, err := l.enforcer.Enforce(subject.(string), def.Object, def.Method, provider.(string)); res && err == nil {
+	dipper.Logger.Warningf("'%+v' , '%s', '%s', '%s'", principal, def.Object, def.Method, provider)
+	if res, err := l.enforcer.Enforce(subject, def.Object, def.Method, provider); res && err == nil {
 		return true
 	} else if err != nil {
 		dipper.Logger.Warningf("[api] denied access with enforcer error: %+v", err)
