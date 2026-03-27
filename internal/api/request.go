@@ -7,6 +7,7 @@
 package api
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -18,12 +19,14 @@ const DefaultAPIReapTimeout time.Duration = 30
 // Request represents a live API call.
 type Request struct {
 	store       *Store
+	ctx         RequestContext
 	urlPath     string
 	method      string
 	uuid        string
 	contentType string
 
 	reqType int
+	local   LocalHandlerFunc
 	fn      string
 	service string
 	params  map[string]interface{}
@@ -41,53 +44,83 @@ type Request struct {
 
 // Dispatch sends the call to the intended services.
 func (a *Request) Dispatch() {
-	if a.ready == nil {
-		a.ready = make(chan byte)
-		a.results = map[string]interface{}{}
-		a.store.SaveRequest(a)
+	if a.ready != nil {
+		return
+	}
 
-		dipper.Must(a.store.caller.Call("api-broadcast", "send", map[string]interface{}{
-			"subject": "call",
-			"labels": map[string]interface{}{
-				"fn":           a.fn,
-				"uuid":         a.uuid,
-				"service":      a.service,
-				"content-type": a.contentType,
-			},
-			"payload": a.params,
-		}))
+	if a.reqType == TypeLocal {
+		a.dispatchLocal()
 
-		go func() {
-			defer dipper.SafeExitOnError("error waiting on acks for API call [%s]", a.uuid)
-			defer func() {
-				defer a.store.ClearRequest(a)
-				time.Sleep(DefaultAPIReapTimeout * time.Second)
-			}()
-			defer close(a.ready)
-			defer a.postACK()
+		return
+	}
 
-			ackTimer := time.NewTimer(a.ackTimeout)
-			defer ackTimer.Stop()
+	a.ready = make(chan byte)
+	a.results = map[string]interface{}{}
+	a.store.SaveRequest(a)
 
-			switch a.reqType {
-			case TypeFirst:
-				// skipping ACKs
-			case TypeMatch:
-				// wait for the first ACK
-				a.firstACK = make(chan byte)
-				defer func() {
-					close(a.firstACK)
-					a.firstACK = nil
-				}()
-				select {
-				case <-ackTimer.C:
-				case <-a.firstACK:
-				}
-			case TypeAll:
-				// wait for all to ACK
-				time.Sleep(a.ackTimeout)
-			}
+	dipper.Must(a.store.caller.Call("api-broadcast", "send", map[string]interface{}{
+		"subject": "call",
+		"labels": map[string]interface{}{
+			"fn":           a.fn,
+			"uuid":         a.uuid,
+			"service":      a.service,
+			"content-type": a.contentType,
+		},
+		"payload": a.params,
+	}))
+
+	go func() {
+		defer dipper.SafeExitOnError("error waiting on acks for API call [%s]", a.uuid)
+		defer func() {
+			defer a.store.ClearRequest(a)
+			time.Sleep(DefaultAPIReapTimeout * time.Second)
 		}()
+		defer close(a.ready)
+		defer a.postACK()
+
+		ackTimer := time.NewTimer(a.ackTimeout)
+		defer ackTimer.Stop()
+
+		switch a.reqType {
+		case TypeFirst:
+			// skipping ACKs
+		case TypeMatch:
+			// wait for the first ACK
+			a.firstACK = make(chan byte)
+			defer func() {
+				close(a.firstACK)
+				a.firstACK = nil
+			}()
+			select {
+			case <-ackTimer.C:
+			case <-a.firstACK:
+			}
+		case TypeAll:
+			// wait for all to ACK
+			time.Sleep(a.ackTimeout)
+		}
+	}()
+}
+
+func (a *Request) dispatchLocal() {
+	a.ready = make(chan byte)
+	a.results = map[string]interface{}{}
+	defer close(a.ready)
+
+	if a.local == nil {
+		a.err = fmt.Errorf("%w: %s", ErrLocalHandlerNotFound, a.fn)
+
+		return
+	}
+
+	res, err := a.local(a)
+	if err != nil {
+		a.err = err
+
+		return
+	}
+	if res != nil {
+		a.results = res
 	}
 }
 

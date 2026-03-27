@@ -42,6 +42,9 @@ var (
 
 	// ErrAPINoACK means not able to receive ACK for the API call.
 	ErrAPINoACK = fmt.Errorf("%w: no ACK", ErrAPIError)
+
+	// ErrLocalHandlerNotFound means a local API definition is missing its handler.
+	ErrLocalHandlerNotFound = fmt.Errorf("%w: local handler not found", ErrAPIError)
 )
 
 // Store stores the live API calls in memory.
@@ -147,6 +150,21 @@ func NewStore(c dipper.RPCCaller) *Store {
 	return store
 }
 
+func userProfileHandler(r *Request) (map[string]interface{}, error) {
+	profileName := ""
+	if p, ok := r.ctx.Get("principal"); ok {
+		principal := p.(Principal)
+		profileName = principal.ProfileName
+		if profileName == "" {
+			profileName = principal.Subject
+		}
+	}
+
+	return map[string]interface{}{
+		"profile_name": profileName,
+	}, nil
+}
+
 // GetAPIHandler prepares and returns the gin Engine for API.
 func (l *Store) GetAPIHandler(prefix string, cfg interface{}) http.Handler {
 	gin.DefaultWriter = dipper.LoggingWriter
@@ -225,16 +243,19 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 			answer, err := l.caller.Call("driver:"+provider, fn, dipper.ExtractWebRequestExceptBody(c.Request))
 			if err != nil {
 				allErrors[providerName] = err.Error()
+
 				continue
 			}
 			if answer == nil {
 				allErrors[providerName] = "empty auth response"
+
 				continue
 			}
 
 			principal = Principal{}
 			if err := json.Unmarshal(answer, &principal); err != nil {
 				allErrors[providerName] = err.Error()
+
 				continue
 			} else {
 				principal.Provider = provider
@@ -362,9 +383,11 @@ func (l *Store) GetRequest(def Def, c RequestContext) *Request {
 
 	return &Request{
 		store:       l,
+		ctx:         c,
 		uuid:        l.newUUID(),
 		urlPath:     path,
 		method:      def.Method,
+		local:       def.Local,
 		fn:          def.Name,
 		params:      payload,
 		reqType:     def.ReqType,

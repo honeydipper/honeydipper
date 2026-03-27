@@ -49,6 +49,11 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 
 	c := &RequestTestCase{}
 	dipper.Must(mapstructure.Decode(buffer, c))
+	if c.Def.Local == nil {
+		if d, ok := GetDefsByName()[c.Def.Name]; ok {
+			c.Def.Local = d.Local
+		}
+	}
 
 	// convert all times from test definition to milliseconds
 	c.Def.AckTimeout *= time.Millisecond
@@ -65,7 +70,7 @@ func requestTest(t *testing.T, caseName string) (*Store, *RequestTestCase) {
 		Subject:  c.Subject,
 		Provider: c.Provider,
 	}
-	mockReqCtx.EXPECT().Get(gomock.Eq("principal")).Times(1).Return(principal, c.Subject != "" || c.Provider != "")
+	mockReqCtx.EXPECT().Get(gomock.Eq("principal")).AnyTimes().Return(principal, c.Subject != "" || c.Provider != "")
 	if c.ShouldAuthorize {
 		mockReqCtx.EXPECT().GetPath().Times(1).Return(c.Path)
 		mockReqCtx.EXPECT().GetPayload(gomock.Eq(c.Def.Method)).Times(1).Return(c.Payload)
@@ -162,4 +167,8 @@ func TestTypeMatchAPILongRequest(t *testing.T) {
 
 func TestUnauthorizedAPI(t *testing.T) {
 	requestTest(t, "UnauthorizedAPI")
+}
+
+func TestTypeLocalUserProfileAPI(t *testing.T) {
+	requestTest(t, "TypeLocalUserProfileAPI")
 }
