@@ -127,6 +127,14 @@ func (s *PersistedStore) DetachSession(w *Session) {
 	msg.Labels["sessionID"] = w.ID
 	msg.Labels["cursor"] = "0"
 	w.CurrentMsg = &msg
+
+	var p *Session
+	for p = w.parent; p != nil && len(p.EventCtx) == 0; p = p.parent {
+	}
+	if p != nil {
+		w.EventCtx = p.EventCtx
+	}
+
 	w.parent = nil
 
 	s.persist(w)

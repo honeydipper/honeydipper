@@ -16,15 +16,18 @@ type LocalHandlerFunc func(*Request) (map[string]interface{}, error)
 
 // Def is a structure defines how an API should be handled in api service.
 type Def struct {
-	Path       string
-	Object     string
-	Name       string
-	Method     string
-	ReqType    int
-	Local      LocalHandlerFunc
-	Service    string
-	AckTimeout time.Duration
-	Timeout    time.Duration
+	Path                string
+	Object              string
+	Name                string
+	Method              string
+	ReqType             int
+	Local               LocalHandlerFunc
+	Service             string
+	AckTimeout          time.Duration
+	Timeout             time.Duration
+	AllowAnonymous      bool
+	EntitlementProvider string
+	EntitlementKey      string
 }
 
 const (
@@ -44,8 +47,14 @@ const (
 // GetDefs return definition for all known API calls.
 func GetDefs() map[string]map[string]Def {
 	return map[string]map[string]Def{
+		"auth/github/callback": {
+			http.MethodGet: {
+				Object: "everything", Name: "githubOAuthCallback", ReqType: TypeLocal,
+				Local: githubOAuthCallbackHandler, Service: "api", AllowAnonymous: true,
+			},
+		},
 		"user/profile": {
-			http.MethodGet: {Object: "everything", Name: "userProfile", ReqType: TypeLocal, Local: userProfileHandler, Service: "api"},
+			http.MethodGet: {Object: "user/profile", Name: "userProfile", ReqType: TypeLocal, Local: userProfileHandler, Service: "api"},
 		},
 		"events/:eventID/wait": {
 			http.MethodGet: {Object: "event", Name: "eventWait", ReqType: TypeFirst, Service: "engine", Timeout: InfiniteDuration},
@@ -53,6 +62,13 @@ func GetDefs() map[string]map[string]Def {
 		"events": {
 			http.MethodGet:  {Object: "event", Name: "eventList", ReqType: TypeFirst, Service: "engine"},
 			http.MethodPost: {Object: "event", Name: "eventAdd", ReqType: TypeFirst, Service: "receiver"},
+		},
+		"gh/events/*gh_slug": {
+			http.MethodGet: {
+				Object: "gh_event", Name: "ghEventList", ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
 		},
 	}
 }

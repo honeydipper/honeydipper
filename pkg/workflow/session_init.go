@@ -292,6 +292,9 @@ func (w *Session) Init(msg *dipper.Message, parent *Session, ctx map[string]inte
 		w.context, w.cancelFunc = context.WithCancel(context.Background())
 	}
 	w.injectMsg(msg)
+	if len(ctx) > 0 {
+		w.EventCtx = dipper.MustDeepCopyMap(ctx)
+	}
 	w.initCTX(ctx)
 	w.injectLocalCTX()
 	w.interpolateWorkflow()

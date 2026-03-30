@@ -59,6 +59,8 @@ type Session struct {
 	Ctx map[string]interface{}
 	// Event is the event data that triggered the workflow.
 	Event map[string]interface{}
+	// EventCtx is the original context exported from the event.
+	EventCtx map[string]interface{}
 	// Exported is the exported data from the workflow.
 	Exported []map[string]interface{}
 
@@ -386,6 +388,7 @@ func (w *Session) Dump() map[string]interface{} {
 			"session_id":  w.ID,
 			"event_id":    w.EventID,
 			"event_name":  w.GetEventName(),
+			"event_ctx":   w.EventCtx,
 			"parent":      w.Parent,
 		},
 		"labels": labels,

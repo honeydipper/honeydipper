@@ -95,6 +95,20 @@ func (mr *MockRequestContextMockRecorder) GetPath() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPath", reflect.TypeOf((*MockRequestContext)(nil).GetPath))
 }
 
+// GetParam mocks base method.
+func (m *MockRequestContext) GetParam(arg0 string) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetParam", arg0)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetParam indicates an expected call of GetParam.
+func (mr *MockRequestContextMockRecorder) GetParam(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetParam", reflect.TypeOf((*MockRequestContext)(nil).GetParam), arg0)
+}
+
 // GetPayload mocks base method.
 func (m *MockRequestContext) GetPayload(method string) map[string]interface{} {
 	m.ctrl.T.Helper()

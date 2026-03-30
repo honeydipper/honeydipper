@@ -7,10 +7,12 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +36,12 @@ const (
 
 	// ACLDeny reprensts denying the subject to access the API.
 	ACLDeny = "deny"
+
+	// RefreshedJWTHeader carries an optionally rotated auth token from provider middleware.
+	RefreshedJWTHeader = "X-Honeydipper-Refreshed-JWT"
+
+	// DefaultEntitlementCacheTTL is the duration entitlement results stay in cache.
+	DefaultEntitlementCacheTTL = 30 * time.Minute
 )
 
 var (
@@ -45,6 +53,12 @@ var (
 
 	// ErrLocalHandlerNotFound means a local API definition is missing its handler.
 	ErrLocalHandlerNotFound = fmt.Errorf("%w: local handler not found", ErrAPIError)
+
+	// ErrMissingAuthorizationCode means the GitHub OAuth callback is missing the code parameter.
+	ErrMissingAuthorizationCode = fmt.Errorf("%w: authorization code not provided", ErrAPIError)
+
+	// ErrEmptyDriverResponse means the driver returned no content for a local API call.
+	ErrEmptyDriverResponse = fmt.Errorf("%w: empty driver response", ErrAPIError)
 )
 
 // Store stores the live API calls in memory.
@@ -57,6 +71,7 @@ type Store struct {
 	apiDef          map[string]map[string]Def
 	newUUID         dipper.UUIDSource
 	enforcer        *casbin.Enforcer
+	apiPrefix       string
 
 	writeTimeout time.Duration
 }
@@ -66,6 +81,7 @@ type Principal struct {
 	Subject     string
 	ProfileName string
 	Provider    string
+	Data        interface{}
 }
 
 // HandleAPIACK handles the call ACK from the eventbus.
@@ -165,10 +181,35 @@ func userProfileHandler(r *Request) (map[string]interface{}, error) {
 	}, nil
 }
 
+func githubOAuthCallbackHandler(r *Request) (map[string]interface{}, error) {
+	code := r.ctx.GetParam("code")
+	if code == "" {
+		return nil, ErrMissingAuthorizationCode
+	}
+
+	answer, err := r.store.caller.Call("driver:auth-github", "github_oauth_callback", map[string]interface{}{
+		"code": code,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+	if answer == nil {
+		return nil, ErrEmptyDriverResponse
+	}
+
+	result := map[string]interface{}{}
+	if err := json.Unmarshal(answer, &result); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	return result, nil
+}
+
 // GetAPIHandler prepares and returns the gin Engine for API.
 func (l *Store) GetAPIHandler(prefix string, cfg interface{}) http.Handler {
 	gin.DefaultWriter = dipper.LoggingWriter
 	l.config = cfg
+	l.apiPrefix = prefix
 	l.engine = gin.New()
 	l.engine.Use(gin.Logger())
 	l.engine.Use(gin.Recovery())
@@ -216,6 +257,13 @@ func (l *Store) Enforce(args ...interface{}) (bool, error) {
 // AuthMiddleware is a middleware handles auth.
 func (l *Store) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if l.isAnonymousRoute(c) {
+			c.Set("principal", Principal{Subject: "guest", ProfileName: "Guest", Provider: "none"})
+			c.Next()
+
+			return
+		}
+
 		providers, ok := dipper.GetMapData(l.config, "auth-providers")
 
 		principal := Principal{
@@ -259,6 +307,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 				continue
 			} else {
 				principal.Provider = provider
+				l.applyRotatedJWTHeader(c, principal)
 				c.Set("principal", principal)
 				c.Next()
 
@@ -269,6 +318,154 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+func (l *Store) applyRotatedJWTHeader(c *gin.Context, principal Principal) {
+	data, ok := principal.Data.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	rotatedJWT, ok := data["rotatedJwt"].(string)
+	if !ok || rotatedJWT == "" {
+		return
+	}
+
+	c.Header(RefreshedJWTHeader, rotatedJWT)
+	exposed := c.Writer.Header().Get("Access-Control-Expose-Headers")
+	if exposed == "" {
+		c.Header("Access-Control-Expose-Headers", RefreshedJWTHeader)
+
+		return
+	}
+
+	for _, part := range strings.Split(exposed, ",") {
+		if strings.EqualFold(strings.TrimSpace(part), RefreshedJWTHeader) {
+			return
+		}
+	}
+
+	c.Header("Access-Control-Expose-Headers", exposed+", "+RefreshedJWTHeader)
+}
+
+func (l *Store) isAnonymousRoute(c *gin.Context) bool {
+	path := c.FullPath()
+	if path == "" {
+		path = c.Request.URL.Path
+	}
+
+	if l.apiPrefix != "" && strings.HasPrefix(path, l.apiPrefix) {
+		path = strings.TrimPrefix(path, l.apiPrefix)
+	}
+
+	defs, ok := l.apiDef[path]
+	if !ok {
+		return false
+	}
+
+	def, ok := defs[c.Request.Method]
+	if !ok {
+		return false
+	}
+
+	return def.AllowAnonymous
+}
+
+// CheckEntitlement resolves derived subjects from an external entitlement provider.
+func (l *Store) CheckEntitlement(c RequestContext, def Def) bool {
+	p, ok := c.Get("principal")
+	if !ok {
+		return false
+	}
+	principal := p.(Principal)
+
+	provider := def.EntitlementProvider
+	entitlementTarget := c.GetParam(def.EntitlementKey)
+	cacheKey := l.entitlementCacheKey(provider, principal.Subject, entitlementTarget)
+
+	if cacheAnswer, err := l.caller.Call("cache", "load", map[string]any{"key": cacheKey}); err == nil {
+		if derivedSubjects, ok := parseDerivedSubjects(cacheAnswer, provider); ok {
+			c.Set("derivedSubjects", derivedSubjects)
+
+			return true
+		}
+	} else {
+		dipper.Logger.Warningf("[api] failed to load entitlement cache for %s: %v", cacheKey, err)
+	}
+
+	answer, err := l.caller.Call("driver:"+provider, "check_entitlements", map[string]interface{}{
+		"principal":         principal,
+		"entitlementTarget": entitlementTarget,
+	})
+	if err != nil {
+		return false
+	}
+
+	derivedSubjects, ok := parseDerivedSubjects(answer, provider)
+	if !ok {
+		return false
+	}
+
+	_, err = l.caller.Call("cache", "save", map[string]any{
+		"key":   cacheKey,
+		"value": string(bytes.TrimSpace(answer)),
+		"ttl":   l.entitlementCacheTTL().String(),
+	})
+	if err != nil {
+		dipper.Logger.Warningf("[api] failed to save entitlement cache for %s: %v", cacheKey, err)
+	}
+	c.Set("derivedSubjects", derivedSubjects)
+
+	return true
+}
+
+func (l *Store) entitlementCacheTTL() time.Duration {
+	ttl := DefaultEntitlementCacheTTL
+
+	if ttlStr, ok := dipper.GetMapDataStr(l.config, "auth.entitlementCacheTTL"); ok && ttlStr != "" {
+		if parsed, err := time.ParseDuration(ttlStr); err == nil && parsed > 0 {
+			ttl = parsed
+		}
+	}
+
+	return ttl
+}
+
+func (l *Store) entitlementCacheKey(provider, subject, entitlementTarget string) string {
+	return fmt.Sprintf("api-entitlements/%s/%s/%s", provider, url.QueryEscape(subject), url.QueryEscape(entitlementTarget))
+}
+
+func parseDerivedSubjects(answer []byte, provider string) ([]string, bool) {
+	if answer == nil {
+		return nil, false
+	}
+
+	answer = bytes.TrimSpace(answer)
+	if len(answer) == 0 {
+		return nil, false
+	}
+
+	var derivedSubjects []string
+	if err := json.Unmarshal(answer, &derivedSubjects); err != nil {
+		var single string
+		if err := json.Unmarshal(answer, &single); err != nil {
+			dipper.Logger.Warningf("[api] invalid check_entitlements response from %s: %v", provider, err)
+
+			return nil, false
+		}
+
+		single = strings.TrimSpace(single)
+		if single == "" {
+			return nil, false
+		}
+		derivedSubjects = []string{single}
+	}
+
+	if len(derivedSubjects) == 0 {
+		return nil, false
+	}
+
+	return derivedSubjects, true
+}
+
 // Authorize determines if a subject is allowed to call a API.
 func (l *Store) Authorize(c RequestContext, def Def) bool {
 	p, ok := c.Get("principal")
@@ -276,10 +473,28 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 		return false
 	}
 	principal := p.(Principal)
+
+	if def.EntitlementProvider != "" {
+		if !l.CheckEntitlement(c, def) {
+			return false
+		}
+
+		derivedSubjects, ok := c.Get("derivedSubjects")
+		if !ok {
+			return false
+		}
+
+		for _, subject := range derivedSubjects.([]string) {
+			if res, err := l.enforcer.Enforce(subject, def.Object, def.Method, def.EntitlementProvider); res && err == nil {
+				return true
+			}
+		}
+
+		return false
+	}
+
 	subject := principal.Subject
 	provider := principal.Provider
-
-	dipper.Logger.Warningf("'%+v' , '%s', '%s', '%s'", principal, def.Object, def.Method, provider)
 	if res, err := l.enforcer.Enforce(subject, def.Object, def.Method, provider); res && err == nil {
 		return true
 	} else if err != nil {
@@ -291,7 +506,7 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 
 // HandleHTTPRequest handles http requests.
 func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
-	if !l.Authorize(c, def) {
+	if !def.AllowAnonymous && !l.Authorize(c, def) {
 		c.AbortWithStatusJSON(http.StatusForbidden, map[string]interface{}{"errors": "not allowed"})
 
 		return

@@ -21,6 +21,7 @@ type RequestContext interface {
 	Get(string) (interface{}, bool)
 	Set(string, interface{})
 	GetPath() string
+	GetParam(string) string
 	GetPayload(method string) map[string]interface{}
 }
 
@@ -57,6 +58,16 @@ func (rc *GinRequestContext) Set(key string, value interface{}) {
 // GetPath returns the full path of the request.
 func (rc *GinRequestContext) GetPath() string {
 	return rc.gin.Request.URL.Path
+}
+
+// GetParam returns the query parameters from the request.
+func (rc *GinRequestContext) GetParam(key string) string {
+	param := rc.gin.Query(key)
+	if param == "" {
+		param = rc.gin.Param(key)
+	}
+
+	return param
 }
 
 // GetPayload returns the query parameters from the request.
