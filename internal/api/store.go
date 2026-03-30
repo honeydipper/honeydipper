@@ -474,6 +474,14 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 	}
 	principal := p.(Principal)
 
+	subject := principal.Subject
+	provider := principal.Provider
+	if res, err := l.enforcer.Enforce(subject, def.Object, def.Method, provider); res && err == nil {
+		return true
+	} else if err != nil {
+		dipper.Logger.Warningf("[api] denied access with enforcer error: %+v", err)
+	}
+
 	if def.EntitlementProvider != "" {
 		if !l.CheckEntitlement(c, def) {
 			return false
@@ -491,14 +499,6 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 		}
 
 		return false
-	}
-
-	subject := principal.Subject
-	provider := principal.Provider
-	if res, err := l.enforcer.Enforce(subject, def.Object, def.Method, provider); res && err == nil {
-		return true
-	} else if err != nil {
-		dipper.Logger.Warningf("[api] denied access with enforcer error: %+v", err)
 	}
 
 	return false
@@ -563,6 +563,8 @@ func (l *Store) setupRoutes(prefix string) {
 				group.GET(path, l.CreateHTTPHandlerFunc(def))
 			case http.MethodPost:
 				group.POST(path, l.CreateHTTPHandlerFunc(def))
+			case http.MethodDelete:
+				group.DELETE(path, l.CreateHTTPHandlerFunc(def))
 			}
 		}
 	}

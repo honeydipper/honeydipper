@@ -38,3 +38,4 @@ vendor/**
 launch.json
 settings.json
 **/__debug_bin*
+drivers/cmd/hd-driver-vault/hd-driver-*

@@ -70,6 +70,23 @@ func GetDefs() map[string]map[string]Def {
 				EntitlementKey:      "gh_slug",
 			},
 		},
+		"gh/secrets/*gh_slug": {
+			http.MethodGet: {
+				Object: "gh_secret", Name: "ghSecretList", ReqType: TypeFirst, Service: "operator",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
+			http.MethodPost: {
+				Object: "gh_secret", Name: "ghSecretSet", ReqType: TypeFirst, Service: "operator",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
+			http.MethodDelete: {
+				Object: "gh_secret", Name: "ghSecretDelete", ReqType: TypeFirst, Service: "operator",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
+		},
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2024 PayPal Inc.
+// Copyright 2026 PayPal Inc.
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,6 +26,118 @@ import (
 // ErrSecretKeyNotFound means the secret is found but the key is not found.
 var ErrSecretKeyNotFound = errors.New("secret key not found in the secret")
 
+// vaultConfig holds vault connection configuration
+type vaultConfig struct {
+	addr        string
+	token       string
+	k8sRole     string
+	appRoleID   string
+	appSecretID string
+}
+
+// getVaultConfig retrieves vault configuration from driver options or environment variables.
+// If serverName is provided, it looks for "data.<serverName>.*" configs, otherwise uses "data.*".
+func getVaultConfig(serverName string) vaultConfig {
+	cfg := vaultConfig{}
+	keyPrefix := "data."
+	if serverName != "" {
+		keyPrefix = "data." + serverName + "."
+	}
+
+	cfg.addr, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"addr")
+	if cfg.addr == "" {
+		cfg.addr = os.Getenv("VAULT_ADDR")
+	}
+
+	cfg.token, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"token")
+	if cfg.token == "" {
+		cfg.token = os.Getenv("VAULT_TOKEN")
+	}
+
+	cfg.k8sRole, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"k8sRole")
+
+	cfg.appRoleID, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"approle.role_id")
+	if cfg.appRoleID == "" {
+		cfg.appRoleID = os.Getenv("VAULT_ROLE_ID")
+	}
+
+	cfg.appSecretID, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"approle.secret_id")
+	if cfg.appSecretID == "" {
+		cfg.appSecretID = os.Getenv("VAULT_SECRET_ID")
+	}
+
+	return cfg
+}
+
+// createVaultClient creates and authenticates a vault client using the provided configuration.
+func createVaultClient(ctx context.Context, cfg vaultConfig) *vault.Client {
+	c := vault.DefaultConfig()
+	c.Address = cfg.addr
+	client := dipper.Must(vault.NewClient(c)).(*vault.Client)
+
+	switch {
+	case cfg.k8sRole != "":
+		k8sAuth := dipper.Must(auth.NewKubernetesAuth(cfg.k8sRole)).(*auth.KubernetesAuth)
+		_ = dipper.Must(client.Auth().Login(ctx, k8sAuth))
+	case cfg.appRoleID != "":
+		appRoleAuth := dipper.Must(approle.NewAppRoleAuth(cfg.appRoleID, &approle.SecretID{FromString: cfg.appSecretID})).(*approle.AppRoleAuth)
+		_ = dipper.Must(client.Auth().Login(ctx, appRoleAuth))
+	default:
+		client.SetToken(cfg.token)
+	}
+
+	return client
+}
+
+// parsePath splits a vault path into server name, mount point, and secret path.
+// Format: [serverName:]mount/data/path
+// Returns: serverName (or ""), mount (or "secret" default), path
+func parsePath(pathStr string) (string, string, string) {
+	// Check for server prefix
+	parts := strings.SplitN(pathStr, ":", 2)
+	serverName := ""
+	actualPath := pathStr
+
+	if len(parts) > 1 {
+		serverName = parts[0]
+		actualPath = parts[1]
+	}
+
+	// Parse mount and path
+	mountParts := strings.SplitN(actualPath, "/data/", 2)
+	var mount, path string
+
+	if len(mountParts) > 1 {
+		mount = mountParts[0]
+		path = mountParts[1]
+	} else {
+		mount = "secret"
+		path = actualPath
+	}
+
+	return serverName, mount, path
+}
+
+// buildMetadataListPath builds KV v2 metadata path for listing child secrets.
+func buildMetadataListPath(mount, path string) string {
+	cleanPath := strings.Trim(path, "/")
+	if cleanPath == "" {
+		return mount + "/metadata"
+	}
+
+	return mount + "/metadata/" + cleanPath
+}
+
+func deleteSecretKey(data map[string]interface{}, key string) (map[string]interface{}, error) {
+	if _, found := data[key]; !found {
+		return nil, ErrSecretKeyNotFound
+	}
+
+	delete(data, key)
+
+	return data, nil
+}
+
 func initFlags() {
 	flag.Usage = func() {
 		fmt.Printf("%s [ -h ] <service name>\n", os.Args[0])
@@ -41,73 +154,34 @@ func main() {
 
 	driver = secureexec.NewDriver(os.Args[1], "vault")
 	driver.RPCHandlers["lookup"] = lookup
+	driver.RPCHandlers["set"] = set
+	driver.RPCHandlers["list_keys"] = listKeys
+	driver.RPCHandlers["list_secrets"] = listSecrets
+	driver.RPCHandlers["delete_key"] = deleteKey
+	driver.RPCHandlers["delete_secret"] = deleteSecret
 	driver.Run()
 }
 
 func lookup(msg *dipper.Message) {
 	query := string(msg.Payload.([]byte))
-	parts := strings.SplitN(query, ":", 2)
+	serverName, mount, path := parsePath(query)
 
-	var addr, token, k8sRole, appRoleID, appSecretID string
-	// Go away you freaking linter! This is easy enough to understand!
-	//nolint:nestif
-	if len(parts) > 1 {
-		query = parts[1]
-		server := parts[0]
-		addr = dipper.MustGetMapDataStr(driver.Options, "data."+server+".addr")
-		token, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".token")
-		k8sRole, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".k8sRole")
-		appRoleID, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".approle.role_id")
-		appSecretID, _ = dipper.GetMapDataStr(driver.Options, "data."+server+".approle.secret_id")
-	} else {
-		addr, _ = dipper.GetMapDataStr(driver.Options, "data.addr")
-		if addr == "" {
-			addr = os.Getenv("VAULT_ADDR")
-		}
-		token, _ = dipper.GetMapDataStr(driver.Options, "data.token")
-		if token == "" {
-			token = os.Getenv("VAULT_TOKEN")
-		}
-		k8sRole, _ = dipper.GetMapDataStr(driver.Options, "data.k8sRole")
-		appRoleID, _ = dipper.GetMapDataStr(driver.Options, "data.approle.role_id")
-		if appRoleID == "" {
-			appRoleID = os.Getenv("VAULT_ROLE_ID")
-		}
-		appSecretID, _ = dipper.GetMapDataStr(driver.Options, "data.approle.secret_id")
-		if appSecretID == "" {
-			appSecretID = os.Getenv("VAULT_SECRET_ID")
-		}
-	}
-
+	// Extract version and key from path
+	pathParts := strings.SplitN(path, "@", 2)
 	version := -1
-	parts = strings.SplitN(query, "@", 2)
-	if len(parts) > 1 {
-		version = dipper.Must(strconv.Atoi(parts[1])).(int)
+	if len(pathParts) > 1 {
+		version = dipper.Must(strconv.Atoi(pathParts[1])).(int)
 	}
 
-	parts = strings.SplitN(parts[0], "#", 2)
-	key := parts[1]
+	keyParts := strings.SplitN(pathParts[0], "#", 2)
+	path = keyParts[0]
+	key := keyParts[1]
 
-	parts = strings.SplitN(parts[0], "/data/", 2)
-	path := parts[1]
-	mount := parts[0]
-
+	cfg := getVaultConfig(serverName)
 	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 
-	cfg := vault.DefaultConfig()
-	cfg.Address = addr
-	client := dipper.Must(vault.NewClient(cfg)).(*vault.Client)
-	switch {
-	case k8sRole != "":
-		k8sAuth := dipper.Must(auth.NewKubernetesAuth(k8sRole)).(*auth.KubernetesAuth)
-		_ = dipper.Must(client.Auth().Login(ctx, k8sAuth))
-	case appRoleID != "":
-		appRoleAuth := dipper.Must(approle.NewAppRoleAuth(appRoleID, &approle.SecretID{FromString: appSecretID})).(*approle.AppRoleAuth)
-		_ = dipper.Must(client.Auth().Login(ctx, appRoleAuth))
-	default:
-		client.SetToken(token)
-	}
+	client := createVaultClient(ctx, cfg)
 
 	var secret *vault.KVSecret
 	if version >= 0 {
@@ -123,6 +197,155 @@ func lookup(msg *dipper.Message) {
 
 	msg.Reply <- dipper.Message{
 		Payload: []byte(value.(string)),
+		IsRaw:   true,
+	}
+}
+
+func set(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	payload := msg.Payload.(map[string]interface{})
+
+	pathStr := dipper.MustGetMapDataStr(payload, "path")
+	key := dipper.MustGetMapDataStr(payload, "key")
+	value := dipper.MustGetMapDataStr(payload, "value")
+
+	serverName, mount, path := parsePath(pathStr)
+
+	cfg := getVaultConfig(serverName)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	client := createVaultClient(ctx, cfg)
+
+	// Get existing secret data and merge with new key-value
+	var data map[string]interface{}
+	existingSecret, err := client.KVv2(mount).Get(ctx, path)
+	if err == nil && existingSecret != nil {
+		// Existing secret found, use its data and merge
+		data = existingSecret.Data
+	} else {
+		// New secret or error, create fresh map
+		data = make(map[string]interface{})
+	}
+
+	// Set the new key-value pair
+	data[key] = value
+
+	// Put the updated secret
+	_ = dipper.Must(client.KVv2(mount).Put(ctx, path, data))
+
+	msg.Reply <- dipper.Message{
+		Payload: []byte("OK"),
+		IsRaw:   true,
+	}
+}
+
+func listKeys(msg *dipper.Message) {
+	query := string(msg.Payload.([]byte))
+	serverName, mount, path := parsePath(query)
+
+	cfg := getVaultConfig(serverName)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	client := createVaultClient(ctx, cfg)
+
+	secret := dipper.Must(client.KVv2(mount).Get(ctx, path)).(*vault.KVSecret)
+
+	// Extract keys from the secret data
+	keys := make([]string, 0, len(secret.Data))
+	for k := range secret.Data {
+		keys = append(keys, k)
+	}
+
+	msg.Reply <- dipper.Message{
+		Payload: keys,
+	}
+}
+
+func listSecrets(msg *dipper.Message) {
+	query := string(msg.Payload.([]byte))
+	serverName, mount, path := parsePath(query)
+
+	cfg := getVaultConfig(serverName)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	client := createVaultClient(ctx, cfg)
+
+	listPath := buildMetadataListPath(mount, path)
+	listed := dipper.Must(client.Logical().ListWithContext(ctx, listPath)).(*vault.Secret)
+
+	secrets := []string{}
+	if listed != nil {
+		if keysRaw, found := listed.Data["keys"]; found {
+			switch keys := keysRaw.(type) {
+			case []interface{}:
+				for _, key := range keys {
+					if keyStr, ok := key.(string); ok {
+						secrets = append(secrets, keyStr)
+					}
+				}
+			case []string:
+				secrets = append(secrets, keys...)
+			}
+		}
+	}
+
+	secretsJSON := dipper.Must(dipper.SerializeContent(secrets)).([]byte)
+
+	msg.Reply <- dipper.Message{
+		Payload: secretsJSON,
+		IsRaw:   true,
+	}
+}
+
+func deleteKey(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	payload := msg.Payload.(map[string]interface{})
+
+	pathStr := dipper.MustGetMapDataStr(payload, "path")
+	key := dipper.MustGetMapDataStr(payload, "key")
+
+	serverName, mount, path := parsePath(pathStr)
+
+	cfg := getVaultConfig(serverName)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	client := createVaultClient(ctx, cfg)
+	secret := dipper.Must(client.KVv2(mount).Get(ctx, path)).(*vault.KVSecret)
+
+	updatedData, err := deleteSecretKey(secret.Data, key)
+	if err != nil {
+		panic(err)
+	}
+
+	if len(updatedData) == 0 {
+		_ = dipper.Must(client.KVv2(mount).DeleteMetadata(ctx, path))
+	} else {
+		_ = dipper.Must(client.KVv2(mount).Put(ctx, path, updatedData))
+	}
+
+	msg.Reply <- dipper.Message{
+		Payload: []byte("OK"),
+		IsRaw:   true,
+	}
+}
+
+func deleteSecret(msg *dipper.Message) {
+	query := string(msg.Payload.([]byte))
+	serverName, mount, path := parsePath(query)
+
+	cfg := getVaultConfig(serverName)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	client := createVaultClient(ctx, cfg)
+	_ = dipper.Must(client.KVv2(mount).DeleteMetadata(ctx, path))
+
+	msg.Reply <- dipper.Message{
+		Payload: []byte("OK"),
 		IsRaw:   true,
 	}
 }

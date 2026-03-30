@@ -31,8 +31,17 @@ var (
 func StartOperator(cfg *config.Config) {
 	operator = NewService(cfg, "operator")
 	operator.Route = operatorRoute
+	operator.DiscoverFeatures = OperatorFeatures
 	operator.Drain = drainingFuncs.Wait
+	setupOperatorAPIs()
 	operator.start()
+}
+
+// OperatorFeatures returns dynamic features needed by operator APIs.
+func OperatorFeatures(_ *config.DataSet) map[string]interface{} {
+	return map[string]interface{}{
+		getSecretDriverFeature(): nil,
+	}
 }
 
 // handleEventbusCommand.
