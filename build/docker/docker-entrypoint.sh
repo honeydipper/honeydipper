@@ -12,13 +12,28 @@ else
 fi
 
 while IFS='=' read -r k v; do
+    optional=
     case "$v" in
         "hd-secret-file://"*)
-            f="/var/hd-secrets/$(echo "$v" | cut -c 18-)"
+            name="$(echo "$v" | cut -c 18-)"
+            case "$name" in
+                '?'*)
+                    optional=true
+                    name="$(echo "$name" | cut -c 2-)"
+                    ;;
+            esac
+            f="/var/hd-secrets/$name"
             f="$(realpath "$f")"
             ;;
         "docker-secret-file://"*)
-            f="/run/secrets/$(echo "$v" | cut -c 22-)"
+            name="$(echo "$v" | cut -c 22-)"
+            case "$name" in
+                '?'*)
+                    optional=true
+                    name="$(echo "$name" | cut -c 2-)"
+                    ;;
+            esac
+            f="/run/secrets/$name"
             f="$(realpath "$f")"
             ;;
         *)
@@ -28,11 +43,12 @@ while IFS='=' read -r k v; do
 
     case "$f" in
         /var/hd-secrets/* | /run/secrets/*)
-            if [ ! -f "$f" ]; then
+            if [ -f "$f" ]; then
+                eval "export $k=\"\$(cat '$f')\""
+            elif [ "$optional" != true ]; then
                 echo "secret file not found: $f" >&2
                 exit 1
             fi
-            eval "export $k=\"\$(cat '$f')\""
             ;;
         '')
             ;;
