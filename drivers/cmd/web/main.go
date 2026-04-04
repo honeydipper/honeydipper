@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -33,6 +34,30 @@ func initFlags() {
 
 var driver *dipper.Driver
 
+var (
+	errMissingCLICommand     = errors.New("missing command")
+	errMissingTokenType      = errors.New("missing token source type")
+	errUnknownCLICommandType = errors.New("unknown command")
+)
+
+func parseCLICommand(args []string) (string, string, error) {
+	if len(args) < 3 {
+		return "", "", errMissingCLICommand
+	}
+
+	cmd := args[2]
+	switch cmd {
+	case "token":
+		if len(args) < 4 {
+			return "", "", errMissingTokenType
+		}
+
+		return cmd, args[3], nil
+	default:
+		return "", "", fmt.Errorf("%w: %s", errUnknownCLICommandType, cmd)
+	}
+}
+
 func main() {
 	initFlags()
 	flag.Parse()
@@ -42,6 +67,26 @@ func main() {
 		driver.Reload = func(*dipper.Message) {} // allow hot reload
 		driver.Commands["request"] = sendRequest
 		driver.Run()
+	}
+
+	if driver.Service == "cli" {
+		cmd, tokenType, err := parseCLICommand(os.Args)
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
+
+		if cmd == "token" {
+			tokenSource := map[string]interface{}{
+				"type": tokenType,
+			}
+			driver.Options = map[string]interface{}{}
+			dipper.MapSet(driver.Options, "data.token_sources.default", tokenSource)
+			token := getToken("default")
+			fmt.Println(token)
+		}
+
+		os.Exit(0)
 	}
 }
 

@@ -43,6 +43,11 @@ func TestInterpolate(t *testing.T) {
 test:
   - 1 {{ index (index . "list") "one" }}
   - 2 {{ index (index . "list") "two" }}`,
+			"yaml_safe_with_template": `:yaml_safe:
+---
+test:
+  - 1 {{ index (index . "list") "one" }}
+  - $list.{{ .ptr }}`,
 		},
 		map[string]interface{}{
 			"user": "test",
@@ -66,6 +71,12 @@ test:
 				"test": []interface{}{
 					"1 one",
 					"2 two",
+				},
+			},
+			"yaml_safe_with_template": map[string]interface{}{
+				"test": []interface{}{
+					"1 one",
+					"$list.three",
 				},
 			},
 			"default_user": "default, value with comma",

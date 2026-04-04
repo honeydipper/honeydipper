@@ -66,7 +66,7 @@ func InterpolateStr(pattern string, data interface{}) string {
 }
 
 // InterpolateGoTemplate : parse the string as go template.
-func InterpolateGoTemplate(isLoading bool, title string, pattern string, data interface{}) interface{} {
+func InterpolateGoTemplate(isLoading bool, title string, pattern string, data interface{}, funcs ...template.FuncMap) interface{} {
 	ldelim := "{{"
 	rdelim := "}}"
 	if isLoading {
@@ -96,6 +96,9 @@ func InterpolateGoTemplate(isLoading bool, title string, pattern string, data in
 		tmpl = tmpl.Funcs(sprig.TxtFuncMap())
 		tmpl = tmpl.Funcs(returnFuncMap)
 		tmpl = tmpl.Delims(ldelim, rdelim)
+		for _, fm := range funcs {
+			tmpl = tmpl.Funcs(fm)
+		}
 		parsed := template.Must(tmpl.Parse(pattern))
 
 		buf := new(bytes.Buffer)
@@ -176,7 +179,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 }
 
 // Interpolate : go through the map data structure to find and parse all the templates.
-func Interpolate(source interface{}, data interface{}) interface{} {
+func Interpolate(source interface{}, data interface{}, funcs ...template.FuncMap) interface{} {
 	switch v := source.(type) {
 	case string:
 		if strings.HasPrefix(v, "$") {
@@ -185,7 +188,7 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 
 		var ret string
 
-		switch retAnything := InterpolateGoTemplate(false, "go", v, data).(type) {
+		switch retAnything := InterpolateGoTemplate(false, "go", v, data, funcs...).(type) {
 		case *bytes.Buffer:
 			ret = retAnything.String()
 		case string:
@@ -202,14 +205,25 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 				}
 			}()
 
-			return Interpolate(ParseYaml(ret[6:]), data)
+			return Interpolate(ParseYaml(ret[6:]), data, funcs...)
+		}
+
+		if strings.HasPrefix(ret, ":yaml_safe:") {
+			defer func() {
+				if r := recover(); r != nil {
+					Logger.Warningf("loading safe yaml string: %s", ret[11:])
+					panic(r)
+				}
+			}()
+
+			return ParseYaml(ret[11:])
 		}
 
 		return strings.TrimPrefix(ret, "\\")
 	case map[string]interface{}:
 		ret := map[string]interface{}{}
 		for k, val := range v {
-			ret[k] = Interpolate(val, data)
+			ret[k] = Interpolate(val, data, funcs...)
 		}
 
 		return ret
@@ -223,7 +237,7 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 	case []interface{}:
 		ret := []interface{}{}
 		for _, val := range v {
-			ret = append(ret, Interpolate(val, data))
+			ret = append(ret, Interpolate(val, data, funcs...))
 		}
 
 		return ret

@@ -9,6 +9,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"strings"
 	"sync"
 
@@ -41,6 +42,17 @@ func StartOperator(cfg *config.Config) {
 func OperatorFeatures(_ *config.DataSet) map[string]interface{} {
 	return map[string]interface{}{
 		getSecretDriverFeature(): nil,
+	}
+}
+
+func applyInterpolatedLabel(msg *dipper.Message, name, pattern string, ctx interface{}, params map[string]interface{}) {
+	value := dipper.InterpolateStr(pattern, map[string]interface{}{
+		"ctx":    ctx,
+		"params": params,
+	})
+	delete(msg.Labels, name)
+	if value != "" {
+		msg.Labels[name] = value
 	}
 }
 
@@ -112,6 +124,23 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 			"labels":  msg.Labels,
 			"ctx":     ctx,
 			"params":  params,
+		}, template.FuncMap{
+			"decrypt": func(s string) string {
+				spec := ""
+				switch {
+				case strings.HasPrefix(s, "lookup:"):
+					spec = "LOOKUP[" + s[7:] + "]"
+				case strings.HasPrefix(s, "enc:"):
+					spec = "ENC[" + s[4:] + "]"
+				}
+				if spec == "" {
+					return s
+				}
+
+				d, _ := dipper.DecryptString(operator, "param", spec)
+
+				return d
+			},
 		}).(map[string]interface{})
 	}
 	dipper.Logger.Debugf("[operator] interpolated function call %+v", finalParams)
@@ -123,30 +152,9 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 	}
 	msg.Labels["method"] = rawaction
 	msg.Labels["feature"] = feature
-	retry := dipper.InterpolateStr("$?ctx.retry,params.retry", map[string]interface{}{
-		"ctx":    ctx,
-		"params": finalParams,
-	})
-	delete(msg.Labels, "retry")
-	if retry != "" {
-		msg.Labels["retry"] = retry
-	}
-	backoff := dipper.InterpolateStr("$?ctx.backoff_ms,params.backoff_ms", map[string]interface{}{
-		"ctx":    ctx,
-		"params": finalParams,
-	})
-	delete(msg.Labels, "backoff_ms")
-	if backoff != "" {
-		msg.Labels["backoff_ms"] = backoff
-	}
-	timeout := dipper.InterpolateStr("$?ctx.timeout,params.timeout", map[string]interface{}{
-		"ctx":    ctx,
-		"params": finalParams,
-	})
-	delete(msg.Labels, "timeout")
-	if timeout != "" {
-		msg.Labels["timeout"] = timeout
-	}
+	applyInterpolatedLabel(msg, "retry", "$?ctx.retry,params.retry", ctx, finalParams)
+	applyInterpolatedLabel(msg, "backoff_ms", "$?ctx.backoff_ms,params.backoff_ms", ctx, finalParams)
+	applyInterpolatedLabel(msg, "timeout", "$?ctx.timeout,params.timeout", ctx, finalParams)
 
 	return []RoutedMessage{
 		{

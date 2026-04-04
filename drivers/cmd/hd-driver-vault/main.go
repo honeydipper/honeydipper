@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -26,7 +27,12 @@ import (
 // ErrSecretKeyNotFound means the secret is found but the key is not found.
 var ErrSecretKeyNotFound = errors.New("secret key not found in the secret")
 
-// vaultConfig holds vault connection configuration
+const (
+	scopedPlaceholder = "{SCOPED}"
+	scopedPrefixEnv   = "SECRET_PREFIX_"
+)
+
+// vaultConfig holds vault connection configuration.
 type vaultConfig struct {
 	addr        string
 	token       string
@@ -91,7 +97,7 @@ func createVaultClient(ctx context.Context, cfg vaultConfig) *vault.Client {
 
 // parsePath splits a vault path into server name, mount point, and secret path.
 // Format: [serverName:]mount/data/path
-// Returns: serverName (or ""), mount (or "secret" default), path
+// Returns: serverName (or ""), mount (or "secret" default), path.
 func parsePath(pathStr string) (string, string, string) {
 	// Check for server prefix
 	parts := strings.SplitN(pathStr, ":", 2)
@@ -162,9 +168,10 @@ func main() {
 	driver.Run()
 }
 
-func lookup(msg *dipper.Message) {
-	query := string(msg.Payload.([]byte))
-	serverName, mount, path := parsePath(query)
+// lookupSinglePath attempts to lookup a single secret path and returns the value if found.
+// Returns the value string and a boolean indicating if it was found (nil error).
+func lookupSinglePath(ctx context.Context, client *vault.Client, singleQuery string) (string, error) {
+	_, mount, path := parsePath(singleQuery)
 
 	// Extract version and key from path
 	pathParts := strings.SplitN(path, "@", 2)
@@ -177,12 +184,6 @@ func lookup(msg *dipper.Message) {
 	path = keyParts[0]
 	key := keyParts[1]
 
-	cfg := getVaultConfig(serverName)
-	ctx, cancel := driver.GetContext(msg)
-	defer cancel()
-
-	client := createVaultClient(ctx, cfg)
-
 	var secret *vault.KVSecret
 	if version >= 0 {
 		secret = dipper.Must(client.KVv2(mount).GetVersion(ctx, path, version)).(*vault.KVSecret)
@@ -192,13 +193,112 @@ func lookup(msg *dipper.Message) {
 
 	value, found := secret.Data[key]
 	if !found {
-		panic(ErrSecretKeyNotFound)
+		return "", ErrSecretKeyNotFound
 	}
 
-	msg.Reply <- dipper.Message{
-		Payload: []byte(value.(string)),
-		IsRaw:   true,
+	return value.(string), nil
+}
+
+func getScopedPrefixes() []string {
+	type scopedEntry struct {
+		key   string
+		value string
 	}
+
+	entries := []scopedEntry{}
+	for _, e := range os.Environ() {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if !strings.HasPrefix(parts[0], scopedPrefixEnv) {
+			continue
+		}
+
+		scopeKey := strings.TrimPrefix(parts[0], scopedPrefixEnv)
+		if scopeKey == "" || parts[1] == "" {
+			continue
+		}
+
+		entries = append(entries, scopedEntry{key: strings.ToLower(scopeKey), value: parts[1]})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].key < entries[j].key
+	})
+
+	prefixes := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		prefixes = append(prefixes, entry.value)
+	}
+
+	return prefixes
+}
+
+func expandScopedQueries(queryStr string) []string {
+	queries := strings.Split(queryStr, ";")
+	prefixes := getScopedPrefixes()
+
+	expanded := []string{}
+	for _, rawQuery := range queries {
+		singleQuery := strings.TrimSpace(rawQuery)
+		if singleQuery == "" {
+			continue
+		}
+
+		if strings.Contains(singleQuery, scopedPlaceholder) {
+			if len(prefixes) == 0 {
+				expanded = append(expanded, singleQuery)
+
+				continue
+			}
+
+			for _, prefix := range prefixes {
+				expanded = append(expanded, strings.ReplaceAll(singleQuery, scopedPlaceholder, prefix))
+			}
+
+			continue
+		}
+
+		expanded = append(expanded, singleQuery)
+	}
+
+	return expanded
+}
+
+func lookup(msg *dipper.Message) {
+	queryStr := string(msg.Payload.([]byte))
+	queries := expandScopedQueries(queryStr)
+
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	clients := map[string]*vault.Client{}
+
+	// Try each query path in order, return the first one found
+	for _, singleQuery := range queries {
+		serverName, _, _ := parsePath(singleQuery)
+		client, found := clients[serverName]
+		if !found {
+			cfg := getVaultConfig(serverName)
+			client = createVaultClient(ctx, cfg)
+			clients[serverName] = client
+		}
+
+		value, err := lookupSinglePath(ctx, client, singleQuery)
+		if err == nil {
+			// Found a valid secret, return it
+			msg.Reply <- dipper.Message{
+				Payload: []byte(value),
+				IsRaw:   true,
+			}
+
+			return
+		}
+	}
+
+	// No valid secret found in any of the paths
+	panic(fmt.Errorf("%w: %s", ErrSecretKeyNotFound, queryStr))
 }
 
 func set(msg *dipper.Message) {

@@ -12,10 +12,12 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -291,4 +293,91 @@ func TestGetGitHubToken(t *testing.T) {
 		assert.Equal(t, parsedKey1, parsedKey2)
 		assert.Equal(t, 2, callCount)
 	})
+}
+
+func TestSetupGitHubSourceDefault(t *testing.T) {
+	t.Run("fills defaults from env", func(t *testing.T) {
+		key := generateTestRSAKey()
+		t.Setenv("GH_APP_ID", "999")
+		t.Setenv("GH_APP_INSTALLATION_ID", "888")
+		t.Setenv("GH_APP_PRIVATE_KEY", key)
+
+		s := map[string]interface{}{}
+		SetupGitHubSourceDefault(s)
+
+		assert.Equal(t, "999", s["app_id"])
+		assert.Equal(t, "888", s["installation_id"])
+		assert.Equal(t, key, s["key"])
+		assert.Equal(t, _globalGitHubURL, s["github_url"])
+		permissions, ok := s["permissions"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "read", permissions["contents"])
+	})
+
+	t.Run("keeps explicit values", func(t *testing.T) {
+		s := map[string]interface{}{
+			"app_id":          "explicit-app",
+			"installation_id": "explicit-install",
+			"key":             "explicit-key",
+			"github_url":      "https://example.com",
+			"permissions":     map[string]interface{}{"contents": "write"},
+		}
+
+		SetupGitHubSourceDefault(s)
+
+		assert.Equal(t, "explicit-app", s["app_id"])
+		assert.Equal(t, "explicit-install", s["installation_id"])
+		assert.Equal(t, "explicit-key", s["key"])
+		assert.Equal(t, "https://example.com", s["github_url"])
+		permissions := s["permissions"].(map[string]interface{})
+		assert.Equal(t, "write", permissions["contents"])
+	})
+
+	t.Run("panics when required env is missing", func(t *testing.T) {
+		t.Setenv("GH_APP_INSTALLATION_ID", "")
+		t.Setenv("GH_APP_ID", "")
+		t.Setenv("GH_APP_PRIVATE_KEY", "")
+
+		assert.PanicsWithError(t, fmt.Errorf("%w: installation_id missing", ErrRetrieveToken).Error(), func() {
+			SetupGitHubSourceDefault(map[string]interface{}{})
+		})
+	})
+}
+
+func TestGetGitHubTokenConcurrentAccess(t *testing.T) {
+	key := generateTestRSAKey()
+	t.Setenv("GH_APP_ID", "123456")
+	t.Setenv("GH_APP_INSTALLATION_ID", "12345")
+	t.Setenv("GH_APP_PRIVATE_KEY", key)
+
+	s := map[string]interface{}{
+		"type": "github",
+		"mock": map[string]interface{}{
+			"token":     "mock-token",
+			"expiresAt": time.Now().Add(time.Minute),
+		},
+	}
+
+	const workers = 32
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if got := GetGitHubToken(s); got != "mock-token" {
+				errCh <- fmt.Errorf("unexpected token: %s", got)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		assert.NoError(t, err)
+	}
+
+	assert.Equal(t, "mock-token", s["_saved"])
 }

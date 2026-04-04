@@ -24,7 +24,7 @@ func TestBuildGHSecretsPath(t *testing.T) {
 		path   string
 		hasErr bool
 	}{
-		{name: "org only", slug: "paypal", path: "secrets/data/hdci/gh/paypal/org"},
+		{name: "org only", slug: "paypal", path: "secrets/data/hdci/gh/paypal/_org"},
 		{name: "repo slug", slug: "paypal/honeydipper", path: "secrets/data/hdci/gh/paypal/honeydipper"},
 		{name: "repo slug with wrapped slashes", slug: "/paypal/honeydipper/", path: "secrets/data/hdci/gh/paypal/honeydipper"},
 		{name: "empty slug", slug: "", hasErr: true},

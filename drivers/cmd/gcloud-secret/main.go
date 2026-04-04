@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,6 +33,11 @@ var ErrSecretNameMissing = errors.New("secret name not supplied")
 
 // ErrSecretNameInvalid means the secret name is not valid.
 var ErrSecretNameInvalid = errors.New("secret name not valid")
+
+const (
+	scopedPlaceholder = "{SCOPED}"
+	scopedPrefixEnv   = "SECRET_PREFIX_"
+)
 
 // SecretManagerClient is an interface with a subset of method used for mocking.
 type SecretManagerClient interface {
@@ -92,19 +98,16 @@ func main() {
 	driver.Run()
 }
 
-func lookup(msg *dipper.Message) {
-	nameBytes, ok := msg.Payload.([]byte)
-	if !ok {
-		panic(ErrSecretNameMissing)
-	}
-	name := string(nameBytes)
-
+// lookupSingleSecret attempts to lookup a single secret and returns the data if found.
+// Returns the secret data []byte and a boolean indicating if it was found (nil error).
+func lookupSingleSecret(ctx context.Context, client SecretManagerClient, name string) ([]byte, error) {
 	parts := strings.Split(name, "/")
 	switch {
 	case len(parts) == 6:
 		if parts[0] != "projects" || parts[2] != "secrets" || parts[4] != "versions" {
 			dipper.Logger.Warningf("incorrect secret key format %s", name)
-			panic(ErrSecretNameInvalid)
+
+			return nil, ErrSecretNameInvalid
 		}
 	case len(parts) == 2 || len(parts) == 3:
 		version := "latest"
@@ -114,28 +117,135 @@ func lookup(msg *dipper.Message) {
 		name = fmt.Sprintf("projects/%s/secrets/%s/versions/%s", parts[0], parts[1], version)
 	default:
 		dipper.Logger.Warningf("incorrect secret key format %s", name)
-		panic(ErrSecretNameInvalid)
+
+		return nil, ErrSecretNameInvalid
 	}
 
-	ctx, cancel := driver.GetContext(msg)
-	defer cancel()
 	req := &secretmanagerpb.AccessSecretVersionRequest{
 		Name: name,
 	}
-	client, err := _clientPool.Get()
+
+	resp, err := client.AccessSecretVersion(ctx, req)
 	if err != nil {
-		dipper.Logger.Warning("failed to google secret manager client")
-		panic(err)
-	}
-	defer func() { _ = _clientPool.Put(client) }()
-	resp, err := client.(SecretManagerClient).AccessSecretVersion(ctx, req)
-	if err != nil {
-		dipper.Logger.Warning("failed to access the secret version")
-		panic(err)
+		dipper.Logger.Debugf("failed to access secret %s: %v", name, err)
+
+		return nil, fmt.Errorf("access secret version: %w", err)
 	}
 
-	msg.Reply <- dipper.Message{
-		Payload: resp.Payload.Data,
-		IsRaw:   true,
+	return resp.Payload.Data, nil
+}
+
+func getScopedPrefixes() []string {
+	type scopedEntry struct {
+		key   string
+		value string
 	}
+
+	entries := []scopedEntry{}
+	for _, e := range os.Environ() {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if !strings.HasPrefix(parts[0], scopedPrefixEnv) {
+			continue
+		}
+
+		scopeKey := strings.TrimPrefix(parts[0], scopedPrefixEnv)
+		if scopeKey == "" || parts[1] == "" {
+			continue
+		}
+
+		entries = append(entries, scopedEntry{key: strings.ToLower(scopeKey), value: parts[1]})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].key < entries[j].key
+	})
+
+	prefixes := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		prefixes = append(prefixes, entry.value)
+	}
+
+	return prefixes
+}
+
+func expandScopedNames(nameStr string) []string {
+	names := strings.Split(nameStr, ";")
+	prefixes := getScopedPrefixes()
+
+	expanded := []string{}
+	for _, rawName := range names {
+		name := strings.TrimSpace(rawName)
+		if name == "" {
+			continue
+		}
+
+		if strings.Contains(name, scopedPlaceholder) {
+			if len(prefixes) == 0 {
+				expanded = append(expanded, name)
+
+				continue
+			}
+
+			for _, prefix := range prefixes {
+				expanded = append(expanded, strings.ReplaceAll(name, scopedPlaceholder, prefix))
+			}
+
+			continue
+		}
+
+		expanded = append(expanded, name)
+	}
+
+	return expanded
+}
+
+func lookup(msg *dipper.Message) {
+	nameBytes, ok := msg.Payload.([]byte)
+	if !ok {
+		panic(ErrSecretNameMissing)
+	}
+	nameStr := string(nameBytes)
+	names := expandScopedNames(nameStr)
+
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	var client interface{}
+	var err error
+
+	// Try each secret name in order, return the first one found
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+
+		// Get client only once
+		if client == nil {
+			client, err = _clientPool.Get()
+			if err != nil {
+				dipper.Logger.Warning("failed to get google secret manager client")
+				panic(err)
+			}
+			defer func() { _ = _clientPool.Put(client) }()
+		}
+
+		data, err := lookupSingleSecret(ctx, client.(SecretManagerClient), name)
+		if err == nil {
+			// Found a valid secret, return it
+			msg.Reply <- dipper.Message{
+				Payload: data,
+				IsRaw:   true,
+			}
+
+			return
+		}
+	}
+
+	// No valid secret found in any of the names
+	dipper.Logger.Warning("failed to access any of the secrets")
+	panic(ErrSecretNameMissing)
 }

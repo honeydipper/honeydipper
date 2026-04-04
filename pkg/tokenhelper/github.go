@@ -16,6 +16,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"reflect"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -24,7 +27,10 @@ import (
 
 const _globalGitHubURL = "https://api.github.com"
 
-var ErrRetrieveToken = errors.New("unable to fetch token")
+var (
+	ErrRetrieveToken = errors.New("unable to fetch token")
+	tokenMutexes     sync.Map // maps source identifier to *sync.Mutex
+)
 
 func getGitHubJWT(s map[string]interface{}) (string, time.Time) {
 	expiresAt := time.Now().Add(time.Minute * 9).Truncate(time.Second)
@@ -48,7 +54,49 @@ func getGitHubJWT(s map[string]interface{}) (string, time.Time) {
 	return jwtTokenStr, expiresAt
 }
 
+func SetupGitHubSourceDefault(s map[string]interface{}) {
+	if _, ok := s["github_url"]; !ok {
+		s["github_url"] = _globalGitHubURL
+	}
+
+	if _, ok := s["permissions"]; !ok {
+		s["permissions"] = map[string]interface{}{
+			"contents": "read",
+		}
+	}
+
+	if _, ok := s["installation_id"]; !ok {
+		s["installation_id"] = os.Getenv("GH_APP_INSTALLATION_ID")
+		if s["installation_id"] == "" {
+			panic(fmt.Errorf("%w: installation_id missing", ErrRetrieveToken))
+		}
+	}
+
+	if _, ok := s["app_id"]; !ok {
+		s["app_id"] = os.Getenv("GH_APP_ID")
+		if s["app_id"] == "" {
+			panic(fmt.Errorf("%w: app_id missing", ErrRetrieveToken))
+		}
+	}
+
+	if _, ok := s["key"]; !ok {
+		s["key"] = os.Getenv("GH_APP_PRIVATE_KEY")
+		if s["key"] == "" {
+			panic(fmt.Errorf("%w: key missing", ErrRetrieveToken))
+		}
+	}
+}
+
 func GetGitHubToken(s map[string]interface{}) string {
+	// Lock by map identity so concurrent callers for the same source share one mutex.
+	sourceID := reflect.ValueOf(s).Pointer()
+	muRaw, _ := tokenMutexes.LoadOrStore(sourceID, &sync.Mutex{})
+	mu := muRaw.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+
+	SetupGitHubSourceDefault(s)
+
 	if mock, ok := s["mock"]; ok && mock != nil {
 		s["_saved"] = mock.(map[string]interface{})["token"]
 		s["_expiresAt"] = mock.(map[string]interface{})["expiresAt"]

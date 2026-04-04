@@ -58,6 +58,33 @@ func TestSendRequest(t *testing.T) {
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
 }
 
+func TestParseCLICommand(t *testing.T) {
+	t.Run("valid token command", func(t *testing.T) {
+		cmd, tokenType, err := parseCLICommand([]string{"web", "cli", "token", "github"})
+		assert.NoError(t, err)
+		assert.Equal(t, "token", cmd)
+		assert.Equal(t, "github", tokenType)
+	})
+
+	t.Run("missing command", func(t *testing.T) {
+		_, _, err := parseCLICommand([]string{"web", "cli"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing command")
+	})
+
+	t.Run("missing token source type", func(t *testing.T) {
+		_, _, err := parseCLICommand([]string{"web", "cli", "token"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing token source type")
+	})
+
+	t.Run("unknown command", func(t *testing.T) {
+		_, _, err := parseCLICommand([]string{"web", "cli", "bogus"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown command")
+	})
+}
+
 func TestReceiveListJson(t *testing.T) {
 	defer gock.Off()
 

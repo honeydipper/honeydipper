@@ -19,9 +19,11 @@ import (
 
 const defaultSecretDriver = "vault"
 
-var ErrInvalidGHSlug = errors.New("invalid gh slug")
-var ErrMissingSecretKey = errors.New("missing secret key")
-var ErrMissingSecretValue = errors.New("missing secret value")
+var (
+	ErrInvalidGHSlug      = errors.New("invalid gh slug")
+	ErrMissingSecretKey   = errors.New("missing secret key")
+	ErrMissingSecretValue = errors.New("missing secret value")
+)
 
 func setupOperatorAPIs() {
 	operator.APIs["ghSecretList"] = handleGHSecretList
@@ -65,7 +67,7 @@ func buildGHSecretsPath(ghSlug string) (string, error) {
 
 	parts := strings.Split(normalized, "/")
 	if len(parts) == 1 {
-		return "secrets/data/hdci/gh/" + parts[0] + "/org", nil
+		return "secrets/data/hdci/gh/" + parts[0] + "/_org", nil
 	}
 	if len(parts) == 2 {
 		return "secrets/data/hdci/gh/" + parts[0] + "/" + parts[1], nil

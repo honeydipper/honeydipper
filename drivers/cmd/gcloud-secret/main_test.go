@@ -79,3 +79,28 @@ func TestLookupWithName(t *testing.T) {
 		assert.Fail(t, "should receive plain text in reply chan.")
 	}
 }
+
+func TestGetScopedPrefixes(t *testing.T) {
+	t.Setenv("SECRET_PREFIX_ZZZ", "env/zzz")
+	t.Setenv("SECRET_PREFIX_ALPHA", "env/alpha")
+	t.Setenv("SECRET_PREFIX_MID", "env/mid")
+	t.Setenv("UNRELATED_PREFIX_ALPHA", "ignore-me")
+
+	prefixes := getScopedPrefixes()
+	assert.Equal(t, []string{"env/alpha", "env/mid", "env/zzz"}, prefixes)
+}
+
+func TestExpandScopedNames(t *testing.T) {
+	t.Setenv("SECRET_PREFIX_BETA", "apps/beta")
+	t.Setenv("SECRET_PREFIX_ALPHA", "apps/alpha")
+
+	names := expandScopedNames("myproject/{SCOPED}/db-password;myproject/common/db-password")
+	assert.Equal(t,
+		[]string{
+			"myproject/apps/alpha/db-password",
+			"myproject/apps/beta/db-password",
+			"myproject/common/db-password",
+		},
+		names,
+	)
+}

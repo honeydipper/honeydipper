@@ -8,6 +8,7 @@ package config
 
 import (
 	"strings"
+	"text/template"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
@@ -74,7 +75,11 @@ func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Con
 		// once, in the inner most function. After that, the parameters can be used for export in all outer
 		// layers.
 		squashedParams := envData["params"]
-		envData["params"] = dipper.Interpolate(squashedParams, envData)
+		envData["params"] = dipper.Interpolate(squashedParams, envData, template.FuncMap{
+			"decrypt": func(v string) string {
+				return ""
+			},
+		})
 	}
 
 	// here we abandon the squashed sysData after it is consumed, and use a clean sysData for

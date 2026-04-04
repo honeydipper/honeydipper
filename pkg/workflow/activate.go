@@ -335,10 +335,11 @@ func (w *Session) resume() {
 		return
 	}
 
-	w.store.GetLogger().Debugf("session [%s.%s] depth %d done",
+	w.store.GetLogger().Infof("session [%s.%s] depth %d done %s",
 		w.ID,
 		w.CurrentMsg.Labels["cursor"],
 		w.depth,
+		w.CurrentMsg.Labels["status"],
 	)
 
 	if w.parent != nil {

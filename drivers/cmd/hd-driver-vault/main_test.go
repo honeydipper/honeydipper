@@ -204,3 +204,28 @@ func TestDeleteSecretKey(t *testing.T) {
 		assert.ErrorIs(t, err, ErrSecretKeyNotFound)
 	})
 }
+
+func TestGetScopedPrefixes(t *testing.T) {
+	t.Setenv("SECRET_PREFIX_ZZZ", "env/zzz")
+	t.Setenv("SECRET_PREFIX_ALPHA", "env/alpha")
+	t.Setenv("SECRET_PREFIX_MID", "env/mid")
+	t.Setenv("UNRELATED_PREFIX_ALPHA", "ignore-me")
+
+	prefixes := getScopedPrefixes()
+	assert.Equal(t, []string{"env/alpha", "env/mid", "env/zzz"}, prefixes)
+}
+
+func TestExpandScopedQueries(t *testing.T) {
+	t.Setenv("SECRET_PREFIX_BETA", "apps/beta")
+	t.Setenv("SECRET_PREFIX_ALPHA", "apps/alpha")
+
+	queries := expandScopedQueries("secret/data/{SCOPED}/db#password;secret/data/common/db#password")
+	assert.Equal(t,
+		[]string{
+			"secret/data/apps/alpha/db#password",
+			"secret/data/apps/beta/db#password",
+			"secret/data/common/db#password",
+		},
+		queries,
+	)
+}
