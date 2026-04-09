@@ -70,6 +70,18 @@ func GetDefs() map[string]map[string]Def {
 				EntitlementKey:      "gh_slug",
 			},
 		},
+		"pods/:pod_id/log/chunk": {
+			http.MethodGet: {
+				Object: "pod_log", Name: "podLogChunk", ReqType: TypeFirst, Service: "operator",
+			},
+		},
+		"gh/pods/:pod_id/log/chunk/*gh_slug": {
+			http.MethodGet: {
+				Object: "gh_event", Name: "ghPodLogChunk", ReqType: TypeFirst, Service: "operator",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
+		},
 		"gh/secrets/*gh_slug": {
 			http.MethodGet: {
 				Object: "gh_secret", Name: "ghSecretList", ReqType: TypeFirst, Service: "operator",

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/honeydipper/honeydipper/v4/internal/api"
@@ -23,12 +24,15 @@ var (
 	ErrInvalidGHSlug      = errors.New("invalid gh slug")
 	ErrMissingSecretKey   = errors.New("missing secret key")
 	ErrMissingSecretValue = errors.New("missing secret value")
+	ErrInvalidPodLogToken = errors.New("invalid pod log stream token")
 )
 
 func setupOperatorAPIs() {
 	operator.APIs["ghSecretList"] = handleGHSecretList
 	operator.APIs["ghSecretSet"] = handleGHSecretSet
 	operator.APIs["ghSecretDelete"] = handleGHSecretDelete
+	operator.APIs["podLogChunk"] = handlePodLogChunk
+	operator.APIs["ghPodLogChunk"] = handlePodLogChunk
 }
 
 func isSecretNotFoundError(err error) bool {
@@ -104,6 +108,82 @@ func getStringFromPayload(payload map[string]interface{}, key string) string {
 	}
 
 	return ""
+}
+
+func getIntFromPayload(payload map[string]interface{}, key string, fallback int) int {
+	if raw, found := payload[key]; found {
+		switch t := raw.(type) {
+		case int:
+			return t
+		case int32:
+			return int(t)
+		case int64:
+			return int(t)
+		case float64:
+			return int(t)
+		case string:
+			if n, err := strconv.Atoi(strings.TrimSpace(t)); err == nil {
+				return n
+			}
+		}
+	}
+
+	return fallback
+}
+
+func getLogProvider(payload map[string]interface{}) string {
+	provider := strings.ToLower(strings.TrimSpace(getStringFromPayload(payload, "provider")))
+	if provider == "" {
+		provider = strings.ToLower(strings.TrimSpace(getStringFromPayload(payload, "runtime")))
+	}
+
+	switch provider {
+	case "", "podman", "container", "containers":
+		return "podman"
+	case "k8s":
+		return "kubernetes"
+	case "kubernetes":
+		return "kubernetes"
+	default:
+		return "podman"
+	}
+}
+
+func getCursorPayload(payload map[string]interface{}) interface{} {
+	raw, ok := payload["cursor"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	if asStr, isString := raw.(string); isString {
+		asStr = strings.TrimSpace(asStr)
+		if asStr == "" {
+			return nil
+		}
+
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(asStr), &parsed); err == nil {
+			return parsed
+		}
+
+		return nil
+	}
+
+	return raw
+}
+
+func getPodIDSigningSecrets() (string, string) {
+	if operator == nil || operator.config == nil || operator.config.DataSet == nil || operator.config.DataSet.Drivers == nil {
+		return "", ""
+	}
+
+	current, _ := dipper.GetMapDataStr(operator.config.DataSet.Drivers, "daemon.workflow.pod_id_signing_secret")
+	previous, _ := dipper.GetMapDataStr(operator.config.DataSet.Drivers, "daemon.workflow.pod_id_signing_secret_previous")
+	if strings.TrimSpace(previous) == "" {
+		previous, _ = dipper.GetMapDataStr(operator.config.DataSet.Drivers, "daemon.workflow.pod_id_signing_secret_prev")
+	}
+
+	return strings.TrimSpace(current), strings.TrimSpace(previous)
 }
 
 func extractSecretKeyValue(payload map[string]interface{}) (string, string, error) {
@@ -221,4 +301,43 @@ func handleGHSecretDelete(resp *api.Response) {
 		"key":     key,
 		"deleted": true,
 	})
+}
+
+func handlePodLogChunk(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	payload := resp.Request.Payload.(map[string]interface{})
+	podID := getStringFromPayload(payload, "pod_id")
+	if podID == "" {
+		panic(fmt.Errorf("podLogChunk failed: pod_id is required"))
+	}
+	ghSlug := strings.Trim(strings.TrimSpace(getStringFromPayload(payload, "gh_slug")), "/")
+	if ghSlug != "" {
+		token := getStringFromPayload(payload, "stream_token")
+		currentSecret, previousSecret := getPodIDSigningSecrets()
+		sigPayload := dipper.PodIDSignaturePayload(podID, ghSlug)
+		if !dipper.VerifyPayloadWithSecrets(sigPayload, token, currentSecret, previousSecret) {
+			panic(fmt.Errorf("podLogChunk failed: %w", ErrInvalidPodLogToken))
+		}
+	}
+
+	provider := getLogProvider(payload)
+	rpcPayload := map[string]interface{}{
+		"pod_id":         podID,
+		"wait_seconds":   getIntFromPayload(payload, "wait_seconds", 3),
+		"max_lines":      getIntFromPayload(payload, "max_lines", 200),
+		"done_max_lines": getIntFromPayload(payload, "done_max_lines", 5000),
+	}
+	if cursor := getCursorPayload(payload); cursor != nil {
+		rpcPayload["cursor"] = cursor
+	}
+	if include, ok := payload["include_containers"]; ok {
+		rpcPayload["include_containers"] = include
+	}
+
+	raw, err := operator.Call("driver:"+provider, "get_pod_log_tail", rpcPayload)
+	if err != nil {
+		panic(fmt.Errorf("podLogChunk failed via %s: %w", provider, err))
+	}
+
+	resp.Return(raw)
 }

@@ -1024,6 +1024,98 @@ func TestDump_BriefDescription(t *testing.T) {
 	}
 }
 
+// TestDump_LogStream tests that Dump exposes _log_stream from Ctx as log_stream in data.
+func TestDump_LogStream(t *testing.T) {
+	wf := &cfg.Workflow{}
+	s := newSession(wf)
+	s.Ctx["_log_stream"] = map[string]interface{}{
+		"pod_id":   "test-pod-123",
+		"provider": "podman",
+	}
+
+	dump := s.Dump()
+	data := dump["data"].(map[string]any)
+
+	logStream, ok := data["log_stream"]
+	if !ok {
+		t.Fatal("expected 'log_stream' in dump data")
+	}
+
+	logStreamMap, ok := logStream.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected log_stream to be a map, got %T", logStream)
+	}
+
+	if logStreamMap["pod_id"] != "test-pod-123" {
+		t.Errorf("expected pod_id 'test-pod-123', got %v", logStreamMap["pod_id"])
+	}
+
+	if logStreamMap["provider"] != "podman" {
+		t.Errorf("expected provider 'podman', got %v", logStreamMap["provider"])
+	}
+}
+
+// TestDump_LogStream_Absent tests that log_stream is nil in data when unset.
+func TestDump_LogStream_Absent(t *testing.T) {
+	wf := &cfg.Workflow{}
+	s := newSession(wf)
+
+	dump := s.Dump()
+	data := dump["data"].(map[string]any)
+
+	if logStream, ok := data["log_stream"]; ok && logStream != nil {
+		t.Errorf("expected log_stream to be nil when not set, got %v", logStream)
+	}
+}
+
+// TestDump_LogStream_FromActiveChild tests that Dump can read _log_stream from active child chain.
+func TestDump_LogStream_FromActiveChild(t *testing.T) {
+	parent := newSession(&cfg.Workflow{})
+	child := newSession(&cfg.Workflow{})
+	parent.child = child
+
+	child.Ctx["_log_stream"] = map[string]interface{}{
+		"pod_id":   "child-pod-456",
+		"provider": "podman",
+	}
+
+	dump := parent.Dump()
+	data := dump["data"].(map[string]any)
+
+	logStreamMap, ok := data["log_stream"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected log_stream map from child, got %T", data["log_stream"])
+	}
+
+	if logStreamMap["pod_id"] != "child-pod-456" {
+		t.Errorf("expected child pod_id 'child-pod-456', got %v", logStreamMap["pod_id"])
+	}
+}
+
+// TestDump_LogStream_PrefersNearestSession tests resolver picks the nearest _log_stream in chain.
+func TestDump_LogStream_PrefersNearestSession(t *testing.T) {
+	root := newSession(&cfg.Workflow{})
+	child := newSession(&cfg.Workflow{})
+	grandchild := newSession(&cfg.Workflow{})
+	root.child = child
+	child.child = grandchild
+
+	child.Ctx["_log_stream"] = map[string]interface{}{
+		"pod_id": "child-pod",
+	}
+	grandchild.Ctx["_log_stream"] = map[string]interface{}{
+		"pod_id": "grandchild-pod",
+	}
+
+	dump := root.Dump()
+	data := dump["data"].(map[string]any)
+
+	logStreamMap := data["log_stream"].(map[string]interface{})
+	if logStreamMap["pod_id"] != "child-pod" {
+		t.Errorf("expected nearest child pod_id 'child-pod', got %v", logStreamMap["pod_id"])
+	}
+}
+
 // TestLenOfIterate_ReflectValue tests lenOfIterate correctly uses reflect.
 func TestLenOfIterate_ReflectValue(t *testing.T) {
 	wf := &cfg.Workflow{Iterate: map[string]interface{}{"a": "1", "b": "2", "c": "3"}}

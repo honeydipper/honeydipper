@@ -14,6 +14,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -172,4 +174,58 @@ func TestExtractSecretKey(t *testing.T) {
 		_, err := extractSecretKey(map[string]interface{}{})
 		assert.ErrorIs(t, err, ErrMissingSecretKey)
 	})
+}
+
+func TestGetPodIDSigningSecrets(t *testing.T) {
+	originalOperator := operator
+	t.Cleanup(func() {
+		operator = originalOperator
+	})
+
+	operator = &Service{config: &config.Config{}}
+	operator.config.DataSet = &config.DataSet{
+		Drivers: map[string]interface{}{
+			"daemon": map[string]interface{}{
+				"workflow": map[string]interface{}{
+					"pod_id_signing_secret":          "current",
+					"pod_id_signing_secret_previous": "previous",
+				},
+			},
+		},
+	}
+
+	current, previous := getPodIDSigningSecrets()
+	assert.Equal(t, "current", current)
+	assert.Equal(t, "previous", previous)
+}
+
+func TestGetPodIDSigningSecretsWithPrevAlias(t *testing.T) {
+	originalOperator := operator
+	t.Cleanup(func() {
+		operator = originalOperator
+	})
+
+	operator = &Service{config: &config.Config{}}
+	operator.config.DataSet = &config.DataSet{
+		Drivers: map[string]interface{}{
+			"daemon": map[string]interface{}{
+				"workflow": map[string]interface{}{
+					"pod_id_signing_secret":      "current",
+					"pod_id_signing_secret_prev": "legacy-prev",
+				},
+			},
+		},
+	}
+
+	current, previous := getPodIDSigningSecrets()
+	assert.Equal(t, "current", current)
+	assert.Equal(t, "legacy-prev", previous)
+}
+
+func TestPodIDSignatureVerificationWithDualSecrets(t *testing.T) {
+	payload := dipper.PodIDSignaturePayload("pod-1", "org/repo")
+	oldSignature := dipper.SignPayload("old-secret", payload)
+
+	assert.True(t, dipper.VerifyPayloadWithSecrets(payload, oldSignature, "new-secret", "old-secret"))
+	assert.False(t, dipper.VerifyPayloadWithSecrets(payload, oldSignature, "new-secret"))
 }

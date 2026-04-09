@@ -85,22 +85,23 @@ func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Con
 	// here we abandon the squashed sysData after it is consumed, and use a clean sysData for
 	// interpolating the exported data.
 	envData["sysData"] = sysData
+	funcMap := GetInterpolationFuncMap(cfg)
 	var newCtx map[string]interface{}
 
 	if newCtxData, ok := envData["ctx"]; ok && newCtxData != nil {
 		newCtx = newCtxData.(map[string]interface{})
 	}
 
-	delta := dipper.Interpolate(f.Export, envData)
+	delta := dipper.Interpolate(f.Export, envData, funcMap)
 	exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 	newCtx = dipper.MergeMap(newCtx, delta)
 	switch status {
 	case "success":
-		delta := dipper.Interpolate(f.ExportOnSuccess, envData)
+		delta := dipper.Interpolate(f.ExportOnSuccess, envData, funcMap)
 		exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 		newCtx = dipper.MergeMap(newCtx, delta)
 	case "failure":
-		delta := dipper.Interpolate(f.ExportOnFailure, envData)
+		delta := dipper.Interpolate(f.ExportOnFailure, envData, funcMap)
 		exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 		newCtx = dipper.MergeMap(newCtx, delta)
 	}

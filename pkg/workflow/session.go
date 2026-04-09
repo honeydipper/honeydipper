@@ -347,6 +347,20 @@ func (w *Session) incCursor() {
 	w.CurrentMsg.Labels["cursor"] = strconv.Itoa(cursor + 1)
 }
 
+func (w *Session) resolveLogStream() interface{} {
+	for current := w; current != nil; current = current.child {
+		if current.Ctx == nil {
+			continue
+		}
+
+		if stream, ok := current.Ctx["_log_stream"]; ok && stream != nil {
+			return stream
+		}
+	}
+
+	return nil
+}
+
 // Dump converts the session info to a map for exporting.
 func (w *Session) Dump() map[string]interface{} {
 	labels := map[string]string{}
@@ -383,6 +397,7 @@ func (w *Session) Dump() map[string]interface{} {
 			"description": description,
 			"state":       SessionStates[w.State],
 			"output":      w.Ctx["_output"],
+			"log_stream":  w.resolveLogStream(),
 			"is_noop":     isNoop,
 			"is_hook":     w.IsHook,
 			"session_id":  w.ID,
