@@ -12,14 +12,33 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/tokenhelper"
 )
 
-func getToken(source string) string {
+func applyTokenSourceParams(source map[string]interface{}, params map[string]interface{}) map[string]interface{} {
+	if len(params) == 0 {
+		return source
+	}
+
+	// Clone top-level source map so per-request overrides do not mutate shared driver config.
+	overridden := map[string]interface{}{}
+	for k, v := range source {
+		overridden[k] = v
+	}
+
+	if installationID, ok := dipper.GetMapDataStr(params, "installation_id"); ok && installationID != "" {
+		overridden["installation_id"] = installationID
+	}
+
+	return overridden
+}
+
+func getToken(source string, params map[string]interface{}) string {
 	s := dipper.MustGetMapData(driver.Options, "data.token_sources."+source).(map[string]interface{})
-	switch s["type"].(string) {
+	t := applyTokenSourceParams(s, params)
+	switch t["type"].(string) {
 	case "github":
 
-		return tokenhelper.GetGitHubToken(s)
+		return tokenhelper.GetGitHubToken(t)
 	default:
-		driver.GetLogger().Panicf("[%s] unknown token source type: %+v", driver.Service, s["type"])
+		driver.GetLogger().Panicf("[%s] unknown token source type: %+v", driver.Service, t["type"])
 	}
 
 	return ""

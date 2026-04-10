@@ -82,7 +82,7 @@ func main() {
 			}
 			driver.Options = map[string]interface{}{}
 			dipper.MapSet(driver.Options, "data.token_sources.default", tokenSource)
-			token := getToken("default")
+			token := getToken("default", nil)
 			fmt.Println(token)
 		}
 
@@ -120,7 +120,14 @@ func prepareRequest(ctx context.Context, m *dipper.Message) *http.Request {
 	}
 
 	if tokenSource, ok := dipper.GetMapDataStr(m.Payload, "tokenSource"); ok && len(tokenSource) > 0 {
-		token := getToken(tokenSource)
+		var tokenSourceParams map[string]interface{}
+		if params, ok := dipper.GetMapData(m.Payload, "tokenSourceParams"); ok && params != nil {
+			if paramsMap, ok := params.(map[string]interface{}); ok {
+				tokenSourceParams = paramsMap
+			}
+		}
+
+		token := getToken(tokenSource, tokenSourceParams)
 		header.Set("Authorization", "Bearer "+token)
 	}
 
