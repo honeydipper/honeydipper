@@ -399,6 +399,9 @@ func TestLaunchParallelIteration_WithIterateAs(t *testing.T) {
 	if es.lastAsyncChild.Ctx["alias"] != "val" {
 		t.Errorf("alias value not set, got %v", es.lastAsyncChild.Ctx)
 	}
+	if es.lastAsyncChild.Ctx["thread_number"] != 0 {
+		t.Errorf("thread_number not set, got %v", es.lastAsyncChild.Ctx)
+	}
 }
 
 func TestLaunchAllParallelIterations_PoolPanic(t *testing.T) {

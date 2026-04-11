@@ -270,7 +270,7 @@ func TestBrief_ParallelIterationChildUsesDescription(t *testing.T) {
 	parent.Ctx["current"] = "a"
 
 	child := NewSession("child", &cfg.Workflow{Description: parent.Workflow.Description}, store)
-	child.Init(newMsg(), parent, nil)
+	child.Init(newMsg(), parent, nil, nil)
 
 	brief := child.Brief()
 
@@ -1113,6 +1113,28 @@ func TestDump_LogStream_PrefersNearestSession(t *testing.T) {
 	logStreamMap := data["log_stream"].(map[string]interface{})
 	if logStreamMap["pod_id"] != "child-pod" {
 		t.Errorf("expected nearest child pod_id 'child-pod', got %v", logStreamMap["pod_id"])
+	}
+}
+
+func TestDump_RerunAvailability(t *testing.T) {
+	s := newSession(&cfg.Workflow{Name: "rerunnable"})
+	s.State = SessionStateDone
+	s.CurrentMsg.Labels["status"] = SessionStatusSuccess
+
+	dump := s.Dump()
+	data := dump["data"].(map[string]any)
+	rerun := data["rerun"].(map[string]any)
+	if rerun["available"] != true {
+		t.Fatalf("expected rerun to be available for root session, got %+v", rerun)
+	}
+
+	child := newSession(&cfg.Workflow{Name: "child"})
+	child.parent = s
+	dump = child.Dump()
+	data = dump["data"].(map[string]any)
+	rerun = data["rerun"].(map[string]any)
+	if rerun["available"] != false {
+		t.Fatalf("expected rerun to be unavailable for child session, got %+v", rerun)
 	}
 }
 

@@ -184,10 +184,12 @@ func TestCreateSession_and_EmitResult_and_Detach(t *testing.T) {
 	// deep initialization logic; verify DetachSession clears parent and resets cursor.
 	parent := &Session{ID: "p1", CurrentMsg: &dipper.Message{Labels: map[string]string{"cursor": "0"}}, store: ps, Workflow: &config.Workflow{}}
 	parent.depth = 0
+	parent.Ctx = map[string]interface{}{"inherited": "value"}
+	parent.EventCtx = map[string]interface{}{"git_repo": "org/repo"}
 	sharedPerforming := []string{"parent", "child"}
 	parent.Performing = &sharedPerforming
 	parent.context, parent.cancelFunc = context.WithCancel(context.Background())
-	child := &Session{parent: parent, Performing: parent.Performing, depth: 1, CurrentMsg: &dipper.Message{Labels: map[string]string{"cursor": "1"}}, store: ps, Workflow: &config.Workflow{}}
+	child := &Session{parent: parent, Ctx: map[string]interface{}{"inherited": "value"}, Performing: parent.Performing, depth: 1, CurrentMsg: &dipper.Message{Labels: map[string]string{"cursor": "1"}}, store: ps, Workflow: &config.Workflow{}}
 	ps.nextID = 999
 	ps.DetachSession(child)
 	if child.parent != nil {
@@ -201,6 +203,12 @@ func TestCreateSession_and_EmitResult_and_Detach(t *testing.T) {
 	}
 	if len(*child.Performing) != 1 || (*child.Performing)[0] != "child" {
 		t.Fatalf("detach should isolate child performing stack, got %+v", *child.Performing)
+	}
+	if child.EventCtx["git_repo"] != "org/repo" {
+		t.Fatalf("detach should preserve event context, got %+v", child.EventCtx)
+	}
+	if child.RerunCtx == nil || child.RerunCtx["inherited"] != "value" {
+		t.Fatalf("detach should preserve rerun context, got %+v", child.RerunCtx)
 	}
 }
 

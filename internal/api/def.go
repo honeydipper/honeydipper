@@ -59,6 +59,9 @@ func GetDefs() map[string]map[string]Def {
 		"events/:eventID/wait": {
 			http.MethodGet: {Object: "event", Name: "eventWait", ReqType: TypeFirst, Service: "engine", Timeout: InfiniteDuration},
 		},
+		"events/:sessionID/rerun": {
+			http.MethodPost: {Object: "event", Name: "eventRerun", ReqType: TypeFirst, Service: "engine"},
+		},
 		"events": {
 			http.MethodGet:  {Object: "event", Name: "eventList", ReqType: TypeFirst, Service: "engine"},
 			http.MethodPost: {Object: "event", Name: "eventAdd", ReqType: TypeFirst, Service: "receiver"},

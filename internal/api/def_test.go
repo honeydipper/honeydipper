@@ -43,3 +43,30 @@ func TestGetDefsIncludesGHPodLogChunkEntitlementRoute(t *testing.T) {
 		t.Fatalf("unexpected entitlement key %q", def.EntitlementKey)
 	}
 }
+
+func TestGetDefsIncludesEventRerunRoute(t *testing.T) {
+	defs := GetDefs()
+
+	routeDefs, ok := defs["events/:sessionID/rerun"]
+	if !ok {
+		t.Fatalf("missing event rerun route")
+	}
+
+	def, ok := routeDefs[http.MethodPost]
+	if !ok {
+		t.Fatalf("missing POST definition for event rerun route")
+	}
+
+	if def.Name != "eventRerun" {
+		t.Fatalf("unexpected API name %q", def.Name)
+	}
+	if def.Service != "engine" {
+		t.Fatalf("unexpected API service %q", def.Service)
+	}
+	if def.Object != "event" {
+		t.Fatalf("unexpected API object %q", def.Object)
+	}
+	if def.ReqType != TypeFirst {
+		t.Fatalf("unexpected API req type %d", def.ReqType)
+	}
+}

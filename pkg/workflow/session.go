@@ -61,6 +61,8 @@ type Session struct {
 	Event map[string]interface{}
 	// EventCtx is the original context exported from the event.
 	EventCtx map[string]interface{}
+	// RerunCtx is the preserved runtime context used only when rerunning root sessions.
+	RerunCtx map[string]interface{}
 	// Exported is the exported data from the workflow.
 	Exported []map[string]interface{}
 
@@ -68,6 +70,8 @@ type Session struct {
 	ElseBranch *config.Workflow
 	// InFlyFunction is the function that is currently being executed.
 	InFlyFunction *config.Function
+	// OriginalWorkflow is the preserved pre-interpolation workflow template for reruns.
+	OriginalWorkflow *config.Workflow
 	// Workflow is the workflow definition.
 	Workflow *config.Workflow
 
@@ -361,6 +365,10 @@ func (w *Session) resolveLogStream() interface{} {
 	return nil
 }
 
+func (w *Session) canRerun() bool {
+	return w.parent == nil && w.OriginalWorkflow != nil
+}
+
 // Dump converts the session info to a map for exporting.
 func (w *Session) Dump() map[string]interface{} {
 	labels := map[string]string{}
@@ -398,13 +406,16 @@ func (w *Session) Dump() map[string]interface{} {
 			"state":       SessionStates[w.State],
 			"output":      w.Ctx["_output"],
 			"log_stream":  w.resolveLogStream(),
-			"is_noop":     isNoop,
-			"is_hook":     w.IsHook,
-			"session_id":  w.ID,
-			"event_id":    w.EventID,
-			"event_name":  w.GetEventName(),
-			"event_ctx":   w.EventCtx,
-			"parent":      w.Parent,
+			"rerun": map[string]any{
+				"available": w.canRerun(),
+			},
+			"is_noop":    isNoop,
+			"is_hook":    w.IsHook,
+			"session_id": w.ID,
+			"event_id":   w.EventID,
+			"event_name": w.GetEventName(),
+			"event_ctx":  w.EventCtx,
+			"parent":     w.Parent,
 		},
 		"labels": labels,
 	}

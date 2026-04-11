@@ -8,6 +8,7 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -17,20 +18,36 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+func cloneWorkflow(wf *config.Workflow) *config.Workflow {
+	if wf == nil {
+		return nil
+	}
+
+	buf := dipper.Must(json.Marshal(wf)).([]byte)
+	clone := &config.Workflow{}
+	dipper.Must(json.Unmarshal(buf, clone))
+
+	return clone
+}
+
 // NewSession creates a new session from the workflow definition.
 func NewSession(id string, wf *config.Workflow, store Store) *Session {
-	replica := *wf
+	runtimeWorkflow := cloneWorkflow(wf)
+	if runtimeWorkflow == nil {
+		runtimeWorkflow = &config.Workflow{}
+	}
 	w := &Session{
-		ID:         id,
-		Workflow:   &replica,
-		StartTime:  time.Now(),
-		store:      store,
-		Performing: &[]string{"initializing"},
+		ID:               id,
+		OriginalWorkflow: cloneWorkflow(wf),
+		Workflow:         runtimeWorkflow,
+		StartTime:        time.Now(),
+		store:            store,
+		Performing:       &[]string{"initializing"},
 
 		Ctx: map[string]any{
-			"_meta_desc": wf.Description,
+			"_meta_desc": runtimeWorkflow.Description,
 		},
-		IsHook: wf.Context == SessionContextHooks,
+		IsHook: runtimeWorkflow.Context == SessionContextHooks,
 	}
 	w.threads = &sync.WaitGroup{}
 
@@ -162,8 +179,27 @@ func (w *Session) injectEventCTX(ctx map[string]interface{}) {
 	}
 }
 
+// injectRerunCTX injects rerun-specific context values into the workflow context.
+func (w *Session) injectRerunCTX(ctx map[string]interface{}) {
+	if ctx == nil {
+		return
+	}
+
+	if w.Ctx == nil {
+		w.Ctx = map[string]interface{}{}
+	}
+
+	copy := dipper.MustDeepCopyMap(ctx)
+	for k, v := range copy {
+		w.Ctx[k] = v
+	}
+}
+
 // initCTX initialize the contextual data used in this workflow.
-func (w *Session) initCTX(eventCtx map[string]interface{}) {
+func (w *Session) initCTX(eventCtx map[string]interface{}, rerunCtx map[string]interface{}) {
+	if w.Parent == "" && w.parent == nil && rerunCtx != nil {
+		w.injectRerunCTX(rerunCtx)
+	}
 	w.injectNamedCTX(SessionContextDefault, w.parent == nil && w.Parent == "")
 	if w.Parent == "" && w.parent == nil {
 		w.injectNamedCTX(SessionContextEvents, true)
@@ -283,7 +319,7 @@ func (w *Session) inherentParentSettings(p *Session) {
 }
 
 // Init initializes the session for execution.
-func (w *Session) Init(msg *dipper.Message, parent *Session, ctx map[string]interface{}) {
+func (w *Session) Init(msg *dipper.Message, parent *Session, eventCtx map[string]interface{}, rerunCtx map[string]interface{}) {
 	if parent != nil {
 		w.inherentParentData(parent)
 		w.inherentParentSettings(parent)
@@ -292,10 +328,13 @@ func (w *Session) Init(msg *dipper.Message, parent *Session, ctx map[string]inte
 		w.context, w.cancelFunc = context.WithCancel(context.Background())
 	}
 	w.injectMsg(msg)
-	if len(ctx) > 0 {
-		w.EventCtx = dipper.MustDeepCopyMap(ctx)
+	if len(eventCtx) > 0 {
+		w.EventCtx = dipper.MustDeepCopyMap(eventCtx)
 	}
-	w.initCTX(ctx)
+	if len(rerunCtx) > 0 {
+		w.RerunCtx = dipper.MustDeepCopyMap(rerunCtx)
+	}
+	w.initCTX(eventCtx, rerunCtx)
 	w.injectLocalCTX()
 	w.interpolateWorkflow()
 	w.brief = "" // refreshing the brief after interpolation

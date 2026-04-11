@@ -333,6 +333,7 @@ func (w *Session) launchParallelIteration(i int) {
 		w.Ctx[w.Workflow.IterateAs] = w.Ctx["current"]
 	}
 	child := w.store.CreateAsyncChildSession(w, &single, w.CurrentMsg)
+	child.Ctx["thread_number"] = i
 	delete(w.Ctx, "current")
 	if w.Workflow.IterateAs != "" {
 		delete(w.Ctx, w.Workflow.IterateAs)

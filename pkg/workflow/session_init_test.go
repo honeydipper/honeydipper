@@ -121,6 +121,35 @@ func TestNewSession_HookFlag(t *testing.T) {
 	}
 }
 
+func TestNewSession_PreservesOriginalWorkflow(t *testing.T) {
+	wf := &cfg.Workflow{
+		Name:        "{{.ctx.name}}",
+		Description: "original desc",
+		Steps: []cfg.Workflow{{
+			Description: "child",
+		}},
+	}
+	s := NewSession("id", wf, &customStore{})
+
+	if s.OriginalWorkflow == nil {
+		t.Fatal("expected OriginalWorkflow to be preserved")
+	}
+	if s.OriginalWorkflow == wf {
+		t.Fatal("expected OriginalWorkflow to be a deep copy")
+	}
+	if s.OriginalWorkflow.Steps[0].Description != "child" {
+		t.Fatalf("unexpected preserved workflow child description: %+v", s.OriginalWorkflow.Steps)
+	}
+
+	s.Workflow.Steps[0].Description = "mutated"
+	if s.OriginalWorkflow.Steps[0].Description != "child" {
+		t.Fatal("mutating runtime workflow should not affect preserved workflow")
+	}
+	if wf.Steps[0].Description != "child" {
+		t.Fatal("mutating runtime workflow should not affect original input workflow")
+	}
+}
+
 func TestInherentParentData(t *testing.T) {
 	parent := makeSession()
 	parent.Event = map[string]interface{}{"foo": "bar"}
@@ -278,6 +307,33 @@ func TestInjectEventCTX(t *testing.T) {
 	s.injectEventCTX(nil)
 }
 
+func TestInjectRerunCTX(t *testing.T) {
+	s := makeSession()
+	s.Ctx = map[string]interface{}{"x": 1}
+	s.injectRerunCTX(map[string]interface{}{"y": 2})
+	if s.Ctx["y"] != 2 {
+		t.Error("rerun ctx not copied")
+	}
+	// nil case
+	s.injectRerunCTX(nil)
+}
+
+func TestInjectRerunCTX_DoesNotApplyMergeModifiers(t *testing.T) {
+	s := makeSession()
+	s.Ctx = map[string]interface{}{"keep": "value"}
+	s.injectRerunCTX(map[string]interface{}{"name*": "override", "labels+": []interface{}{"a"}})
+
+	if s.Ctx["name*"] != "override" {
+		t.Fatalf("expected literal rerun ctx key name* to be preserved, got %+v", s.Ctx)
+	}
+	if _, ok := s.Ctx["name"]; ok {
+		t.Fatalf("did not expect merge modifier expansion for rerun ctx, got %+v", s.Ctx)
+	}
+	if _, ok := s.Ctx["labels+"]; !ok {
+		t.Fatalf("expected literal rerun ctx key labels+ to be preserved, got %+v", s.Ctx)
+	}
+}
+
 func TestInitCTX_BasicAndHook(t *testing.T) {
 	s := makeSession()
 	// provide context foo so that initCTX will not panic
@@ -286,9 +342,12 @@ func TestInitCTX_BasicAndHook(t *testing.T) {
 	s.Workflow.Name = ""
 	s.IsHook = true
 	s.CurrentMsg = newMsg()
-	s.initCTX(map[string]interface{}{"e": 1})
+	s.initCTX(map[string]interface{}{"e": 1}, map[string]interface{}{"r": 2})
 	if _, ok := s.Ctx["e"]; !ok {
 		t.Error("event context not injected")
+	}
+	if _, ok := s.Ctx["r"]; !ok {
+		t.Error("rerun context not injected")
 	}
 	if _, ok := s.Ctx["hooks"]; ok {
 		t.Error("hooks should be removed for hook")
@@ -343,8 +402,12 @@ func TestInterpolateWorkflow(t *testing.T) {
 		IteratePool:     "{{.ctx.pool}}",
 	}
 	s.Workflow = wf
+	s.OriginalWorkflow = cloneWorkflow(wf)
 	s.CurrentMsg = newMsg()
 	s.interpolateWorkflow()
+	if s.OriginalWorkflow.Name != "{{.ctx.name}}" {
+		t.Error("preserved workflow should remain uninterpolated")
+	}
 	if s.Workflow.Name != "n" {
 		t.Error("name not interpolated")
 	}
@@ -397,7 +460,7 @@ func TestInherentParentSettings(t *testing.T) {
 func TestInit_NoParent(t *testing.T) {
 	s := makeSession()
 	msg := &dipper.Message{Labels: map[string]string{"cursor": "0"}, Payload: map[string]interface{}{}}
-	s.Init(msg, nil, map[string]interface{}{"foo": "bar"})
+	s.Init(msg, nil, map[string]interface{}{"foo": "bar"}, nil)
 	if s.Event == nil {
 		t.Error("Event should be initialized")
 	}
@@ -409,7 +472,7 @@ func TestInit_WithParent(t *testing.T) {
 	parent.cancelFunc = func() {}
 	msg := &dipper.Message{Labels: map[string]string{"cursor": "0"}, Payload: map[string]interface{}{}}
 	s := makeSession()
-	s.Init(msg, parent, nil)
+	s.Init(msg, parent, nil, nil)
 	if s.parent != parent {
 		t.Error("parent pointer not set in Init")
 	}

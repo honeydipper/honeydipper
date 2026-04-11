@@ -14,16 +14,24 @@ import (
 	"strings"
 
 	"github.com/honeydipper/honeydipper/v4/internal/api"
+	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/honeydipper/honeydipper/v4/pkg/workflow"
 )
 
 var ErrSessionNotFound = errors.New("session not found")
+var ErrSessionNotRerunnable = errors.New("session cannot be rerun")
 
 func setupEngineAPIs() {
 	engine.APIs["eventWait"] = handleEventWait
 	engine.APIs["eventList"] = handleEventList
+	engine.APIs["eventRerun"] = handleEventRerun
 	engine.APIs["ghEventList"] = handleGHEventList
+}
+
+type rerunSessionStarter interface {
+	CreateSessionWithInitContext(wf *config.Workflow, msg *dipper.Message, eventCtx map[string]interface{}, rerunCtx map[string]interface{}) *workflow.Session
+	ActivateSession(w *workflow.Session)
 }
 
 func handleEventWait(resp *api.Response) {
@@ -33,6 +41,72 @@ func handleEventWait(resp *api.Response) {
 	ret := workflow.Wait(engine.context, engine, eventID, resp.Request.Labels["uuid"])
 
 	resp.Return(ret.Dump())
+}
+
+func handleEventRerun(resp *api.Response) {
+	defer func() {
+		if r := recover(); r != nil {
+			resp.ReturnError(r.(error))
+		}
+	}()
+
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	sessionID := dipper.MustGetMapDataStr(resp.Request.Payload, "sessionID")
+	resp.Return(dipper.Must(rerunSession(sessionID)).(map[string]interface{}))
+}
+
+func rerunSession(sessionID string) (map[string]interface{}, error) {
+	if sessionStore == nil {
+		return nil, ErrSessionNotFound
+	}
+
+	source := workflow.GetStoredSession(sessionStore, sessionID)
+	if source == nil {
+		return nil, ErrSessionNotFound
+	}
+	if source.OriginalWorkflow == nil {
+		return nil, ErrSessionNotRerunnable
+	}
+
+	starter, ok := sessionStore.(rerunSessionStarter)
+	if !ok {
+		return nil, errors.New("session store does not support rerun")
+	}
+
+	eventID := dipper.NewUUID()
+	eventPayload := map[string]interface{}{}
+	if source.Event != nil {
+		eventPayload = dipper.MustDeepCopyMap(source.Event)
+	}
+
+	var eventCtx map[string]interface{}
+	if source.EventCtx != nil {
+		eventCtx = dipper.MustDeepCopyMap(source.EventCtx)
+	}
+
+	var rerunCtx map[string]interface{}
+	if source.RerunCtx != nil {
+		rerunCtx = dipper.MustDeepCopyMap(source.RerunCtx)
+	}
+
+	created := starter.CreateSessionWithInitContext(source.OriginalWorkflow, &dipper.Message{
+		Channel: "eventbus",
+		Subject: "message",
+		Labels: map[string]string{
+			"eventID": eventID,
+		},
+		Payload: map[string]interface{}{
+			"data": eventPayload,
+		},
+	}, eventCtx, rerunCtx)
+	starter.ActivateSession(created)
+
+	return map[string]interface{}{
+		"eventID":         created.EventID,
+		"sessionID":       created.ID,
+		"sourceSessionID": sessionID,
+		"sourceEventID":   source.EventID,
+	}, nil
 }
 
 func handleEventList(resp *api.Response) {

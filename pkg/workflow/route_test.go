@@ -73,10 +73,11 @@ func (s *testStore) GetCache() *ttlcache.Cache[string, map[string]any] {
 
 func newSession(wf *cfg.Workflow) *Session {
 	return &Session{
-		Workflow:   wf,
-		CurrentMsg: newMsg(),
-		store:      &testStore{},
-		Ctx:        map[string]interface{}{},
+		OriginalWorkflow: cloneWorkflow(wf),
+		Workflow:         wf,
+		CurrentMsg:       newMsg(),
+		store:            &testStore{},
+		Ctx:              map[string]interface{}{},
 	}
 }
 
