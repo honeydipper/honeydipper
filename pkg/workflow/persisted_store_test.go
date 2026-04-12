@@ -585,3 +585,58 @@ func TestCreateAsyncChildSession(t *testing.T) {
 	asyncChild := ps.CreateAsyncChildSession(parent, childWf, msg)
 	_ = asyncChild
 }
+
+func TestPauseResumeCancelSessionByID(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-1", &config.Workflow{Name: "wf"}, ps)
+	s.State = SessionStateAction
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "3", "status": SessionStatusSuccess}}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-1"] = buf
+
+	paused, err := ps.PauseSession("ctl-1")
+	if err != nil {
+		t.Fatalf("PauseSession returned error: %v", err)
+	}
+	if paused["paused"] != true {
+		t.Fatalf("expected paused=true response, got %+v", paused)
+	}
+
+	resumed, err := ps.ResumeSessionByID("ctl-1")
+	if err != nil {
+		t.Fatalf("ResumeSessionByID returned error: %v", err)
+	}
+	if resumed["paused"] != false {
+		t.Fatalf("expected paused=false response, got %+v", resumed)
+	}
+
+	cancelled, err := ps.CancelSessionByID("ctl-1", "test reason")
+	if err != nil {
+		t.Fatalf("CancelSessionByID returned error: %v", err)
+	}
+	if cancelled["cancelled"] != true {
+		t.Fatalf("expected cancelled=true response, got %+v", cancelled)
+	}
+
+	ps.Wait()
+}
+
+func TestPauseSessionDoneReturnsTerminated(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-done", &config.Workflow{}, ps)
+	s.State = SessionStateDone
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "1", "status": SessionStatusSuccess}}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-done"] = buf
+
+	_, err := ps.PauseSession("ctl-done")
+	if err == nil {
+		t.Fatal("expected error for terminated session")
+	}
+}

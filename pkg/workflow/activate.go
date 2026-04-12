@@ -171,6 +171,11 @@ func (w *Session) activate() {
 // It handles hooks, state transitions, and execution of workflow operations.
 func (w *Session) progress() {
 	for {
+		if w.Paused {
+			w.setPerforming("session paused")
+			return
+		}
+
 		if status := w.CurrentMsg.Labels["status"]; status != SessionStatusSuccess && status != "" && w.CurrentMsg.Labels["performing"] == "" {
 			w.CurrentMsg.Labels["performing"] = strings.Join(w.performingValues(), "\n")
 		}
@@ -209,6 +214,27 @@ func (w *Session) progress() {
 
 // processState handles the logic for each specific state in the workflow execution.
 func (w *Session) processState() {
+	if w.Cancelled {
+		switch w.State {
+		case SessionStateExport, SessionStateFailure, SessionStateError, SessionStateSuccess, SessionStateDone:
+			// Already on the terminal path from a previous cancel handling; let normal state
+			// machine continue to SessionStateDone.
+		default:
+			w.setPerforming("cancelling session")
+			// Keep status backward-compatible for existing success/failure/error consumers.
+			w.CurrentMsg.Labels["status"] = SessionStatusFailure
+			w.CurrentMsg.Labels["cancelled"] = "true"
+			if w.CancelReason != "" {
+				w.CurrentMsg.Labels["reason"] = w.CancelReason
+			} else if w.CurrentMsg.Labels["reason"] == "" {
+				w.CurrentMsg.Labels["reason"] = "session cancelled"
+			}
+			w.State = SessionStateExport
+
+			return
+		}
+	}
+
 	switch w.State {
 	case SessionStateElse:
 		w.processElseState()

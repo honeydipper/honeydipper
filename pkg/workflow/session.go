@@ -102,6 +102,12 @@ type Session struct {
 	IsNoop *bool
 	// Action is a counter to track how many actions have been performed, used for displaying.
 	Action int
+	// Paused indicates session progression is intentionally paused.
+	Paused bool
+	// Cancelled indicates cancellation has been requested for this session.
+	Cancelled bool
+	// CancelReason captures optional user-provided cancellation reason.
+	CancelReason string
 
 	threads    *sync.WaitGroup
 	cancelFunc context.CancelFunc
@@ -399,15 +405,32 @@ func (w *Session) Dump() map[string]interface{} {
 	if w.Workflow != nil {
 		description = w.Workflow.Description
 	}
+	state := SessionStates[w.State]
+	if w.State == SessionStateDone && w.Cancelled {
+		state = "cancelled"
+	} else if w.State != SessionStateDone {
+		switch {
+		case w.Cancelled:
+			state = "cancelling"
+		case w.Paused:
+			state = "paused"
+		}
+	}
+
 	ret := map[string]interface{}{
 		"data": map[string]any{
 			"brief":       w.Brief(),
 			"description": description,
-			"state":       SessionStates[w.State],
+			"state":       state,
 			"output":      w.Ctx["_output"],
 			"log_stream":  w.resolveLogStream(),
 			"rerun": map[string]any{
 				"available": w.canRerun(),
+			},
+			"controls": map[string]any{
+				"paused":        w.Paused,
+				"cancelled":     w.Cancelled,
+				"cancel_reason": w.CancelReason,
 			},
 			"is_noop":    isNoop,
 			"is_hook":    w.IsHook,

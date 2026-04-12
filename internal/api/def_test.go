@@ -70,3 +70,37 @@ func TestGetDefsIncludesEventRerunRoute(t *testing.T) {
 		t.Fatalf("unexpected API req type %d", def.ReqType)
 	}
 }
+
+func TestGetDefsIncludesSessionControlRoutes(t *testing.T) {
+	tests := []struct {
+		path string
+		name string
+	}{
+		{path: "events/:sessionID/pause", name: "eventPause"},
+		{path: "events/:sessionID/resume", name: "eventResume"},
+		{path: "events/:sessionID/cancel", name: "eventCancel"},
+	}
+
+	defs := GetDefs()
+	for _, tt := range tests {
+		routeDefs, ok := defs[tt.path]
+		if !ok {
+			t.Fatalf("missing route %s", tt.path)
+		}
+
+		def, ok := routeDefs[http.MethodPost]
+		if !ok {
+			t.Fatalf("missing POST definition for route %s", tt.path)
+		}
+
+		if def.Name != tt.name {
+			t.Fatalf("unexpected API name %q for route %s", def.Name, tt.path)
+		}
+		if def.Service != "engine" {
+			t.Fatalf("unexpected service %q for route %s", def.Service, tt.path)
+		}
+		if def.ReqType != TypeFirst {
+			t.Fatalf("unexpected req type %d for route %s", def.ReqType, tt.path)
+		}
+	}
+}
