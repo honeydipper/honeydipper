@@ -404,6 +404,9 @@ func (w *Session) Dump() map[string]interface{} {
 			isNoop, _ = dipper.GetMapDataBool(w.Ctx, "_effectively_noop")
 		}
 	}
+	if w.Cancelled {
+		isNoop = false
+	}
 
 	description := ""
 	if w.Workflow != nil {
@@ -449,7 +452,7 @@ func (w *Session) Dump() map[string]interface{} {
 
 	if w.State != SessionStateDone {
 		ret["performing"] = w.performingValues()
-	} else if labels["status"] == SessionStatusError || labels["status"] == SessionStatusFailure {
+	} else if w.Cancelled || labels["status"] == SessionStatusError || labels["status"] == SessionStatusFailure {
 		ret["performing"] = strings.Split(w.CurrentMsg.Labels["performing"], "\n")
 	}
 
