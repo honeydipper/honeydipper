@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	batchv1client "k8s.io/client-go/kubernetes/typed/batch/v1"
@@ -42,6 +43,9 @@ const (
 
 	// StatusFailure is the status when the job finished with error or not finished within time limit.
 	StatusFailure = "failure"
+
+	// StatusPending is the status when the job has not produced a terminal result yet.
+	StatusPending = "pending"
 
 	// LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
 	LabelHoneydipperUniqueIdentifier = "honeydipper-unique-identifier"
@@ -70,6 +74,7 @@ func main() {
 	log = driver.GetLogger()
 	driver.Commands["recycleDeployment"] = recycleDeployment
 	driver.Commands["createJob"] = createJob
+	driver.Commands["startJob"] = startJob
 	driver.Commands["waitForJob|interruptible"] = waitForJob
 	driver.DefaultTimeout["waitForJob"] = "30m"
 	driver.Commands["getJobLog"] = getJobLog
@@ -105,6 +110,7 @@ func deleteJob(m *dipper.Message) {
 }
 
 func getJobLog(m *dipper.Message) {
+	m = dipper.DeserializePayload(m)
 	k8client := prepareKubeConfig(m)
 
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
@@ -135,8 +141,30 @@ func getJobLog(m *dipper.Message) {
 
 	client := k8client.CoreV1().Pods(nameSpace)
 	pods, err := client.List(ctx, search)
-	if err != nil || len(pods.Items) < 1 {
+	if err != nil {
 		log.Panicf("[%s] unable to find the pod for the job %+v", driver.Service, err)
+	}
+	if len(pods.Items) < 1 {
+		message := "job has not started"
+		if isJobSuspended(job) {
+			message = "job is suspended"
+		}
+
+		m.Reply <- dipper.Message{
+			Labels: map[string]string{
+				"status": StatusPending,
+				"reason": message,
+			},
+			Payload: map[string]interface{}{
+				"log":       map[string]map[string]string{},
+				"output":    "",
+				"suspended": isJobSuspended(job),
+				"started":   !isJobSuspended(job),
+				"state":     getJobState(job),
+			},
+		}
+
+		return
 	}
 
 	alllogs := map[string]map[string]string{}
@@ -186,8 +214,11 @@ func getJobLog(m *dipper.Message) {
 			"status": jobStatus,
 		},
 		Payload: map[string]interface{}{
-			"log":    alllogs,
-			"output": output,
+			"log":       alllogs,
+			"output":    output,
+			"suspended": isJobSuspended(job),
+			"started":   !isJobSuspended(job),
+			"state":     getJobState(job),
 		},
 	}
 	if jobStatus != StatusSuccess {
@@ -226,6 +257,59 @@ func getJobStatus(job *batchv1.Job) (string, bool, []string) {
 	return jobStatus, completed, reason
 }
 
+func isJobSuspended(job *batchv1.Job) bool {
+	return job.Spec.Suspend != nil && *job.Spec.Suspend
+}
+
+func setJobSuspended(job *batchv1.Job, suspended bool) {
+	job.Spec.Suspend = &suspended
+}
+
+func shouldStartImmediately(payload interface{}) bool {
+	payloadMap, ok := payload.(map[string]interface{})
+	if !ok {
+		return true
+	}
+
+	startImmediately, ok := dipper.GetMapDataBool(payloadMap, "start_immediately")
+	if !ok {
+		return true
+	}
+
+	return startImmediately
+}
+
+func getJobState(job *batchv1.Job) string {
+	if isJobSuspended(job) {
+		return "suspended"
+	}
+
+	jobStatus, completed, _ := getJobStatus(job)
+	if completed {
+		if jobStatus == StatusSuccess {
+			return "completed"
+		}
+
+		return "failed"
+	}
+
+	if job.Status.Active > 0 {
+		return "running"
+	}
+
+	return StatusPending
+}
+
+func buildJobPayload(job *batchv1.Job) map[string]interface{} {
+	return map[string]interface{}{
+		"metadata":  job.ObjectMeta,
+		"status":    job.Status,
+		"suspended": isJobSuspended(job),
+		"started":   !isJobSuspended(job),
+		"state":     getJobState(job),
+	}
+}
+
 func returnJobStatus(m *dipper.Message, job *batchv1.Job) bool {
 	jobStatus, completed, reason := getJobStatus(job)
 
@@ -235,7 +319,10 @@ func returnJobStatus(m *dipper.Message, job *batchv1.Job) bool {
 
 	m.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
-			"status": job.Status,
+			"status":    job.Status,
+			"suspended": isJobSuspended(job),
+			"started":   !isJobSuspended(job),
+			"state":     getJobState(job),
 		},
 		Labels: map[string]string{
 			"status": jobStatus,
@@ -244,6 +331,24 @@ func returnJobStatus(m *dipper.Message, job *batchv1.Job) bool {
 	}
 
 	return true
+}
+
+func startExistingJob(ctx context.Context, jobclient batchv1client.JobInterface, jobName string) (*batchv1.Job, error) {
+	job, err := jobclient.Get(ctx, jobName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get job %s: %w", jobName, err)
+	}
+
+	if !isJobSuspended(job) {
+		return job, nil
+	}
+
+	updated, err := jobclient.Patch(ctx, jobName, types.MergePatchType, []byte(`{"spec":{"suspend":false}}`), metav1.PatchOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("unsuspend job %s: %w", jobName, err)
+	}
+
+	return updated, nil
 }
 
 func waitForJob(m *dipper.Message) {
@@ -326,7 +431,7 @@ func getExistingJob(ctx context.Context, jobSpec *batchv1.Job, jobclient batchv1
 	jobList := dipper.Must(jobclient.List(ctx, opt)).(*batchv1.JobList)
 
 	for _, job := range jobList.Items {
-		if job.Status.Active > 0 {
+		if _, completed, _ := getJobStatus(&job); !completed {
 			return &job
 		}
 	}
@@ -335,6 +440,7 @@ func getExistingJob(ctx context.Context, jobSpec *batchv1.Job, jobclient batchv1
 }
 
 func createJob(m *dipper.Message) {
+	m = dipper.DeserializePayload(m)
 	k8client := prepareKubeConfig(m)
 
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
@@ -343,6 +449,7 @@ func createJob(m *dipper.Message) {
 	}
 
 	job := constructJob(m, nameSpace, k8client)
+	setJobSuspended(&job, !shouldStartImmediately(m.Payload))
 	jobclient := k8client.BatchV1().Jobs(nameSpace)
 	ctx, cancel := driver.GetContext(m)
 	defer cancel()
@@ -355,10 +462,34 @@ func createJob(m *dipper.Message) {
 	}
 
 	m.Reply <- dipper.Message{
-		Payload: map[string]interface{}{
-			"metadata": jobResult.ObjectMeta,
-			"status":   jobResult.Status,
+		Payload: buildJobPayload(jobResult),
+	}
+}
+
+func startJob(m *dipper.Message) {
+	m = dipper.DeserializePayload(m)
+	k8client := prepareKubeConfig(m)
+
+	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
+	if !ok {
+		nameSpace = DefaultNamespace
+	}
+	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
+
+	jobclient := k8client.BatchV1().Jobs(nameSpace)
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
+
+	job, err := startExistingJob(ctx, jobclient, jobName)
+	if err != nil {
+		log.Panicf("[%s] unable to start the job %s: %+v", driver.Service, jobName, err)
+	}
+
+	m.Reply <- dipper.Message{
+		Labels: map[string]string{
+			"status": StatusSuccess,
 		},
+		Payload: buildJobPayload(job),
 	}
 }
 
