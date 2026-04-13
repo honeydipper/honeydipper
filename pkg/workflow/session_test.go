@@ -918,6 +918,42 @@ func TestDump_Done_Failure(t *testing.T) {
 	}
 }
 
+// TestDump_Done_Cancelled tests the Dump method when session is done and cancelled.
+func TestDump_Done_Cancelled(t *testing.T) {
+	wf := &cfg.Workflow{Description: "test workflow"}
+	s := newSession(wf)
+	s.State = SessionStateDone
+	s.Cancelled = true
+	s.CurrentMsg.Labels["status"] = SessionStatusSuccess
+	s.CurrentMsg.Labels["performing"] = "action1\naction2"
+
+	dump := s.Dump()
+
+	if dump == nil {
+		t.Fatal("expected Dump to return a map")
+	}
+
+	data := dump["data"].(map[string]any)
+	if data["state"] != "cancelled" {
+		t.Fatalf("expected cancelled state, got %v", data["state"])
+	}
+
+	if _, ok := dump["performing"]; !ok {
+		t.Fatal("expected 'performing' in dump for done cancelled session")
+	}
+
+	performing := dump["performing"].([]string)
+	if len(performing) != 2 {
+		t.Errorf("expected 2 performing items, got %d", len(performing))
+	}
+	if performing[0] != "action1" || performing[1] != "action2" {
+		t.Fatalf("unexpected performing values: %+v", performing)
+	}
+	if data["is_noop"] != false {
+		t.Fatalf("expected cancelled session not to be marked noop, got %v", data["is_noop"])
+	}
+}
+
 // TestDump_Labels tests the Dump method properly copies labels.
 func TestDump_Labels(t *testing.T) {
 	wf := &cfg.Workflow{}
