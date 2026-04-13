@@ -19,9 +19,13 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/workflow"
 )
 
-var ErrSessionNotFound = errors.New("session not found")
-var ErrSessionNotRerunnable = errors.New("session cannot be rerun")
-var ErrSessionControlUnsupported = errors.New("session store does not support session control")
+var (
+	ErrSessionNotFound           = errors.New("session not found")
+	ErrSessionNotRerunnable      = errors.New("session cannot be rerun")
+	ErrSessionControlUnsupported = errors.New("session store does not support session control")
+	ErrUnknownSessionAction      = errors.New("unknown action")
+	ErrSessionStoreNoRerun       = errors.New("session store does not support rerun")
+)
 
 func setupEngineAPIs() {
 	engine.APIs["eventWait"] = handleEventWait
@@ -34,7 +38,12 @@ func setupEngineAPIs() {
 }
 
 type rerunSessionStarter interface {
-	CreateSessionWithInitContext(wf *config.Workflow, msg *dipper.Message, eventCtx map[string]interface{}, rerunCtx map[string]interface{}) *workflow.Session
+	CreateSessionWithInitContext(
+		wf *config.Workflow,
+		msg *dipper.Message,
+		eventCtx map[string]interface{},
+		rerunCtx map[string]interface{},
+	) *workflow.Session
 	ActivateSession(w *workflow.Session)
 }
 
@@ -107,7 +116,7 @@ func handleSessionControl(resp *api.Response, action string) {
 		reason, _ := dipper.GetMapDataStr(resp.Request.Payload, "reason")
 		ret, err = controller.CancelSessionByID(sessionID, reason)
 	default:
-		err = errors.New("unknown action")
+		err = ErrUnknownSessionAction
 	}
 	if err != nil {
 		resp.ReturnError(err)
@@ -133,7 +142,7 @@ func rerunSession(sessionID string) (map[string]interface{}, error) {
 
 	starter, ok := sessionStore.(rerunSessionStarter)
 	if !ok {
-		return nil, errors.New("session store does not support rerun")
+		return nil, ErrSessionStoreNoRerun
 	}
 
 	eventID := dipper.NewUUID()

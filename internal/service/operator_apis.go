@@ -21,10 +21,11 @@ import (
 const defaultSecretDriver = "vault"
 
 var (
-	ErrInvalidGHSlug      = errors.New("invalid gh slug")
-	ErrMissingSecretKey   = errors.New("missing secret key")
-	ErrMissingSecretValue = errors.New("missing secret value")
-	ErrInvalidPodLogToken = errors.New("invalid pod log stream token")
+	ErrInvalidGHSlug            = errors.New("invalid gh slug")
+	ErrMissingSecretKey         = errors.New("missing secret key")
+	ErrMissingSecretValue       = errors.New("missing secret value")
+	ErrInvalidPodLogToken       = errors.New("invalid pod log stream token")
+	ErrPodLogChunkPodIDRequired = errors.New("podLogChunk failed: pod_id is required")
 )
 
 func setupOperatorAPIs() {
@@ -308,7 +309,7 @@ func handlePodLogChunk(resp *api.Response) {
 	payload := resp.Request.Payload.(map[string]interface{})
 	podID := getStringFromPayload(payload, "pod_id")
 	if podID == "" {
-		panic(fmt.Errorf("podLogChunk failed: pod_id is required"))
+		panic(ErrPodLogChunkPodIDRequired)
 	}
 	ghSlug := strings.Trim(strings.TrimSpace(getStringFromPayload(payload, "gh_slug")), "/")
 	if ghSlug != "" {

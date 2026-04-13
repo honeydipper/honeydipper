@@ -154,6 +154,17 @@ func (w *Session) activate() {
 			w.progress()
 		})
 
+		if w.Paused {
+			tail := w
+			for tail.child != nil {
+				tail = tail.child
+			}
+			tail.setPerforming("session paused")
+			w.PendingMessages = append(w.PendingMessages, tail.CurrentMsg)
+
+			return
+		}
+
 		if w.child != nil && w.child.State != SessionStateDone && (w.child.pending || w.child.CurrentHook != "") {
 			w.activateChild()
 			if w.child.pending || w.child.CurrentHook != "" {
@@ -171,11 +182,6 @@ func (w *Session) activate() {
 // It handles hooks, state transitions, and execution of workflow operations.
 func (w *Session) progress() {
 	for {
-		if w.Paused {
-			w.setPerforming("session paused")
-			return
-		}
-
 		if status := w.CurrentMsg.Labels["status"]; status != SessionStatusSuccess && status != "" && w.CurrentMsg.Labels["performing"] == "" {
 			w.CurrentMsg.Labels["performing"] = strings.Join(w.performingValues(), "\n")
 		}

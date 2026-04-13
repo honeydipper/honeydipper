@@ -108,6 +108,10 @@ type Session struct {
 	Cancelled bool
 	// CancelReason captures optional user-provided cancellation reason.
 	CancelReason string
+	// AsyncChildren tracks detached async child session IDs created by this frame.
+	AsyncChildren map[string]bool
+	// PendingMessages is a queue of messages received in paused state.
+	PendingMessages []*dipper.Message
 
 	threads    *sync.WaitGroup
 	cancelFunc context.CancelFunc
