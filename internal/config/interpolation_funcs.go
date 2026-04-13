@@ -30,9 +30,7 @@ func GetInterpolationFuncMap(cfg *Config) template.FuncMap {
 	}
 
 	return template.FuncMap{
-		"resolve_gh_slug": func(values ...interface{}) string {
-			return dipper.FirstNonEmptyString(values...)
-		},
+		"resolve_gh_slug": dipper.FirstNonEmptyString,
 		"sign_pod_id": func(podID interface{}, values ...interface{}) string {
 			pod := dipper.FirstNonEmptyString(podID)
 			ghSlug := dipper.FirstNonEmptyString(values...)
