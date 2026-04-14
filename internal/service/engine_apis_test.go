@@ -11,6 +11,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 
@@ -57,6 +58,7 @@ func (f *rerunHelper) Call(feature, method string, params interface{}, labelsKV 
 
 func (f *rerunHelper) CallNoWait(feature, method string, params interface{}, labelsKV ...string) error {
 	f.record(feature, method)
+
 	return nil
 }
 
@@ -139,7 +141,7 @@ func TestRerunSession_NotRerunnable(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected rerun error for non-rerunnable session")
 	}
-	if err != ErrSessionNotRerunnable {
+	if !errors.Is(err, ErrSessionNotRerunnable) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

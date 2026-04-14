@@ -9,6 +9,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -97,7 +98,12 @@ func (s *PersistedStore) CreateSession(wf *config.Workflow, msg *dipper.Message,
 }
 
 // CreateSessionWithInitContext creates and initializes a workflow session with separated init contexts.
-func (s *PersistedStore) CreateSessionWithInitContext(wf *config.Workflow, msg *dipper.Message, eventCtx map[string]interface{}, rerunCtx map[string]interface{}) *Session {
+func (s *PersistedStore) CreateSessionWithInitContext(
+	wf *config.Workflow,
+	msg *dipper.Message,
+	eventCtx map[string]interface{},
+	rerunCtx map[string]interface{},
+) *Session {
 	w := NewSession(s.GetNextID(), wf, s)
 	w.Init(msg, nil, eventCtx, rerunCtx)
 	w.CurrentMsg.Labels["cursor"] = "0"
@@ -165,6 +171,10 @@ func (s *PersistedStore) CreateAsyncChildSession(parent *Session, wf *config.Wor
 	w := s.CreateChildSession(parent, wf, m)
 	w.Parent = parent.ID + "." + parent.CurrentMsg.Labels["cursor"]
 	s.DetachSession(w)
+	if parent.AsyncChildren == nil {
+		parent.AsyncChildren = map[string]bool{}
+	}
+	parent.AsyncChildren[w.ID] = true
 
 	return w
 }
@@ -177,6 +187,14 @@ func (s *PersistedStore) ActivateSession(w *Session) {
 			dipper.SafeExitOnError("[%s] panic when waiting for the session.", w.ID)
 			defer s.persist(w)
 			w.Wait()
+
+			if !w.Paused && len(w.PendingMessages) > 0 && w.State != SessionStateDone {
+				msg := w.PendingMessages[0]
+				w.PendingMessages = w.PendingMessages[1:]
+				s.RunAsync(func() {
+					s.ContinueSession(w.ID, msg, nil)
+				})
+			}
 		})
 	}
 }
@@ -234,7 +252,12 @@ func (s *PersistedStore) StartSession(wf *config.Workflow, msg *dipper.Message, 
 }
 
 // StartSessionWithInitContext starts a predefined workflow with separated event and rerun context variables.
-func (s *PersistedStore) StartSessionWithInitContext(wf *config.Workflow, msg *dipper.Message, eventCtx map[string]interface{}, rerunCtx map[string]interface{}) {
+func (s *PersistedStore) StartSessionWithInitContext(
+	wf *config.Workflow,
+	msg *dipper.Message,
+	eventCtx map[string]interface{},
+	rerunCtx map[string]interface{},
+) {
 	m := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session", s.uncaughtErrorHandler(nil, m))
 
@@ -311,6 +334,329 @@ func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
 	return true
 }
 
+func (s *PersistedStore) lockSessionKey(key string) {
+	dipper.Must(s.Call("locker", "lock", map[string]interface{}{
+		"name":   key,
+		"expire": "3600s",
+	}))
+}
+
+func (s *PersistedStore) unlockSessionKey(key string) {
+	_, err := s.Call("locker", "unlock", map[string]interface{}{
+		"name": key,
+	})
+	if err != nil {
+		s.Debugf("failed to unlock session key %s (lock will auto-expire): %v", key, err)
+	}
+}
+
+func (s *PersistedStore) loadStackForControl(sessionID string) ([]*Session, string, error) {
+	key := StoreSessionPrefix + sessionID
+	s.lockSessionKey(key)
+
+	raw := dipper.Must(s.Call("cache", "lrange", map[string]interface{}{
+		"key": key,
+	}))
+	resp, _ := raw.([]byte)
+
+	stack := []*Session{}
+	if len(resp) > 0 {
+		dipper.Must(json.Unmarshal(resp, &stack))
+	}
+	if len(stack) == 0 {
+		s.unlockSessionKey(key)
+
+		return nil, "", ErrSessionNotFound
+	}
+
+	for i := 0; i < len(stack); i++ {
+		stack[i].child = nil
+		stack[i].parent = nil
+		stack[i].store = s
+		stack[i].depth = i
+		if i > 0 {
+			stack[i-1].child = stack[i]
+			stack[i].parent = stack[i-1]
+		}
+	}
+
+	return stack, key, nil
+}
+
+func (s *PersistedStore) controlResult(w *Session, action string) map[string]interface{} {
+	return map[string]interface{}{
+		"sessionID": w.ID,
+		"action":    action,
+		"state":     w.Dump()["data"].(map[string]any)["state"],
+		"paused":    w.Paused,
+		"cancelled": w.Cancelled,
+	}
+}
+
+func snapshotAsyncChildren(stack []*Session) []string {
+	if len(stack) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	children := []string{}
+	for _, frame := range stack {
+		for sessionID := range frame.AsyncChildren {
+			if sessionID == "" || seen[sessionID] {
+				continue
+			}
+			seen[sessionID] = true
+			children = append(children, sessionID)
+		}
+	}
+	if len(children) == 0 {
+		return nil
+	}
+
+	return children
+}
+
+func isIgnorableChildControlErr(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionTerminated)
+}
+
+type controlStackResult struct {
+	root      *Session
+	children  []string
+	resumeMsg *dipper.Message
+}
+
+func (s *PersistedStore) pauseSingleStack(sessionID string) (*controlStackResult, error) {
+	stack, key, err := s.loadStackForControl(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	root := stack[0]
+	if root.State == SessionStateDone {
+		s.unlockSessionKey(key)
+
+		return nil, ErrSessionTerminated
+	}
+	if root.State == SessionStateInit {
+		s.unlockSessionKey(key)
+
+		return nil, fmt.Errorf("%w: session not yet controllable", ErrWorkflowError)
+	}
+
+	for _, frame := range stack {
+		frame.Paused = true
+		frame.Cancelled = false
+	}
+	children := snapshotAsyncChildren(stack)
+	s.persist(root)
+
+	return &controlStackResult{root: root, children: children}, nil
+}
+
+func (s *PersistedStore) resumeSingleStack(sessionID string) (*controlStackResult, error) {
+	stack, key, err := s.loadStackForControl(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	root := stack[0]
+	if root.State == SessionStateDone {
+		s.unlockSessionKey(key)
+
+		return nil, ErrSessionTerminated
+	}
+	if root.State == SessionStateInit {
+		s.unlockSessionKey(key)
+
+		return nil, fmt.Errorf("%w: session not yet controllable", ErrWorkflowError)
+	}
+
+	for _, frame := range stack {
+		frame.Paused = false
+	}
+	children := snapshotAsyncChildren(stack)
+	var resumeMsg *dipper.Message
+	if len(root.PendingMessages) > 0 {
+		resumeMsg = root.PendingMessages[0]
+		root.PendingMessages = root.PendingMessages[1:]
+	}
+
+	s.persist(root)
+
+	return &controlStackResult{root: root, children: children, resumeMsg: resumeMsg}, nil
+}
+
+func (s *PersistedStore) cancelSingleStack(sessionID string, reason string) (*controlStackResult, error) {
+	stack, key, err := s.loadStackForControl(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	root := stack[0]
+	tail := stack[len(stack)-1]
+	if root.State == SessionStateDone {
+		s.unlockSessionKey(key)
+
+		return nil, ErrSessionTerminated
+	}
+	if root.State == SessionStateInit {
+		s.unlockSessionKey(key)
+
+		return nil, fmt.Errorf("%w: session not yet controllable", ErrWorkflowError)
+	}
+
+	for _, frame := range stack {
+		frame.Cancelled = true
+		frame.Paused = false
+	}
+	if reason != "" {
+		root.CancelReason = reason
+	}
+	children := snapshotAsyncChildren(stack)
+	s.persist(root)
+
+	resumeMsg := dipper.Must(dipper.MessageCopy(tail.CurrentMsg)).(*dipper.Message)
+
+	return &controlStackResult{root: root, children: children, resumeMsg: resumeMsg}, nil
+}
+
+// PauseSession pauses a session by ID at the next safe checkpoint.
+func (s *PersistedStore) PauseSession(sessionID string) (map[string]interface{}, error) {
+	queue := []string{sessionID}
+	seen := map[string]bool{}
+	var rootResult *controlStackResult
+
+	for len(queue) > 0 {
+		currentID := queue[0]
+		queue = queue[1:]
+		if seen[currentID] {
+			continue
+		}
+		seen[currentID] = true
+
+		result, err := s.pauseSingleStack(currentID)
+		if err != nil {
+			if currentID != sessionID && isIgnorableChildControlErr(err) {
+				continue
+			}
+
+			return nil, err
+		}
+		if currentID == sessionID {
+			rootResult = result
+		}
+		for _, childID := range result.children {
+			if !seen[childID] {
+				queue = append(queue, childID)
+			}
+		}
+	}
+
+	if rootResult == nil {
+		return nil, ErrSessionNotFound
+	}
+
+	return s.controlResult(rootResult.root, "pause"), nil
+}
+
+// ResumeSessionByID resumes a paused session by ID.
+func (s *PersistedStore) ResumeSessionByID(sessionID string) (map[string]interface{}, error) {
+	queue := []string{sessionID}
+	seen := map[string]bool{}
+	var rootResult *controlStackResult
+
+	for len(queue) > 0 {
+		currentID := queue[0]
+		queue = queue[1:]
+		if seen[currentID] {
+			continue
+		}
+		seen[currentID] = true
+
+		result, err := s.resumeSingleStack(currentID)
+		if err != nil {
+			if currentID != sessionID && isIgnorableChildControlErr(err) {
+				continue
+			}
+
+			return nil, err
+		}
+		if currentID == sessionID {
+			rootResult = result
+		}
+
+		msg := result.resumeMsg
+		rootID := result.root.ID
+		if msg != nil {
+			s.RunAsync(func() {
+				s.ContinueSession(rootID, msg, nil)
+			})
+		}
+
+		for _, childID := range result.children {
+			if !seen[childID] {
+				queue = append(queue, childID)
+			}
+		}
+	}
+
+	if rootResult == nil {
+		return nil, ErrSessionNotFound
+	}
+
+	return s.controlResult(rootResult.root, "resume"), nil
+}
+
+// CancelSessionByID marks a session as cancelled and schedules it to converge to terminal state.
+func (s *PersistedStore) CancelSessionByID(sessionID string, reason string) (map[string]interface{}, error) {
+	queue := []string{sessionID}
+	seen := map[string]bool{}
+	var rootResult *controlStackResult
+
+	for len(queue) > 0 {
+		currentID := queue[0]
+		queue = queue[1:]
+		if seen[currentID] {
+			continue
+		}
+		seen[currentID] = true
+
+		result, err := s.cancelSingleStack(currentID, reason)
+		if err != nil {
+			if currentID != sessionID && isIgnorableChildControlErr(err) {
+				continue
+			}
+
+			return nil, err
+		}
+		if currentID == sessionID {
+			rootResult = result
+		}
+
+		msg := result.resumeMsg
+		rootID := result.root.ID
+		s.RunAsync(func() {
+			s.ContinueSession(rootID, msg, nil)
+		})
+
+		for _, childID := range result.children {
+			if !seen[childID] {
+				queue = append(queue, childID)
+			}
+		}
+	}
+
+	if rootResult == nil {
+		return nil, ErrSessionNotFound
+	}
+
+	return s.controlResult(rootResult.root, "cancel"), nil
+}
+
 // persist persists the session if it is not completed, otherwise clean up the session.
 func (s *PersistedStore) persist(w *Session) {
 	// Find the root session iteratively to avoid stack overflow
@@ -380,9 +726,7 @@ func (s *PersistedStore) persist(w *Session) {
 			}))
 		}
 	} else {
-		dipper.Must(s.Call("locker", "unlock", map[string]interface{}{
-			"name": key,
-		}))
+		s.unlockSessionKey(key)
 	}
 
 	if root.State == SessionStateDone && root.Parent == "" {
@@ -419,9 +763,7 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 	if len(stack) == 0 {
 		// stop further processing, let global error handler deal with it.
 		s.Warningf("session %s not found in cache", sessionID)
-		dipper.Must(s.Call("locker", "unlock", map[string]interface{}{
-			"name": key,
-		}))
+		s.unlockSessionKey(key)
 
 		return nil
 	}
@@ -439,18 +781,14 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 			tail.CurrentMsg.Labels["cursor"],
 			msg.Labels["cursor"],
 		)
-		dipper.Must(s.Call("locker", "unlock", map[string]interface{}{
-			"name": key,
-		}))
+		s.unlockSessionKey(key)
 
 		return nil
 	}
 
 	if stack[0].State == SessionStateDone {
 		s.Warningf("session is already done: %s", sessionID)
-		dipper.Must(s.Call("locker", "unlock", map[string]interface{}{
-			"name": key,
-		}))
+		s.unlockSessionKey(key)
 
 		return nil
 	}
@@ -473,6 +811,13 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 	for _, session := range stack {
 		session.Performing = stack[0].Performing
 		session.Event = stack[0].Event
+	}
+
+	if child != nil && current.AsyncChildren != nil {
+		delete(current.AsyncChildren, child.ID)
+		if len(current.AsyncChildren) == 0 {
+			current.AsyncChildren = nil
+		}
 	}
 
 	current.CurrentMsg = msg

@@ -19,19 +19,38 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/workflow"
 )
 
-var ErrSessionNotFound = errors.New("session not found")
-var ErrSessionNotRerunnable = errors.New("session cannot be rerun")
+var (
+	ErrSessionNotFound           = errors.New("session not found")
+	ErrSessionNotRerunnable      = errors.New("session cannot be rerun")
+	ErrSessionControlUnsupported = errors.New("session store does not support session control")
+	ErrUnknownSessionAction      = errors.New("unknown action")
+	ErrSessionStoreNoRerun       = errors.New("session store does not support rerun")
+)
 
 func setupEngineAPIs() {
 	engine.APIs["eventWait"] = handleEventWait
 	engine.APIs["eventList"] = handleEventList
 	engine.APIs["eventRerun"] = handleEventRerun
+	engine.APIs["eventPause"] = handleEventPause
+	engine.APIs["eventResume"] = handleEventResume
+	engine.APIs["eventCancel"] = handleEventCancel
 	engine.APIs["ghEventList"] = handleGHEventList
 }
 
 type rerunSessionStarter interface {
-	CreateSessionWithInitContext(wf *config.Workflow, msg *dipper.Message, eventCtx map[string]interface{}, rerunCtx map[string]interface{}) *workflow.Session
+	CreateSessionWithInitContext(
+		wf *config.Workflow,
+		msg *dipper.Message,
+		eventCtx map[string]interface{},
+		rerunCtx map[string]interface{},
+	) *workflow.Session
 	ActivateSession(w *workflow.Session)
+}
+
+type sessionController interface {
+	PauseSession(sessionID string) (map[string]interface{}, error)
+	ResumeSessionByID(sessionID string) (map[string]interface{}, error)
+	CancelSessionByID(sessionID string, reason string) (map[string]interface{}, error)
 }
 
 func handleEventWait(resp *api.Response) {
@@ -55,6 +74,59 @@ func handleEventRerun(resp *api.Response) {
 	resp.Return(dipper.Must(rerunSession(sessionID)).(map[string]interface{}))
 }
 
+func handleEventPause(resp *api.Response) {
+	handleSessionControl(resp, "pause")
+}
+
+func handleEventResume(resp *api.Response) {
+	handleSessionControl(resp, "resume")
+}
+
+func handleEventCancel(resp *api.Response) {
+	handleSessionControl(resp, "cancel")
+}
+
+func handleSessionControl(resp *api.Response, action string) {
+	defer func() {
+		if r := recover(); r != nil {
+			resp.ReturnError(r.(error))
+		}
+	}()
+
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	sessionID := dipper.MustGetMapDataStr(resp.Request.Payload, "sessionID")
+
+	controller, ok := sessionStore.(sessionController)
+	if !ok {
+		resp.ReturnError(ErrSessionControlUnsupported)
+
+		return
+	}
+
+	var (
+		ret map[string]interface{}
+		err error
+	)
+	switch action {
+	case "pause":
+		ret, err = controller.PauseSession(sessionID)
+	case "resume":
+		ret, err = controller.ResumeSessionByID(sessionID)
+	case "cancel":
+		reason, _ := dipper.GetMapDataStr(resp.Request.Payload, "reason")
+		ret, err = controller.CancelSessionByID(sessionID, reason)
+	default:
+		err = ErrUnknownSessionAction
+	}
+	if err != nil {
+		resp.ReturnError(err)
+
+		return
+	}
+
+	resp.Return(ret)
+}
+
 func rerunSession(sessionID string) (map[string]interface{}, error) {
 	if sessionStore == nil {
 		return nil, ErrSessionNotFound
@@ -70,7 +142,7 @@ func rerunSession(sessionID string) (map[string]interface{}, error) {
 
 	starter, ok := sessionStore.(rerunSessionStarter)
 	if !ok {
-		return nil, errors.New("session store does not support rerun")
+		return nil, ErrSessionStoreNoRerun
 	}
 
 	eventID := dipper.NewUUID()

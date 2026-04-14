@@ -585,3 +585,180 @@ func TestCreateAsyncChildSession(t *testing.T) {
 	asyncChild := ps.CreateAsyncChildSession(parent, childWf, msg)
 	_ = asyncChild
 }
+
+func TestPauseResumeCancelSessionByID(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-1", &config.Workflow{Name: "wf"}, ps)
+	s.State = SessionStateAction
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "3", "status": SessionStatusSuccess}}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-1"] = buf
+
+	paused, err := ps.PauseSession("ctl-1")
+	if err != nil {
+		t.Fatalf("PauseSession returned error: %v", err)
+	}
+	if paused["paused"] != true {
+		t.Fatalf("expected paused=true response, got %+v", paused)
+	}
+
+	resumed, err := ps.ResumeSessionByID("ctl-1")
+	if err != nil {
+		t.Fatalf("ResumeSessionByID returned error: %v", err)
+	}
+	if resumed["paused"] != false {
+		t.Fatalf("expected paused=false response, got %+v", resumed)
+	}
+
+	cancelled, err := ps.CancelSessionByID("ctl-1", "test reason")
+	if err != nil {
+		t.Fatalf("CancelSessionByID returned error: %v", err)
+	}
+	if cancelled["cancelled"] != true {
+		t.Fatalf("expected cancelled=true response, got %+v", cancelled)
+	}
+
+	ps.Wait()
+}
+
+func TestPauseSessionDoneReturnsTerminated(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-done", &config.Workflow{}, ps)
+	s.State = SessionStateDone
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "1", "status": SessionStatusSuccess}}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-done"] = buf
+
+	_, err := ps.PauseSession("ctl-done")
+	if err == nil {
+		t.Fatal("expected error for terminated session")
+	}
+}
+
+func TestPauseSessionPropagatesToAsyncChildren(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	parent := NewSession("ctl-parent", &config.Workflow{Name: "wf-parent"}, ps)
+	parent.State = SessionStateAction
+	parent.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "5", "status": SessionStatusSuccess}}
+	parent.AsyncChildren = map[string]bool{"ctl-child": true}
+	parentStack := []*Session{parent}
+	parentBuf, _ := json.Marshal(parentStack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-parent"] = parentBuf
+
+	child := NewSession("ctl-child", &config.Workflow{Name: "wf-child"}, ps)
+	child.State = SessionStateAction
+	child.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "7", "status": SessionStatusSuccess}}
+	childStack := []*Session{child}
+	childBuf, _ := json.Marshal(childStack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-child"] = childBuf
+
+	_, err := ps.PauseSession("ctl-parent")
+	if err != nil {
+		t.Fatalf("PauseSession returned error: %v", err)
+	}
+
+	lrangeCalls := 0
+	for _, call := range fh.calls {
+		if call == "cache:lrange" {
+			lrangeCalls++
+		}
+	}
+	if lrangeCalls < 2 {
+		t.Fatalf("expected parent and child stack to be processed, got cache:lrange calls=%d", lrangeCalls)
+	}
+}
+
+func TestLoadSessionRemovesCompletedAsyncChild(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	parent := NewSession("ctl-parent-return", &config.Workflow{Name: "wf-parent"}, ps)
+	parent.State = SessionStateAction
+	parent.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "9", "status": SessionStatusSuccess}}
+	parent.AsyncChildren = map[string]bool{"ctl-child-return": true}
+	stack := []*Session{parent}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-parent-return"] = buf
+
+	child := NewSession("ctl-child-return", &config.Workflow{Name: "wf-child"}, ps)
+	child.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "0", "status": SessionStatusSuccess}}
+
+	loaded := ps.loadSession("ctl-parent-return", &dipper.Message{Labels: map[string]string{"cursor": "9"}}, child)
+	if loaded == nil {
+		t.Fatal("expected parent session to load")
+	}
+	if len(loaded.AsyncChildren) != 0 {
+		t.Fatalf("expected child to be removed from async set, got %+v", loaded.AsyncChildren)
+	}
+}
+
+func TestResumeSessionByID_NoPendingMessagesDoesNotContinue(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-resume-empty", &config.Workflow{Name: "wf"}, ps)
+	s.State = SessionStateAction
+	s.Paused = true
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "3", "status": SessionStatusSuccess}}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-resume-empty"] = buf
+
+	_, err := ps.ResumeSessionByID("ctl-resume-empty")
+	if err != nil {
+		t.Fatalf("ResumeSessionByID returned error: %v", err)
+	}
+
+	ps.Wait()
+
+	lrangeCalls := 0
+	for _, call := range fh.calls {
+		if call == "cache:lrange" {
+			lrangeCalls++
+		}
+	}
+	if lrangeCalls != 1 {
+		t.Fatalf("expected only control-path stack load when no pending messages, got cache:lrange calls=%d", lrangeCalls)
+	}
+}
+
+func TestResumeSessionByID_WithPendingMessageContinuesOnce(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-resume-pending", &config.Workflow{Name: "wf"}, ps)
+	s.State = SessionStateAction
+	s.Paused = true
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "4", "status": SessionStatusSuccess}}
+	// Use a mismatched cursor so the async ContinueSession exits after load attempt.
+	// This validates scheduling behavior without relying on fake cache state mutation.
+	s.PendingMessages = []*dipper.Message{{Labels: map[string]string{"cursor": "999", "status": SessionStatusSuccess}}}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-resume-pending"] = buf
+
+	_, err := ps.ResumeSessionByID("ctl-resume-pending")
+	if err != nil {
+		t.Fatalf("ResumeSessionByID returned error: %v", err)
+	}
+
+	ps.Wait()
+
+	lrangeCalls := 0
+	for _, call := range fh.calls {
+		if call == "cache:lrange" {
+			lrangeCalls++
+		}
+	}
+	if lrangeCalls < 2 {
+		t.Fatalf("expected resume to trigger ContinueSession when pending message exists, got cache:lrange calls=%d", lrangeCalls)
+	}
+}

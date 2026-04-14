@@ -154,6 +154,17 @@ func (w *Session) activate() {
 			w.progress()
 		})
 
+		if w.Paused {
+			tail := w
+			for tail.child != nil {
+				tail = tail.child
+			}
+			tail.setPerforming("session paused")
+			w.PendingMessages = append(w.PendingMessages, tail.CurrentMsg)
+
+			return
+		}
+
 		if w.child != nil && w.child.State != SessionStateDone && (w.child.pending || w.child.CurrentHook != "") {
 			w.activateChild()
 			if w.child.pending || w.child.CurrentHook != "" {
@@ -209,6 +220,27 @@ func (w *Session) progress() {
 
 // processState handles the logic for each specific state in the workflow execution.
 func (w *Session) processState() {
+	if w.Cancelled {
+		switch w.State {
+		case SessionStateExport, SessionStateFailure, SessionStateError, SessionStateSuccess, SessionStateDone:
+			// Already on the terminal path from a previous cancel handling; let normal state
+			// machine continue to SessionStateDone.
+		default:
+			w.setPerforming("cancelling session")
+			// Keep status backward-compatible for existing success/failure/error consumers.
+			w.CurrentMsg.Labels["status"] = SessionStatusFailure
+			w.CurrentMsg.Labels["cancelled"] = "true"
+			if w.CancelReason != "" {
+				w.CurrentMsg.Labels["reason"] = w.CancelReason
+			} else if w.CurrentMsg.Labels["reason"] == "" {
+				w.CurrentMsg.Labels["reason"] = "session cancelled"
+			}
+			w.State = SessionStateExport
+
+			return
+		}
+	}
+
 	switch w.State {
 	case SessionStateElse:
 		w.processElseState()
