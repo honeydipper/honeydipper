@@ -78,6 +78,7 @@ func main() {
 	driver.Commands["waitForJob|interruptible"] = waitForJob
 	driver.DefaultTimeout["waitForJob"] = "30m"
 	driver.Commands["getJobLog"] = getJobLog
+	driver.RPCHandlers["get_pod_log_tail"] = getPodLogTail
 	driver.Commands["deleteJob"] = deleteJob
 	driver.Commands["createPVC"] = createPVC
 	driver.Commands["deletePVC"] = deletePVC

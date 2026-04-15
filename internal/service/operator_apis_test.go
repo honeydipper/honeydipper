@@ -229,3 +229,136 @@ func TestPodIDSignatureVerificationWithDualSecrets(t *testing.T) {
 	assert.True(t, dipper.VerifyPayloadWithSecrets(payload, oldSignature, "new-secret", "old-secret"))
 	assert.False(t, dipper.VerifyPayloadWithSecrets(payload, oldSignature, "new-secret"))
 }
+
+func TestGetLogProviderMapsKubernetes(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  map[string]interface{}
+		expected string
+	}{
+		{
+			name:     "k8s maps to kubernetes",
+			payload:  map[string]interface{}{"provider": "k8s"},
+			expected: "kubernetes",
+		},
+		{
+			name:     "kubernetes maps to kubernetes",
+			payload:  map[string]interface{}{"provider": "kubernetes"},
+			expected: "kubernetes",
+		},
+		{
+			name:     "podman maps to podman",
+			payload:  map[string]interface{}{"provider": "podman"},
+			expected: "podman",
+		},
+		{
+			name:     "container maps to podman",
+			payload:  map[string]interface{}{"provider": "container"},
+			expected: "podman",
+		},
+		{
+			name:     "unknown defaults to podman",
+			payload:  map[string]interface{}{"provider": "unknown"},
+			expected: "podman",
+		},
+		{
+			name:     "empty provider defaults to podman",
+			payload:  map[string]interface{}{"provider": ""},
+			expected: "podman",
+		},
+		{
+			name:     "no provider uses runtime field",
+			payload:  map[string]interface{}{"runtime": "k8s"},
+			expected: "kubernetes",
+		},
+		{
+			name:     "no provider no runtime defaults to podman",
+			payload:  map[string]interface{}{},
+			expected: "podman",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := getLogProvider(tc.payload)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestGetCursorPayloadExtractsData(t *testing.T) {
+	tests := []struct {
+		name      string
+		payload   map[string]interface{}
+		expected  interface{}
+		expectNil bool
+	}{
+		{
+			name: "valid cursor payload with nested map",
+			payload: map[string]interface{}{
+				"cursor": map[string]interface{}{
+					"pod1": map[string]interface{}{
+						"container1": map[string]interface{}{
+							"timestamp": "2024-01-01T00:00:00Z",
+							"skip":      5,
+						},
+					},
+				},
+			},
+			expected: map[string]interface{}{
+				"pod1": map[string]interface{}{
+					"container1": map[string]interface{}{
+						"timestamp": "2024-01-01T00:00:00Z",
+						"skip":      5,
+					},
+				},
+			},
+			expectNil: false,
+		},
+		{
+			name:      "nil cursor returns nil",
+			payload:   map[string]interface{}{},
+			expectNil: true,
+		},
+		{
+			name: "cursor string with valid JSON is parsed",
+			payload: map[string]interface{}{
+				"cursor": `{"pod1":{"container1":{"timestamp":"2024-01-01T00:00:00Z","skip":5}}}`,
+			},
+			expected: map[string]interface{}{
+				"pod1": map[string]interface{}{
+					"container1": map[string]interface{}{
+						"timestamp": "2024-01-01T00:00:00Z",
+						"skip":      float64(5),
+					},
+				},
+			},
+			expectNil: false,
+		},
+		{
+			name: "cursor string with invalid JSON returns nil",
+			payload: map[string]interface{}{
+				"cursor": "not-valid-json",
+			},
+			expectNil: true,
+		},
+		{
+			name: "empty string cursor returns nil",
+			payload: map[string]interface{}{
+				"cursor": "   ",
+			},
+			expectNil: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := getCursorPayload(tc.payload)
+			if tc.expectNil {
+				assert.Nil(t, result)
+			} else {
+				assert.Equal(t, tc.expected, result)
+			}
+		})
+	}
+}
