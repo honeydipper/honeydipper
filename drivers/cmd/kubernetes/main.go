@@ -640,6 +640,8 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 		if err != nil {
 			log.Panicf("[%s] unable to load default account for kubernetes %+v", driver.Service, err)
 		}
+	case "static":
+		kubeConfig = getStaticKubeConfig(source.(map[string]interface{}))
 	default:
 		log.Panicf("[%s] unsupported kubernetes source type: %s", driver.Service, stype)
 	}
@@ -681,6 +683,70 @@ func getGKEConfig(cfg map[string]interface{}) *rest.Config {
 		}
 	} else {
 		cadata, _ := base64.StdEncoding.DecodeString(cacert)
+		k8cfg.CAData = cadata
+	}
+
+	return k8cfg
+}
+
+func getStaticKubeConfig(cfg map[string]interface{}) *rest.Config {
+	name, ok := dipper.GetMapDataStr(cfg, "name")
+	if !ok {
+		log.Panicf("[%s] source name is missing for static kubernetes source", driver.Service)
+	}
+
+	ret, ok := driver.GetOption("data.sources." + name)
+	if !ok {
+		log.Panicf("[%s] static kubernetes source not found: %s", driver.Service, name)
+	}
+
+	host, _ := dipper.GetMapDataStr(ret, "Host")
+	token, hasToken := dipper.GetMapDataStr(ret, "Token")
+	clientCert, hasClientCert := dipper.GetMapDataStr(ret, "ClientCert")
+	clientKey, hasClientKey := dipper.GetMapDataStr(ret, "ClientKey")
+	cacert, _ := dipper.GetMapDataStr(ret, "CACert")
+	useDNS, _ := dipper.GetMapDataBool(ret, "useDNS")
+
+	k8cfg := &rest.Config{
+		Host: host,
+	}
+
+	if hasToken {
+		k8cfg.BearerToken = token
+	}
+
+	if hasClientCert || hasClientKey {
+		if !hasClientCert || !hasClientKey {
+			log.Panicf("[%s] static kubernetes source %s must include both ClientCert and ClientKey", driver.Service, name)
+		}
+
+		certData, err := base64.StdEncoding.DecodeString(clientCert)
+		if err != nil {
+			log.Panicf("[%s] static kubernetes source %s has invalid ClientCert: %+v", driver.Service, name, err)
+		}
+
+		keyData, err := base64.StdEncoding.DecodeString(clientKey)
+		if err != nil {
+			log.Panicf("[%s] static kubernetes source %s has invalid ClientKey: %+v", driver.Service, name, err)
+		}
+
+		k8cfg.CertData = certData
+		k8cfg.KeyData = keyData
+	}
+
+	if !hasToken && (!hasClientCert || !hasClientKey) {
+		log.Panicf("[%s] static kubernetes source %s must include either Token or ClientCert/ClientKey", driver.Service, name)
+	}
+
+	if useDNS {
+		if !strings.HasPrefix(k8cfg.Host, "https://") {
+			k8cfg.Host = "https://" + k8cfg.Host
+		}
+	} else {
+		cadata, err := base64.StdEncoding.DecodeString(cacert)
+		if err != nil {
+			log.Panicf("[%s] static kubernetes source %s has invalid CACert: %+v", driver.Service, name, err)
+		}
 		k8cfg.CAData = cadata
 	}
 
