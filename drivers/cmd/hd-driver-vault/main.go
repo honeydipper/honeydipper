@@ -61,6 +61,9 @@ func getVaultConfig(serverName string) vaultConfig {
 	}
 
 	cfg.k8sRole, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"k8sRole")
+	if cfg.k8sRole == "" {
+		cfg.k8sRole = os.Getenv("VAULT_K8S_ROLE")
+	}
 
 	cfg.appRoleID, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"approle.role_id")
 	if cfg.appRoleID == "" {

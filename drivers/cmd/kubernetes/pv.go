@@ -12,6 +12,7 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	corev1 "k8s.io/api/core/v1"
+	k8sapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -38,6 +39,16 @@ func createPVC(m *dipper.Message) {
 	defer cancel()
 	pvcResult, e := client.Create(ctx, &pvc, metav1.CreateOptions{})
 	if e != nil {
+		ignoreAlreadyExists, _ := dipper.GetMapDataBool(m.Payload, "ignore_already_exists")
+		if ignoreAlreadyExists && k8sapierrors.IsAlreadyExists(e) {
+			m.Reply <- dipper.Message{
+				Payload: map[string]interface{}{
+					"already_exists": true,
+				},
+			}
+
+			return
+		}
 		log.Panicf("[%s] failed to create pvc %+v", driver.Service, e)
 	}
 
