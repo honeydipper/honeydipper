@@ -41,9 +41,14 @@ func createPVC(m *dipper.Message) {
 	if e != nil {
 		ignoreAlreadyExists, _ := dipper.GetMapDataBool(m.Payload, "ignore_already_exists")
 		if ignoreAlreadyExists && k8sapierrors.IsAlreadyExists(e) {
+			existing, getErr := client.Get(ctx, pvc.Name, metav1.GetOptions{})
+			if getErr != nil {
+				log.Panicf("[%s] failed to get existing pvc %+v", driver.Service, getErr)
+			}
 			m.Reply <- dipper.Message{
 				Payload: map[string]interface{}{
 					"already_exists": true,
+					"metadata":       existing.ObjectMeta,
 				},
 			}
 
