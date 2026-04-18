@@ -7,8 +7,16 @@
 package workflow
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+)
+
+var (
+	ErrHookFailed = errors.New("hook failed")
+	ErrHookError  = errors.New("hook error")
 )
 
 // SessionEntryHooks maps hooks to start of the session states.
@@ -141,8 +149,20 @@ func (w *Session) restoreFromHook() {
 	w.CurrentMsg = w.OrigMsg
 	w.CurrentMsg.Labels["cursor"] = cursor
 	w.OrigMsg = nil
+	child := w.child
 	w.child = w.OrigChild
 	w.OrigChild = nil
+
+	if w.CurrentMsg.Labels["status"] != "failure" && w.CurrentMsg.Labels["status"] != "error" {
+		// report hook failure and error if parent is not already in failure or error status.
+		// if the child is already in failure or error status, preserve the parent status.
+		switch child.CurrentMsg.Labels["status"] {
+		case "failure":
+			panic(fmt.Errorf("%w: %s", ErrHookFailed, child.CurrentMsg.Labels["reason"]))
+		case "error":
+			panic(fmt.Errorf("%w: %s", ErrHookError, child.CurrentMsg.Labels["reason"]))
+		}
+	}
 
 	w.trimPerformingToCurrentDepth()
 }
