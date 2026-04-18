@@ -460,7 +460,7 @@ func TestInherentParentSettings(t *testing.T) {
 func TestInit_NoParent(t *testing.T) {
 	s := makeSession()
 	msg := &dipper.Message{Labels: map[string]string{"cursor": "0"}, Payload: map[string]interface{}{}}
-	s.Init(msg, nil, map[string]interface{}{"foo": "bar"}, nil)
+	s.Init(msg, nil, map[string]interface{}{"foo": "bar"}, nil, nil)
 	if s.Event == nil {
 		t.Error("Event should be initialized")
 	}
@@ -472,11 +472,28 @@ func TestInit_WithParent(t *testing.T) {
 	parent.cancelFunc = func() {}
 	msg := &dipper.Message{Labels: map[string]string{"cursor": "0"}, Payload: map[string]interface{}{}}
 	s := makeSession()
-	s.Init(msg, parent, nil, nil)
+	s.Init(msg, parent, nil, nil, nil)
 	if s.parent != parent {
 		t.Error("parent pointer not set in Init")
 	}
 	if s.context == nil {
 		t.Error("context should be set")
+	}
+}
+
+func TestInit_WithLoadedContexts(t *testing.T) {
+	s := makeSession()
+	msg := &dipper.Message{Labels: map[string]string{"cursor": "0"}, Payload: map[string]interface{}{}}
+	loaded := []string{"_preloaded_ctx"}
+
+	s.Init(msg, nil, nil, nil, loaded)
+
+	if len(s.LoadedContexts) != 1 || s.LoadedContexts[0] != "_preloaded_ctx" {
+		t.Fatalf("expected preloaded contexts to be copied, got %+v", s.LoadedContexts)
+	}
+
+	loaded[0] = "mutated"
+	if s.LoadedContexts[0] != "_preloaded_ctx" {
+		t.Fatalf("expected loaded context copy to be independent, got %+v", s.LoadedContexts)
 	}
 }

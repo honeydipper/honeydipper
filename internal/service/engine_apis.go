@@ -43,6 +43,7 @@ type rerunSessionStarter interface {
 		msg *dipper.Message,
 		eventCtx map[string]interface{},
 		rerunCtx map[string]interface{},
+		loadedContexts []string,
 	) *workflow.Session
 	ActivateSession(w *workflow.Session)
 }
@@ -161,6 +162,8 @@ func rerunSession(sessionID string) (map[string]interface{}, error) {
 		rerunCtx = dipper.MustDeepCopyMap(source.RerunCtx)
 	}
 
+	loadedContexts := append([]string(nil), source.LoadedContexts...)
+
 	created := starter.CreateSessionWithInitContext(source.OriginalWorkflow, &dipper.Message{
 		Channel: "eventbus",
 		Subject: "message",
@@ -170,7 +173,7 @@ func rerunSession(sessionID string) (map[string]interface{}, error) {
 		Payload: map[string]interface{}{
 			"data": eventPayload,
 		},
-	}, eventCtx, rerunCtx)
+	}, eventCtx, rerunCtx, loadedContexts)
 	starter.ActivateSession(created)
 
 	return map[string]interface{}{
