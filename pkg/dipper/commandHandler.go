@@ -290,7 +290,10 @@ func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backof
 	}
 
 	if timeoutStr != "" {
-		timeout = Must(time.ParseDuration(timeoutStr)).(time.Duration)
+		timeout, err = time.ParseDuration(timeoutStr)
+		if err != nil {
+			panic(p.ReturnError(msg, "[operator] invalid timeout: %s", timeoutStr))
+		}
 	} else {
 		timeout = 30 * time.Second
 		msg.Labels["timeout"] = "30s"
