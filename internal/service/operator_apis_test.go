@@ -362,3 +362,27 @@ func TestGetCursorPayloadExtractsData(t *testing.T) {
 		})
 	}
 }
+
+func TestGetProviderDataPayload(t *testing.T) {
+	t.Run("returns map when payload has map", func(t *testing.T) {
+		payload := map[string]interface{}{
+			"provider_data": map[string]interface{}{"system": "k8s_default"},
+		}
+		result := getProviderDataPayload(payload)
+		assert.Equal(t, map[string]interface{}{"system": "k8s_default"}, result)
+	})
+
+	t.Run("parses json string", func(t *testing.T) {
+		payload := map[string]interface{}{
+			"provider_data": `{"system":"k8s_default","namespace":"default"}`,
+		}
+		result := getProviderDataPayload(payload)
+		assert.Equal(t, map[string]interface{}{"system": "k8s_default", "namespace": "default"}, result)
+	})
+
+	t.Run("invalid json returns nil", func(t *testing.T) {
+		payload := map[string]interface{}{"provider_data": "{"}
+		result := getProviderDataPayload(payload)
+		assert.Nil(t, result)
+	})
+}

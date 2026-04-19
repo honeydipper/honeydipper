@@ -12,6 +12,7 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -209,7 +210,7 @@ func extractLineTimestamp(line string) string {
 }
 
 func filterByCursor(lines []string, state containerCursor) []string {
-	if state.TS == "" || state.Skip <= 0 {
+	if state.TS == "" {
 		return lines
 	}
 
@@ -217,6 +218,11 @@ func filterByCursor(lines []string, state containerCursor) []string {
 	boundarySeen := 0
 	for _, line := range lines {
 		ts := extractLineTimestamp(line)
+		if ts != "" && ts < state.TS {
+			// SinceTime is sent at second precision; skip lines already seen
+			// that fall earlier within the same second as the cursor boundary.
+			continue
+		}
 		if ts == state.TS && boundarySeen < state.Skip {
 			boundarySeen++
 
@@ -248,8 +254,7 @@ func updateCursorWithLine(state containerCursor, line string) containerCursor {
 	return state
 }
 
-func listPodLogTargets(m *dipper.Message, namespace, jobID string) ([]podLogTarget, string, string) {
-	k8client := prepareKubeConfig(m)
+func listPodLogTargets(m *dipper.Message, k8client *kubernetes.Clientset, namespace, jobID string) ([]podLogTarget, string, string) {
 	ctx, cancel := driver.GetContext(m)
 	defer cancel()
 
@@ -332,9 +337,8 @@ func podStatusFromTargets(targets []podLogTarget) (string, string) {
 }
 
 func fetchKubernetesContainerLines(
-	m *dipper.Message, namespace, podName, containerName string, state containerCursor, tailLimit int,
+	m *dipper.Message, k8client *kubernetes.Clientset, namespace, podName, containerName string, state containerCursor, tailLimit int,
 ) []string {
-	k8client := prepareKubeConfig(m)
 	ctx, cancel := driver.GetContext(m)
 	defer cancel()
 
@@ -354,7 +358,9 @@ func fetchKubernetesContainerLines(
 
 	stream, err := k8client.CoreV1().Pods(namespace).GetLogs(podName, opts).Stream(ctx)
 	if err != nil {
-		log.Warningf("[%s] unable to stream logs for %s.%s: %+v", driver.Service, podName, containerName, err)
+		if !strings.Contains(err.Error(), "PodInitializing") {
+			log.Warningf("[%s] unable to stream logs for %s.%s: %+v", driver.Service, podName, containerName, err)
+		}
 
 		return []string{}
 	}
@@ -374,11 +380,11 @@ func readLogLines(stream io.Reader) []string {
 }
 
 func buildTailChunkForPods(
-	m *dipper.Message, namespace, jobID string,
+	m *dipper.Message, k8client *kubernetes.Clientset, namespace, jobID string,
 	cursor map[string]podTailCursor, include map[string]bool,
 	limit int, tailForEmptyCursor int,
 ) ([]tailLine, map[string]podTailCursor, bool, bool, string, string) {
-	targets, status, reason := listPodLogTargets(m, namespace, jobID)
+	targets, status, reason := listPodLogTargets(m, k8client, namespace, jobID)
 	done := status == StatusSuccess || status == StatusFailure
 
 	lines := []tailLine{}
@@ -404,7 +410,7 @@ func buildTailChunkForPods(
 			}
 
 			state := podCursor.Containers[container.Name]
-			rawLines := fetchKubernetesContainerLines(m, namespace, podName, container.Name, state, tailForEmptyCursor)
+			rawLines := fetchKubernetesContainerLines(m, k8client, namespace, podName, container.Name, state, tailForEmptyCursor)
 			candidateLines := filterByCursor(rawLines, state)
 
 			remaining := limit - len(lines)
@@ -479,14 +485,19 @@ func getPodLogTail(msg *dipper.Message) {
 	cursor := parseKubernetesCursor(payload)
 	include := parseIncludeContainers(payload)
 
+	k8client := prepareKubeConfig(msg)
 	deadline := time.Now().Add(time.Duration(waitSeconds) * time.Second)
 	for {
-		lines, nextCursor, hasMore, done, status, reason := buildTailChunkForPods(msg, namespace, jobID, cursor, include, maxLines, maxLines)
+		lines, nextCursor, hasMore, done, status, reason := buildTailChunkForPods(
+			msg, k8client, namespace, jobID, cursor, include, maxLines, maxLines,
+		)
 		limitUsed := maxLines
 		if done {
 			limitUsed = doneMaxLines
 			if limitUsed != maxLines {
-				lines, nextCursor, hasMore, done, status, reason = buildTailChunkForPods(msg, namespace, jobID, cursor, include, limitUsed, doneMaxLines)
+				lines, nextCursor, hasMore, done, status, reason = buildTailChunkForPods(
+					msg, k8client, namespace, jobID, cursor, include, limitUsed, doneMaxLines,
+				)
 			}
 		}
 

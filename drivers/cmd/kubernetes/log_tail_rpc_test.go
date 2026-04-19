@@ -79,6 +79,28 @@ func TestFilterByCursor(t *testing.T) {
 	}
 }
 
+func TestFilterByCursorSkipsEarlierLines(t *testing.T) {
+	// Simulate SinceTime second-truncation: cursor is at nanosecond precision
+	// but the API returns lines from the beginning of that second.
+	lines := []string{
+		"2026-04-06T12:00:00.100000000Z already-seen-a",
+		"2026-04-06T12:00:00.200000000Z already-seen-b",
+		"2026-04-06T12:00:00.300000000Z cursor-line",
+		"2026-04-06T12:00:00.400000000Z new-line",
+		"2026-04-06T12:00:01.000000000Z newer-line",
+	}
+
+	// Cursor is at the third line (Skip=1 for that timestamp)
+	state := containerCursor{TS: "2026-04-06T12:00:00.300000000Z", Skip: 1}
+	out := filterByCursor(lines, state)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 lines after filtering, got %d (%+v)", len(out), out)
+	}
+	if out[0] != "2026-04-06T12:00:00.400000000Z new-line" || out[1] != "2026-04-06T12:00:01.000000000Z newer-line" {
+		t.Fatalf("unexpected filtered lines: %+v", out)
+	}
+}
+
 func TestUpdateCursorWithLine(t *testing.T) {
 	state := containerCursor{}
 	state = updateCursorWithLine(state, "2026-04-06T12:00:00Z first")
