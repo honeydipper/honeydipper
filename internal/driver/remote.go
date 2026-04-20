@@ -8,7 +8,9 @@ package driver
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -42,7 +45,19 @@ var (
 	errRemoteDownloadRenameTemp = errors.New("failed finalizing remote driver binary")
 	errRemoteChecksumOpen       = errors.New("failed opening file for checksum")
 	errRemoteChecksumRead       = errors.New("failed reading file for checksum")
+	errRemoteSignatureRequired  = errors.New("signature is required for remote driver")
+	errRemotePublicKeyMissing   = errors.New("publicKey is missing for remote driver signature verification")
+	errRemotePublicKeyInvalid   = errors.New("publicKey is invalid for remote driver signature verification")
+	errRemoteSignatureMissing   = errors.New("signature is missing for remote driver")
+	errRemoteSignatureInvalid   = errors.New("signature is invalid for remote driver")
+	errRemoteSignatureVerify    = errors.New("failed verifying remote driver signature")
 )
+
+type remoteSignaturePolicy struct {
+	required  bool
+	publicKey []byte
+	signature []byte
+}
 
 func remotePath() string {
 	if RemotePath == "" {
@@ -88,6 +103,11 @@ func (d *RemoteDriver) Acquire() {
 		panic(fmt.Errorf("%w: %w", ErrDriverError, err))
 	}
 
+	sigPolicy, err := parseRemoteSignaturePolicy(d.meta.HandlerData)
+	if err != nil {
+		panic(fmt.Errorf("%w: %w", ErrDriverError, err))
+	}
+
 	cacheDir := filepath.Join(remotePath(), "sha256", expectedSHA)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		panic(fmt.Errorf("%w: %w: %w", ErrDriverError, errRemoteCacheDirCreate, err))
@@ -95,6 +115,10 @@ func (d *RemoteDriver) Acquire() {
 
 	executablePath := filepath.Join(cacheDir, fileName)
 	if hasValidCachedBinary(executablePath, expectedSHA) {
+		if err := verifyRemoteSignature(sigPolicy, expectedSHA); err != nil {
+			panic(fmt.Errorf("%w: %w", ErrDriverError, err))
+		}
+
 		d.meta.Executable = executablePath
 
 		return
@@ -104,12 +128,16 @@ func (d *RemoteDriver) Acquire() {
 	defer release()
 
 	if hasValidCachedBinary(executablePath, expectedSHA) {
+		if err := verifyRemoteSignature(sigPolicy, expectedSHA); err != nil {
+			panic(fmt.Errorf("%w: %w", ErrDriverError, err))
+		}
+
 		d.meta.Executable = executablePath
 
 		return
 	}
 
-	if err := downloadAndVerify(rawURL, executablePath, expectedSHA); err != nil {
+	if err := downloadAndVerify(rawURL, executablePath, expectedSHA, sigPolicy); err != nil {
 		panic(fmt.Errorf("%w: %w %s: %w", ErrDriverError, errRemoteAcquireDownload, d.meta.Name, err))
 	}
 
@@ -138,6 +166,80 @@ func remoteFileName(driverName string, rawURL string, handlerData map[string]int
 	}
 
 	return driverName, nil
+}
+
+func parseRemoteSignaturePolicy(handlerData map[string]interface{}) (*remoteSignaturePolicy, error) {
+	requireSignature := false
+	if v, ok := os.LookupEnv("HONEYDIPPER_REMOTE_REQUIRE_SIGNATURE"); ok {
+		parsed, err := strconv.ParseBool(v)
+		if err == nil {
+			requireSignature = parsed
+		}
+	}
+	if v, ok := handlerData["requireSignature"].(bool); ok {
+		requireSignature = v
+	}
+
+	publicKeyB64, _ := handlerData["publicKey"].(string)
+	signatureB64, _ := handlerData["signature"].(string)
+	if publicKeyB64 == "" && signatureB64 == "" && !requireSignature {
+		return &remoteSignaturePolicy{}, nil
+	}
+	if publicKeyB64 == "" {
+		if requireSignature {
+			return nil, errRemotePublicKeyMissing
+		}
+
+		return &remoteSignaturePolicy{}, nil
+	}
+	if signatureB64 == "" {
+		return nil, errRemoteSignatureMissing
+	}
+
+	publicKey, err := base64.StdEncoding.DecodeString(publicKeyB64)
+	if err != nil || len(publicKey) != ed25519.PublicKeySize {
+		return nil, errRemotePublicKeyInvalid
+	}
+
+	signature, err := base64.StdEncoding.DecodeString(signatureB64)
+	if err != nil || len(signature) != ed25519.SignatureSize {
+		return nil, errRemoteSignatureInvalid
+	}
+
+	return &remoteSignaturePolicy{
+		required:  requireSignature,
+		publicKey: publicKey,
+		signature: signature,
+	}, nil
+}
+
+func verifyRemoteSignature(policy *remoteSignaturePolicy, expectedSHA string) error {
+	if policy == nil {
+		return nil
+	}
+	if len(policy.publicKey) == 0 && len(policy.signature) == 0 {
+		if policy.required {
+			return errRemoteSignatureRequired
+		}
+
+		return nil
+	}
+	if len(policy.publicKey) == 0 {
+		return errRemotePublicKeyMissing
+	}
+	if len(policy.signature) == 0 {
+		return errRemoteSignatureMissing
+	}
+
+	digest, err := hex.DecodeString(expectedSHA)
+	if err != nil {
+		return errRemoteSignatureVerify
+	}
+	if !ed25519.Verify(policy.publicKey, digest, policy.signature) {
+		return errRemoteSignatureVerify
+	}
+
+	return nil
 }
 
 func hasValidCachedBinary(binaryPath string, expectedSHA string) bool {
@@ -174,7 +276,7 @@ func acquireDigestLock(cacheDir string) func() {
 	}
 }
 
-func downloadAndVerify(rawURL string, executablePath string, expectedSHA string) error {
+func downloadAndVerify(rawURL string, executablePath string, expectedSHA string, sigPolicy *remoteSignaturePolicy) error {
 	client := &http.Client{Timeout: 120 * time.Second}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -215,6 +317,11 @@ func downloadAndVerify(rawURL string, executablePath string, expectedSHA string)
 		_ = os.Remove(tmpPath)
 
 		return errRemoteSHA256Mismatch
+	}
+	if err := verifyRemoteSignature(sigPolicy, actualSHA); err != nil {
+		_ = os.Remove(tmpPath)
+
+		return fmt.Errorf("%w: %w", errRemoteSignatureVerify, err)
 	}
 
 	if err := os.Rename(tmpPath, executablePath); err != nil {

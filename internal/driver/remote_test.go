@@ -10,7 +10,10 @@
 package driver
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
@@ -124,4 +127,69 @@ func TestRemoteAcquireUsesCache(t *testing.T) {
 	d.Acquire()
 
 	assert.Equal(t, 1, requestCount, "second acquire should hit cache")
+}
+
+func TestRemoteAcquireSignature(t *testing.T) {
+	cacheDir := t.TempDir()
+	RemotePath = cacheDir
+	t.Cleanup(func() {
+		RemotePath = ""
+	})
+
+	payload := []byte("#!/bin/sh\necho signed\n")
+	sha := sha256.Sum256(payload)
+	shaHex := hex.EncodeToString(sha[:])
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	assert.Nil(t, err)
+	signature := ed25519.Sign(privateKey, sha[:])
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+
+	testCases := map[string]interface{}{
+		"panic when signature required but missing": []interface{}{
+			&RemoteDriver{BuiltinDriver: &BuiltinDriver{meta: &Meta{Name: "signed", HandlerData: map[string]interface{}{
+				"url":              srv.URL + "/driver",
+				"sha256":           shaHex,
+				"requireSignature": true,
+			}}}},
+			"driver error: publicKey is missing for remote driver",
+		},
+		"download and verify signed driver": []interface{}{
+			&RemoteDriver{BuiltinDriver: &BuiltinDriver{meta: &Meta{Name: "signed", HandlerData: map[string]interface{}{
+				"url":              srv.URL + "/driver",
+				"sha256":           shaHex,
+				"fileName":         "hd-driver-signed",
+				"requireSignature": true,
+				"publicKey":        base64.StdEncoding.EncodeToString(publicKey),
+				"signature":        base64.StdEncoding.EncodeToString(signature),
+			}}}},
+			"",
+			filepath.Join(cacheDir, "sha256", shaHex, "hd-driver-signed"),
+		},
+	}
+
+	for msg, tc := range testCases {
+		func(c []interface{}) {
+			defer func() {
+				if r := recover(); r != nil {
+					if len(c) > 1 && len(c[1].(string)) > 0 {
+						assert.Equal(t, c[1], r.(error).Error()[:len(c[1].(string))], msg)
+					} else {
+						assert.Fail(t, "should "+msg)
+					}
+				} else {
+					if len(c) > 1 && len(c[1].(string)) > 0 {
+						assert.Fail(t, "should "+msg)
+					} else {
+						assert.Equal(t, c[2].(string), c[0].(*RemoteDriver).meta.Executable, "should "+msg)
+					}
+				}
+			}()
+			c[0].(*RemoteDriver).Acquire()
+		}(tc.([]interface{}))
+	}
 }
