@@ -12,6 +12,7 @@
  * Administrators
    * [Installation Guide](./INSTALL.md)
    * [Configuration Guide](./configuration.md)
+   * [Remote Driver And Registry Guide](./remote_driver_registry.md)
    * [Workflow Composing Guide](./workflow.md)
    * [Interpolation Guide](./interpolation.md)
    * Community Repos
