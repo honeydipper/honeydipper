@@ -128,7 +128,7 @@ func TestResolveStagedDriverMetaRegistry(t *testing.T) {
 			true,
 			"pubkey",
 		},
-		"leave direct url untouched": []interface{}{
+		"deny direct url by default": []interface{}{
 			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
 				"daemon": map[string]interface{}{
 					"registries": map[string]interface{}{
@@ -147,10 +147,67 @@ func TestResolveStagedDriverMetaRegistry(t *testing.T) {
 					"sha256":   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 				},
 			},
+			"remote driver source is not allowed by policy: direct",
+		},
+		"allow direct url by policy": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"direct": map[string]interface{}{
+							"enabled": true,
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"url":    "https://override.example.com/driver",
+					"sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				},
+			},
 			"",
 			"",
 			false,
 			"",
+		},
+		"deny local source by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"localPath": "/tmp/hd-driver-local",
+				},
+			},
+			"remote driver source is not allowed by policy: local",
+		},
+		"deny registry by policy": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL": "https://example.com/registry",
+						},
+					},
+					"remoteDriverPolicy": map[string]interface{}{
+						"registry": map[string]interface{}{
+							"enabled": false,
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+				},
+			},
+			"remote driver source is not allowed by policy: registry",
 		},
 		"reject builtin registry override": []interface{}{
 			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
@@ -178,7 +235,7 @@ func TestResolveStagedDriverMetaRegistry(t *testing.T) {
 			resolvedMeta, err := c[0].(*Config).ResolveStagedDriverMeta(c[1].(map[string]interface{}))
 			if len(c[2].(string)) > 0 {
 				if assert.Error(t, err, "should "+msg) {
-					assert.Equal(t, c[2], err.Error()[:len(c[2].(string))], "should "+msg)
+					assert.Equal(t, c[2].(string), err.Error()[:len(c[2].(string))], "should "+msg)
 				}
 
 				return

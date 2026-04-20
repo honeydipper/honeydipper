@@ -52,6 +52,7 @@ var (
 	errBuiltinRegistryOverride    = stderrors.New("builtin remote registry cannot be overridden")
 	errRemoteRegistryMissing      = stderrors.New("remote registry is not defined")
 	errRemoteRegistryTypeMismatch = stderrors.New("remote registry config should be a map")
+	errRemoteSourceNotAllowed     = stderrors.New("remote driver source is not allowed by policy")
 )
 
 // BuiltinRemoteRegistryName is the reserved registry name for daemon managed builtins.
@@ -61,6 +62,13 @@ var builtinRemoteRegistry = map[string]interface{}{
 	"registryURL":      "https://registry.honeydipper.io/drivers",
 	"requireSignature": true,
 }
+
+const (
+	remoteSourceRegistry = "registry"
+	remoteSourceDirect   = "direct"
+	remoteSourceLocal    = "local"
+	remoteSourceUnknown  = "unknown"
+)
 
 //nolint:gochecknoinits
 func init() {
@@ -426,6 +434,11 @@ func (c *Config) ResolveStagedDriverMeta(driverMeta map[string]interface{}) (map
 	resolvedHandlerData := copyMap(handlerData)
 	resolvedMeta["handlerData"] = resolvedHandlerData
 
+	source := resolveRemoteSourceType(resolvedHandlerData)
+	if source != remoteSourceUnknown && !c.isRemoteSourceAllowed(source) {
+		return nil, fmt.Errorf("%w: %s", errRemoteSourceNotAllowed, source)
+	}
+
 	if rawURL, ok := resolvedHandlerData["url"].(string); ok && rawURL != "" {
 		return resolvedMeta, nil
 	}
@@ -481,6 +494,65 @@ func (c *Config) resolveRemoteRegistryConfig(registryName string) (map[string]in
 	}
 
 	return copyMap(registryConfig), nil
+}
+
+func resolveRemoteSourceType(handlerData map[string]interface{}) string {
+	if localPath, ok := handlerData["localPath"].(string); ok && localPath != "" {
+		return remoteSourceLocal
+	}
+
+	if rawURL, ok := handlerData["url"].(string); ok && rawURL != "" {
+		if strings.HasPrefix(rawURL, "file://") ||
+			strings.HasPrefix(rawURL, "/") ||
+			strings.HasPrefix(rawURL, "./") ||
+			strings.HasPrefix(rawURL, "../") {
+			return remoteSourceLocal
+		}
+
+		return remoteSourceDirect
+	}
+
+	if registryName, ok := handlerData["registry"].(string); ok && registryName != "" {
+		return remoteSourceRegistry
+	}
+	if registryURL, ok := handlerData["registryURL"].(string); ok && registryURL != "" {
+		return remoteSourceRegistry
+	}
+
+	return remoteSourceUnknown
+}
+
+func (c *Config) isRemoteSourceAllowed(source string) bool {
+	allowed := false
+	switch source {
+	case remoteSourceRegistry:
+		allowed = true
+	case remoteSourceDirect, remoteSourceLocal:
+		allowed = false
+	default:
+		return false
+	}
+
+	policy, ok := c.GetStagedDriverData("daemon.remoteDriverPolicy")
+	if !ok {
+		return allowed
+	}
+	policyMap, ok := policy.(map[string]interface{})
+	if !ok {
+		return allowed
+	}
+	sourceCfg, ok := policyMap[source].(map[string]interface{})
+	if !ok {
+		return allowed
+	}
+	enabled, ok := sourceCfg["enabled"].(bool)
+	if !ok {
+		return allowed
+	}
+
+	allowed = enabled
+
+	return allowed
 }
 
 func copyMap(input map[string]interface{}) map[string]interface{} {
