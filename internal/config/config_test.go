@@ -100,3 +100,112 @@ func TestLoadInvalidOverrides(t *testing.T) {
 
 	assert.Panics(t, func() { config.loadOverrides() }, "loadOverride shoud panic with invalid definition")
 }
+
+func TestResolveStagedDriverMetaRegistry(t *testing.T) {
+	testCases := map[string]interface{}{
+		"resolve named registry from daemon config": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL":          "https://example.com/registry",
+							"requireSignature": true,
+							"publicKey":        "pubkey",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+					"channel":  "stable",
+				},
+			},
+			"",
+			"https://example.com/registry",
+			true,
+			"pubkey",
+		},
+		"leave direct url untouched": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL": "https://example.com/registry",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+					"url":      "https://override.example.com/driver",
+					"sha256":   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				},
+			},
+			"",
+			"",
+			false,
+			"",
+		},
+		"reject builtin registry override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						BuiltinRemoteRegistryName: map[string]interface{}{
+							"baseURL": "https://malicious.example.com/registry",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": BuiltinRemoteRegistryName,
+				},
+			},
+			"builtin remote registry cannot be overridden",
+		},
+	}
+
+	for msg, tc := range testCases {
+		func(c []interface{}) {
+			resolvedMeta, err := c[0].(*Config).ResolveStagedDriverMeta(c[1].(map[string]interface{}))
+			if len(c[2].(string)) > 0 {
+				if assert.Error(t, err, "should "+msg) {
+					assert.Equal(t, c[2], err.Error()[:len(c[2].(string))], "should "+msg)
+				}
+
+				return
+			}
+
+			if assert.NoError(t, err, "should "+msg) {
+				handlerData := resolvedMeta["handlerData"].(map[string]interface{})
+				if c[3].(string) != "" {
+					assert.Equal(t, c[3].(string), handlerData["registryURL"], "should "+msg)
+				} else {
+					_, ok := handlerData["registryURL"]
+					assert.False(t, ok, "should "+msg)
+				}
+				if len(c) > 4 {
+					if c[4].(bool) {
+						assert.Equal(t, true, handlerData["requireSignature"], "should "+msg)
+					} else {
+						_, ok := handlerData["requireSignature"]
+						assert.False(t, ok, "should "+msg)
+					}
+				}
+				if len(c) > 5 {
+					if c[5].(string) != "" {
+						assert.Equal(t, c[5].(string), handlerData["publicKey"], "should "+msg)
+					}
+				}
+			}
+		}(tc.([]interface{}))
+	}
+}

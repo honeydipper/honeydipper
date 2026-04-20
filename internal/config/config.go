@@ -11,6 +11,7 @@ package config
 import (
 	"bytes"
 	"encoding/gob"
+	stderrors "errors"
 	"fmt"
 	"os"
 	"strings"
@@ -47,7 +48,19 @@ var (
 
 	// ErrConfigRollback happens when daemon decides to rollback during reload.
 	ErrConfigRollback = errors.New("config rollback")
+
+	errBuiltinRegistryOverride    = stderrors.New("builtin remote registry cannot be overridden")
+	errRemoteRegistryMissing      = stderrors.New("remote registry is not defined")
+	errRemoteRegistryTypeMismatch = stderrors.New("remote registry config should be a map")
 )
+
+// BuiltinRemoteRegistryName is the reserved registry name for daemon managed builtins.
+const BuiltinRemoteRegistryName = "builtin"
+
+var builtinRemoteRegistry = map[string]interface{}{
+	"registryURL":      "https://registry.honeydipper.io/drivers",
+	"requireSignature": true,
+}
 
 //nolint:gochecknoinits
 func init() {
@@ -395,6 +408,92 @@ func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {
 	}
 
 	return dipper.GetMapDataStr(c.DataSet.Drivers, path)
+}
+
+// ResolveStagedDriverMeta resolves and normalizes staged driver metadata.
+func (c *Config) ResolveStagedDriverMeta(driverMeta map[string]interface{}) (map[string]interface{}, error) {
+	resolvedMeta := copyMap(driverMeta)
+	driverType, _ := resolvedMeta["type"].(string)
+	if driverType != "remote" {
+		return resolvedMeta, nil
+	}
+
+	handlerData, ok := resolvedMeta["handlerData"].(map[string]interface{})
+	if !ok || handlerData == nil {
+		return resolvedMeta, nil
+	}
+
+	resolvedHandlerData := copyMap(handlerData)
+	resolvedMeta["handlerData"] = resolvedHandlerData
+
+	if rawURL, ok := resolvedHandlerData["url"].(string); ok && rawURL != "" {
+		return resolvedMeta, nil
+	}
+
+	registryName, _ := resolvedHandlerData["registry"].(string)
+	if registryName == "" {
+		return resolvedMeta, nil
+	}
+
+	registryConfig, err := c.resolveRemoteRegistryConfig(registryName)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := resolvedHandlerData["registryURL"]; !ok {
+		if registryURL, ok := registryConfig["registryURL"]; ok {
+			resolvedHandlerData["registryURL"] = registryURL
+		} else if baseURL, ok := registryConfig["baseURL"]; ok {
+			resolvedHandlerData["registryURL"] = baseURL
+		}
+	}
+	if _, ok := resolvedHandlerData["requireSignature"]; !ok {
+		if requireSignature, ok := registryConfig["requireSignature"]; ok {
+			resolvedHandlerData["requireSignature"] = requireSignature
+		}
+	}
+	if _, ok := resolvedHandlerData["publicKey"]; !ok {
+		if publicKey, ok := registryConfig["publicKey"]; ok {
+			resolvedHandlerData["publicKey"] = publicKey
+		}
+	}
+
+	return resolvedMeta, nil
+}
+
+func (c *Config) resolveRemoteRegistryConfig(registryName string) (map[string]interface{}, error) {
+	if _, ok := c.GetStagedDriverData(fmt.Sprintf("daemon.registries.%s", BuiltinRemoteRegistryName)); ok {
+		return nil, fmt.Errorf("%w: %s", errBuiltinRegistryOverride, BuiltinRemoteRegistryName)
+	}
+
+	if registryName == BuiltinRemoteRegistryName {
+		return copyMap(builtinRemoteRegistry), nil
+	}
+
+	registryData, ok := c.GetStagedDriverData(fmt.Sprintf("daemon.registries.%s", registryName))
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", errRemoteRegistryMissing, registryName)
+	}
+
+	registryConfig, ok := registryData.(map[string]interface{})
+	if !ok {
+		return nil, errRemoteRegistryTypeMismatch
+	}
+
+	return copyMap(registryConfig), nil
+}
+
+func copyMap(input map[string]interface{}) map[string]interface{} {
+	ret := map[string]interface{}{}
+	for key, value := range input {
+		if nested, ok := value.(map[string]interface{}); ok {
+			ret[key] = copyMap(nested)
+		} else {
+			ret[key] = value
+		}
+	}
+
+	return ret
 }
 
 func (c *Config) extendSystem(processed map[string]bool, system string) {
