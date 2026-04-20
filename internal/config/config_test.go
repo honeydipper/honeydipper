@@ -266,3 +266,83 @@ func TestResolveStagedDriverMetaRegistry(t *testing.T) {
 		}(tc.([]interface{}))
 	}
 }
+
+func TestResolveRemoteSourceType(t *testing.T) {
+	testCases := map[string]interface{}{
+		"registry by name": []interface{}{map[string]interface{}{"registry": "github"}, remoteSourceRegistry},
+		"registry by URL":  []interface{}{map[string]interface{}{"registryURL": "https://example.com"}, remoteSourceRegistry},
+		"direct URL":       []interface{}{map[string]interface{}{"url": "https://example.com/driver"}, remoteSourceDirect},
+		"local file URL":   []interface{}{map[string]interface{}{"url": "file:///tmp/driver"}, remoteSourceLocal},
+		"local abs path":   []interface{}{map[string]interface{}{"url": "/tmp/driver"}, remoteSourceLocal},
+		"local path field": []interface{}{map[string]interface{}{"localPath": "/tmp/driver"}, remoteSourceLocal},
+		"unknown source":   []interface{}{map[string]interface{}{}, remoteSourceUnknown},
+	}
+
+	for msg, tc := range testCases {
+		handlerData := tc.([]interface{})[0].(map[string]interface{})
+		expected := tc.([]interface{})[1].(string)
+		assert.Equal(t, expected, resolveRemoteSourceType(handlerData), "should "+msg)
+	}
+}
+
+func TestEvaluateRemoteSourcePolicy(t *testing.T) {
+	testCases := map[string]interface{}{
+		"registry allowed by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceRegistry,
+			true,
+			remotePolicyReasonDefaultAllowRegistry,
+		},
+		"direct denied by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceDirect,
+			false,
+			remotePolicyReasonDefaultDenySource,
+		},
+		"local denied by override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"local": map[string]interface{}{
+							"enabled": false,
+						},
+					},
+				},
+			}}},
+			remoteSourceLocal,
+			false,
+			remotePolicyReasonPolicyOverrideDeny,
+		},
+		"direct allowed by override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"direct": map[string]interface{}{
+							"enabled": true,
+						},
+					},
+				},
+			}}},
+			remoteSourceDirect,
+			true,
+			remotePolicyReasonPolicyOverrideAllow,
+		},
+		"unknown source denied": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceUnknown,
+			false,
+			remotePolicyReasonUnknownSource,
+		},
+	}
+
+	for msg, tc := range testCases {
+		cfg := tc.([]interface{})[0].(*Config)
+		source := tc.([]interface{})[1].(string)
+		expectedAllowed := tc.([]interface{})[2].(bool)
+		expectedReason := tc.([]interface{})[3].(string)
+
+		allowed, reason := cfg.evaluateRemoteSourcePolicy(source)
+		assert.Equal(t, expectedAllowed, allowed, "should "+msg)
+		assert.Equal(t, expectedReason, reason, "should "+msg)
+	}
+}

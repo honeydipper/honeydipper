@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // RemotePath is the root path where remote drivers are cached.
@@ -74,6 +76,7 @@ type remoteSource struct {
 	expectedSHA string
 	fileName    string
 	sigPolicy   *remoteSignaturePolicy
+	sourceType  string
 }
 
 type remoteRegistryManifest struct {
@@ -126,17 +129,22 @@ func NewRemoteDriver(m *Meta) *RemoteDriver {
 func (d *RemoteDriver) Acquire() {
 	source, err := resolveRemoteSource(d.meta.Name, d.meta.HandlerData)
 	if err != nil {
+		logRemoteAcquireDecision(d.meta.Name, source, false, "resolve_source_failed")
 		panic(fmt.Errorf("%w: %w", ErrDriverError, err))
 	}
+	logRemoteAcquireDecision(d.meta.Name, source, true, "source_resolved")
 
 	cacheDir := filepath.Join(remotePath(), "sha256", source.expectedSHA)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		logRemoteAcquireDecision(d.meta.Name, source, false, "cache_dir_create_failed")
 		panic(fmt.Errorf("%w: %w: %w", ErrDriverError, errRemoteCacheDirCreate, err))
 	}
 
 	executablePath := filepath.Join(cacheDir, source.fileName)
 	if hasValidCachedBinary(executablePath, source.expectedSHA) {
+		logRemoteAcquireDecision(d.meta.Name, source, true, "cache_hit")
 		if err := verifyRemoteSignature(source.sigPolicy, source.expectedSHA); err != nil {
+			logRemoteAcquireDecision(d.meta.Name, source, false, "cache_signature_verify_failed")
 			panic(fmt.Errorf("%w: %w", ErrDriverError, err))
 		}
 
@@ -149,7 +157,9 @@ func (d *RemoteDriver) Acquire() {
 	defer release()
 
 	if hasValidCachedBinary(executablePath, source.expectedSHA) {
+		logRemoteAcquireDecision(d.meta.Name, source, true, "cache_hit_after_lock")
 		if err := verifyRemoteSignature(source.sigPolicy, source.expectedSHA); err != nil {
+			logRemoteAcquireDecision(d.meta.Name, source, false, "cache_signature_verify_failed")
 			panic(fmt.Errorf("%w: %w", ErrDriverError, err))
 		}
 
@@ -158,9 +168,12 @@ func (d *RemoteDriver) Acquire() {
 		return
 	}
 
+	logRemoteAcquireDecision(d.meta.Name, source, true, "cache_miss_download")
 	if err := downloadAndVerify(source.rawURL, executablePath, source.expectedSHA, source.sigPolicy); err != nil {
+		logRemoteAcquireDecision(d.meta.Name, source, false, "download_or_verify_failed")
 		panic(fmt.Errorf("%w: %w %s: %w", ErrDriverError, errRemoteAcquireDownload, d.meta.Name, err))
 	}
+	logRemoteAcquireDecision(d.meta.Name, source, true, "download_verified")
 
 	d.meta.Executable = executablePath
 }
@@ -204,6 +217,7 @@ func resolveDirectRemoteSource(driverName string, handlerData map[string]interfa
 		expectedSHA: expectedSHA,
 		fileName:    fileName,
 		sigPolicy:   sigPolicy,
+		sourceType:  "direct",
 	}, nil
 }
 
@@ -250,7 +264,50 @@ func resolveRegistryRemoteSource(driverName string, handlerData map[string]inter
 		resolved["signature"] = artifact.Signature
 	}
 
-	return resolveDirectRemoteSource(driverName, resolved, artifact.URL)
+	source, err := resolveDirectRemoteSource(driverName, resolved, artifact.URL)
+	if err != nil {
+		return nil, err
+	}
+	source.sourceType = "registry"
+
+	return source, nil
+}
+
+func logRemoteAcquireDecision(driverName string, source *remoteSource, allowed bool, reason string) {
+	if dipper.Logger == nil {
+		return
+	}
+
+	sourceType := "unknown"
+	sha := "unknown"
+	if source != nil {
+		if source.sourceType != "" {
+			sourceType = source.sourceType
+		}
+		if source.expectedSHA != "" {
+			sha = source.expectedSHA
+		}
+	}
+
+	if allowed {
+		dipper.Logger.Infof(
+			"[remote-driver] acquire_decision driver=%s source=%s allowed=true reason=%s sha256=%s",
+			driverName,
+			sourceType,
+			reason,
+			sha,
+		)
+
+		return
+	}
+
+	dipper.Logger.Warningf(
+		"[remote-driver] acquire_decision driver=%s source=%s allowed=false reason=%s sha256=%s",
+		driverName,
+		sourceType,
+		reason,
+		sha,
+	)
 }
 
 func fetchRemoteRegistryManifest(registryURL string, driverName string) (*remoteRegistryManifest, error) {

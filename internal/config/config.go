@@ -68,6 +68,12 @@ const (
 	remoteSourceDirect   = "direct"
 	remoteSourceLocal    = "local"
 	remoteSourceUnknown  = "unknown"
+
+	remotePolicyReasonDefaultAllowRegistry = "default_registry_allowed"
+	remotePolicyReasonDefaultDenySource    = "default_source_denied"
+	remotePolicyReasonUnknownSource        = "unknown_source"
+	remotePolicyReasonPolicyOverrideAllow  = "policy_override_allowed"
+	remotePolicyReasonPolicyOverrideDeny   = "policy_override_denied"
 )
 
 //nolint:gochecknoinits
@@ -426,8 +432,15 @@ func (c *Config) ResolveStagedDriverMeta(driverMeta map[string]interface{}) (map
 		return resolvedMeta, nil
 	}
 
+	driverName, _ := resolvedMeta["name"].(string)
+	if driverName == "" {
+		driverName = "unknown"
+	}
+
 	handlerData, ok := resolvedMeta["handlerData"].(map[string]interface{})
 	if !ok || handlerData == nil {
+		logRemoteMetaDecision(driverName, remoteSourceUnknown, true, "missing_handler_data")
+
 		return resolvedMeta, nil
 	}
 
@@ -435,16 +448,22 @@ func (c *Config) ResolveStagedDriverMeta(driverMeta map[string]interface{}) (map
 	resolvedMeta["handlerData"] = resolvedHandlerData
 
 	source := resolveRemoteSourceType(resolvedHandlerData)
-	if source != remoteSourceUnknown && !c.isRemoteSourceAllowed(source) {
+	allowed, reason := c.evaluateRemoteSourcePolicy(source)
+	logRemoteMetaDecision(driverName, source, allowed, reason)
+	if source != remoteSourceUnknown && !allowed {
 		return nil, fmt.Errorf("%w: %s", errRemoteSourceNotAllowed, source)
 	}
 
 	if rawURL, ok := resolvedHandlerData["url"].(string); ok && rawURL != "" {
+		logRemoteMetaDecision(driverName, source, true, "direct_url_in_handler")
+
 		return resolvedMeta, nil
 	}
 
 	registryName, _ := resolvedHandlerData["registry"].(string)
 	if registryName == "" {
+		logRemoteMetaDecision(driverName, source, true, "registry_not_specified")
+
 		return resolvedMeta, nil
 	}
 
@@ -471,27 +490,39 @@ func (c *Config) ResolveStagedDriverMeta(driverMeta map[string]interface{}) (map
 		}
 	}
 
+	logRemoteMetaDecision(driverName, source, true, "registry_config_resolved")
+
 	return resolvedMeta, nil
 }
 
 func (c *Config) resolveRemoteRegistryConfig(registryName string) (map[string]interface{}, error) {
 	if _, ok := c.GetStagedDriverData(fmt.Sprintf("daemon.registries.%s", BuiltinRemoteRegistryName)); ok {
+		logRemoteMetaDecision("unknown", remoteSourceRegistry, false, "builtin_registry_override_detected")
+
 		return nil, fmt.Errorf("%w: %s", errBuiltinRegistryOverride, BuiltinRemoteRegistryName)
 	}
 
 	if registryName == BuiltinRemoteRegistryName {
+		logRemoteMetaDecision("unknown", remoteSourceRegistry, true, "using_builtin_registry")
+
 		return copyMap(builtinRemoteRegistry), nil
 	}
 
 	registryData, ok := c.GetStagedDriverData(fmt.Sprintf("daemon.registries.%s", registryName))
 	if !ok {
+		logRemoteMetaDecision("unknown", remoteSourceRegistry, false, "registry_not_found")
+
 		return nil, fmt.Errorf("%w: %s", errRemoteRegistryMissing, registryName)
 	}
 
 	registryConfig, ok := registryData.(map[string]interface{})
 	if !ok {
+		logRemoteMetaDecision("unknown", remoteSourceRegistry, false, "registry_config_type_invalid")
+
 		return nil, errRemoteRegistryTypeMismatch
 	}
+
+	logRemoteMetaDecision("unknown", remoteSourceRegistry, true, "registry_config_loaded")
 
 	return copyMap(registryConfig), nil
 }
@@ -522,37 +553,59 @@ func resolveRemoteSourceType(handlerData map[string]interface{}) string {
 	return remoteSourceUnknown
 }
 
-func (c *Config) isRemoteSourceAllowed(source string) bool {
+func (c *Config) evaluateRemoteSourcePolicy(source string) (bool, string) {
 	allowed := false
+	reason := remotePolicyReasonUnknownSource
 	switch source {
 	case remoteSourceRegistry:
 		allowed = true
+		reason = remotePolicyReasonDefaultAllowRegistry
 	case remoteSourceDirect, remoteSourceLocal:
 		allowed = false
+		reason = remotePolicyReasonDefaultDenySource
 	default:
-		return false
+		return false, reason
 	}
 
 	policy, ok := c.GetStagedDriverData("daemon.remoteDriverPolicy")
 	if !ok {
-		return allowed
+		return allowed, reason
 	}
 	policyMap, ok := policy.(map[string]interface{})
 	if !ok {
-		return allowed
+		return allowed, reason
 	}
 	sourceCfg, ok := policyMap[source].(map[string]interface{})
 	if !ok {
-		return allowed
+		return allowed, reason
 	}
 	enabled, ok := sourceCfg["enabled"].(bool)
 	if !ok {
-		return allowed
+		return allowed, reason
 	}
 
 	allowed = enabled
+	if allowed {
+		reason = remotePolicyReasonPolicyOverrideAllow
+	} else {
+		reason = remotePolicyReasonPolicyOverrideDeny
+	}
 
-	return allowed
+	return allowed, reason
+}
+
+func logRemoteMetaDecision(driverName string, source string, allowed bool, reason string) {
+	if dipper.Logger == nil {
+		return
+	}
+
+	if allowed {
+		dipper.Logger.Infof("[config] remote_meta_decision driver=%s source=%s allowed=true reason=%s", driverName, source, reason)
+
+		return
+	}
+
+	dipper.Logger.Warningf("[config] remote_meta_decision driver=%s source=%s allowed=false reason=%s", driverName, source, reason)
 }
 
 func copyMap(input map[string]interface{}) map[string]interface{} {
