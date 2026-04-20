@@ -61,6 +61,8 @@ func NewDriver(feature string, metaData map[string]interface{}, driverData inter
 	switch meta.Type {
 	case "builtin":
 		dh = NewBuiltinDriver(&meta)
+	case "remote":
+		dh = NewRemoteDriver(&meta)
 	case "null":
 		dh = NewNullDriver(&meta)
 	default:
