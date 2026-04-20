@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +33,9 @@ var RemotePath string
 var (
 	errRemoteInvalidFileName    = errors.New("invalid fileName for remote driver")
 	errRemoteInvalidDriverName  = errors.New("invalid driver name for remote driver")
+	errRemoteURLMissing         = errors.New("url is missing for remote driver")
+	errRemoteSHA256Missing      = errors.New("sha256 is missing for remote driver")
+	errRemoteSHA256Invalid      = errors.New("invalid sha256 for remote driver")
 	errRemoteHTTPStatus         = errors.New("unexpected http status while downloading remote driver")
 	errRemoteSHA256Mismatch     = errors.New("sha256 mismatch for remote driver")
 	errRemoteCacheLockCreate    = errors.New("failed creating cache lock directory")
@@ -51,12 +56,47 @@ var (
 	errRemoteSignatureMissing   = errors.New("signature is missing for remote driver")
 	errRemoteSignatureInvalid   = errors.New("signature is invalid for remote driver")
 	errRemoteSignatureVerify    = errors.New("failed verifying remote driver signature")
+	errRemoteRegistryRequest    = errors.New("failed creating remote registry request")
+	errRemoteRegistryFetch      = errors.New("failed fetching remote registry manifest")
+	errRemoteRegistryDecode     = errors.New("failed decoding remote registry manifest")
+	errRemoteRegistryVersion    = errors.New("failed resolving remote driver version from registry")
+	errRemoteRegistryArtifact   = errors.New("failed resolving remote driver artifact from registry")
 )
 
 type remoteSignaturePolicy struct {
 	required  bool
 	publicKey []byte
 	signature []byte
+}
+
+type remoteSource struct {
+	rawURL      string
+	expectedSHA string
+	fileName    string
+	sigPolicy   *remoteSignaturePolicy
+}
+
+type remoteRegistryManifest struct {
+	Driver    string                           `json:"driver"`
+	Latest    string                           `json:"latest"`
+	PublicKey string                           `json:"publicKey"`
+	Channels  map[string]string                `json:"channels"`
+	Versions  map[string]remoteRegistryVersion `json:"versions"`
+}
+
+type remoteRegistryVersion struct {
+	PublicKey string                   `json:"publicKey"`
+	Artifacts []remoteRegistryArtifact `json:"artifacts"`
+}
+
+type remoteRegistryArtifact struct {
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+	URL       string `json:"url"`
+	SHA256    string `json:"sha256"`
+	FileName  string `json:"fileName"`
+	PublicKey string `json:"publicKey"`
+	Signature string `json:"signature"`
 }
 
 func remotePath() string {
@@ -84,38 +124,19 @@ func NewRemoteDriver(m *Meta) *RemoteDriver {
 
 // Acquire downloads and verifies the remote binary if it is not already available in cache.
 func (d *RemoteDriver) Acquire() {
-	rawURL, ok := d.meta.HandlerData["url"].(string)
-	if !ok || rawURL == "" {
-		panic(fmt.Errorf("%w: url is missing for remote driver: %s", ErrDriverError, d.meta.Name))
-	}
-
-	expectedSHA, ok := d.meta.HandlerData["sha256"].(string)
-	if !ok || expectedSHA == "" {
-		panic(fmt.Errorf("%w: sha256 is missing for remote driver: %s", ErrDriverError, d.meta.Name))
-	}
-	expectedSHA = strings.ToLower(expectedSHA)
-	if _, err := hex.DecodeString(expectedSHA); err != nil || len(expectedSHA) != sha256.Size*2 {
-		panic(fmt.Errorf("%w: invalid sha256 for remote driver: %s", ErrDriverError, d.meta.Name))
-	}
-
-	fileName, err := remoteFileName(d.meta.Name, rawURL, d.meta.HandlerData)
+	source, err := resolveRemoteSource(d.meta.Name, d.meta.HandlerData)
 	if err != nil {
 		panic(fmt.Errorf("%w: %w", ErrDriverError, err))
 	}
 
-	sigPolicy, err := parseRemoteSignaturePolicy(d.meta.HandlerData)
-	if err != nil {
-		panic(fmt.Errorf("%w: %w", ErrDriverError, err))
-	}
-
-	cacheDir := filepath.Join(remotePath(), "sha256", expectedSHA)
+	cacheDir := filepath.Join(remotePath(), "sha256", source.expectedSHA)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		panic(fmt.Errorf("%w: %w: %w", ErrDriverError, errRemoteCacheDirCreate, err))
 	}
 
-	executablePath := filepath.Join(cacheDir, fileName)
-	if hasValidCachedBinary(executablePath, expectedSHA) {
-		if err := verifyRemoteSignature(sigPolicy, expectedSHA); err != nil {
+	executablePath := filepath.Join(cacheDir, source.fileName)
+	if hasValidCachedBinary(executablePath, source.expectedSHA) {
+		if err := verifyRemoteSignature(source.sigPolicy, source.expectedSHA); err != nil {
 			panic(fmt.Errorf("%w: %w", ErrDriverError, err))
 		}
 
@@ -127,8 +148,8 @@ func (d *RemoteDriver) Acquire() {
 	release := acquireDigestLock(cacheDir)
 	defer release()
 
-	if hasValidCachedBinary(executablePath, expectedSHA) {
-		if err := verifyRemoteSignature(sigPolicy, expectedSHA); err != nil {
+	if hasValidCachedBinary(executablePath, source.expectedSHA) {
+		if err := verifyRemoteSignature(source.sigPolicy, source.expectedSHA); err != nil {
 			panic(fmt.Errorf("%w: %w", ErrDriverError, err))
 		}
 
@@ -137,11 +158,172 @@ func (d *RemoteDriver) Acquire() {
 		return
 	}
 
-	if err := downloadAndVerify(rawURL, executablePath, expectedSHA, sigPolicy); err != nil {
+	if err := downloadAndVerify(source.rawURL, executablePath, source.expectedSHA, source.sigPolicy); err != nil {
 		panic(fmt.Errorf("%w: %w %s: %w", ErrDriverError, errRemoteAcquireDownload, d.meta.Name, err))
 	}
 
 	d.meta.Executable = executablePath
+}
+
+func resolveRemoteSource(driverName string, handlerData map[string]interface{}) (*remoteSource, error) {
+	rawURL, _ := handlerData["url"].(string)
+	if rawURL != "" {
+		return resolveDirectRemoteSource(driverName, handlerData, rawURL)
+	}
+
+	registryURL, _ := handlerData["registryURL"].(string)
+	if registryURL == "" {
+		return nil, fmt.Errorf("%w: %s", errRemoteURLMissing, driverName)
+	}
+
+	return resolveRegistryRemoteSource(driverName, handlerData, registryURL)
+}
+
+func resolveDirectRemoteSource(driverName string, handlerData map[string]interface{}, rawURL string) (*remoteSource, error) {
+	expectedSHA, ok := handlerData["sha256"].(string)
+	if !ok || expectedSHA == "" {
+		return nil, fmt.Errorf("%w: %s", errRemoteSHA256Missing, driverName)
+	}
+	expectedSHA = strings.ToLower(expectedSHA)
+	if _, err := hex.DecodeString(expectedSHA); err != nil || len(expectedSHA) != sha256.Size*2 {
+		return nil, fmt.Errorf("%w: %s", errRemoteSHA256Invalid, driverName)
+	}
+
+	fileName, err := remoteFileName(driverName, rawURL, handlerData)
+	if err != nil {
+		return nil, err
+	}
+
+	sigPolicy, err := parseRemoteSignaturePolicy(handlerData)
+	if err != nil {
+		return nil, err
+	}
+
+	return &remoteSource{
+		rawURL:      rawURL,
+		expectedSHA: expectedSHA,
+		fileName:    fileName,
+		sigPolicy:   sigPolicy,
+	}, nil
+}
+
+func resolveRegistryRemoteSource(driverName string, handlerData map[string]interface{}, registryURL string) (*remoteSource, error) {
+	manifest, err := fetchRemoteRegistryManifest(registryURL, driverName)
+	if err != nil {
+		return nil, err
+	}
+
+	version, err := resolveRemoteRegistryVersion(handlerData, manifest)
+	if err != nil {
+		return nil, err
+	}
+
+	artifact, err := resolveRemoteRegistryArtifact(version, manifest)
+	if err != nil {
+		return nil, err
+	}
+
+	resolved := map[string]interface{}{
+		"url":    artifact.URL,
+		"sha256": artifact.SHA256,
+	}
+	if artifact.FileName != "" {
+		resolved["fileName"] = artifact.FileName
+	}
+	if requireSignature, ok := handlerData["requireSignature"].(bool); ok {
+		resolved["requireSignature"] = requireSignature
+	}
+	if artifact.PublicKey != "" {
+		resolved["publicKey"] = artifact.PublicKey
+		if manifestVersion, ok := manifest.Versions[version]; ok && manifestVersion.PublicKey != "" {
+			resolved["publicKey"] = artifact.PublicKey
+		}
+	}
+	if resolved["publicKey"] == nil {
+		if manifestVersion, ok := manifest.Versions[version]; ok && manifestVersion.PublicKey != "" {
+			resolved["publicKey"] = manifestVersion.PublicKey
+		} else if manifest.PublicKey != "" {
+			resolved["publicKey"] = manifest.PublicKey
+		}
+	}
+	if artifact.Signature != "" {
+		resolved["signature"] = artifact.Signature
+	}
+
+	return resolveDirectRemoteSource(driverName, resolved, artifact.URL)
+}
+
+func fetchRemoteRegistryManifest(registryURL string, driverName string) (*remoteRegistryManifest, error) {
+	manifestURL, err := url.JoinPath(registryURL, driverName+".json")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errRemoteRegistryRequest, err)
+	}
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, manifestURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errRemoteRegistryRequest, err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errRemoteRegistryFetch, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: %w: %d", errRemoteRegistryFetch, errRemoteHTTPStatus, resp.StatusCode)
+	}
+
+	var manifest remoteRegistryManifest
+	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
+		return nil, fmt.Errorf("%w: %w", errRemoteRegistryDecode, err)
+	}
+
+	return &manifest, nil
+}
+
+func resolveRemoteRegistryVersion(handlerData map[string]interface{}, manifest *remoteRegistryManifest) (string, error) {
+	version, _ := handlerData["version"].(string)
+	if version != "" {
+		if _, ok := manifest.Versions[version]; ok {
+			return version, nil
+		}
+
+		return "", fmt.Errorf("%w: version %s not found", errRemoteRegistryVersion, version)
+	}
+
+	channel := "stable"
+	if configuredChannel, ok := handlerData["channel"].(string); ok && configuredChannel != "" {
+		channel = configuredChannel
+	}
+	if resolvedVersion, ok := manifest.Channels[channel]; ok {
+		if _, ok := manifest.Versions[resolvedVersion]; ok {
+			return resolvedVersion, nil
+		}
+	}
+	if manifest.Latest != "" {
+		if _, ok := manifest.Versions[manifest.Latest]; ok {
+			return manifest.Latest, nil
+		}
+	}
+
+	return "", fmt.Errorf("%w: no version resolved for channel %s", errRemoteRegistryVersion, channel)
+}
+
+func resolveRemoteRegistryArtifact(version string, manifest *remoteRegistryManifest) (*remoteRegistryArtifact, error) {
+	resolvedVersion := manifest.Versions[version]
+	for _, artifact := range resolvedVersion.Artifacts {
+		if artifact.OS == runtime.GOOS && artifact.Arch == runtime.GOARCH {
+			if artifact.URL == "" || artifact.SHA256 == "" {
+				return nil, fmt.Errorf("%w: missing url or sha256 for %s/%s", errRemoteRegistryArtifact, artifact.OS, artifact.Arch)
+			}
+
+			return &artifact, nil
+		}
+	}
+
+	return nil, fmt.Errorf("%w: no artifact for %s/%s in version %s", errRemoteRegistryArtifact, runtime.GOOS, runtime.GOARCH, version)
 }
 
 func remoteFileName(driverName string, rawURL string, handlerData map[string]interface{}) (string, error) {

@@ -15,10 +15,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -169,6 +171,98 @@ func TestRemoteAcquireSignature(t *testing.T) {
 			}}}},
 			"",
 			filepath.Join(cacheDir, "sha256", shaHex, "hd-driver-signed"),
+		},
+	}
+
+	for msg, tc := range testCases {
+		func(c []interface{}) {
+			defer func() {
+				if r := recover(); r != nil {
+					if len(c) > 1 && len(c[1].(string)) > 0 {
+						assert.Equal(t, c[1], r.(error).Error()[:len(c[1].(string))], msg)
+					} else {
+						assert.Fail(t, "should "+msg)
+					}
+				} else {
+					if len(c) > 1 && len(c[1].(string)) > 0 {
+						assert.Fail(t, "should "+msg)
+					} else {
+						assert.Equal(t, c[2].(string), c[0].(*RemoteDriver).meta.Executable, "should "+msg)
+					}
+				}
+			}()
+			c[0].(*RemoteDriver).Acquire()
+		}(tc.([]interface{}))
+	}
+}
+
+func TestRemoteAcquireRegistry(t *testing.T) {
+	cacheDir := t.TempDir()
+	RemotePath = cacheDir
+	t.Cleanup(func() {
+		RemotePath = ""
+	})
+
+	payload := []byte("#!/bin/sh\necho registry\n")
+	sha := sha256.Sum256(payload)
+	shaHex := hex.EncodeToString(sha[:])
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	assert.Nil(t, err)
+	signature := ed25519.Sign(privateKey, sha[:])
+
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/registry/registry-driver.json":
+			_, _ = fmt.Fprintf(w, `{
+				"driver": "registry-driver",
+				"channels": {"stable": "1.0.0"},
+				"versions": {
+					"1.0.0": {
+						"artifacts": [{
+							"os": %q,
+							"arch": %q,
+							"url": %q,
+							"sha256": %q,
+							"fileName": "hd-driver-registry",
+							"publicKey": %q,
+							"signature": %q
+						}]
+					}
+				}
+			}`,
+				runtime.GOOS,
+				runtime.GOARCH,
+				srv.URL+"/artifact/registry-driver",
+				shaHex,
+				base64.StdEncoding.EncodeToString(publicKey),
+				base64.StdEncoding.EncodeToString(signature),
+			)
+		case "/artifact/registry-driver":
+			_, _ = w.Write(payload)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	testCases := map[string]interface{}{
+		"download from registry channel": []interface{}{
+			&RemoteDriver{BuiltinDriver: &BuiltinDriver{meta: &Meta{Name: "registry-driver", HandlerData: map[string]interface{}{
+				"registryURL":      srv.URL + "/registry",
+				"channel":          "stable",
+				"requireSignature": true,
+			}}}},
+			"",
+			filepath.Join(cacheDir, "sha256", shaHex, "hd-driver-registry"),
+		},
+		"panic when registry version is missing": []interface{}{
+			&RemoteDriver{BuiltinDriver: &BuiltinDriver{meta: &Meta{Name: "registry-driver", HandlerData: map[string]interface{}{
+				"registryURL": srv.URL + "/registry",
+				"version":     "9.9.9",
+			}}}},
+			"driver error: failed resolving remote driver version from registry",
 		},
 	}
 
