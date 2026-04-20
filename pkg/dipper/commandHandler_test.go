@@ -189,3 +189,34 @@ func TestCommandRetryRougueFunction(t *testing.T) {
 	assert.Equal(t, "success", ret.Labels["status"], "should return error after retry error")
 	assert.Equal(t, "3", ret.Payload.(map[string]interface{})["counter"], "should return the final counter")
 }
+
+func TestRouterInvalidTimeoutReturnsError(t *testing.T) {
+	b := bytes.Buffer{}
+
+	subject := CommandProvider{
+		ReturnWriter: &b,
+		Channel:      "test",
+		Subject:      "test",
+		Commands: map[string]MessageHandler{
+			"test": func(m *Message) {
+				m.Reply <- Message{}
+			},
+		},
+	}
+
+	m := &Message{
+		Labels: map[string]string{
+			"method":    "test",
+			"sessionID": "session-1",
+			"timeout":   "not-a-duration",
+		},
+	}
+
+	assert.Panics(t, func() {
+		subject.Router(m)
+	})
+
+	ret := FetchMessage(&b)
+	assert.Equal(t, "error", ret.Labels["status"], "should return error status on invalid timeout")
+	assert.Contains(t, ret.Labels["reason"], "invalid timeout", "should include invalid timeout in reason")
+}

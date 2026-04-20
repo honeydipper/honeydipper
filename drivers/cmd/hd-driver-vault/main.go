@@ -61,6 +61,9 @@ func getVaultConfig(serverName string) vaultConfig {
 	}
 
 	cfg.k8sRole, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"k8sRole")
+	if cfg.k8sRole == "" {
+		cfg.k8sRole = os.Getenv("VAULT_K8S_ROLE")
+	}
 
 	cfg.appRoleID, _ = dipper.GetMapDataStr(driver.Options, keyPrefix+"approle.role_id")
 	if cfg.appRoleID == "" {
@@ -184,11 +187,18 @@ func lookupSinglePath(ctx context.Context, client *vault.Client, singleQuery str
 	path = keyParts[0]
 	key := keyParts[1]
 
-	var secret *vault.KVSecret
+	var (
+		secret *vault.KVSecret
+		err    error
+	)
 	if version >= 0 {
-		secret = dipper.Must(client.KVv2(mount).GetVersion(ctx, path, version)).(*vault.KVSecret)
+		secret, err = client.KVv2(mount).GetVersion(ctx, path, version)
 	} else {
-		secret = dipper.Must(client.KVv2(mount).Get(ctx, path)).(*vault.KVSecret)
+		secret, err = client.KVv2(mount).Get(ctx, path)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to read vault secret %s/%s: %w", mount, path, err)
 	}
 
 	value, found := secret.Data[key]

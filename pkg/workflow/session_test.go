@@ -270,7 +270,7 @@ func TestBrief_ParallelIterationChildUsesDescription(t *testing.T) {
 	parent.Ctx["current"] = "a"
 
 	child := NewSession("child", &cfg.Workflow{Description: parent.Workflow.Description}, store)
-	child.Init(newMsg(), parent, nil, nil)
+	child.Init(newMsg(), parent, nil, nil, nil)
 
 	brief := child.Brief()
 

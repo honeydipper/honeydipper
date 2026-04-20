@@ -173,6 +173,92 @@ func getCursorPayload(payload map[string]interface{}) interface{} {
 	return raw
 }
 
+func getProviderDataPayload(payload map[string]interface{}) map[string]interface{} {
+	raw, ok := payload["provider_data"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	if m, isMap := raw.(map[string]interface{}); isMap {
+		return m
+	}
+
+	if asStr, isString := raw.(string); isString {
+		asStr = strings.TrimSpace(asStr)
+		if asStr == "" {
+			return nil
+		}
+
+		parsed := map[string]interface{}{}
+		if err := json.Unmarshal([]byte(asStr), &parsed); err == nil {
+			return parsed
+		}
+	}
+
+	return nil
+}
+
+func getStringFromMap(data map[string]interface{}, key string) string {
+	if data == nil {
+		return ""
+	}
+
+	raw, ok := data[key]
+	if !ok || raw == nil {
+		return ""
+	}
+
+	if asString, isString := raw.(string); isString {
+		return strings.TrimSpace(asString)
+	}
+
+	return strings.TrimSpace(fmt.Sprintf("%v", raw))
+}
+
+func setKubernetesLogSource(payload, providerData, rpcPayload map[string]interface{}) {
+	if source, ok := payload["source"]; ok && source != nil {
+		rpcPayload["source"] = source
+
+		return
+	}
+
+	if source, ok := providerData["source"]; ok && source != nil {
+		rpcPayload["source"] = source
+
+		return
+	}
+
+	systemName := getStringFromMap(providerData, "system")
+	if systemName == "" {
+		systemName = getStringFromMap(providerData, "k8s_system")
+	}
+	if systemName == "" {
+		systemName = getStringFromPayload(payload, "k8s_system")
+	}
+	if systemName == "" {
+		systemName = getStringFromPayload(payload, "system")
+	}
+
+	if source, namespace, ok := getK8sSystemLogParams(systemName); ok {
+		rpcPayload["source"] = source
+		if namespace != "" {
+			rpcPayload["namespace"] = namespace
+		}
+	}
+}
+
+func setKubernetesLogNamespace(payload, providerData, rpcPayload map[string]interface{}) {
+	if namespace := getStringFromPayload(payload, "namespace"); namespace != "" {
+		rpcPayload["namespace"] = namespace
+
+		return
+	}
+
+	if namespace := getStringFromMap(providerData, "namespace"); namespace != "" {
+		rpcPayload["namespace"] = namespace
+	}
+}
+
 func getPodIDSigningSecrets() (string, string) {
 	if operator == nil || operator.config == nil || operator.config.DataSet == nil || operator.config.DataSet.Drivers == nil {
 		return "", ""
@@ -185,6 +271,28 @@ func getPodIDSigningSecrets() (string, string) {
 	}
 
 	return strings.TrimSpace(current), strings.TrimSpace(previous)
+}
+
+func getK8sSystemLogParams(systemName string) (interface{}, string, bool) {
+	if strings.TrimSpace(systemName) == "" {
+		return nil, "", false
+	}
+	if operator == nil || operator.config == nil || operator.config.DataSet == nil {
+		return nil, "", false
+	}
+
+	sys, ok := operator.config.DataSet.Systems[strings.TrimSpace(systemName)]
+	if !ok {
+		return nil, "", false
+	}
+
+	source, hasSource := dipper.GetMapData(sys.Data, "source")
+	if !hasSource {
+		return nil, "", false
+	}
+	namespace, _ := dipper.GetMapDataStr(sys.Data, "namespace")
+
+	return source, strings.TrimSpace(namespace), true
 }
 
 func extractSecretKeyValue(payload map[string]interface{}) (string, string, error) {
@@ -322,6 +430,7 @@ func handlePodLogChunk(resp *api.Response) {
 	}
 
 	provider := getLogProvider(payload)
+	providerData := getProviderDataPayload(payload)
 	rpcPayload := map[string]interface{}{
 		"pod_id":         podID,
 		"wait_seconds":   getIntFromPayload(payload, "wait_seconds", 3),
@@ -333,6 +442,10 @@ func handlePodLogChunk(resp *api.Response) {
 	}
 	if include, ok := payload["include_containers"]; ok {
 		rpcPayload["include_containers"] = include
+	}
+	if provider == "kubernetes" {
+		setKubernetesLogSource(payload, providerData, rpcPayload)
+		setKubernetesLogNamespace(payload, providerData, rpcPayload)
 	}
 
 	raw, err := operator.Call("driver:"+provider, "get_pod_log_tail", rpcPayload)

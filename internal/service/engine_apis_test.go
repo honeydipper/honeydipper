@@ -90,6 +90,7 @@ func TestRerunSession_HappyPath(t *testing.T) {
 	source.Event = map[string]interface{}{"name": "payload"}
 	source.EventCtx = map[string]interface{}{"git_repo": "org/repo"}
 	source.RerunCtx = map[string]interface{}{"thread_number": 7}
+	source.LoadedContexts = []string{"_preloaded_ctx"}
 	helper.resp["cache:lrange:"+workflow.StoreSessionPrefix+"sid-1"] = source.Marshal()
 
 	prev := sessionStore
@@ -124,6 +125,9 @@ func TestRerunSession_HappyPath(t *testing.T) {
 	}
 	if createdSession.Ctx["thread_number"] != float64(7) {
 		t.Fatalf("expected rerun ctx to be injected into runtime context, got %+v", createdSession.Ctx)
+	}
+	if len(createdSession.LoadedContexts) != 1 || createdSession.LoadedContexts[0] != "_preloaded_ctx" {
+		t.Fatalf("expected loaded contexts to be preserved, got %+v", createdSession.LoadedContexts)
 	}
 }
 

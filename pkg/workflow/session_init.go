@@ -319,7 +319,13 @@ func (w *Session) inherentParentSettings(p *Session) {
 }
 
 // Init initializes the session for execution.
-func (w *Session) Init(msg *dipper.Message, parent *Session, eventCtx map[string]interface{}, rerunCtx map[string]interface{}) {
+func (w *Session) Init(
+	msg *dipper.Message,
+	parent *Session,
+	eventCtx map[string]interface{},
+	rerunCtx map[string]interface{},
+	loadedContexts []string,
+) {
 	if parent != nil {
 		w.inherentParentData(parent)
 		w.inherentParentSettings(parent)
@@ -328,6 +334,9 @@ func (w *Session) Init(msg *dipper.Message, parent *Session, eventCtx map[string
 		w.context, w.cancelFunc = context.WithCancel(context.Background())
 	}
 	w.injectMsg(msg)
+	if loadedContexts != nil {
+		w.LoadedContexts = append([]string(nil), loadedContexts...)
+	}
 	if len(eventCtx) > 0 {
 		w.EventCtx = dipper.MustDeepCopyMap(eventCtx)
 	}

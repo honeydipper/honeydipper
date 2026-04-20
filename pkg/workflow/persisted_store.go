@@ -94,7 +94,7 @@ func (s *PersistedStore) RunAsync(task func()) {
 
 // CreateSession creates and initializes a workflow session.
 func (s *PersistedStore) CreateSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) *Session {
-	return s.CreateSessionWithInitContext(wf, msg, ctx, nil)
+	return s.CreateSessionWithInitContext(wf, msg, ctx, nil, nil)
 }
 
 // CreateSessionWithInitContext creates and initializes a workflow session with separated init contexts.
@@ -103,9 +103,10 @@ func (s *PersistedStore) CreateSessionWithInitContext(
 	msg *dipper.Message,
 	eventCtx map[string]interface{},
 	rerunCtx map[string]interface{},
+	loadedContexts []string,
 ) *Session {
 	w := NewSession(s.GetNextID(), wf, s)
-	w.Init(msg, nil, eventCtx, rerunCtx)
+	w.Init(msg, nil, eventCtx, rerunCtx, loadedContexts)
 	w.CurrentMsg.Labels["cursor"] = "0"
 
 	s.persist(w)
@@ -157,7 +158,7 @@ func (s *PersistedStore) DetachSession(w *Session) {
 // CreateChildSession creates a child session with the given parent.
 func (s *PersistedStore) CreateChildSession(parent *Session, wf *config.Workflow, msg *dipper.Message) *Session {
 	w := NewSession(parent.ID, wf, s)
-	w.Init(msg, parent, nil, nil)
+	w.Init(msg, parent, nil, nil, nil)
 	if w.Workflow.Detach {
 		s.DetachSession(w)
 	}
@@ -261,7 +262,8 @@ func (s *PersistedStore) StartSessionWithInitContext(
 	m := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session", s.uncaughtErrorHandler(nil, m))
 
-	w := s.CreateSessionWithInitContext(wf, m, eventCtx, rerunCtx)
+	w := s.CreateSessionWithInitContext(wf, m, eventCtx, rerunCtx, nil)
+
 	defer dipper.SafeExitOnError("[workflow] error when starting workflow session", s.uncaughtErrorHandler(w, m))
 	s.ActivateSession(w)
 }
