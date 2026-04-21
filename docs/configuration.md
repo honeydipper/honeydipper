@@ -65,10 +65,17 @@ type RepoInfo struct {
 	Repo        string
 	Branch      string
 	Path        string
+	InitFile    string
 	Name        string
 	Description string
 	KeyFile     string
 	KeyPassEnv  string
+
+	TokenSource string
+	Username    string
+	PassEnv     string
+
+	Options map[string]interface{}
 }
 ```
 
@@ -79,10 +86,47 @@ To load a repo other than the bootstrap repo, just put info in the `repos` secti
 repos:
   - repo: <git url to the repo>
     branch: <optional, defaults to main>
-    path: <the location of the init.yaml, must starts with /, optional, defaults to />
+    path: <the location of the init.yaml, must start with /, optional, defaults to />
+    init_file: <the name of the init file, optional, defaults to init.yaml>
     keyFile: <deploy key used for cloning the repo, optional>
     keyPassEnv: <an environment variable name containing the passphrase for the deploy key, optional>
+    token_source: <token source for HTTP authentication, optional>
+    username: <username for HTTP authentication, optional>
+    pass_env: <an environment variable name containing the password for HTTP authentication, optional>
+    options:
+      <key>: <value>  # arbitrary key-value pairs passed to load-time templates in the repo
   ...
+```
+
+### Load-time templates
+
+Every config file is processed through a Go template engine before being parsed as YAML. The template delimiters are `{%` and `%}` (instead
+of the usual `{{` and `}}`, which are reserved for run-time interpolation). The following data is available inside load-time templates:
+
+| Variable | Description |
+|---|---|
+| `.env` | A map of all environment variables |
+| `.local.filename` | The path of the current file relative to the repo root |
+| `.local.repo` | The git URL of the current repo |
+| `.local.branch` | The branch of the current repo |
+| `.version` | The running Honeydipper version string |
+| `.init.repo` | The git URL of the bootstrap (init) repo |
+| `.init.branch` | The branch of the bootstrap (init) repo |
+| `.options` | A map of options passed via the `options` field of the `repos` entry that loaded this repo |
+
+Options are inherited: when repo A loads repo B with some options, those options are available to all files in repo B. If repo B in turn
+declares repo C in its `repos` section, repo B's options are merged with any options declared on that entry (the entry's own options take
+precedence on conflict) and passed down to repo C.
+
+Example: conditionally loading content based on an option passed by the parent repo.
+
+```yaml
+{%- if .options.enable_feature_x %}
+systems:
+  feature_x:
+    data:
+      foo: bar
+{%- end %}
 ```
 
 ## Drivers

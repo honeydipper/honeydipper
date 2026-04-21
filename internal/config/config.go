@@ -90,11 +90,11 @@ type Config struct {
 	InitRepo          RepoInfo
 	Services          []string
 	DataSet           *DataSet
-	Loaded            map[RepoInfo]*Repo
+	Loaded            map[RepoKey]*Repo
 	WorkingDir        string
 	LastRunningConfig struct {
 		DataSet *DataSet
-		Loaded  map[RepoInfo]*Repo
+		Loaded  map[RepoKey]*Repo
 	}
 	OnChange      func()
 	IsConfigCheck bool
@@ -203,7 +203,7 @@ func (c *Config) Refresh() {
 	if changeDetected {
 		c.ResetStage()
 		c.LastRunningConfig.DataSet = c.RawData
-		c.LastRunningConfig.Loaded = map[RepoInfo]*Repo{}
+		c.LastRunningConfig.Loaded = map[RepoKey]*Repo{}
 		for k, v := range c.Loaded {
 			c.LastRunningConfig.Loaded[k] = v
 		}
@@ -229,7 +229,7 @@ func (c *Config) Refresh() {
 func (c *Config) RollBack() {
 	if c.LastRunningConfig.DataSet != nil && c.LastRunningConfig.DataSet != c.DataSet {
 		c.Staged = c.LastRunningConfig.DataSet
-		c.Loaded = map[RepoInfo]*Repo{}
+		c.Loaded = map[RepoKey]*Repo{}
 		for k, v := range c.LastRunningConfig.Loaded {
 			c.Loaded[k] = v
 		}
@@ -242,7 +242,7 @@ func (c *Config) RollBack() {
 }
 
 func (c *Config) assemble() {
-	c.Staged, c.Loaded = c.Loaded[c.InitRepo].assemble(&(DataSet{}), map[RepoInfo]*Repo{})
+	c.Staged, c.Loaded = c.Loaded[c.InitRepo.Key()].assemble(&(DataSet{}), map[RepoKey]*Repo{})
 }
 
 // AdvanceStage processes the config and advances the config into the new stage.
@@ -366,7 +366,7 @@ func (c *Config) RecursiveStaged(f dipper.ItemProcessor) {
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
-	_, ok := c.Loaded[repo]
+	_, ok := c.Loaded[repo.Key()]
 
 	return ok
 }
@@ -376,9 +376,9 @@ func (c *Config) loadRepo(repo RepoInfo) {
 		repoRuntime := newRepo(c, repo)
 		repoRuntime.loadRepo()
 		if c.Loaded == nil {
-			c.Loaded = map[RepoInfo]*Repo{}
+			c.Loaded = map[RepoKey]*Repo{}
 		}
-		c.Loaded[repo] = repoRuntime
+		c.Loaded[repo.Key()] = repoRuntime
 	}
 }
 

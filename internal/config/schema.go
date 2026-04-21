@@ -119,6 +119,14 @@ type Rule struct {
 	Do   Workflow
 }
 
+// RepoKey holds the identity fields of a RepoInfo and can be used as a map key.
+type RepoKey struct {
+	Repo     string
+	Branch   string
+	Path     string
+	InitFile string
+}
+
 // RepoInfo points to a git repo where config data can be read from.
 type RepoInfo struct {
 	Repo        string
@@ -133,6 +141,13 @@ type RepoInfo struct {
 	TokenSource string `json:"token_source" mapstructure:"token_source"`
 	Username    string
 	PassEnv     string `json:"pass_env" mapstructure:"pass_env"`
+
+	Options map[string]interface{}
+}
+
+// Key returns the RepoKey (identity fields only) for use as a map key.
+func (r RepoInfo) Key() RepoKey {
+	return RepoKey{Repo: r.Repo, Branch: r.Branch, Path: r.Path, InitFile: r.InitFile}
 }
 
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.

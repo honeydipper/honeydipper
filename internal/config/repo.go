@@ -45,11 +45,11 @@ type Repo struct {
 	hash    string
 }
 
-func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*DataSet, map[RepoInfo]*Repo) {
-	assembledList[*c.repo] = c
+func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoKey]*Repo) (*DataSet, map[RepoKey]*Repo) {
+	assembledList[c.repo.Key()] = c
 	for _, repo := range c.DataSet.Repos {
-		if _, ok := assembledList[repo]; !ok {
-			if repoRuntime, ok := c.parent.Loaded[repo]; ok {
+		if _, ok := assembledList[repo.Key()]; !ok {
+			if repoRuntime, ok := c.parent.Loaded[repo.Key()]; ok {
 				assembled, assembledList = repoRuntime.assemble(assembled, assembledList)
 			}
 		}
@@ -140,6 +140,7 @@ func (c *Repo) loadFile(filename string) {
 			"repo":   c.parent.InitRepo.Repo,
 			"branch": c.parent.InitRepo.Branch,
 		},
+		"options": c.repo.Options,
 	}
 	switch ret := dipper.InterpolateGoTemplate(true, filename, string(yamlFile), envData).(type) {
 	case *bytes.Buffer:
@@ -153,7 +154,7 @@ func (c *Repo) loadFile(filename string) {
 		if !c.parent.IsDocGen && (c.parent.CheckRemote || !c.parent.IsConfigCheck) {
 			for _, referredRepo := range content.Repos {
 				if !c.parent.isRepoLoaded(referredRepo) {
-					c.parent.loadRepo(referredRepo)
+					c.parent.loadRepo(c.mergeOptions(referredRepo))
 				}
 			}
 		}
@@ -171,6 +172,24 @@ func (c *Repo) loadFile(filename string) {
 	dipper.Must(mergeDataSet(&(c.DataSet), content))
 	c.files[filename] = true
 	dipper.Logger.Infof("config file [%v] loaded", filename)
+}
+
+// mergeOptions returns a copy of the given RepoInfo with options merged from the parent repo.
+// Parent options are the base; child's own declared options take precedence.
+func (c *Repo) mergeOptions(child RepoInfo) RepoInfo {
+	if len(c.repo.Options) == 0 {
+		return child
+	}
+	merged := make(map[string]interface{}, len(c.repo.Options)+len(child.Options))
+	for k, v := range c.repo.Options {
+		merged[k] = v
+	}
+	for k, v := range child.Options {
+		merged[k] = v
+	}
+	child.Options = merged
+
+	return child
 }
 
 func newRepo(c *Config, repo RepoInfo) *Repo {

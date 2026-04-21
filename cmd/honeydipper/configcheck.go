@@ -131,7 +131,7 @@ func runConfigCheck(cfg *config.Config) int {
 }
 
 func checkAuthRules(cfg *config.Config) int {
-	repo, ok := cfg.Loaded[cfg.InitRepo]
+	repo, ok := cfg.Loaded[cfg.InitRepo.Key()]
 	if !ok {
 		// no init repo during tests
 		return 0
