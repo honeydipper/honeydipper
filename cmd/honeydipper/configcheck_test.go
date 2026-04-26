@@ -31,7 +31,7 @@ func TestRunConfigCheck(t *testing.T) {
 			&config.Config{
 				Staged:   &config.DataSet{},
 				Services: []string{ConfigCheckService},
-				Loaded: map[config.RepoInfo]*config.Repo{
+				Loaded: map[config.RepoKey]*config.Repo{
 					{Repo: "good one"}: {Errors: nil},
 					{Repo: "bad one"}:  {Errors: []config.Error{{Error: fmt.Errorf("error converting YAML to JSON: yaml: %s", "test.yaml"), File: "test"}}},
 				},

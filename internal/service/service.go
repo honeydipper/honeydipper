@@ -209,7 +209,12 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		panic("unable to get driver metadata")
 	}
 
-	driverRuntime := driver.NewDriver(feature, driverMeta.(map[string]interface{}), driverData, dynamicData)
+	resolvedDriverMeta, err := s.config.ResolveStagedDriverMeta(driverMeta.(map[string]interface{}))
+	if err != nil {
+		panic(err)
+	}
+
+	driverRuntime := driver.NewDriver(feature, resolvedDriverMeta, driverData, dynamicData)
 	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverRuntime.Handler.Meta())
 
 	driverMetaUnchanged := oldRuntime != nil && reflect.DeepEqual(*oldRuntime.Handler.Meta(), *driverRuntime.Handler.Meta())
