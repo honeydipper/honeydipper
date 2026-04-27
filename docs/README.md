@@ -7,6 +7,8 @@
 ---
 
  * [Architecture/Design (link to the repo)](https://github.com/honeydipper/honeydipper)
+ * [Agent Service Design](./agent_service_design.md)
+ * [Agent Service Planning Brief](./agent_service_plan_brief.md)
  * Developers
    * [Driver Developer Guide](./developer.md)
  * Administrators
