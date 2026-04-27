@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -53,6 +54,9 @@ var (
 	errRemoteChecksumOpen       = errors.New("failed opening file for checksum")
 	errRemoteChecksumRead       = errors.New("failed reading file for checksum")
 	errRemoteSignatureRequired  = errors.New("signature is required for remote driver")
+	errRemotePackageInstall     = errors.New("failed installing required packages for remote driver")
+	errRemoteInvalidPackageName = errors.New("invalid package name for remote driver")
+	errRemoteNoPackageManager   = errors.New("no supported package manager found for remote driver")
 	errRemotePublicKeyMissing   = errors.New("publicKey is missing for remote driver signature verification")
 	errRemotePublicKeyInvalid   = errors.New("publicKey is invalid for remote driver signature verification")
 	errRemoteSignatureMissing   = errors.New("signature is missing for remote driver")
@@ -149,6 +153,7 @@ func (d *RemoteDriver) Acquire() {
 		}
 
 		d.meta.Executable = executablePath
+		d.installRequiredPackages()
 
 		return
 	}
@@ -164,6 +169,7 @@ func (d *RemoteDriver) Acquire() {
 		}
 
 		d.meta.Executable = executablePath
+		d.installRequiredPackages()
 
 		return
 	}
@@ -176,6 +182,64 @@ func (d *RemoteDriver) Acquire() {
 	logRemoteAcquireDecision(d.meta.Name, source, true, "download_verified")
 
 	d.meta.Executable = executablePath
+	d.installRequiredPackages()
+}
+
+func (d *RemoteDriver) installRequiredPackages() {
+	raw, ok := d.meta.HandlerData["requiredPackages"]
+	if !ok {
+		return
+	}
+
+	rawList, ok := raw.([]interface{})
+	if !ok || len(rawList) == 0 {
+		return
+	}
+
+	pkgs := make([]string, 0, len(rawList))
+	for _, p := range rawList {
+		name, ok := p.(string)
+		if !ok || !isValidPackageName(name) {
+			panic(fmt.Errorf("%w: %w: %v", ErrDriverError, errRemoteInvalidPackageName, p))
+		}
+		pkgs = append(pkgs, name)
+	}
+
+	ctx := context.Background()
+
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("apk"); err == nil {
+		cmd = exec.CommandContext(ctx, "apk", append([]string{"add", "--no-cache"}, pkgs...)...) //nolint:gosec
+	} else if _, err := exec.LookPath("apt-get"); err == nil {
+		cmd = exec.CommandContext(ctx, "apt-get", append([]string{"install", "-y"}, pkgs...)...) //nolint:gosec
+	} else {
+		panic(fmt.Errorf("%w: %w: %s", ErrDriverError, errRemoteNoPackageManager, d.meta.Name))
+	}
+
+	dipper.Logger.Infof("[remote-driver] installing required packages for %s: %v", d.meta.Name, pkgs)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		panic(fmt.Errorf("%w: %w %s: %s", ErrDriverError, errRemotePackageInstall, d.meta.Name, string(out)))
+	}
+}
+
+func isValidPackageName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for i, c := range name {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+			// always valid
+		case c == '-' || c == '_' || c == '.' || c == '+':
+			if i == 0 {
+				return false // must start with alphanumeric
+			}
+		default:
+			return false
+		}
+	}
+
+	return true
 }
 
 func resolveRemoteSource(driverName string, handlerData map[string]interface{}) (*remoteSource, error) {
