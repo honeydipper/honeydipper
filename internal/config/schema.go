@@ -123,6 +123,14 @@ type Activation struct {
 	Tools    interface{}
 }
 
+// Agent defines policy and prompt defaults for a named agent runtime.
+type Agent struct {
+	Description  string
+	SystemPrompt string `json:"system_prompt" mapstructure:"system_prompt"`
+	Prompt       string
+	Providers    []string
+}
+
 // Rule is a data structure defining what action to take when certain event happen.
 type Rule struct {
 	When     Trigger
@@ -165,6 +173,7 @@ func (r RepoInfo) Key() RepoKey {
 type DataSet struct {
 	Systems   map[string]System
 	Rules     []Rule
+	Agents    map[string]Agent
 	Drivers   map[string]interface{}
 	Includes  []string
 	Repos     []RepoInfo

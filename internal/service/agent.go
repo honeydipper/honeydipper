@@ -8,6 +8,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/internal/driver"
+	"github.com/honeydipper/honeydipper/v4/pkg/agenthistory"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
@@ -24,6 +26,7 @@ const (
 	agentTurnTTL         = "72h"
 	agentSessionPrefix   = "agent:session:"
 	agentTurnPrefix      = "agent:turn:"
+	agentHistoryPrefix   = "agent:history:"
 	agentSessionIndexKey = "agent:session:index:"
 )
 
@@ -39,20 +42,30 @@ type agentSession struct {
 }
 
 type agentTurn struct {
-	ID              string            `json:"id"`
-	SessionID       string            `json:"session_id"`
-	Agent           string            `json:"agent"`
-	State           string            `json:"state"`
-	Provider        string            `json:"provider,omitempty"`
-	Prompt          string            `json:"prompt,omitempty"`
-	SourceSessionID string            `json:"source_session_id,omitempty"`
-	Labels          map[string]string `json:"labels,omitempty"`
-	Event           interface{}       `json:"event,omitempty"`
-	Ctx             interface{}       `json:"ctx,omitempty"`
-	Workflow        interface{}       `json:"workflow,omitempty"`
-	Tools           interface{}       `json:"tools,omitempty"`
-	CreatedAt       string            `json:"created_at"`
-	UpdatedAt       string            `json:"updated_at"`
+	ID              string               `json:"id"`
+	SessionID       string               `json:"session_id"`
+	Agent           string               `json:"agent"`
+	State           string               `json:"state"`
+	Provider        string               `json:"provider,omitempty"`
+	Prompt          string               `json:"prompt,omitempty"`
+	SourceSessionID string               `json:"source_session_id,omitempty"`
+	Labels          map[string]string    `json:"labels,omitempty"`
+	Event           interface{}          `json:"event,omitempty"`
+	Ctx             interface{}          `json:"ctx,omitempty"`
+	Workflow        interface{}          `json:"workflow,omitempty"`
+	Tools           interface{}          `json:"tools,omitempty"`
+	ResolvedContext *resolvedTurnContext `json:"resolved_context,omitempty"`
+	CreatedAt       string               `json:"created_at"`
+	UpdatedAt       string               `json:"updated_at"`
+}
+
+type resolvedTurnContext struct {
+	ConversationID string                           `json:"conversation_id"`
+	History        []agenthistory.TurnHistoryRecord `json:"history"`
+	Event          interface{}                      `json:"event,omitempty"`
+	Ctx            interface{}                      `json:"ctx,omitempty"`
+	Workflow       interface{}                      `json:"workflow,omitempty"`
+	Tools          interface{}                      `json:"tools,omitempty"`
 }
 
 type activationPersistResult struct {
@@ -61,12 +74,17 @@ type activationPersistResult struct {
 }
 
 var (
-	agent             *Service
-	agentMatchCounter int64
-	agentPendingTurns int64
+	agent                   *Service
+	agentMatchCounter       int64
+	agentPendingTurns       int64
+	errAgentSessionNotFound = errors.New("agent session not found")
+	errAgentTurnNotFound    = errors.New("agent turn not found")
 )
 
-var persistActivationFn = persistAgentActivation
+var (
+	persistActivationFn = persistAgentActivation
+	resolveContextFn    = resolveTurnContext
+)
 
 // StartAgent starts the agent service.
 func StartAgent(cfg *config.Config) {
@@ -94,9 +112,14 @@ func createActivations(_ *driver.Runtime, msg *dipper.Message) {
 
 		return
 	}
+	if err := resolveContextFn(agent, result.SessionID, result.TurnID); err != nil {
+		dipper.Logger.Warningf("[agent] failed resolving context for session %s turn %s: %+v", result.SessionID, result.TurnID, err)
+
+		return
+	}
 
 	atomic.AddInt64(&agentMatchCounter, 1)
-	dipper.Logger.Infof("[agent] activation persisted for agent %s session %s turn %s", agentName, result.SessionID, result.TurnID)
+	dipper.Logger.Infof("[agent] activation resolved for agent %s session %s turn %s", agentName, result.SessionID, result.TurnID)
 }
 
 func agentMetrics() {
@@ -209,6 +232,131 @@ func resolveConversationID(msg *dipper.Message, sourceSessionID string) string {
 	}
 
 	return dipper.NewUUID()
+}
+
+func resolveTurnContext(caller dipper.RPCCaller, sessionID string, turnID string) error {
+	sess := &agentSession{}
+	loaded, err := loadJSON(caller, agentSessionPrefix+sessionID, sess)
+	if err != nil {
+		return err
+	}
+	if !loaded {
+		return fmt.Errorf("%w: %s", errAgentSessionNotFound, sessionID)
+	}
+
+	turn := &agentTurn{}
+	loaded, err = loadJSON(caller, agentTurnPrefix+turnID, turn)
+	if err != nil {
+		return err
+	}
+	if !loaded {
+		return fmt.Errorf("%w: %s", errAgentTurnNotFound, turnID)
+	}
+
+	history, err := loadAgentHistory(caller, agentHistoryKey(sess.Agent, sess.ConversationID))
+	if err != nil {
+		return err
+	}
+	if len(history) == 0 {
+		history, err = seedAgentHistory(caller, sess.Agent, sess.ConversationID)
+		if err != nil {
+			return err
+		}
+	}
+
+	resolved := &resolvedTurnContext{
+		ConversationID: sess.ConversationID,
+		History:        history,
+	}
+	if turn.Event != nil {
+		resolved.Event = turn.Event
+	}
+	if turn.Ctx != nil {
+		resolved.Ctx = turn.Ctx
+	}
+	if turn.Workflow != nil {
+		resolved.Workflow = turn.Workflow
+	}
+	if turn.Tools != nil {
+		resolved.Tools = turn.Tools
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	turn.State = "context_resolved"
+	turn.ResolvedContext = resolved
+	turn.UpdatedAt = now
+
+	sess.State = "selecting_provider"
+	sess.UpdatedAt = now
+
+	if err := saveJSON(caller, agentTurnPrefix+turnID, turn, agentTurnTTL); err != nil {
+		return err
+	}
+	if err := saveJSON(caller, agentSessionPrefix+sessionID, sess, agentSessionTTL); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func agentHistoryKey(agentName string, conversationID string) string {
+	return agentHistoryPrefix + agentName + ":" + conversationID
+}
+
+func loadAgentHistory(caller dipper.RPCCaller, key string) ([]agenthistory.TurnHistoryRecord, error) {
+	raw, err := caller.Call("cache", "lrange", map[string]any{"key": key})
+	if err != nil {
+		return nil, fmt.Errorf("load history %s: %w", key, err)
+	}
+	history, err := agenthistory.ParseHistory(raw)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal history %s: %w", key, err)
+	}
+
+	return history, nil
+}
+
+func seedAgentHistory(caller dipper.RPCCaller, agentName string, conversationID string) ([]agenthistory.TurnHistoryRecord, error) {
+	prompt := getAgentSystemPrompt(agentName)
+	if strings.TrimSpace(prompt) == "" {
+		return []agenthistory.TurnHistoryRecord{}, nil
+	}
+
+	record := agenthistory.TurnHistoryRecord{
+		Role: agenthistory.RoleSystem,
+		Content: &agenthistory.MessageContent{
+			Text: prompt,
+		},
+	}
+	key := agentHistoryKey(agentName, conversationID)
+	b, err := json.Marshal(record)
+	if err != nil {
+		return nil, fmt.Errorf("marshal seeded history %s: %w", key, err)
+	}
+	if _, err := caller.Call("cache", "rpush", map[string]any{
+		"key":   key,
+		"value": string(b),
+		"ttl":   agentSessionTTL,
+	}); err != nil {
+		return nil, fmt.Errorf("seed history %s: %w", key, err)
+	}
+
+	return []agenthistory.TurnHistoryRecord{record}, nil
+}
+
+func getAgentSystemPrompt(agentName string) string {
+	if agent == nil || agent.config == nil || agent.config.DataSet == nil {
+		return ""
+	}
+	def, ok := agent.config.DataSet.Agents[agentName]
+	if !ok {
+		return ""
+	}
+	if strings.TrimSpace(def.SystemPrompt) != "" {
+		return def.SystemPrompt
+	}
+
+	return def.Prompt
 }
 
 func getConversationIDFromCtx(payload interface{}) (string, bool) {
