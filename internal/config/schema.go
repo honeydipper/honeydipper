@@ -115,10 +115,19 @@ type Workflow struct {
 	NoExport        []string               `json:"no_export" mapstructure:"no_export"`
 }
 
+// Activation defines how an event activates an agent session.
+type Activation struct {
+	Agent    string
+	Prompt   string
+	Provider string
+	Tools    interface{}
+}
+
 // Rule is a data structure defining what action to take when certain event happen.
 type Rule struct {
-	When Trigger
-	Do   Workflow
+	When     Trigger
+	Do       Workflow
+	Activate *Activation `json:"activate,omitempty" mapstructure:"activate"`
 }
 
 // RepoKey holds the identity fields of a RepoInfo and can be used as a map key.

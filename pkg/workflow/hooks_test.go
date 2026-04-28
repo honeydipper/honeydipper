@@ -96,6 +96,22 @@ func (s *hookTrackingStore) EmitResult(w *Session) {}
 func (s *hookTrackingStore) StartSession(wf *cfg.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
 }
 
+func (s *hookTrackingStore) StartSessionWithInitContextHook(
+	wf *cfg.Workflow,
+	msg *dipper.Message,
+	eventCtx map[string]interface{},
+	rerunCtx map[string]interface{},
+	loadedContexts []string,
+	beforeActivate func(*Session),
+) *Session {
+	sess := &Session{ID: "stub", Workflow: wf, CurrentMsg: msg, store: s, Ctx: map[string]interface{}{}}
+	if beforeActivate != nil {
+		beforeActivate(sess)
+	}
+
+	return sess
+}
+
 func (s *hookTrackingStore) StartDynamicSession(spec *dipper.Message, ctx map[string]interface{}) {}
 
 func (s *hookTrackingStore) ContinueSession(ID string, msg *dipper.Message, child *Session) {}

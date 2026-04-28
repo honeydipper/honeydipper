@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/honeydipper/honeydipper/v4/internal/api"
-	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/honeydipper/honeydipper/v4/pkg/workflow"
 )
@@ -41,17 +40,6 @@ func setupEngineAPIs() {
 	engine.APIs["ghEventPause"] = handleGHEventPause
 	engine.APIs["ghEventResume"] = handleGHEventResume
 	engine.APIs["ghEventInteract"] = handleGHEventInteract
-}
-
-type rerunSessionStarter interface {
-	CreateSessionWithInitContext(
-		wf *config.Workflow,
-		msg *dipper.Message,
-		eventCtx map[string]interface{},
-		rerunCtx map[string]interface{},
-		loadedContexts []string,
-	) *workflow.Session
-	ActivateSession(w *workflow.Session)
 }
 
 type sessionController interface {
@@ -211,11 +199,6 @@ func rerunSession(sessionID string) (map[string]interface{}, error) {
 		return nil, ErrSessionNotRerunnable
 	}
 
-	starter, ok := sessionStore.(rerunSessionStarter)
-	if !ok {
-		return nil, ErrSessionStoreNoRerun
-	}
-
 	eventID := dipper.NewUUID()
 	eventPayload := map[string]interface{}{}
 	if source.Event != nil {
@@ -234,7 +217,7 @@ func rerunSession(sessionID string) (map[string]interface{}, error) {
 
 	loadedContexts := append([]string(nil), source.LoadedContexts...)
 
-	created := starter.CreateSessionWithInitContext(source.OriginalWorkflow, &dipper.Message{
+	created := sessionStore.StartSessionWithInitContextHook(source.OriginalWorkflow, &dipper.Message{
 		Channel: "eventbus",
 		Subject: "message",
 		Labels: map[string]string{
@@ -243,8 +226,7 @@ func rerunSession(sessionID string) (map[string]interface{}, error) {
 		Payload: map[string]interface{}{
 			"data": eventPayload,
 		},
-	}, eventCtx, rerunCtx, loadedContexts)
-	starter.ActivateSession(created)
+	}, eventCtx, rerunCtx, loadedContexts, nil)
 
 	return map[string]interface{}{
 		"eventID":         created.EventID,

@@ -30,6 +30,7 @@ const (
 // EventBusOptions : stores all the redis key names used by honeydipper.
 type EventBusOptions struct {
 	EventTopic   string
+	AgentTopic   string
 	CommandTopic string
 	ReturnTopic  string
 	APITopic     string
@@ -66,6 +67,9 @@ func main() {
 	case "engine":
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
+		driver.MessageHandlers["eventbus:activate"] = relayToRedis
+	case "agent":
+		driver.MessageHandlers["eventbus:command"] = relayToRedis
 	case "operator":
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
 		driver.MessageHandlers["eventbus:return"] = relayToRedis
@@ -87,6 +91,7 @@ func loadOptions() {
 	eb := &EventBusOptions{
 		CommandTopic: "honeydipper:commands",
 		EventTopic:   "honeydipper:events",
+		AgentTopic:   "honeydipper:agent_events",
 		ReturnTopic:  "honeydipper:return",
 		APITopic:     "honeydipper:api:",
 	}
@@ -95,6 +100,9 @@ func loadOptions() {
 	}
 	if eventTopic, ok := driver.GetOptionStr("data.topics.event"); ok {
 		eb.EventTopic = eventTopic
+	}
+	if agentTopic, ok := driver.GetOptionStr("data.topics.agent"); ok {
+		eb.AgentTopic = agentTopic
 	}
 	if returnTopic, ok := driver.GetOptionStr("data.topics.return"); ok {
 		eb.ReturnTopic = returnTopic
@@ -111,6 +119,8 @@ func start(msg *dipper.Message) {
 	case "engine":
 		go subscribe(eventbus.EventTopic, "message")
 		go subscribe(eventbus.ReturnTopic, "return")
+	case "agent":
+		go subscribe(eventbus.AgentTopic, "activate")
 	case "operator":
 		go subscribe(eventbus.CommandTopic, "command")
 	case "api":
@@ -134,6 +144,8 @@ func relayToRedis(msg *dipper.Message) {
 	switch msg.Subject {
 	case "command":
 		topic = eventbus.CommandTopic
+	case "activate":
+		topic = eventbus.AgentTopic
 	case "api":
 		topic = eventbus.APITopic + returnTo
 		if returnTo == "" {

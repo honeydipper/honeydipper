@@ -8,6 +8,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"strconv"
 	"sync"
 
@@ -33,6 +35,15 @@ var (
 	sessionStore workflow.Store
 )
 
+const pendingActivationKeyPrefix = "engine:activation:"
+
+type pendingActivation struct {
+	Activate config.Activation      `json:"activate"`
+	Labels   map[string]string      `json:"labels"`
+	Event    interface{}            `json:"event"`
+	Ctx      map[string]interface{} `json:"ctx"`
+}
+
 // WorkflowHelper enables workflow engine to load config and send messages.
 type WorkflowHelper struct {
 	dipper.RPCCaller
@@ -48,6 +59,24 @@ func (h *WorkflowHelper) SendMessage(msg *dipper.Message) {
 // GetConfig method feed config from service to workflow engine.
 func (h *WorkflowHelper) GetConfig() *config.Config {
 	return h.engine.config
+}
+
+// OnSessionCompleted handles post-completion cleanup hooks from workflow store.
+func (h *WorkflowHelper) OnSessionCompleted(w *workflow.Session) {
+	defer dipper.SafeExitOnError("[engine] failed handling workflow completion callback")
+	if w == nil || w.ID == "" {
+		return
+	}
+
+	pa, ok := loadPendingActivation(w.ID)
+	if !ok {
+		return
+	}
+
+	msg := &dipper.Message{Labels: pa.Labels}
+	dispatchActivate(&pa.Activate, msg, pa.Event, pa.Ctx, w)
+
+	cleanupPendingActivation(w.ID)
 }
 
 // StartEngine Starts the engine service.
@@ -95,7 +124,10 @@ func createSessions(d *driver.Runtime, msg *dipper.Message) {
 	}
 
 	eventsObj, _ := dipper.GetMapData(msg.Payload, "events")
-	events := eventsObj.([]interface{})
+	events, ok := eventsObj.([]interface{})
+	if !ok || len(events) == 0 {
+		return
+	}
 	dipper.Logger.Infof("[engine] fired events %+v", events)
 
 	data, _ := dipper.GetMapData(msg.Payload, "data")
@@ -120,11 +152,157 @@ func createSessions(d *driver.Runtime, msg *dipper.Message) {
 						firedEvent = rule.OriginalRule.When.Source.System + "." + rule.OriginalRule.When.Source.Trigger
 					}
 					ctx := rule.Trigger.ExportContext(firedEvent, envData)
-					go sessionStore.StartSession(&rule.OriginalRule.Do, msg, ctx)
+
+					hasDo := hasWorkflowAction(rule.OriginalRule.Do)
+					hasActivate := rule.OriginalRule.Activate != nil
+
+					switch {
+					case hasDo && !hasActivate:
+						go sessionStore.StartSession(&rule.OriginalRule.Do, msg, ctx)
+					case !hasDo && hasActivate:
+						go dispatchActivate(rule.OriginalRule.Activate, msg, data, ctx, nil)
+					case hasDo && hasActivate:
+						ruleCopy := *rule.OriginalRule.Activate
+						msgCopy := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
+						sessionStore.StartSessionWithInitContextHook(&rule.OriginalRule.Do, msgCopy, ctx, nil, nil,
+							func(created *workflow.Session) {
+								persistPendingActivation(created.ID, ruleCopy, msgCopy.Labels, data, ctx)
+							},
+						)
+					}
 				}
 			}
 		}
 	}
+}
+
+func hasWorkflowAction(wf config.Workflow) bool {
+	return !reflect.DeepEqual(wf, config.Workflow{})
+}
+
+func pendingActivationKey(sessionID string) string {
+	return pendingActivationKeyPrefix + sessionID
+}
+
+func persistPendingActivation(
+	sessionID string,
+	activate config.Activation,
+	labels map[string]string,
+	eventData interface{},
+	eventCtx map[string]interface{},
+) {
+	cleanLabels := map[string]string{}
+	for k, v := range labels {
+		cleanLabels[k] = v
+	}
+
+	payload := pendingActivation{
+		Activate: activate,
+		Labels:   cleanLabels,
+		Event:    eventData,
+		Ctx:      eventCtx,
+	}
+
+	dipper.Must(engine.Call("cache", "save", map[string]any{
+		"key":   pendingActivationKey(sessionID),
+		"value": string(dipper.SerializeContent(payload)),
+		"ttl":   "24h",
+	}))
+}
+
+func loadPendingActivation(sessionID string) (*pendingActivation, bool) {
+	raw, err := engine.Call("cache", "load", map[string]any{"key": pendingActivationKey(sessionID)})
+	if err != nil || len(raw) == 0 {
+		return nil, false
+	}
+
+	decoded := dipper.DeserializeContent(raw)
+	data, ok := decoded.(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	result := &pendingActivation{}
+	b := dipper.SerializeContent(data)
+	dipper.Must(json.Unmarshal(b, result))
+
+	return result, true
+}
+
+func cleanupPendingActivation(sessionID string) {
+	_, _ = engine.Call("cache", "del", map[string]any{
+		"key": pendingActivationKey(sessionID),
+	})
+}
+
+func dispatchActivate(
+	activate *config.Activation,
+	msg *dipper.Message,
+	eventData any,
+	eventCtx map[string]interface{},
+	session *workflow.Session,
+) {
+	if activate == nil {
+		return
+	}
+
+	workflowStatus := "success"
+	workflowReason := ""
+	workflowOutput := any(nil)
+	sourceSessionID := ""
+	if session != nil {
+		sourceSessionID = session.ID
+		if session.CurrentMsg != nil && session.CurrentMsg.Labels != nil {
+			if status, ok := session.CurrentMsg.Labels["status"]; ok && status != "" {
+				workflowStatus = status
+			}
+			workflowReason = session.CurrentMsg.Labels["reason"]
+		}
+		if out, ok := session.Ctx["_output"]; ok {
+			workflowOutput = out
+		}
+	}
+
+	workflowData := map[string]any{
+		"status":     workflowStatus,
+		"reason":     workflowReason,
+		"output":     workflowOutput,
+		"session_id": sourceSessionID,
+	}
+
+	envData := map[string]any{
+		"event":    eventData,
+		"ctx":      eventCtx,
+		"workflow": workflowData,
+		"labels":   msg.Labels,
+	}
+
+	payload := map[string]any{
+		"agent":    dipper.InterpolateStr("activate", activate.Agent, envData),
+		"prompt":   dipper.InterpolateStr("activate", activate.Prompt, envData),
+		"provider": dipper.InterpolateStr("activate", activate.Provider, envData),
+		"event":    eventData,
+		"ctx":      eventCtx,
+		"workflow": workflowData,
+	}
+	if activate.Tools != nil {
+		payload["tools"] = dipper.Interpolate("activate", activate.Tools, envData)
+	}
+
+	labels := map[string]string{}
+	for k, v := range msg.Labels {
+		labels[k] = v
+	}
+	if sourceSessionID != "" {
+		labels["sourceSessionID"] = sourceSessionID
+	}
+
+	engine.getDriverRuntime(dipper.ChannelEventbus).SendMessage(&dipper.Message{
+		Channel: "eventbus",
+		Subject: "activate",
+		Labels:  labels,
+		Payload: payload,
+	})
 }
 
 func continueSession(d *driver.Runtime, msg *dipper.Message) {

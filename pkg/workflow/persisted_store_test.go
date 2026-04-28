@@ -27,6 +27,19 @@ type fakeHelper struct {
 	rpushValues []string
 }
 
+type callbackFakeHelper struct {
+	*fakeHelper
+	completed int
+	lastID    string
+}
+
+func (f *callbackFakeHelper) OnSessionCompleted(w *Session) {
+	f.completed++
+	if w != nil {
+		f.lastID = w.ID
+	}
+}
+
 func (f *fakeHelper) record(feature, method string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -219,6 +232,28 @@ func TestCreateSession_and_EmitResult_and_Detach(t *testing.T) {
 	}
 	if child.RerunCtx == nil || child.RerunCtx["inherited"] != "value" {
 		t.Fatalf("detach should preserve rerun context, got %+v", child.RerunCtx)
+	}
+}
+
+func TestEmitResultCallsCompletionCallback(t *testing.T) {
+	base := &fakeHelper{resp: map[string][]byte{}}
+	helper := &callbackFakeHelper{fakeHelper: base}
+	ps := &PersistedStore{StoreHelper: helper}
+	if dipper.Logger == nil {
+		dipper.GetLogger("test", "ERROR")
+	}
+	ps.Logger = dipper.Logger
+
+	s := NewSession("sid-cb", &config.Workflow{}, ps)
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "0"}}
+	s.State = SessionStateDone
+	ps.EmitResult(s)
+
+	if helper.completed != 1 {
+		t.Fatalf("expected completion callback once, got %d", helper.completed)
+	}
+	if helper.lastID != "sid-cb" {
+		t.Fatalf("expected completion callback session id sid-cb, got %s", helper.lastID)
 	}
 }
 

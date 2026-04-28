@@ -52,6 +52,10 @@ type PersistedStore struct {
 	cache *ttlcache.Cache[string, map[string]any]
 }
 
+type completionCallback interface {
+	OnSessionCompleted(w *Session)
+}
+
 func (s *PersistedStore) initLifecycle() {
 	s.lifecycleOnce.Do(func() {
 		s.lifecycleCond = sync.NewCond(&s.lifecycleMu)
@@ -207,6 +211,10 @@ func (s *PersistedStore) EmitResult(w *Session) {
 	mesg["topic"] = "workflow"
 	mesg["subject"] = BroadcaseSubjectResult
 	dipper.Must(s.CallNoWait("driver:redispubsub", "send", mesg))
+
+	if cb, ok := s.StoreHelper.(completionCallback); ok {
+		cb.OnSessionCompleted(w)
+	}
 }
 
 func (s *PersistedStore) uncaughtErrorHandler(w *Session, msg *dipper.Message) func(r error) {
@@ -260,13 +268,31 @@ func (s *PersistedStore) StartSessionWithInitContext(
 	eventCtx map[string]interface{},
 	rerunCtx map[string]interface{},
 ) {
+	s.StartSessionWithInitContextHook(wf, msg, eventCtx, rerunCtx, nil, nil)
+}
+
+// StartSessionWithInitContextHook starts a predefined workflow and allows callers
+// to run a callback after session creation/persistence and before activation.
+func (s *PersistedStore) StartSessionWithInitContextHook(
+	wf *config.Workflow,
+	msg *dipper.Message,
+	eventCtx map[string]interface{},
+	rerunCtx map[string]interface{},
+	loadedContexts []string,
+	beforeActivate func(*Session),
+) *Session {
 	m := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
 	defer dipper.SafeExitOnError("[workflow] error when creating workflow session", s.uncaughtErrorHandler(nil, m))
 
-	w := s.CreateSessionWithInitContext(wf, m, eventCtx, rerunCtx, nil)
+	w := s.CreateSessionWithInitContext(wf, m, eventCtx, rerunCtx, loadedContexts)
+	if beforeActivate != nil {
+		beforeActivate(w)
+	}
 
 	defer dipper.SafeExitOnError("[workflow] error when starting workflow session", s.uncaughtErrorHandler(w, m))
 	s.ActivateSession(w)
+
+	return w
 }
 
 // ParseDynamicWorkflow will parse a dynamic workflow execution request.

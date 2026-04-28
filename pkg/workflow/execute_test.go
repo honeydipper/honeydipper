@@ -92,6 +92,22 @@ func (s *execTestStore) ActivateSession(w *Session) { s.activateCalls++ }
 func (s *execTestStore) EmitResult(w *Session)      {}
 func (s *execTestStore) StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{}) {
 }
+
+func (s *execTestStore) StartSessionWithInitContextHook(
+	wf *config.Workflow,
+	msg *dipper.Message,
+	eventCtx map[string]interface{},
+	rerunCtx map[string]interface{},
+	loadedContexts []string,
+	beforeActivate func(*Session),
+) *Session {
+	sess := &Session{ID: "stub", Workflow: wf, CurrentMsg: msg, store: s, Ctx: map[string]interface{}{}}
+	if beforeActivate != nil {
+		beforeActivate(sess)
+	}
+
+	return sess
+}
 func (s *execTestStore) StartDynamicSession(spec *dipper.Message, ctx map[string]interface{}) {}
 func (s *execTestStore) ContinueSession(ID string, msg *dipper.Message, child *Session)       {}
 func (s *execTestStore) ResumeSession(key string, msg *dipper.Message) bool {

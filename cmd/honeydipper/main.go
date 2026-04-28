@@ -33,7 +33,7 @@ Usage:  %v [ -h ] service1 service2 ...
 
   -h            print this help message and quit
 
-Supported services include engine, receiver, operator, docgen and configcheck.
+Supported services include engine, receiver, operator, agent, api, docgen and configcheck.
 Docgen and configcheck are auxiliary services used for helping users managing their
 Honeydipper configurations. They can not be combined, and Honeydipper exits after
 completing the desired auxiliary tasks instead of running as a daemon.
@@ -76,7 +76,7 @@ func initEnv() {
 	config.SetVersion(_honeydipperVersion)
 	cfg = config.Config{InitRepo: config.RepoInfo{}, Services: flag.Args()}
 	if len(cfg.Services) == 0 {
-		cfg.Services = []string{"engine", "receiver", "operator", "api"}
+		cfg.Services = []string{"engine", "receiver", "operator", "agent", "api"}
 	}
 
 loop:
@@ -161,6 +161,8 @@ func start() {
 		switch s {
 		case "engine":
 			service.StartEngine(&cfg)
+		case "agent":
+			service.StartAgent(&cfg)
 		case "receiver":
 			service.StartReceiver(&cfg)
 		case "operator":

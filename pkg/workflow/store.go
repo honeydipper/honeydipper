@@ -70,6 +70,16 @@ type Store interface {
 
 	// StartSession starts a predefined workflow with a message and context variables.
 	StartSession(wf *config.Workflow, msg *dipper.Message, ctx map[string]interface{})
+	// StartSessionWithInitContextHook starts a workflow and invokes beforeActivate
+	// after session creation/persistence but before activation.
+	StartSessionWithInitContextHook(
+		wf *config.Workflow,
+		msg *dipper.Message,
+		eventCtx map[string]interface{},
+		rerunCtx map[string]interface{},
+		loadedContexts []string,
+		beforeActivate func(*Session),
+	) *Session
 	// StartDynamicSession starts a workflow constructed from a message payload.
 	StartDynamicSession(spec *dipper.Message, ctx map[string]interface{})
 	// ContinueSession continues a session with given dipper message.
