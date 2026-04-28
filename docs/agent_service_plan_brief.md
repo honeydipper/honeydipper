@@ -10,6 +10,7 @@ It should:
 
 - keep `do` for workflow execution in `engine`
 - add `activate` for agent execution in a new `agent` service
+- support `do` and `activate` in the same rule with deterministic order
 - persist `agent_session` and `agent_turn` state for restart safety
 - keep AI drivers as provider adapters instead of session authorities
 - support workflow tools, provider tools, compaction, dedupe, and policy enforcement
@@ -19,6 +20,7 @@ It should:
 Honeydipper can:
 
 - activate named agents from rules
+- sequence rule execution as `do` then `activate`
 - select providers from an agent-scoped allowlist
 - persist conversation and turn state durably
 - recover safely from interruption or service restart
@@ -32,6 +34,7 @@ Honeydipper can:
 
 - new `agent` service
 - `activate` rule path
+- engine-dispatched activation after optional workflow preprocessing
 - top-level `agents`
 - top-level `security_policies`
 - persistent `agent_session` and `agent_turn` store
@@ -53,10 +56,13 @@ Honeydipper can:
 2. `agent` should define system prompt, provider policy, tool strategy, compaction, dedupe, and history identity.
 3. `security_policies` should be top-level and reusable.
 4. The `agent` service should own session authority and persistence.
-5. AI drivers should expose a narrow provider adapter contract.
-6. Workflow completions should be consumed via event subscription rather than blocking wait inside drivers.
-7. Interruptible command replay should tell handlers explicitly that the command is resumed after interruption.
-8. AI drivers should optionally expose stateless raw inference for orchestration tasks.
+5. `engine` is the single consumer of raw event messages for queue-backed eventbus.
+6. `activate` should be dispatched by `engine` after optional `do` execution.
+7. Activation payload should support interpolation from workflow/exported context.
+8. AI drivers should expose a narrow provider adapter contract.
+9. Workflow completions should be consumed via event subscription rather than blocking wait inside drivers.
+10. Interruptible command replay should tell handlers explicitly that the command is resumed after interruption.
+11. AI drivers should optionally expose stateless raw inference for orchestration tasks.
 
 ## Main Risks
 
@@ -79,13 +85,15 @@ Precedence between `security_policies`, `agents`, and `activate` must be defined
 ## Recommended Planning Order
 
 1. Define runtime boundaries between `engine`, `agent`, and AI drivers.
-2. Define the persisted `agent_session` and `agent_turn` model.
-3. Define the agent session state machine.
-4. Define resume triggers and recovery logic.
-5. Define workflow-tool completion correlation.
-6. Define context identity, dedupe, and compaction behavior.
-7. Define policy enforcement points.
-8. Only then design the final config schema.
+2. Define rule sequencing semantics for `do` + `activate`.
+3. Define activation payload interpolation inputs and precedence.
+4. Define the persisted `agent_session` and `agent_turn` model.
+5. Define the agent session state machine.
+6. Define resume triggers and recovery logic.
+7. Define workflow-tool completion correlation.
+8. Define context identity, dedupe, and compaction behavior.
+9. Define policy enforcement points.
+10. Only then design the final config schema.
 
 ## Deliverables Expected From Planning
 
@@ -98,7 +106,8 @@ Precedence between `security_policies`, `agents`, and `activate` must be defined
 
 ### Service Interfaces
 
-- how `activate` enters the agent service
+- how engine dispatches `activate` into agent service
+- how `do` output and exported context are passed into activation payload
 - how workflow completion events resume an agent session
 - how scheduler events resume an agent session
 - how user continuation resumes an agent session
@@ -137,7 +146,7 @@ Planning should define exact request and response contracts, including interrupt
 The first delivery should aim for the smallest meaningful vertical slice:
 
 1. Add an `agent` service skeleton.
-2. Add a minimal `activate` path.
+2. Add a minimal `activate` path dispatched by engine.
 3. Implement persisted `agent_session` and `agent_turn` records.
 4. Support one provider adapter through a narrow driver contract.
 5. Support one workflow tool with event-driven completion handling.
@@ -169,7 +178,7 @@ Exit criteria:
 
 Goal:
 
-- prove end-to-end `activate -> agent service -> provider -> response` with persistence and restart safety
+- prove end-to-end `event -> engine -> (optional do) -> activate -> agent service -> provider -> response` with persistence and restart safety
 
 Scope:
 
@@ -181,6 +190,7 @@ Scope:
 Outputs:
 
 - agent service bootstrap and routing path
+- engine activation dispatch path and interpolation context handoff
 - persisted session and turn records
 - workflow completion subscription and resume
 - interruption-aware replay labels and handler behavior
@@ -190,6 +200,7 @@ Exit criteria:
 - service restart during active turn does not corrupt session state
 - resumed command path avoids duplicate side effects
 - workflow tool completion resumes the correct turn by correlation key
+- `do` output can be interpolated into activation payload when present
 
 ### Phase 2: Policy and Capability Expansion
 
@@ -272,6 +283,8 @@ Before implementation begins, these must be explicitly decided:
 3. Single source of truth for turn progress and stream cursors.
 4. Minimum guaranteed driver contract for all supported providers.
 5. Policy precedence and default-deny behavior.
+6. Activation behavior matrix for (`do` only, `activate` only, `do` + `activate`).
+7. Interpolation behavior when workflow output is missing, partial, or failed.
 
 ## Immediate Next Actions For Planning Agent
 
@@ -279,7 +292,8 @@ Before implementation begins, these must be explicitly decided:
 2. Produce a key-value persistence map showing record keys, indexes, and TTL strategy.
 3. Draft provider adapter API contracts for `StartTurn`, `ContinueTurnWithToolResult`, `CancelTurn`, `GetCapabilities`, and optional `Infer`.
 4. Define interruption replay labels and idempotency requirements for command handlers.
-5. Propose a first-provider vertical slice plan with explicit acceptance tests.
+5. Define engine-to-agent activation payload schema and interpolation context contract.
+6. Propose a first-provider vertical slice plan with explicit acceptance tests.
 
 ## Questions The Planning Agent Should Answer
 

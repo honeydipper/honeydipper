@@ -10,6 +10,7 @@ The target design should:
 
 - keep `do` for workflow execution
 - add `activate` for agent execution
+- allow `do` and `activate` together in a single rule
 - introduce first-class `agents`
 - introduce top-level `security_policies`
 - persist `agent_session` state so execution can survive restart
@@ -36,10 +37,12 @@ The target architecture introduces a new `agent` service.
 Responsibilities:
 
 - `engine` service:
+  - is the single consumer of incoming event messages in queue-based deployments
   - owns `do`
   - executes workflows
+  - dispatches `activate` commands after optional workflow preprocessing
 - `agent` service:
-  - owns `activate`
+  - receives activation requests from engine (not directly from receiver)
   - manages persisted `agent_session` state
   - selects provider from agent policy
   - manages conversation history, dedupe, compaction
@@ -57,7 +60,15 @@ Rules gain a second execution path:
 - `do`: workflow execution
 - `activate`: agent execution
 
-These must be mutually exclusive.
+`do` and `activate` can be used together in one rule.
+
+Execution order:
+
+1. match `when`
+2. execute `do` if present
+3. execute `activate` if present
+
+If `do` is absent, it is treated as a no-op and activation can proceed immediately.
 
 ### Agents
 
@@ -99,11 +110,28 @@ The `agent` service should manage durable `agent_session` state using a context 
 
 The store is the source of truth, not the streaming RPC.
 
+## Activation Sequencing
+
+Activation should be orchestrated by engine so queue-backed eventbus does not require multiple consumers for the same message.
+
+Recommended behavior for a matched rule:
+
+- `do` only: execute workflow behavior only
+- `activate` only: activate agent immediately
+- `do` + `activate`: run workflow first, then activate agent
+
+Activation payload should be interpolated after workflow execution using available context, including:
+
+- original event data
+- collapsed trigger export context
+- workflow output and status (if `do` exists)
+- relevant labels and correlation IDs
+
 ## Agent Runtime Responsibilities
 
 The `agent` service owns:
 
-- activation from matched rules
+- activation intake and agent session execution after engine dispatch
 - session and turn lifecycle
 - provider selection
 - prompt assembly
@@ -193,7 +221,7 @@ State transitions must be durable and restart-safe.
 
 The session must be resumable from:
 
-- matched `activate` rule
+- engine-dispatched activation message
 - workflow completion event
 - scheduler event
 - user continuation event
@@ -215,6 +243,8 @@ Recommended pattern:
 - agent resumes the relevant turn and session
 
 This replaces blocking wait patterns inside drivers.
+
+For rule-level sequencing, workflow in `do` acts as preprocessing and context shaping before activation.
 
 ## Streaming Design
 
@@ -381,10 +411,11 @@ Recommended sequence:
 2. define `agent_session` and `agent_turn` persistence model
 3. define the session state machine
 4. define resume triggers and recovery logic
-5. define tool and workflow completion integration
-6. define context identity, dedupe, and compaction behavior
-7. define security enforcement points
-8. then design config schema
+5. define rule sequencing (`do` then `activate`) and activation payload interpolation
+6. define tool and workflow completion integration
+7. define context identity, dedupe, and compaction behavior
+8. define security enforcement points
+9. then design config schema
 
 ## Migration Direction
 
