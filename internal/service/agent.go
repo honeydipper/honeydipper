@@ -62,6 +62,7 @@ type agentTurn struct {
 type resolvedTurnContext struct {
 	ConversationID string                           `json:"conversation_id"`
 	History        []agenthistory.TurnHistoryRecord `json:"history"`
+	Provider       string                           `json:"provider,omitempty"`
 	Event          interface{}                      `json:"event,omitempty"`
 	Ctx            interface{}                      `json:"ctx,omitempty"`
 	Workflow       interface{}                      `json:"workflow,omitempty"`
@@ -264,9 +265,14 @@ func resolveTurnContext(caller dipper.RPCCaller, sessionID string, turnID string
 		}
 	}
 
+	provider := resolveProvider(sess.Agent, turn.Ctx)
+	tools := resolveTools(sess.Agent)
+
 	resolved := &resolvedTurnContext{
 		ConversationID: sess.ConversationID,
 		History:        history,
+		Provider:       provider,
+		Tools:          tools,
 	}
 	if turn.Event != nil {
 		resolved.Event = turn.Event
@@ -277,12 +283,10 @@ func resolveTurnContext(caller dipper.RPCCaller, sessionID string, turnID string
 	if turn.Workflow != nil {
 		resolved.Workflow = turn.Workflow
 	}
-	if turn.Tools != nil {
-		resolved.Tools = turn.Tools
-	}
-
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	turn.State = "context_resolved"
+	turn.Provider = provider
+	turn.Tools = tools
 	turn.ResolvedContext = resolved
 	turn.UpdatedAt = now
 
@@ -345,10 +349,7 @@ func seedAgentHistory(caller dipper.RPCCaller, agentName string, conversationID 
 }
 
 func getAgentSystemPrompt(agentName string) string {
-	if agent == nil || agent.config == nil || agent.config.DataSet == nil {
-		return ""
-	}
-	def, ok := agent.config.DataSet.Agents[agentName]
+	def, ok := getAgentDefinition(agentName)
 	if !ok {
 		return ""
 	}
@@ -357,6 +358,65 @@ func getAgentSystemPrompt(agentName string) string {
 	}
 
 	return def.Prompt
+}
+
+func resolveProvider(agentName string, ctxPayload interface{}) string {
+	if provider, ok := getProviderFromCtx(ctxPayload); ok {
+		return provider
+	}
+
+	def, ok := getAgentDefinition(agentName)
+	if !ok {
+		return ""
+	}
+	if strings.TrimSpace(def.Provider) != "" {
+		return def.Provider
+	}
+	for _, candidate := range def.Providers {
+		if strings.TrimSpace(candidate) != "" {
+			return candidate
+		}
+	}
+
+	return ""
+}
+
+func resolveTools(agentName string) interface{} {
+	def, ok := getAgentDefinition(agentName)
+	if !ok {
+		return nil
+	}
+
+	return def.Tools
+}
+
+func getAgentDefinition(agentName string) (config.Agent, bool) {
+	if agent == nil || agent.config == nil || agent.config.DataSet == nil {
+		return config.Agent{}, false
+	}
+	def, ok := agent.config.DataSet.Agents[agentName]
+	if !ok {
+		return config.Agent{}, false
+	}
+
+	return def, true
+}
+
+func getProviderFromCtx(ctxPayload interface{}) (string, bool) {
+	ctxMap, ok := ctxPayload.(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+	p, ok := ctxMap["provider"]
+	if !ok {
+		return "", false
+	}
+	provider, ok := p.(string)
+	if !ok || strings.TrimSpace(provider) == "" {
+		return "", false
+	}
+
+	return provider, true
 }
 
 func getConversationIDFromCtx(payload interface{}) (string, bool) {

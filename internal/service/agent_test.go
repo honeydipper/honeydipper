@@ -183,7 +183,11 @@ func TestResolveTurnContext(t *testing.T) {
 	origAgent := agent
 	defer func() { agent = origAgent }()
 	agent = &Service{config: &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{
-		"support-bot": {SystemPrompt: "you are helpful"},
+		"support-bot": {
+			SystemPrompt: "you are helpful",
+			Provider:     "openai-main",
+			Tools:        []any{"agent-tool-1", "agent-tool-2"},
+		},
 	}}}}
 
 	caller := &fakeCacheCaller{data: map[string][]byte{}, lists: map[string][]string{}}
@@ -207,6 +211,7 @@ func TestResolveTurnContext(t *testing.T) {
 		},
 		Ctx: map[string]any{
 			"conversation_id": "thread-123",
+			"provider":        "ctx-provider",
 		},
 		Workflow: map[string]any{
 			"status": "success",
@@ -238,10 +243,16 @@ func TestResolveTurnContext(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	assert.Equal(t, "context_resolved", storedTurn.State)
+	assert.Equal(t, "ctx-provider", storedTurn.Provider)
+	storedTools, ok := storedTurn.Tools.([]interface{})
+	assert.True(t, ok)
+	assert.Len(t, storedTools, 2)
+	assert.Equal(t, "agent-tool-1", storedTools[0])
 
 	resolved := storedTurn.ResolvedContext
 	if assert.NotNil(t, resolved) {
 		assert.Equal(t, "thread-123", resolved.ConversationID)
+		assert.Equal(t, "ctx-provider", resolved.Provider)
 	}
 	history := resolved.History
 	assert.Len(t, history, 2)
@@ -260,8 +271,9 @@ func TestResolveTurnContext(t *testing.T) {
 
 	tools, ok := resolved.Tools.([]interface{})
 	assert.True(t, ok)
-	assert.Len(t, tools, 1)
-	assert.Equal(t, "workflow", tools[0])
+	assert.Len(t, tools, 2)
+	assert.Equal(t, "agent-tool-1", tools[0])
+	assert.Equal(t, "agent-tool-2", tools[1])
 }
 
 func TestLoadAgentHistory_Empty(t *testing.T) {
@@ -326,6 +338,85 @@ func TestResolveTurnContext_SeedsHistoryFromAgentSystemPrompt(t *testing.T) {
 	list := caller.lists[agentHistoryKey("support-bot", "thread-seed")]
 	assert.Len(t, list, 1)
 	assert.Contains(t, list[0], "system prompt from config")
+}
+
+func TestResolveTurnContext_UsesAgentDefaultProvider(t *testing.T) {
+	origAgent := agent
+	defer func() { agent = origAgent }()
+	agent = &Service{config: &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{
+		"support-bot": {Provider: "agent-default-provider", Providers: []string{"fallback-provider"}},
+	}}}}
+
+	caller := &fakeCacheCaller{data: map[string][]byte{}, lists: map[string][]string{}}
+	sess := &agentSession{
+		ID:             "sess-provider-default",
+		Agent:          "support-bot",
+		ConversationID: "thread-provider-default",
+		State:          "resolving_context",
+		CurrentTurnID:  "turn-provider-default",
+		CreatedAt:      "2026-01-01T00:00:00Z",
+		UpdatedAt:      "2026-01-01T00:00:00Z",
+	}
+	turn := &agentTurn{
+		ID:        "turn-provider-default",
+		SessionID: "sess-provider-default",
+		Agent:     "support-bot",
+		State:     "created",
+		CreatedAt: "2026-01-01T00:00:00Z",
+		UpdatedAt: "2026-01-01T00:00:00Z",
+	}
+	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
+	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+
+	err := resolveTurnContext(caller, sess.ID, turn.ID)
+	assert.NoError(t, err)
+
+	storedTurn := &agentTurn{}
+	loaded, err := loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	assert.NoError(t, err)
+	assert.True(t, loaded)
+	assert.Equal(t, "agent-default-provider", storedTurn.Provider)
+}
+
+func TestResolveTurnContext_UsesFirstProviderWhenDefaultMissing(t *testing.T) {
+	origAgent := agent
+	defer func() { agent = origAgent }()
+	agent = &Service{config: &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{
+		"support-bot": {Providers: []string{"", "list-provider-1", "list-provider-2"}},
+	}}}}
+
+	caller := &fakeCacheCaller{data: map[string][]byte{}, lists: map[string][]string{}}
+	sess := &agentSession{
+		ID:             "sess-provider-list",
+		Agent:          "support-bot",
+		ConversationID: "thread-provider-list",
+		State:          "resolving_context",
+		CurrentTurnID:  "turn-provider-list",
+		CreatedAt:      "2026-01-01T00:00:00Z",
+		UpdatedAt:      "2026-01-01T00:00:00Z",
+	}
+	turn := &agentTurn{
+		ID:        "turn-provider-list",
+		SessionID: "sess-provider-list",
+		Agent:     "support-bot",
+		State:     "created",
+		Ctx: map[string]any{
+			"conversation_id": "thread-provider-list",
+		},
+		CreatedAt: "2026-01-01T00:00:00Z",
+		UpdatedAt: "2026-01-01T00:00:00Z",
+	}
+	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
+	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+
+	err := resolveTurnContext(caller, sess.ID, turn.ID)
+	assert.NoError(t, err)
+
+	storedTurn := &agentTurn{}
+	loaded, err := loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	assert.NoError(t, err)
+	assert.True(t, loaded)
+	assert.Equal(t, "list-provider-1", storedTurn.Provider)
 }
 
 func TestResolveTurnContext_EmptyHistoryWithoutPrompt(t *testing.T) {

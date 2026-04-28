@@ -128,7 +128,9 @@ type Agent struct {
 	Description  string
 	SystemPrompt string `json:"system_prompt" mapstructure:"system_prompt"`
 	Prompt       string
+	Provider     string
 	Providers    []string
+	Tools        interface{}
 }
 
 // Rule is a data structure defining what action to take when certain event happen.
