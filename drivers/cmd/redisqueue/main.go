@@ -29,11 +29,13 @@ const (
 
 // EventBusOptions : stores all the redis key names used by honeydipper.
 type EventBusOptions struct {
-	EventTopic   string
-	AgentTopic   string
-	CommandTopic string
-	ReturnTopic  string
-	APITopic     string
+	EventTopic        string
+	AgentTopic        string
+	CommandTopic      string
+	AgentCommandTopic string
+	ReturnTopic       string
+	AgentReturnTopic  string
+	APITopic          string
 }
 
 var (
@@ -69,10 +71,12 @@ func main() {
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
 		driver.MessageHandlers["eventbus:activate"] = relayToRedis
 	case "agent":
-		driver.MessageHandlers["eventbus:command"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_command"] = relayToRedis
 	case "operator":
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_command"] = relayToRedis
 		driver.MessageHandlers["eventbus:return"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_return"] = relayToRedis
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
 	}
 	driver.MessageHandlers["eventbus:api"] = relayToRedis
@@ -89,11 +93,13 @@ func loadOptions() {
 	log.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
 
 	eb := &EventBusOptions{
-		CommandTopic: "honeydipper:commands",
-		EventTopic:   "honeydipper:events",
-		AgentTopic:   "honeydipper:agent_events",
-		ReturnTopic:  "honeydipper:return",
-		APITopic:     "honeydipper:api:",
+		CommandTopic:      "honeydipper:commands",
+		AgentCommandTopic: "honeydipper:agent_commands",
+		EventTopic:        "honeydipper:events",
+		AgentTopic:        "honeydipper:agent_events",
+		ReturnTopic:       "honeydipper:return",
+		AgentReturnTopic:  "honeydipper:agent_return",
+		APITopic:          "honeydipper:api:",
 	}
 	if commandTopic, ok := driver.GetOptionStr("data.topics.command"); ok {
 		eb.CommandTopic = commandTopic
@@ -101,11 +107,17 @@ func loadOptions() {
 	if eventTopic, ok := driver.GetOptionStr("data.topics.event"); ok {
 		eb.EventTopic = eventTopic
 	}
+	if agentCommandTopic, ok := driver.GetOptionStr("data.topics.agent_command"); ok {
+		eb.AgentCommandTopic = agentCommandTopic
+	}
 	if agentTopic, ok := driver.GetOptionStr("data.topics.agent"); ok {
 		eb.AgentTopic = agentTopic
 	}
 	if returnTopic, ok := driver.GetOptionStr("data.topics.return"); ok {
 		eb.ReturnTopic = returnTopic
+	}
+	if agentReturnTopic, ok := driver.GetOptionStr("data.topics.agent_return"); ok {
+		eb.AgentReturnTopic = agentReturnTopic
 	}
 	if apiTopic, ok := driver.GetOptionStr("data.topics.api"); ok {
 		eb.APITopic = apiTopic
@@ -121,8 +133,10 @@ func start(msg *dipper.Message) {
 		go subscribe(eventbus.ReturnTopic, "return")
 	case "agent":
 		go subscribe(eventbus.AgentTopic, "activate")
+		go subscribe(eventbus.AgentReturnTopic, "agent_return")
 	case "operator":
 		go subscribe(eventbus.CommandTopic, "command")
+		go subscribe(eventbus.AgentCommandTopic, "agent_command")
 	case "api":
 		go subscribe(eventbus.APITopic, "api")
 	case "receiver":
@@ -144,6 +158,8 @@ func relayToRedis(msg *dipper.Message) {
 	switch msg.Subject {
 	case "command":
 		topic = eventbus.CommandTopic
+	case "agent_command":
+		topic = eventbus.AgentCommandTopic
 	case "activate":
 		topic = eventbus.AgentTopic
 	case "api":
@@ -153,6 +169,8 @@ func relayToRedis(msg *dipper.Message) {
 		}
 	case "return":
 		topic = eventbus.ReturnTopic
+	case "agent_return":
+		topic = eventbus.AgentReturnTopic
 	}
 
 	payload := map[string]interface{}{

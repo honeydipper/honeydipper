@@ -46,7 +46,9 @@ type agentTurn struct {
 	SessionID       string               `json:"session_id"`
 	Agent           string               `json:"agent"`
 	State           string               `json:"state"`
+	FailureReason   string               `json:"failure_reason,omitempty"`
 	Provider        string               `json:"provider,omitempty"`
+	ProviderStart   interface{}          `json:"provider_start,omitempty"`
 	Prompt          string               `json:"prompt,omitempty"`
 	SourceSessionID string               `json:"source_session_id,omitempty"`
 	Labels          map[string]string    `json:"labels,omitempty"`
@@ -80,11 +82,16 @@ var (
 	agentPendingTurns       int64
 	errAgentSessionNotFound = errors.New("agent session not found")
 	errAgentTurnNotFound    = errors.New("agent turn not found")
+	errAgentProviderMissing = errors.New("agent provider not configured")
+	errAgentNotInitialized  = errors.New("agent service is not initialized")
+	errAgentEventbusMissing = errors.New("eventbus driver not loaded")
 )
 
 var (
 	persistActivationFn = persistAgentActivation
 	resolveContextFn    = resolveTurnContext
+	enqueueProviderFn   = enqueueProviderCommand
+	agentStateCallerFn  = func() dipper.RPCCaller { return agent }
 )
 
 // StartAgent starts the agent service.
@@ -93,6 +100,7 @@ func StartAgent(cfg *config.Config) {
 
 	agent.EmitMetrics = agentMetrics
 	agent.addResponder("eventbus:activate", createActivations)
+	agent.addResponder("eventbus:agent_return", continueProviderTurn)
 
 	agent.start()
 }
@@ -284,13 +292,33 @@ func resolveTurnContext(caller dipper.RPCCaller, sessionID string, turnID string
 		resolved.Workflow = turn.Workflow
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	turn.State = "context_resolved"
+	turn.State = "starting_provider"
+	turn.FailureReason = ""
 	turn.Provider = provider
 	turn.Tools = tools
 	turn.ResolvedContext = resolved
 	turn.UpdatedAt = now
 
-	sess.State = "selecting_provider"
+	sess.State = "starting_provider"
+	sess.UpdatedAt = now
+
+	if err := saveJSON(caller, agentTurnPrefix+turnID, turn, agentTurnTTL); err != nil {
+		return err
+	}
+	if err := saveJSON(caller, agentSessionPrefix+sessionID, sess, agentSessionTTL); err != nil {
+		return err
+	}
+
+	if err := startProviderTurn(sess, turn); err != nil {
+		return failTurnStart(caller, sess, turn, err)
+	}
+
+	now = time.Now().UTC().Format(time.RFC3339Nano)
+	turn.State = "waiting_provider"
+	turn.ProviderStart = nil
+	turn.UpdatedAt = now
+
+	sess.State = "waiting_provider"
 	sess.UpdatedAt = now
 
 	if err := saveJSON(caller, agentTurnPrefix+turnID, turn, agentTurnTTL); err != nil {
@@ -301,6 +329,148 @@ func resolveTurnContext(caller dipper.RPCCaller, sessionID string, turnID string
 	}
 
 	return nil
+}
+
+func startProviderTurn(sess *agentSession, turn *agentTurn) error {
+	if strings.TrimSpace(turn.Provider) == "" {
+		return errAgentProviderMissing
+	}
+
+	params := map[string]any{
+		"user":   "agent",
+		"prompt": turn.Prompt,
+		"convID": sess.ConversationID,
+	}
+	if ctxMap, ok := turn.Ctx.(map[string]interface{}); ok {
+		if user, ok := ctxMap["user"].(string); ok && strings.TrimSpace(user) != "" {
+			params["user"] = user
+		}
+		if engine, ok := ctxMap["engine"].(string); ok && strings.TrimSpace(engine) != "" {
+			params["engine"] = engine
+		}
+	}
+
+	payload := map[string]any{
+		"function": config.Function{
+			Driver:    turn.Provider,
+			RawAction: "chat",
+		},
+		"data":  params,
+		"event": turn.Event,
+		"ctx":   turn.Ctx,
+	}
+
+	labels := map[string]string{}
+	for k, v := range turn.Labels {
+		labels[k] = v
+	}
+	labels["sessionID"] = sess.ID
+	labels["turnID"] = turn.ID
+	labels["provider"] = turn.Provider
+
+	cmd := &dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: dipper.EventbusAgentCommand,
+		Payload: payload,
+		Labels:  labels,
+	}
+
+	if err := enqueueProviderFn(cmd); err != nil {
+		return fmt.Errorf("start provider command: %w", err)
+	}
+
+	return nil
+}
+
+func enqueueProviderCommand(msg *dipper.Message) error {
+	if agent == nil {
+		return errAgentNotInitialized
+	}
+	worker := agent.getDriverRuntime(dipper.ChannelEventbus)
+	if worker == nil {
+		return errAgentEventbusMissing
+	}
+	worker.SendMessage(msg)
+
+	return nil
+}
+
+func continueProviderTurn(_ *driver.Runtime, msg *dipper.Message) {
+	defer dipper.SafeExitOnError("[agent] continue processing provider return")
+	<-agent.Ready()
+	msg = dipper.DeserializePayload(msg)
+
+	sessionID, ok := msg.Labels["sessionID"]
+	if !ok || sessionID == "" {
+		return
+	}
+	turnID, ok := msg.Labels["turnID"]
+	if !ok || turnID == "" {
+		return
+	}
+
+	caller := agentStateCallerFn()
+	if caller == nil {
+		return
+	}
+
+	sess := &agentSession{}
+	loaded, err := loadJSON(caller, agentSessionPrefix+sessionID, sess)
+	if err != nil || !loaded {
+		return
+	}
+	if sess.CurrentTurnID != turnID {
+		return
+	}
+
+	turn := &agentTurn{}
+	loaded, err = loadJSON(caller, agentTurnPrefix+turnID, turn)
+	if err != nil || !loaded {
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	status := msg.Labels["status"]
+	if status == "error" || status == "failure" {
+		reason := msg.Labels["reason"]
+		if strings.TrimSpace(reason) == "" {
+			reason = "provider command failed"
+		}
+		turn.State = "failed"
+		turn.FailureReason = reason
+		sess.State = "failed"
+	} else {
+		turn.State = "streaming"
+		turn.ProviderStart = msg.Payload
+		sess.State = "streaming"
+	}
+	turn.UpdatedAt = now
+	sess.UpdatedAt = now
+
+	if err := saveJSON(caller, agentTurnPrefix+turnID, turn, agentTurnTTL); err != nil {
+		return
+	}
+	_ = saveJSON(caller, agentSessionPrefix+sessionID, sess, agentSessionTTL)
+}
+
+func failTurnStart(caller dipper.RPCCaller, sess *agentSession, turn *agentTurn, reason error) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	turn.State = "failed"
+	turn.FailureReason = reason.Error()
+	turn.UpdatedAt = now
+
+	sess.State = "failed"
+	sess.UpdatedAt = now
+
+	if err := saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL); err != nil {
+		return err
+	}
+	if err := saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL); err != nil {
+		return err
+	}
+
+	return reason
 }
 
 func agentHistoryKey(agentName string, conversationID string) string {

@@ -99,6 +99,9 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 		Subject: p.Subject,
 		Labels:  call.Labels,
 	}
+	if returnSubject, ok := call.Labels["return_subject"]; ok && returnSubject != "" {
+		retMsg.Subject = returnSubject
+	}
 	delete(retMsg.Labels, "backoff_ms")
 	delete(retMsg.Labels, "retry")
 	delete(retMsg.Labels, "timeout")

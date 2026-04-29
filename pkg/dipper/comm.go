@@ -26,6 +26,8 @@ const (
 	EventbusMessage           = "message"
 	EventbusCommand           = "command"
 	EventbusReturn            = "return"
+	EventbusAgentCommand      = "agent_command"
+	EventbusAgentReturn       = "agent_return"
 	EventbusReturnInterrupted = "return/interrupted"
 )
 

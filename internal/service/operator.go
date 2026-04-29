@@ -64,10 +64,14 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 				newLabels := msg.Labels
 				newLabels["status"] = "error"
 				newLabels["reason"] = fmt.Sprintf("%+v", r)
+				returnSubject := newLabels["return_subject"]
+				if returnSubject == "" {
+					returnSubject = dipper.EventbusReturn
+				}
 				eventbus := operator.getDriverRuntime(dipper.ChannelEventbus)
 				eventbus.SendMessage(&dipper.Message{
 					Channel: dipper.ChannelEventbus,
-					Subject: dipper.EventbusReturn,
+					Subject: returnSubject,
 					Labels:  newLabels,
 				})
 			}
@@ -170,9 +174,17 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	switch {
 	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusCommand:
 		ret = handleEventbusCommand(msg)
+	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusAgentCommand:
+		if msg.Labels == nil {
+			msg.Labels = map[string]string{}
+		}
+		msg.Labels["return_subject"] = dipper.EventbusAgentReturn
+		msg.Subject = dipper.EventbusCommand
+		ret = handleEventbusCommand(msg)
 	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturnInterrupted:
 		retryInterruptedSession(msg)
-	case msg.Channel == dipper.ChannelEventbus && (msg.Subject == dipper.EventbusReturn || msg.Subject == dipper.EventbusMessage):
+	case msg.Channel == dipper.ChannelEventbus &&
+		(msg.Subject == dipper.EventbusReturn || msg.Subject == dipper.EventbusAgentReturn || msg.Subject == dipper.EventbusMessage):
 		ret = []RoutedMessage{
 			{
 				driverRuntime: operator.getDriverRuntime(dipper.ChannelEventbus),
