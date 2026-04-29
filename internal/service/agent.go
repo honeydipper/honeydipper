@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"sync/atomic"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
@@ -24,6 +25,8 @@ var (
 	agentPendingTurns       int64
 	errAgentNotInitialized  = errors.New("agent service is not initialized")
 	errAgentEventbusMissing = errors.New("eventbus driver not loaded")
+	agentShutdown           atomic.Bool
+	agentInFlight           sync.WaitGroup
 )
 
 var (
@@ -36,15 +39,19 @@ var (
 // StartAgent starts the agent service.
 func StartAgent(cfg *config.Config) {
 	agent = NewService(cfg, "agent")
+	agentShutdown.Store(false)
 
 	agent.EmitMetrics = agentMetrics
 	agent.addResponder("eventbus:activate", createActivations)
 	agent.addResponder("eventbus:agent_return", continueProviderTurn)
+	agent.Drain = drainAgent
 
 	agent.start()
 }
 
 func createActivations(_ *driver.Runtime, msg *dipper.Message) {
+	agentInFlight.Add(1)
+	defer agentInFlight.Done()
 	defer dipper.SafeExitOnError("[agent] continue processing activate rules")
 	<-agent.Ready()
 	msg = dipper.DeserializePayload(msg)
@@ -107,6 +114,8 @@ func enqueueProviderCommand(msg *dipper.Message) error {
 }
 
 func continueProviderTurn(_ *driver.Runtime, msg *dipper.Message) {
+	agentInFlight.Add(1)
+	defer agentInFlight.Done()
 	defer dipper.SafeExitOnError("[agent] continue processing provider return")
 	<-agent.Ready()
 	msg = dipper.DeserializePayload(msg)
@@ -130,4 +139,9 @@ func getAgentDefinition(agentName string) (config.Agent, bool) {
 	}
 
 	return def, true
+}
+
+func drainAgent() {
+	agentShutdown.Store(true)
+	agentInFlight.Wait()
 }

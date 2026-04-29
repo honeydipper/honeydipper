@@ -14,8 +14,10 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/internal/driver"
 	"github.com/honeydipper/honeydipper/v4/pkg/agenthistory"
 	"github.com/honeydipper/honeydipper/v4/pkg/agentruntime"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -675,4 +677,50 @@ func TestPersistedTurnJSONContainsResolvedContext(t *testing.T) {
 	b, err := json.Marshal(turn)
 	assert.NoError(t, err)
 	assert.Contains(t, string(b), "resolved_context")
+}
+
+func TestEnqueueProviderCommand_ShuttingDown_AllowsInFlight(t *testing.T) {
+	origAgent := agent
+	defer func() { agent = origAgent }()
+	sent := false
+	agent = &Service{driverRuntimes: map[string]*driver.Runtime{
+		dipper.ChannelEventbus: {
+			Feature: dipper.ChannelEventbus,
+			Handler: &driver.NullDriverHandler{SendMessageFunc: func(*dipper.Message) { sent = true }},
+		},
+	}}
+
+	agentShutdown.Store(true)
+	defer agentShutdown.Store(false)
+
+	err := enqueueProviderCommand(&dipper.Message{})
+	assert.NoError(t, err)
+	assert.True(t, sent)
+}
+
+func TestDrainAgent_WaitsForInFlight(t *testing.T) {
+	agentShutdown.Store(false)
+
+	agentInFlight.Add(1)
+	drained := make(chan struct{})
+	go func() {
+		drainAgent()
+		close(drained)
+	}()
+
+	select {
+	case <-drained:
+		t.Fatalf("drain should wait for in-flight tasks")
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	agentInFlight.Done()
+
+	select {
+	case <-drained:
+	case <-time.After(time.Second):
+		t.Fatalf("drain should finish after in-flight tasks complete")
+	}
+
+	agentShutdown.Store(false)
 }
