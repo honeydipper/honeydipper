@@ -17,9 +17,36 @@ import (
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/agenthistory"
+	"github.com/honeydipper/honeydipper/v4/pkg/agentruntime"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
+
+type (
+	agentSession            = agentruntime.Session
+	agentTurn               = agentruntime.Turn
+	resolvedTurnContext     = agentruntime.ResolvedTurnContext
+	activationPersistResult = agentruntime.ActivationPersistResult
+)
+
+const (
+	agentSessionTTL = agentruntime.SessionTTL
+	agentTurnTTL    = agentruntime.TurnTTL
+)
+
+var errAgentProviderMissing = agentruntime.ErrProviderMissing
+
+func agentSessionKey(id string) string {
+	return agentruntime.SessionKey(id)
+}
+
+func agentTurnKey(id string) string {
+	return agentruntime.TurnKey(id)
+}
+
+func agentHistoryKey(agentName string, conversationID string) string {
+	return agentruntime.HistoryKey(agentName, conversationID)
+}
 
 type fakeCacheCaller struct {
 	data  map[string][]byte
@@ -230,8 +257,8 @@ func TestResolveTurnContext(t *testing.T) {
 		UpdatedAt: "2026-01-01T00:00:00Z",
 	}
 
-	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
-	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
 
 	caller.lists[agentHistoryKey(sess.Agent, sess.ConversationID)] = []string{
 		`{"role":"system","content":"init"}`,
@@ -242,13 +269,13 @@ func TestResolveTurnContext(t *testing.T) {
 	assert.NoError(t, err)
 
 	storedSession := &agentSession{}
-	loaded, err := loadJSON(caller, agentSessionPrefix+sess.ID, storedSession)
+	loaded, err := agentruntime.LoadJSON(caller, agentSessionKey(sess.ID), storedSession)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	assert.Equal(t, "waiting_provider", storedSession.State)
 
 	storedTurn := &agentTurn{}
-	loaded, err = loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	loaded, err = agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	assert.Equal(t, "waiting_provider", storedTurn.State)
@@ -300,7 +327,7 @@ func TestResolveTurnContext(t *testing.T) {
 func TestLoadAgentHistory_Empty(t *testing.T) {
 	caller := &fakeCacheCaller{data: map[string][]byte{}, lists: map[string][]string{}}
 
-	history, err := loadAgentHistory(caller, "agent:history:support-bot:thread-empty")
+	history, err := agentruntime.LoadHistory(caller, "agent:history:support-bot:thread-empty")
 	assert.NoError(t, err)
 	assert.Len(t, history, 0)
 }
@@ -309,7 +336,7 @@ func TestLoadAgentHistory_InvalidJSON(t *testing.T) {
 	caller := &fakeCacheCaller{data: map[string][]byte{}, lists: map[string][]string{}}
 	caller.lists["agent:history:support-bot:thread-bad"] = []string{"not-json"}
 
-	_, err := loadAgentHistory(caller, "agent:history:support-bot:thread-bad")
+	_, err := agentruntime.LoadHistory(caller, "agent:history:support-bot:thread-bad")
 	assert.Error(t, err)
 }
 
@@ -341,14 +368,14 @@ func TestResolveTurnContext_SeedsHistoryFromAgentSystemPrompt(t *testing.T) {
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
 	}
-	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
-	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
 
 	err := resolveTurnContext(caller, sess.ID, turn.ID)
 	assert.NoError(t, err)
 
 	storedTurn := &agentTurn{}
-	loaded, err := loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	loaded, err := agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	if assert.NotNil(t, storedTurn.ResolvedContext) {
@@ -392,14 +419,14 @@ func TestResolveTurnContext_UsesAgentDefaultProvider(t *testing.T) {
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
 	}
-	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
-	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
 
 	err := resolveTurnContext(caller, sess.ID, turn.ID)
 	assert.NoError(t, err)
 
 	storedTurn := &agentTurn{}
-	loaded, err := loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	loaded, err := agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	assert.Equal(t, "waiting_provider", storedTurn.State)
@@ -437,14 +464,14 @@ func TestResolveTurnContext_UsesFirstProviderWhenDefaultMissing(t *testing.T) {
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
 	}
-	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
-	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
 
 	err := resolveTurnContext(caller, sess.ID, turn.ID)
 	assert.NoError(t, err)
 
 	storedTurn := &agentTurn{}
-	loaded, err := loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	loaded, err := agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	assert.Equal(t, "waiting_provider", storedTurn.State)
@@ -476,21 +503,21 @@ func TestResolveTurnContext_EmptyHistoryWithoutPrompt(t *testing.T) {
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
 	}
-	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
-	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
 
 	err := resolveTurnContext(caller, sess.ID, turn.ID)
 	assert.ErrorIs(t, err, errAgentProviderMissing)
 
 	storedTurn := &agentTurn{}
-	loaded, err := loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	loaded, err := agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	assert.Equal(t, "failed", storedTurn.State)
 	assert.Equal(t, errAgentProviderMissing.Error(), storedTurn.FailureReason)
 
 	storedSession := &agentSession{}
-	loaded, err = loadJSON(caller, agentSessionPrefix+sess.ID, storedSession)
+	loaded, err = agentruntime.LoadJSON(caller, agentSessionKey(sess.ID), storedSession)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	assert.Equal(t, "failed", storedSession.State)
@@ -538,15 +565,15 @@ func TestResolveTurnContext_ProviderChatError(t *testing.T) {
 		CreatedAt: "2026-01-01T00:00:00Z",
 		UpdatedAt: "2026-01-01T00:00:00Z",
 	}
-	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
-	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
 
 	err := resolveTurnContext(caller, sess.ID, turn.ID)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "start provider command")
 
 	storedTurn := &agentTurn{}
-	loaded, err := loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	loaded, err := agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
 	assert.Equal(t, "failed", storedTurn.State)
@@ -556,35 +583,91 @@ func TestResolveTurnContext_ProviderChatError(t *testing.T) {
 func TestContinueProviderTurn(t *testing.T) {
 	origAgent := agent
 	origStateCaller := agentStateCallerFn
+	origEnqueue := enqueueProviderFn
 	defer func() { agent = origAgent }()
 	defer func() { agentStateCallerFn = origStateCaller }()
+	defer func() { enqueueProviderFn = origEnqueue }()
 	agent = &Service{ready: make(chan struct{}), config: &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{}}}}
 	close(agent.ready)
 	caller := &fakeCacheCaller{data: map[string][]byte{}, lists: map[string][]string{}}
 	agentStateCallerFn = func() dipper.RPCCaller { return caller }
+	var cmd *dipper.Message
+	enqueueProviderFn = func(msg *dipper.Message) error {
+		cmd = msg
+
+		return nil
+	}
 
 	sess := &agentSession{ID: "sess-cp", Agent: "support-bot", ConversationID: "thread-cp", State: "waiting_provider", CurrentTurnID: "turn-cp", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"}
-	turn := &agentTurn{ID: "turn-cp", SessionID: "sess-cp", Agent: "support-bot", State: "waiting_provider", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"}
-	assert.NoError(t, saveJSON(caller, agentSessionPrefix+sess.ID, sess, agentSessionTTL))
-	assert.NoError(t, saveJSON(caller, agentTurnPrefix+turn.ID, turn, agentTurnTTL))
+	turn := &agentTurn{ID: "turn-cp", SessionID: "sess-cp", Agent: "support-bot", Provider: "openai-main", State: "waiting_provider", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"}
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
 
 	msg := &dipper.Message{Channel: dipper.ChannelEventbus, Subject: dipper.EventbusAgentReturn, Labels: map[string]string{"sessionID": "sess-cp", "turnID": "turn-cp"}, Payload: map[string]any{"counter": "1", "convID": "thread-cp"}}
 	continueProviderTurn(nil, msg)
 
 	storedTurn := &agentTurn{}
-	loaded, err := loadJSON(caller, agentTurnPrefix+turn.ID, storedTurn)
+	loaded, err := agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
-	assert.Equal(t, "streaming", storedTurn.State)
+	assert.Equal(t, "waiting_provider_chunk", storedTurn.State)
 	start, ok := storedTurn.ProviderStart.(map[string]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, "1", start["counter"])
+	if assert.NotNil(t, cmd) {
+		assert.Equal(t, dipper.EventbusAgentCommand, cmd.Subject)
+		payload := cmd.Payload.(map[string]any)
+		function := payload["function"].(config.Function)
+		assert.Equal(t, "openai-main", function.Driver)
+		assert.Equal(t, "chatContinue", function.RawAction)
+		data := payload["data"].(map[string]any)
+		assert.Equal(t, "thread-cp", data["convID"])
+		assert.Equal(t, "1", data["counter"])
+	}
 
 	storedSession := &agentSession{}
-	loaded, err = loadJSON(caller, agentSessionPrefix+sess.ID, storedSession)
+	loaded, err = agentruntime.LoadJSON(caller, agentSessionKey(sess.ID), storedSession)
 	assert.NoError(t, err)
 	assert.True(t, loaded)
-	assert.Equal(t, "streaming", storedSession.State)
+	assert.Equal(t, "waiting_provider_chunk", storedSession.State)
+}
+
+func TestContinueProviderTurn_Done(t *testing.T) {
+	origAgent := agent
+	origStateCaller := agentStateCallerFn
+	origEnqueue := enqueueProviderFn
+	defer func() { agent = origAgent }()
+	defer func() { agentStateCallerFn = origStateCaller }()
+	defer func() { enqueueProviderFn = origEnqueue }()
+	agent = &Service{ready: make(chan struct{}), config: &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{}}}}
+	close(agent.ready)
+	caller := &fakeCacheCaller{data: map[string][]byte{}, lists: map[string][]string{}}
+	agentStateCallerFn = func() dipper.RPCCaller { return caller }
+	enqueueProviderFn = func(msg *dipper.Message) error {
+		t.Fatalf("enqueue should not be called for done payload")
+
+		return nil
+	}
+
+	sess := &agentSession{ID: "sess-done", Agent: "support-bot", ConversationID: "thread-done", State: "waiting_provider_chunk", CurrentTurnID: "turn-done", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"}
+	turn := &agentTurn{ID: "turn-done", SessionID: "sess-done", Agent: "support-bot", Provider: "openai-main", State: "waiting_provider_chunk", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"}
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
+
+	msg := &dipper.Message{Channel: dipper.ChannelEventbus, Subject: dipper.EventbusAgentReturn, Labels: map[string]string{"sessionID": "sess-done", "turnID": "turn-done"}, Payload: map[string]any{"done": true, "content": "all done"}}
+	continueProviderTurn(nil, msg)
+
+	storedTurn := &agentTurn{}
+	loaded, err := agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
+	assert.NoError(t, err)
+	assert.True(t, loaded)
+	assert.Equal(t, "streaming_complete", storedTurn.State)
+
+	storedSession := &agentSession{}
+	loaded, err = agentruntime.LoadJSON(caller, agentSessionKey(sess.ID), storedSession)
+	assert.NoError(t, err)
+	assert.True(t, loaded)
+	assert.Equal(t, "streaming_complete", storedSession.State)
 }
 
 func TestPersistedTurnJSONContainsResolvedContext(t *testing.T) {
