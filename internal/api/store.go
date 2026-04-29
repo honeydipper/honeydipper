@@ -81,7 +81,7 @@ type Principal struct {
 	Subject     string
 	ProfileName string
 	Provider    string
-	Data        interface{}
+	Data        map[string]interface{}
 }
 
 // HandleAPIACK handles the call ACK from the eventbus.
@@ -319,12 +319,11 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 }
 
 func (l *Store) applyRotatedJWTHeader(c *gin.Context, principal Principal) {
-	data, ok := principal.Data.(map[string]interface{})
-	if !ok {
+	if principal.Data == nil {
 		return
 	}
 
-	rotatedJWT, ok := data["rotatedJwt"].(string)
+	rotatedJWT, ok := principal.Data["rotatedJwt"].(string)
 	if !ok || rotatedJWT == "" {
 		return
 	}
@@ -466,6 +465,25 @@ func parseDerivedSubjects(answer []byte, provider string) ([]string, bool) {
 	return derivedSubjects, true
 }
 
+// UsesPrincipalInRequest returns true when casbin request_definition includes a principal object field.
+func (l *Store) UsesPrincipalInRequest() bool {
+	requestTokens, ok := l.enforcer.GetModel()["r"]["r"]
+
+	return ok && len(requestTokens.Tokens) >= 5
+}
+
+func (l *Store) buildEnforceArgs(subject interface{}, principal Principal, object, method, provider string) []interface{} {
+	if l.UsesPrincipalInRequest() {
+		return []interface{}{subject, principal, object, method, provider}
+	}
+
+	return []interface{}{subject, object, method, provider}
+}
+
+func (l *Store) enforceWithPrincipal(subject interface{}, principal Principal, object, method, provider string) (bool, error) {
+	return l.Enforce(l.buildEnforceArgs(subject, principal, object, method, provider)...)
+}
+
 // Authorize determines if a subject is allowed to call a API.
 func (l *Store) Authorize(c RequestContext, def Def) bool {
 	p, ok := c.Get("principal")
@@ -476,7 +494,7 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 
 	subject := principal.Subject
 	provider := principal.Provider
-	if res, err := l.enforcer.Enforce(subject, def.Object, def.Method, provider); res && err == nil {
+	if res, err := l.enforceWithPrincipal(subject, principal, def.Object, def.Method, provider); res && err == nil {
 		return true
 	} else if err != nil {
 		dipper.Logger.Warningf("[api] denied access with enforcer error: %+v", err)
@@ -493,7 +511,8 @@ func (l *Store) Authorize(c RequestContext, def Def) bool {
 		}
 
 		for _, subject := range derivedSubjects.([]string) {
-			if res, err := l.enforcer.Enforce(subject, def.Object, def.Method, def.EntitlementProvider); res && err == nil {
+			entitledPrincipal := Principal{Subject: subject, Provider: def.EntitlementProvider}
+			if res, err := l.enforceWithPrincipal(subject, entitledPrincipal, def.Object, def.Method, def.EntitlementProvider); res && err == nil {
 				return true
 			}
 		}
