@@ -672,6 +672,53 @@ func TestContinueProviderTurn_Done(t *testing.T) {
 	assert.Equal(t, "streaming_complete", storedSession.State)
 }
 
+func TestContinueProviderTurn_DoneWithFunctionCallContinues(t *testing.T) {
+	origAgent := agent
+	origStateCaller := agentStateCallerFn
+	origEnqueue := enqueueProviderFn
+	defer func() { agent = origAgent }()
+	defer func() { agentStateCallerFn = origStateCaller }()
+	defer func() { enqueueProviderFn = origEnqueue }()
+	agent = &Service{ready: make(chan struct{}), config: &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{}}}}
+	close(agent.ready)
+	caller := &fakeCacheCaller{data: map[string][]byte{}, lists: map[string][]string{}}
+	agentStateCallerFn = func() dipper.RPCCaller { return caller }
+	var cmd *dipper.Message
+	enqueueProviderFn = func(msg *dipper.Message) error {
+		cmd = msg
+
+		return nil
+	}
+
+	sess := &agentSession{ID: "sess-fc", Agent: "support-bot", ConversationID: "thread-fc", State: "waiting_provider_chunk", CurrentTurnID: "turn-fc", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"}
+	turn := &agentTurn{ID: "turn-fc", SessionID: "sess-fc", Agent: "support-bot", Provider: "openai-main", State: "waiting_provider_chunk", CreatedAt: "2026-01-01T00:00:00Z", UpdatedAt: "2026-01-01T00:00:00Z"}
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentSessionKey(sess.ID), sess, agentSessionTTL))
+	assert.NoError(t, agentruntime.SaveJSON(caller, agentTurnKey(turn.ID), turn, agentTurnTTL))
+
+	msg := &dipper.Message{Channel: dipper.ChannelEventbus, Subject: dipper.EventbusAgentReturn, Labels: map[string]string{"sessionID": "sess-fc", "turnID": "turn-fc"}, Payload: map[string]any{"done": true, "convID": "thread-fc", "counter": "2", agentruntime.ChunkCallKey: map[string]any{"name": "test"}}}
+	continueProviderTurn(nil, msg)
+
+	storedTurn := &agentTurn{}
+	loaded, err := agentruntime.LoadJSON(caller, agentTurnKey(turn.ID), storedTurn)
+	assert.NoError(t, err)
+	assert.True(t, loaded)
+	assert.Equal(t, "waiting_provider_chunk", storedTurn.State)
+	if assert.NotNil(t, cmd) {
+		payload := cmd.Payload.(map[string]any)
+		function := payload["function"].(config.Function)
+		assert.Equal(t, "chatContinue", function.RawAction)
+		data := payload["data"].(map[string]any)
+		assert.Equal(t, "thread-fc", data["convID"])
+		assert.Equal(t, "2", data["counter"])
+	}
+
+	storedSession := &agentSession{}
+	loaded, err = agentruntime.LoadJSON(caller, agentSessionKey(sess.ID), storedSession)
+	assert.NoError(t, err)
+	assert.True(t, loaded)
+	assert.Equal(t, "waiting_provider_chunk", storedSession.State)
+}
+
 func TestPersistedTurnJSONContainsResolvedContext(t *testing.T) {
 	turn := &agentTurn{ResolvedContext: &resolvedTurnContext{ConversationID: "thread-123"}}
 	b, err := json.Marshal(turn)

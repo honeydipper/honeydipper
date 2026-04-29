@@ -18,6 +18,8 @@ const (
 	SessionTTL = "168h"
 	TurnTTL    = "72h"
 
+	ChunkCallKey = "call"
+
 	SessionPrefix      = "agent:session:"
 	TurnPrefix         = "agent:turn:"
 	HistoryPrefix      = "agent:history:"
@@ -107,6 +109,9 @@ func ShouldReceiveTurnChunk(payload interface{}) bool {
 	if err != nil || strings.TrimSpace(convID) == "" || strings.TrimSpace(counter) == "" {
 		return false
 	}
+	if hasChunkCall(payload) {
+		return true
+	}
 	payloadMap, ok := payload.(map[string]interface{})
 	if !ok {
 		return false
@@ -128,6 +133,16 @@ func ChunkRef(payload interface{}) (string, string, error) {
 	}
 
 	return convID, counter, nil
+}
+
+func hasChunkCall(payload interface{}) bool {
+	payloadMap, ok := payload.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	_, ok = payloadMap[ChunkCallKey]
+
+	return ok
 }
 
 func WrapNotFound(err error, id string) error {
