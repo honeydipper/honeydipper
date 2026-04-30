@@ -66,6 +66,18 @@ func (mr *MockRequestContextMockRecorder) ContentType() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ContentType", reflect.TypeOf((*MockRequestContext)(nil).ContentType))
 }
 
+// Data mocks base method.
+func (m *MockRequestContext) Data(arg0 int, arg1 string, arg2 []byte) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Data", arg0, arg1, arg2)
+}
+
+// Data indicates an expected call of Data.
+func (mr *MockRequestContextMockRecorder) Data(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Data", reflect.TypeOf((*MockRequestContext)(nil).Data), arg0, arg1, arg2)
+}
+
 // Get mocks base method.
 func (m *MockRequestContext) Get(arg0 string) (interface{}, bool) {
 	m.ctrl.T.Helper()

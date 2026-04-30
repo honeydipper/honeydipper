@@ -7,10 +7,11 @@
 package main
 
 import (
+	"encoding/base64"
 	"reflect"
 	"testing"
 
-	"github.com/crewjam/saml"
+	saml2types "github.com/russellhaering/gosaml2/types"
 )
 
 func TestChooseClaim(t *testing.T) {
@@ -27,14 +28,14 @@ func TestChooseClaim(t *testing.T) {
 }
 
 func TestAssertionToClaims(t *testing.T) {
-	assertion := &saml.Assertion{
-		Subject: &saml.Subject{NameID: &saml.NameID{Value: "alice"}},
-		AttributeStatements: []saml.AttributeStatement{{
-			Attributes: []saml.Attribute{
-				{Name: "email", Values: []saml.AttributeValue{{Value: "alice@example.com"}}},
-				{Name: "groups", FriendlyName: "roles", Values: []saml.AttributeValue{{Value: "dev"}, {Value: "ops"}}},
+	assertion := &saml2types.Assertion{
+		Subject: &saml2types.Subject{NameID: &saml2types.NameID{Value: "alice"}},
+		AttributeStatement: &saml2types.AttributeStatement{
+			Attributes: []saml2types.Attribute{
+				{Name: "email", Values: []saml2types.AttributeValue{{Value: "alice@example.com"}}},
+				{Name: "groups", FriendlyName: "roles", Values: []saml2types.AttributeValue{{Value: "dev"}, {Value: "ops"}}},
 			},
-		}},
+		},
 	}
 
 	got := assertionToClaims(assertion)
@@ -62,5 +63,48 @@ func TestPayloadStringFromBody(t *testing.T) {
 	}
 	if got, ok := payloadString(payload, "RelayState"); !ok || got != "xyz" {
 		t.Fatalf("expected relay state xyz, got %q (ok=%t)", got, ok)
+	}
+}
+
+func TestExtractSAMLStatusNestedCode(t *testing.T) {
+	xml := `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol">` +
+		`<samlp:Status>` +
+		`<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Responder">` +
+		`<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:InvalidNameIDPolicy"/>` +
+		`</samlp:StatusCode>` +
+		`</samlp:Status>` +
+		`</samlp:Response>`
+
+	encoded := base64.StdEncoding.EncodeToString([]byte(xml))
+	statusPath, statusMessage, ok := extractSAMLStatus(encoded)
+	if !ok {
+		t.Fatalf("expected status to be extracted")
+	}
+	if statusMessage != "" {
+		t.Fatalf("expected empty status message, got %q", statusMessage)
+	}
+	expected := "urn:oasis:names:tc:SAML:2.0:status:Responder -> urn:oasis:names:tc:SAML:2.0:status:InvalidNameIDPolicy"
+	if statusPath != expected {
+		t.Fatalf("expected status path %q, got %q", expected, statusPath)
+	}
+}
+
+func TestExtractSAMLStatusSuccess(t *testing.T) {
+	xml := `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol">` +
+		`<samlp:Status>` +
+		`<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>` +
+		`</samlp:Status>` +
+		`</samlp:Response>`
+
+	encoded := base64.StdEncoding.EncodeToString([]byte(xml))
+	statusPath, statusMessage, ok := extractSAMLStatus(encoded)
+	if !ok {
+		t.Fatalf("expected status to be extracted")
+	}
+	if statusMessage != "" {
+		t.Fatalf("expected empty status message, got %q", statusMessage)
+	}
+	if statusPath != "urn:oasis:names:tc:SAML:2.0:status:Success" {
+		t.Fatalf("unexpected status path %q", statusPath)
 	}
 }

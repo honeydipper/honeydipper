@@ -237,6 +237,31 @@ func samlLoginHandler(r *Request) (map[string]interface{}, error) {
 	return map[string]interface{}{"_redirect": redirectURL}, nil
 }
 
+func samlSPMetadataHandler(r *Request) (map[string]interface{}, error) {
+	answer, err := r.store.caller.Call("driver:auth-saml", "saml_sp_metadata", map[string]interface{}{})
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+	if answer == nil {
+		return nil, ErrEmptyDriverResponse
+	}
+
+	result := map[string]interface{}{}
+	if err := json.Unmarshal(answer, &result); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	metadata, ok := result["metadata"].(string)
+	if !ok || strings.TrimSpace(metadata) == "" {
+		return nil, ErrEmptyDriverResponse
+	}
+
+	return map[string]interface{}{
+		"_raw_body":     metadata,
+		"_content_type": "application/samlmetadata+xml; charset=utf-8",
+	}, nil
+}
+
 func samlACSCallbackHandler(r *Request) (map[string]interface{}, error) {
 	payload := r.ctx.GetPayload(http.MethodPost)
 	if payload["SAMLResponse"] == nil {
@@ -631,6 +656,19 @@ func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
 			}
 		} else if redirectURL, ok := r.getResults()["_redirect"]; ok {
 			c.Redirect(http.StatusFound, redirectURL.(string))
+		} else if rawBody, ok := r.getResults()["_raw_body"]; ok {
+			contentType, _ := r.getResults()["_content_type"].(string)
+			if contentType == "" {
+				contentType = "text/plain; charset=utf-8"
+			}
+			switch typed := rawBody.(type) {
+			case string:
+				c.Data(http.StatusOK, contentType, []byte(typed))
+			case []byte:
+				c.Data(http.StatusOK, contentType, typed)
+			default:
+				c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": ErrAPIError.Error()})
+			}
 		} else {
 			c.IndentedJSON(http.StatusOK, r.getResults())
 		}

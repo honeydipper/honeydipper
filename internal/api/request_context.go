@@ -17,6 +17,7 @@ import (
 type RequestContext interface {
 	AbortWithStatusJSON(int, interface{})
 	IndentedJSON(int, interface{})
+	Data(int, string, []byte)
 	Redirect(int, string)
 	ContentType() string
 	Get(string) (interface{}, bool)
@@ -39,6 +40,11 @@ func (rc *GinRequestContext) AbortWithStatusJSON(code int, content interface{}) 
 // IndentedJSON finishes the request with given code and content.
 func (rc *GinRequestContext) IndentedJSON(code int, content interface{}) {
 	rc.gin.IndentedJSON(code, content)
+}
+
+// Data finishes the request with given code, content type, and raw bytes.
+func (rc *GinRequestContext) Data(code int, contentType string, body []byte) {
+	rc.gin.Data(code, contentType, body)
 }
 
 // Redirect sends an HTTP redirect response.

@@ -11,6 +11,7 @@ package api
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -171,4 +172,32 @@ func TestUnauthorizedAPI(t *testing.T) {
 
 func TestTypeLocalUserProfileAPI(t *testing.T) {
 	requestTest(t, "TypeLocalUserProfileAPI")
+}
+
+func TestTypeLocalSAMLMetadataAPI(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockReqCtx := mock_api.NewMockRequestContext(ctrl)
+	mockReqCtx.EXPECT().GetPath().Times(1).Return("/api/auth/saml/metadata")
+	mockReqCtx.EXPECT().GetPayload(gomock.Eq(http.MethodGet)).Times(1).Return(map[string]interface{}{})
+	mockReqCtx.EXPECT().ContentType().Times(1).Return("application/json")
+	mockReqCtx.EXPECT().Data(
+		gomock.Eq(http.StatusOK),
+		gomock.Eq("application/samlmetadata+xml; charset=utf-8"),
+		gomock.Eq([]byte("<?xml version=\"1.0\"?><EntityDescriptor />")),
+	).Times(1)
+
+	mockRPCCaller := mock_dipper.NewMockRPCCaller(ctrl)
+	mockRPCCaller.EXPECT().Call(
+		gomock.Eq("driver:auth-saml"),
+		gomock.Eq("saml_sp_metadata"),
+		gomock.Eq(map[string]interface{}{}),
+	).Times(1).Return([]byte(`{"metadata":"<?xml version=\"1.0\"?><EntityDescriptor />"}`), nil)
+
+	store := NewStore(mockRPCCaller)
+	store.writeTimeout = 100 * time.Millisecond
+
+	def := Def{ReqType: TypeLocal, Method: http.MethodGet, Name: "samlSPMetadata", Local: samlSPMetadataHandler, AllowAnonymous: true}
+	store.HandleHTTPRequest(mockReqCtx, def)
 }

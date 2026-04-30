@@ -16,11 +16,12 @@ This guide explains how to configure Honeydipper with the built-in `auth-saml` d
 
 ## Overview
 
-The `auth-saml` driver provides three RPC handlers:
+The `auth-saml` driver provides four RPC handlers:
 
 1. `saml_login`: creates a redirect URL for SP-initiated login.
 2. `saml_acs`: validates `SAMLResponse` and returns a Honeydipper session token.
 3. `auth_web_request`: validates session token from `Authorization: Bearer ...` and returns principal data to API middleware.
+4. `saml_sp_metadata`: returns SP metadata XML for IdP configuration.
 
 When SAML login is complete, Honeydipper API authorization still uses Casbin, so SSO and authorization policy remain separate.
 
@@ -35,15 +36,17 @@ When SAML login is complete, Honeydipper API authorization still uses Casbin, so
 When using this repository version, API service includes these local endpoints:
 
 1. `GET /api/auth/saml/login`
-2. `POST /api/auth/saml/callback`
-3. `GET /api/auth/saml/callback`
+2. `GET /api/auth/saml/metadata`
+3. `POST /api/auth/saml/callback`
+4. `GET /api/auth/saml/callback`
 
 Typical usage:
 
 1. Frontend calls `/api/auth/saml/login` and redirects browser to `redirect_url`.
-2. IdP posts assertion to `/api/auth/saml/callback`.
-3. Callback response contains a Honeydipper JWT token.
-4. Frontend stores token and sends it in the `Authorization` header for API calls.
+2. IdP admin imports metadata from `/api/auth/saml/metadata` into the IdP.
+3. IdP posts assertion to `/api/auth/saml/callback`.
+4. Callback response contains a Honeydipper JWT token.
+5. Frontend stores token and sends it in the `Authorization` header for API calls.
 
 ## Daemon And Driver Configuration
 

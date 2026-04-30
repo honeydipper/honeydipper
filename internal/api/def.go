@@ -53,6 +53,12 @@ func GetDefs() map[string]map[string]Def {
 				Local: samlLoginHandler, Service: "api", AllowAnonymous: true,
 			},
 		},
+		"auth/saml/metadata": {
+			http.MethodGet: {
+				Object: "everything", Name: "samlSPMetadata", ReqType: TypeLocal,
+				Local: samlSPMetadataHandler, Service: "api", AllowAnonymous: true,
+			},
+		},
 		"auth/saml/callback": {
 			http.MethodPost: {
 				Object: "everything", Name: "samlACSCallback", ReqType: TypeLocal,
