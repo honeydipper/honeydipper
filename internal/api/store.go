@@ -367,12 +367,27 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 		if l.isAnonymousRoute(c) {
 			c.Set("principal", Principal{Subject: "guest", ProfileName: "Guest", Provider: "none"})
 			c.Next()
-
 			return
 		}
 
-		providers, ok := dipper.GetMapData(l.config, "auth-providers")
+		// 1. Try JWT from Authorization header
+		jwtCfg, jwtErr := getJWTConfig()
+		// var jwtPrincipal *Principal
+		var jwtToken string
+		authHeader := c.GetHeader("Authorization")
+		if jwtErr == nil {
+			jwtToken = ExtractJWTFromRequest(authHeader)
+			if jwtToken != "" {
+				if p, err := ParsePrincipalJWT(jwtToken, jwtCfg); err == nil && p != nil {
+					c.Set("principal", *p)
+					c.Next()
+					return
+				}
+			}
+		}
 
+		// 2. Fallback to drivers
+		providers, ok := dipper.GetMapData(l.config, "auth-providers")
 		principal := Principal{
 			Subject:     "guest",
 			ProfileName: "Guest",
@@ -381,7 +396,6 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 		if !ok || providers == nil || len(providers.([]interface{})) == 0 {
 			c.Set("principal", principal)
 			c.Next()
-
 			return
 		}
 
@@ -398,26 +412,29 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 			answer, err := l.caller.Call("driver:"+provider, fn, dipper.ExtractWebRequestExceptBody(c.Request))
 			if err != nil {
 				allErrors[providerName] = err.Error()
-
 				continue
 			}
 			if answer == nil {
 				allErrors[providerName] = "empty auth response"
-
 				continue
 			}
 
 			principal = Principal{}
 			if err := json.Unmarshal(answer, &principal); err != nil {
 				allErrors[providerName] = err.Error()
-
 				continue
 			} else {
 				principal.Provider = provider
 				l.applyRotatedJWTHeader(c, principal)
 				c.Set("principal", principal)
+				// Issue a new JWT for the principal if possible
+				if jwtErr == nil {
+					if token, err := SignPrincipalJWT(principal, jwtCfg); err == nil {
+						c.Header("X-Honeydipper-JWT", token)
+						// Optionally, set as cookie here if desired
+					}
+				}
 				c.Next()
-
 				return
 			}
 		}
