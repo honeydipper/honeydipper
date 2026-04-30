@@ -466,6 +466,7 @@ func (d *authSAMLDriver) samlACS(m *dipper.Message) {
 		"token":        token,
 		"subject":      subject,
 		"profile_name": profileName,
+		"data":         claimsData,
 		"relay_state":  relayState,
 	}}
 }

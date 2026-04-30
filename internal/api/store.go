@@ -291,14 +291,34 @@ func samlACSCallbackHandler(r *Request) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("%w", err)
 	}
 
+	subject, _ := result["subject"].(string)
+	profileName, _ := result["profile_name"].(string)
+	data, _ := result["data"].(map[string]interface{})
+
 	query := url.Values{}
-	if token, ok := result["token"].(string); ok {
-		query.Set("token", token)
+
+	// Prefer a Honeydipper JWT so subsequent requests bypass driver RPCs entirely.
+	// Fall back to the driver's own session token for backwards compatibility.
+	tokenSet := false
+	if subject != "" {
+		if jwtCfg, err := getJWTConfig(); err == nil {
+			principal := Principal{Subject: subject, ProfileName: profileName, Provider: "auth-saml", Data: data}
+			if hdToken, err := SignPrincipalJWT(principal, jwtCfg); err == nil {
+				query.Set("token", hdToken)
+				tokenSet = true
+			}
+		}
 	}
-	if subject, ok := result["subject"].(string); ok {
+	if !tokenSet {
+		if token, ok := result["token"].(string); ok {
+			query.Set("token", token)
+		}
+	}
+
+	if subject != "" {
 		query.Set("subject", subject)
 	}
-	if profileName, ok := result["profile_name"].(string); ok {
+	if profileName != "" {
 		query.Set("profile_name", profileName)
 	}
 

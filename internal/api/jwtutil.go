@@ -68,8 +68,12 @@ func SignPrincipalJWT(principal Principal, cfg *JWTConfig) (string, error) {
 
 func ParsePrincipalJWT(tokenString string, cfg *JWTConfig) (*Principal, error) {
 	parsed, err := jwt.ParseWithClaims(tokenString, &PrincipalClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidJWT
+		}
+
 		return cfg.SigningKey, nil
-	})
+	}, jwt.WithIssuer(cfg.Issuer))
 	if err != nil {
 		return nil, ErrInvalidJWT
 	}
