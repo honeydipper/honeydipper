@@ -17,6 +17,7 @@ import (
 type RequestContext interface {
 	AbortWithStatusJSON(int, interface{})
 	IndentedJSON(int, interface{})
+	Redirect(int, string)
 	ContentType() string
 	Get(string) (interface{}, bool)
 	Set(string, interface{})
@@ -38,6 +39,11 @@ func (rc *GinRequestContext) AbortWithStatusJSON(code int, content interface{}) 
 // IndentedJSON finishes the request with given code and content.
 func (rc *GinRequestContext) IndentedJSON(code int, content interface{}) {
 	rc.gin.IndentedJSON(code, content)
+}
+
+// Redirect sends an HTTP redirect response.
+func (rc *GinRequestContext) Redirect(code int, url string) {
+	rc.gin.Redirect(code, url)
 }
 
 // ContentType returns the content type of the request.
@@ -78,7 +84,14 @@ func (rc *GinRequestContext) GetPayload(method string) map[string]interface{} {
 	}
 
 	if method == http.MethodPost || method == http.MethodPut {
-		payload["body"] = string(dipper.Must(rc.gin.GetRawData()).([]byte))
+		ct := rc.gin.ContentType()
+		if ct == "application/x-www-form-urlencoded" || ct == "multipart/form-data" {
+			// ParseForm reads and caches the body, then populates Request.Form.
+			// We do this before GetRawData so form values are accessible via the loop below.
+			_ = rc.gin.Request.ParseForm()
+		} else {
+			payload["body"] = string(dipper.Must(rc.gin.GetRawData()).([]byte))
+		}
 	}
 
 	for k, varr := range rc.gin.Request.Form {

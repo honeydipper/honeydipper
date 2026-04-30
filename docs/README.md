@@ -22,6 +22,8 @@
    * [Enable encrypted configuration](./howtos/enable_encryption.md)
    * [Reload on github push](./howtos/reload_on_push.md)
    * [Logging verbosity](./howtos/logging_verbosity.md)
+   * [SAML SP authentication setup](./howtos/saml_auth_sp.md)
+   * [Test SAML with Keycloak](./howtos/keycloak-saml-test-setup.md)
 
 ---
 

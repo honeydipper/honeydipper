@@ -135,6 +135,18 @@ func (mr *MockRequestContextMockRecorder) IndentedJSON(arg0, arg1 interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IndentedJSON", reflect.TypeOf((*MockRequestContext)(nil).IndentedJSON), arg0, arg1)
 }
 
+// Redirect mocks base method.
+func (m *MockRequestContext) Redirect(arg0 int, arg1 string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Redirect", arg0, arg1)
+}
+
+// Redirect indicates an expected call of Redirect.
+func (mr *MockRequestContextMockRecorder) Redirect(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Redirect", reflect.TypeOf((*MockRequestContext)(nil).Redirect), arg0, arg1)
+}
+
 // Set mocks base method.
 func (m *MockRequestContext) Set(arg0 string, arg1 interface{}) {
 	m.ctrl.T.Helper()

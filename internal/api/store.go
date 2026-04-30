@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -59,6 +60,9 @@ var (
 
 	// ErrEmptyDriverResponse means the driver returned no content for a local API call.
 	ErrEmptyDriverResponse = fmt.Errorf("%w: empty driver response", ErrAPIError)
+
+	// ErrMissingSAMLResponse means the SAML callback did not provide a SAMLResponse.
+	ErrMissingSAMLResponse = fmt.Errorf("%w: SAMLResponse not provided", ErrAPIError)
 )
 
 // Store stores the live API calls in memory.
@@ -72,6 +76,7 @@ type Store struct {
 	newUUID         dipper.UUIDSource
 	enforcer        *casbin.Enforcer
 	apiPrefix       string
+	uiURL           string
 
 	writeTimeout time.Duration
 }
@@ -205,6 +210,78 @@ func githubOAuthCallbackHandler(r *Request) (map[string]interface{}, error) {
 	return result, nil
 }
 
+func samlLoginHandler(r *Request) (map[string]interface{}, error) {
+	payload := map[string]interface{}{}
+	if relayState := r.ctx.GetParam("relay_state"); relayState != "" {
+		payload["relay_state"] = relayState
+	}
+
+	answer, err := r.store.caller.Call("driver:auth-saml", "saml_login", payload)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+	if answer == nil {
+		return nil, ErrEmptyDriverResponse
+	}
+
+	result := map[string]interface{}{}
+	if err := json.Unmarshal(answer, &result); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	redirectURL, ok := result["redirect_url"].(string)
+	if !ok || redirectURL == "" {
+		return nil, ErrEmptyDriverResponse
+	}
+
+	return map[string]interface{}{"_redirect": redirectURL}, nil
+}
+
+func samlACSCallbackHandler(r *Request) (map[string]interface{}, error) {
+	payload := r.ctx.GetPayload(http.MethodPost)
+	if payload["SAMLResponse"] == nil {
+		if response := r.ctx.GetParam("SAMLResponse"); response != "" {
+			payload["SAMLResponse"] = response
+		}
+	}
+	if payload["RelayState"] == nil {
+		if relayState := r.ctx.GetParam("RelayState"); relayState != "" {
+			payload["RelayState"] = relayState
+		}
+	}
+	if payload["SAMLResponse"] == nil {
+		return nil, ErrMissingSAMLResponse
+	}
+
+	answer, err := r.store.caller.Call("driver:auth-saml", "saml_acs", payload)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+	if answer == nil {
+		return nil, ErrEmptyDriverResponse
+	}
+
+	result := map[string]interface{}{}
+	if err := json.Unmarshal(answer, &result); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	query := url.Values{}
+	if token, ok := result["token"].(string); ok {
+		query.Set("token", token)
+	}
+	if subject, ok := result["subject"].(string); ok {
+		query.Set("subject", subject)
+	}
+	if profileName, ok := result["profile_name"].(string); ok {
+		query.Set("profile_name", profileName)
+	}
+
+	uiBase := strings.TrimRight(r.store.uiURL, "/")
+
+	return map[string]interface{}{"_redirect": uiBase + "/auth/saml/callback?" + query.Encode()}, nil
+}
+
 // GetAPIHandler prepares and returns the gin Engine for API.
 func (l *Store) GetAPIHandler(prefix string, cfg interface{}) http.Handler {
 	gin.DefaultWriter = dipper.LoggingWriter
@@ -218,6 +295,11 @@ func (l *Store) GetAPIHandler(prefix string, cfg interface{}) http.Handler {
 	l.writeTimeout = DefaultAPIWriteTimeout * time.Second
 	if writeTimeoutStr, ok := dipper.GetMapDataStr(l.config, "writeTimeout"); ok {
 		l.writeTimeout = dipper.Must(time.ParseDuration(writeTimeoutStr)).(time.Duration)
+	}
+
+	l.uiURL = os.Getenv("HD_UI_URL")
+	if uiURLStr, ok := dipper.GetMapDataStr(l.config, "ui_url"); ok && uiURLStr != "" {
+		l.uiURL = uiURLStr
 	}
 
 	l.setupRoutes(prefix)
@@ -547,6 +629,8 @@ func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
 			} else {
 				c.AbortWithStatusJSON(http.StatusInternalServerError, map[string]interface{}{"error": r.err.Error()})
 			}
+		} else if redirectURL, ok := r.getResults()["_redirect"]; ok {
+			c.Redirect(http.StatusFound, redirectURL.(string))
 		} else {
 			c.IndentedJSON(http.StatusOK, r.getResults())
 		}

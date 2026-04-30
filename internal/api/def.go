@@ -47,6 +47,22 @@ const (
 // GetDefs return definition for all known API calls.
 func GetDefs() map[string]map[string]Def {
 	return map[string]map[string]Def{
+		"auth/saml/login": {
+			http.MethodGet: {
+				Object: "everything", Name: "samlLogin", ReqType: TypeLocal,
+				Local: samlLoginHandler, Service: "api", AllowAnonymous: true,
+			},
+		},
+		"auth/saml/callback": {
+			http.MethodPost: {
+				Object: "everything", Name: "samlACSCallback", ReqType: TypeLocal,
+				Local: samlACSCallbackHandler, Service: "api", AllowAnonymous: true,
+			},
+			http.MethodGet: {
+				Object: "everything", Name: "samlACSCallbackGet", ReqType: TypeLocal,
+				Local: samlACSCallbackHandler, Service: "api", AllowAnonymous: true,
+			},
+		},
 		"auth/github/callback": {
 			http.MethodGet: {
 				Object: "everything", Name: "githubOAuthCallback", ReqType: TypeLocal,
