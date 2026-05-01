@@ -8,7 +8,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -17,7 +16,8 @@ import (
 )
 
 var (
-	ErrInvalidJWT = errors.New("invalid JWT token")
+	ErrInvalidJWT           = errors.New("invalid JWT token")
+	ErrMissingJWTSigningKey = errors.New("missing JWT signing key in config")
 )
 
 type JWTConfig struct {
@@ -37,12 +37,13 @@ type PrincipalClaims struct {
 func getJWTConfig() (*JWTConfig, error) {
 	key := os.Getenv("HD_JWT_SIGNING_KEY")
 	if key == "" {
-		return nil, fmt.Errorf("HD_JWT_SIGNING_KEY not set")
+		return nil, ErrMissingJWTSigningKey
 	}
 	issuer := os.Getenv("HD_JWT_ISSUER")
 	if issuer == "" {
 		issuer = "honeydipper"
 	}
+
 	return &JWTConfig{
 		SigningKey: []byte(key),
 		Issuer:     issuer,
@@ -63,6 +64,8 @@ func SignPrincipalJWT(principal Principal, cfg *JWTConfig) (string, error) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	//nolint:wrapcheck
 	return token.SignedString(cfg.SigningKey)
 }
 
@@ -81,6 +84,7 @@ func ParsePrincipalJWT(tokenString string, cfg *JWTConfig) (*Principal, error) {
 	if !ok || !parsed.Valid {
 		return nil, ErrInvalidJWT
 	}
+
 	return &Principal{
 		Subject:     claims.Subject,
 		ProfileName: claims.ProfileName,
@@ -97,5 +101,6 @@ func ExtractJWTFromRequest(authHeader string) string {
 	if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
 		return parts[1]
 	}
+
 	return ""
 }

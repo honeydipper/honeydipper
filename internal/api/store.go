@@ -387,6 +387,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 		if l.isAnonymousRoute(c) {
 			c.Set("principal", Principal{Subject: "guest", ProfileName: "Guest", Provider: "none"})
 			c.Next()
+
 			return
 		}
 
@@ -401,6 +402,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 				if p, err := ParsePrincipalJWT(jwtToken, jwtCfg); err == nil && p != nil {
 					c.Set("principal", *p)
 					c.Next()
+
 					return
 				}
 			}
@@ -416,6 +418,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 		if !ok || providers == nil || len(providers.([]interface{})) == 0 {
 			c.Set("principal", principal)
 			c.Next()
+
 			return
 		}
 
@@ -432,16 +435,19 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 			answer, err := l.caller.Call("driver:"+provider, fn, dipper.ExtractWebRequestExceptBody(c.Request))
 			if err != nil {
 				allErrors[providerName] = err.Error()
+
 				continue
 			}
 			if answer == nil {
 				allErrors[providerName] = "empty auth response"
+
 				continue
 			}
 
 			principal = Principal{}
 			if err := json.Unmarshal(answer, &principal); err != nil {
 				allErrors[providerName] = err.Error()
+
 				continue
 			} else {
 				principal.Provider = provider
@@ -455,6 +461,7 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 					}
 				}
 				c.Next()
+
 				return
 			}
 		}
@@ -685,6 +692,7 @@ func (l *Store) HandleHTTPRequest(c RequestContext, def Def) {
 	// wait for the results
 	select {
 	case <-r.ready:
+		//nolint:nestif // so what if it is nested, it's more readable this way
 		if r.err != nil {
 			if errors.Is(r.err, ErrAPINoACK) {
 				c.AbortWithStatusJSON(http.StatusNotFound, map[string]interface{}{"error": "object not found"})

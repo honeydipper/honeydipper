@@ -43,16 +43,17 @@ const (
 )
 
 var (
-	ErrInvalidBearerToken = errors.New("invalid bearer token")
-	ErrMissingSAMLConfig  = errors.New("missing SAML driver config")
-	ErrMissingSAMLReply   = errors.New("missing SAMLResponse")
-	ErrUnknownRelayState  = errors.New("unknown relay state")
-	ErrInvalidInResponse  = errors.New("unexpected InResponseTo value")
-	ErrMetadataHTTPStatus = errors.New("metadata endpoint returned non-success status")
-	ErrUnsupportedPrivKey = errors.New("unsupported private key format")
-	ErrInvalidSessionJWT  = errors.New("invalid session token")
-	ErrMissingSubject     = errors.New("missing subject in SAML assertion")
-	ErrInvalidPayloadType = errors.New("invalid payload type")
+	ErrInvalidBearerToken     = errors.New("invalid bearer token")
+	ErrMissingSAMLConfig      = errors.New("missing SAML driver config")
+	ErrMissingSAMLReply       = errors.New("missing SAMLResponse")
+	ErrUnknownRelayState      = errors.New("unknown relay state")
+	ErrInvalidInResponse      = errors.New("unexpected InResponseTo value")
+	ErrMetadataHTTPStatus     = errors.New("metadata endpoint returned non-success status")
+	ErrUnsupportedPrivKey     = errors.New("unsupported private key format")
+	ErrInvalidSessionJWT      = errors.New("invalid session token")
+	ErrMissingSubject         = errors.New("missing subject in SAML assertion")
+	ErrInvalidPayloadType     = errors.New("invalid payload type")
+	ErrUnsuccessfulSAMLStatus = errors.New("idp returned non-success SAML status")
 )
 
 type authSAMLDriver struct {
@@ -197,6 +198,7 @@ func (d *authSAMLDriver) initConfig() error {
 		hasSPEncryptionKey = true
 	}
 	hasSPSigningKey := false
+	//nolint:nestif // this is simple enough
 	if spSigningKey, ok := dipper.GetMapDataStr(d.Options, "data.sp_signing_key"); ok && spSigningKey != "" {
 		signer, cert, err := parseNamedSPKeyPair(spSigningKey, d.Options, "data.sp_signing_cert")
 		if err != nil {
@@ -430,7 +432,7 @@ func (d *authSAMLDriver) samlACS(m *dipper.Message) {
 		if statusMessage != "" {
 			detail = fmt.Sprintf("%s (%s)", statusCodePath, statusMessage)
 		}
-		panic(fmt.Errorf("idp returned non-success SAML status: %s", detail))
+		panic(fmt.Errorf("%w: %s", ErrUnsuccessfulSAMLStatus, detail))
 	}
 
 	response, err := d.sp.ValidateEncodedResponse(samlResponse)
@@ -640,6 +642,7 @@ func extractSAMLStatus(encodedResponse string) (statusCodePath, statusMessage st
 		body, err := decode(strings.TrimSpace(encodedResponse))
 		if err == nil {
 			decoded = body
+
 			break
 		}
 	}
