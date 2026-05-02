@@ -287,3 +287,9 @@
     :why: Allowing MPL 2.0 for now
     :versions: []
     :when: 2026-03-06 18:52:49.045160000 Z
+- - :approve
+  - github.com/beevik/etree
+  - :who: Charles546
+    :why: Allowing BSD-2-Clause
+    :versions: []
+    :when: 2026-05-01 18:52:49.045160000 Z
