@@ -339,6 +339,18 @@ func TestBrief_WithCallDriver(t *testing.T) {
 	}
 }
 
+// TestBrief_WithSendEvent tests the Brief method with send_event.
+func TestBrief_WithSendEvent(t *testing.T) {
+	wf := &cfg.Workflow{SendEvent: map[string]interface{}{"events": []interface{}{"a.b"}}}
+	s := newSession(wf)
+
+	brief := s.Brief()
+
+	if brief != "send event" {
+		t.Errorf("expected 'send event', got '%s'", brief)
+	}
+}
+
 // TestBrief_WithWorkflow tests the Brief method with workflow.
 func TestBrief_WithWorkflow(t *testing.T) {
 	wf := &cfg.Workflow{Workflow: "other_workflow"}
@@ -702,6 +714,18 @@ func TestCheckIsNoop_WithCallFunction(t *testing.T) {
 
 	if result {
 		t.Fatal("expected checkIsNoop to return false for callFunction")
+	}
+}
+
+// TestCheckIsNoop_WithSendEvent tests the checkIsNoop method with send_event.
+func TestCheckIsNoop_WithSendEvent(t *testing.T) {
+	wf := &cfg.Workflow{SendEvent: map[string]interface{}{"events": []interface{}{"a.b"}}}
+	s := newSession(wf)
+
+	result := s.checkIsNoop()
+
+	if result {
+		t.Fatal("expected checkIsNoop to return false for eventbus_message")
 	}
 }
 

@@ -351,6 +351,41 @@ func TestExecute_CallFunctionBranch(t *testing.T) {
 	}
 }
 
+func TestExecute_SendEventBranch(t *testing.T) {
+	s := makeExecuteSession()
+	es := &execTestStore{}
+	s.store = es
+	s.Workflow.SendEvent = map[string]any{
+		"events": []any{"{{.ctx.raw_event}}"},
+		"data":   map[string]any{"flag": "{{.ctx.flag}}"},
+	}
+
+	s.execute()
+
+	if len(es.lastSentMessages) != 1 {
+		t.Fatalf("expected one message sent, got %d", len(es.lastSentMessages))
+	}
+	msg := es.lastSentMessages[0]
+	if msg.Channel != dipper.ChannelEventbus || msg.Subject != dipper.EventbusMessage {
+		t.Errorf("unexpected message channel/subject: %s/%s", msg.Channel, msg.Subject)
+	}
+	pm, ok := msg.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("payload is not map: %v", msg.Payload)
+	}
+	events, ok := pm["events"].([]any)
+	if !ok || len(events) != 1 || events[0] != "{{.ctx.raw_event}}" {
+		t.Fatalf("unexpected events payload: %+v", pm["events"])
+	}
+	data, ok := pm["data"].(map[string]any)
+	if !ok || data["flag"] != "{{.ctx.flag}}" {
+		t.Fatalf("unexpected data payload: %+v", pm["data"])
+	}
+	if s.pending {
+		t.Error("eventbus_message branch should not set pending")
+	}
+}
+
 func TestExecute_FailedWorkflowPanics(t *testing.T) {
 	s := makeExecuteSession()
 	es := &execTestStore{}

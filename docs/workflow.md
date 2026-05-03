@@ -77,16 +77,30 @@ rules:
 ```
 
 ### Simple Actions
-There are 4 types of simple actions that a workflow can perform.
+There are 5 types of simple actions that a workflow can perform.
 
  - `call_workflow`: calling out to another named workflow, taking a string specifying the name of the workflow
  - `call_function`: calling a predefined system function, taking a string in the form of `system.function`
  - `call_driver`: calling a `rawAction` offered by a driver, taking a string in the form of `driver.rawAction`
+ - `send_event`: send a message to `eventbus:message` so the engine can match it against rules and start new sessions. The value is a map containing an `events` list (event names) and an optional `data` map. A fresh `eventID` is generated automatically.
  - `wait`: wait for the specified amount of time or receive a wake-up request with a matching token. The time should be formatted according to the requirement for function [ParseDuration](https://golang.org/pkg/time/#ParseDuration). A unit suffix is required.
 
 They can not be combined.
 
 A function can also have no action at all. `{}` is a perfectly legit no-op workflow.
+
+Example of `send_event` that fires a synthetic event for the engine to pick up:
+
+```yaml
+---
+workflows:
+  fire_my_event:
+    send_event:
+      events:
+        - mySystem.myTrigger
+      data:
+        key: value
+```
 
 ### Complex Actions
 Complex actions are groups of multiple `workflows` organized together to do some complex work.

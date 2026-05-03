@@ -65,6 +65,7 @@ func main() {
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
 	case "engine":
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
+		driver.MessageHandlers["eventbus:message"] = relayToRedis
 	case "operator":
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
 		driver.MessageHandlers["eventbus:return"] = relayToRedis

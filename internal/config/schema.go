@@ -99,6 +99,8 @@ type Workflow struct {
 	Detach       bool
 	Resume       string
 
+	SendEvent interface{} `json:"send_event" mapstructure:"send_event"`
+
 	Switch  string
 	Cases   map[string]interface{}
 	Default interface{}

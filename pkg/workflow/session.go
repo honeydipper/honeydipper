@@ -251,6 +251,8 @@ func (w *Session) Brief() string {
 		w.brief = "system func: " + wf.CallFunction
 	case wf.CallDriver != "":
 		w.brief = "driver func: " + wf.CallDriver
+	case wf.SendEvent != nil:
+		w.brief = "send event"
 	case wf.Workflow != "":
 		w.brief = "wrapper: " + wf.Workflow
 	case len(wf.Steps) > 0:
@@ -337,6 +339,7 @@ func (w *Session) checkIsNoop() bool {
 	case w.isFunction():
 	case w.Workflow.CallDriver != "":
 	case w.Workflow.CallFunction != "":
+	case w.Workflow.SendEvent != nil:
 	case len(w.Workflow.Steps) != 0:
 	case len(w.Workflow.Threads) != 0:
 	case w.Workflow.Wait != "":

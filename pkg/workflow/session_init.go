@@ -260,6 +260,7 @@ func (w *Session) interpolateWorkflow() {
 	ret.Wait = dipper.InterpolateStr(v.Wait, envData)
 	ret.CallFunction = dipper.InterpolateStr(v.CallFunction, envData)
 	ret.CallDriver = dipper.InterpolateStr(v.CallDriver, envData)
+	ret.SendEvent = dipper.Interpolate(v.SendEvent, envData)
 	ret.Resume = dipper.InterpolateStr(v.Resume, envData)
 	ret.CacheKey = dipper.InterpolateStr(v.CacheKey, envData)
 	ret.CacheTTL = dipper.InterpolateStr(v.CacheTTL, envData)

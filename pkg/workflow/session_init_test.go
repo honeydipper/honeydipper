@@ -381,7 +381,7 @@ func TestInjectLocalCTX(t *testing.T) {
 
 func TestInterpolateWorkflow(t *testing.T) {
 	s := makeSession()
-	s.Ctx = map[string]interface{}{"name": "n", "desc": "d", "ifval": "i", "any": "a", "unless": "u", "uall": "ua", "match": "m", "umatch": "um", "retry": "r", "backoff": "b", "wait": "w", "callFunc": "cf", "callDrv": "cd", "resume": "rs", "pool": "p"}
+	s.Ctx = map[string]interface{}{"name": "n", "desc": "d", "ifval": "i", "any": "a", "unless": "u", "uall": "ua", "match": "m", "umatch": "um", "retry": "r", "backoff": "b", "wait": "w", "callFunc": "cf", "callDrv": "cd", "resume": "rs", "pool": "p", "evt": "sys.trigger"}
 	wf := &cfg.Workflow{
 		Name:            "{{.ctx.name}}",
 		Description:     "{{.ctx.desc}}",
@@ -396,6 +396,7 @@ func TestInterpolateWorkflow(t *testing.T) {
 		Wait:            "{{.ctx.wait}}",
 		CallFunction:    "{{.ctx.callFunc}}",
 		CallDriver:      "{{.ctx.callDrv}}",
+		SendEvent:       map[string]interface{}{"events": []interface{}{"{{.ctx.evt}}"}},
 		Resume:          "{{.ctx.resume}}",
 		Iterate:         []interface{}{1},
 		IterateParallel: []interface{}{2},
@@ -419,6 +420,14 @@ func TestInterpolateWorkflow(t *testing.T) {
 	}
 	if s.Workflow.CallFunction != "cf" || s.Workflow.CallDriver != "cd" {
 		t.Error("calls not interpolated")
+	}
+	msg, ok := s.Workflow.SendEvent.(map[string]interface{})
+	if !ok {
+		t.Fatalf("send_event not interpolated as map: %T", s.Workflow.SendEvent)
+	}
+	events, ok := msg["events"].([]interface{})
+	if !ok || len(events) != 1 || events[0] != "sys.trigger" {
+		t.Fatalf("send_event events not interpolated: %+v", msg)
 	}
 	if arr, ok := s.Workflow.Iterate.([]interface{}); !ok || len(arr) == 0 {
 		t.Error("iterate fields lost")

@@ -120,6 +120,58 @@ func TestOperatorRelayToRedis(t *testing.T) {
 	<-done
 }
 
+func TestEngineRelayEventToRedis(t *testing.T) {
+	db, mock := redismock.NewClientMock()
+	redisOptionsMock = &redisclient.Options{Client: db}
+
+	i, inbuf := io.Pipe()
+	outbuf, o := io.Pipe()
+
+	done := testStartDriver(t, "engine", i, o)
+	dipper.SendMessage(inbuf, &dipper.Message{
+		Channel: "command",
+		Subject: "options",
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{
+				"connection": map[string]interface{}{
+					"Addr":     "1.1.1.1:6379",
+					"Username": "nouser",
+					"Password": "123",
+					"DB":       "2",
+				},
+			},
+		},
+	})
+	dipper.SendMessage(inbuf, &dipper.Message{
+		Channel: "command",
+		Subject: "start",
+	})
+
+	reply := dipper.FetchRawMessage(outbuf)
+	assert.Equal(t, "state", reply.Channel, "reply channel should be state")
+	assert.Equal(t, "alive", reply.Subject, "reply subject should be alive")
+
+	driver.State = dipper.DriverStateCompleted
+
+	mock.MatchExpectationsInOrder(false)
+	mock.ExpectBLPop(time.Second, "honeydipper:events").SetVal([]string{})
+	mock.ExpectBLPop(time.Second, "honeydipper:return").SetVal([]string{})
+	mock.ExpectRPush("honeydipper:events", `{"data":"{\"events\":[\"demo.event\"]}","labels":{"from":"`+dipper.GetIP()+`"}}`).SetVal(1)
+
+	dipper.SendMessage(inbuf, &dipper.Message{
+		Channel: "eventbus",
+		Subject: "message",
+		Payload: map[string]interface{}{
+			"events": []string{"demo.event"},
+		},
+	})
+
+	time.Sleep(time.Millisecond * 100)
+	assert.NoError(t, mock.ExpectationsWereMet(), "mock redis expectations not met")
+	inbuf.Close()
+	<-done
+}
+
 func TestOperatorEmit(t *testing.T) {
 	db, mock := redismock.NewClientMock()
 	redisOptionsMock = &redisclient.Options{
