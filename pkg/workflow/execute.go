@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
@@ -47,6 +48,10 @@ func (w *Session) execute() {
 		w.Action++
 		w.callShorthandFunction(w.Workflow.CallFunction)
 		w.pending = true
+	case w.Workflow.SendEvent != nil:
+		w.setPerforming("sending eventbus:message")
+		w.Action++
+		w.sendEventbusMessage()
 	case w.Workflow.Steps != nil:
 		// Execute workflow steps sequentially.
 		w.setPerforming("step - " + strconv.Itoa(w.Current))
@@ -254,6 +259,26 @@ func (w *Session) callShorthandFunction(f string) {
 			Function: funcName,
 		},
 	})
+}
+
+// sendEventbusMessage emits an eventbus:message for engine rule processing.
+func (w *Session) sendEventbusMessage() {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		panic(err)
+	}
+
+	msg := &dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: dipper.EventbusMessage,
+		Payload: w.Workflow.SendEvent,
+		Labels: map[string]string{
+			"eventID": id.String(),
+		},
+	}
+
+	w.store.SendMessage(msg)
+	w.CurrentMsg.Labels["status"] = SessionStatusSuccess
 }
 
 // executeSwitch selects and executes a branch based on the switch condition.
