@@ -191,7 +191,20 @@ func (d *RemoteDriver) installRequiredPackages() {
 		return
 	}
 
-	rawList, ok := raw.([]interface{})
+	key := ""
+	if _, err := exec.LookPath("apk"); err == nil {
+		key = "apk"
+	} else if _, err := exec.LookPath("apt"); err == nil {
+		key = "apt"
+	} else if _, err := exec.LookPath("brew"); err == nil {
+		key = "brew"
+	} else if _, err := exec.LookPath("dnf"); err == nil {
+		key = "dnf"
+	} else {
+		panic(fmt.Errorf("%w: %w: %s", ErrDriverError, errRemoteNoPackageManager, d.meta.Name))
+	}
+
+	rawList, ok := raw.(map[string]interface{})[key].([]interface{})
 	if !ok || len(rawList) == 0 {
 		return
 	}
@@ -208,11 +221,16 @@ func (d *RemoteDriver) installRequiredPackages() {
 	ctx := context.Background()
 
 	var cmd *exec.Cmd
-	if _, err := exec.LookPath("apk"); err == nil {
+	switch key {
+	case "apk":
 		cmd = exec.CommandContext(ctx, "apk", append([]string{"add", "--no-cache"}, pkgs...)...) //nolint:gosec
-	} else if _, err := exec.LookPath("apt-get"); err == nil {
-		cmd = exec.CommandContext(ctx, "apt-get", append([]string{"install", "-y"}, pkgs...)...) //nolint:gosec
-	} else {
+	case "apt":
+		cmd = exec.CommandContext(ctx, "apt", append([]string{"install", "-y"}, pkgs...)...) //nolint:gosec
+	case "brew":
+		cmd = exec.CommandContext(ctx, "brew", append([]string{"install"}, pkgs...)...) //nolint:gosec
+	case "dnf":
+		cmd = exec.CommandContext(ctx, "dnf", append([]string{"install", "-y"}, pkgs...)...) //nolint:gosec
+	default:
 		panic(fmt.Errorf("%w: %w: %s", ErrDriverError, errRemoteNoPackageManager, d.meta.Name))
 	}
 
