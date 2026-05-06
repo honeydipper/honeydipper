@@ -10,11 +10,13 @@
 package driver
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -285,5 +287,259 @@ func TestRemoteAcquireRegistry(t *testing.T) {
 			}()
 			c[0].(*RemoteDriver).Acquire()
 		}(tc.([]interface{}))
+	}
+}
+
+func TestResolvePackageInstaller(t *testing.T) {
+	testCases := map[string]struct {
+		available map[string]bool
+		manager   string
+		binary    string
+		args      []string
+		err       error
+	}{
+		"prefers apk": {
+			available: map[string]bool{"apk": true, "apt-get": true},
+			manager:   "apk",
+			binary:    "apk",
+			args:      []string{"add", "--no-cache"},
+		},
+		"uses apt-get as apt": {
+			available: map[string]bool{"apt-get": true},
+			manager:   "apt",
+			binary:    "apt-get",
+			args:      []string{"install", "-y"},
+		},
+		"uses dnf": {
+			available: map[string]bool{"dnf": true},
+			manager:   "dnf",
+			binary:    "dnf",
+			args:      []string{"install", "-y"},
+		},
+		"uses brew": {
+			available: map[string]bool{"brew": true},
+			manager:   "brew",
+			binary:    "brew",
+			args:      []string{"install"},
+		},
+		"errors when none available": {
+			available: map[string]bool{},
+			err:       errRemoteNoPackageManager,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			lookPath := func(file string) (string, error) {
+				if tc.available[file] {
+					return "/usr/bin/" + file, nil
+				}
+
+				return "", errors.New("not found")
+			}
+
+			manager, binary, args, err := resolvePackageInstaller(lookPath)
+			if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.manager, manager)
+			assert.Equal(t, tc.binary, binary)
+			assert.Equal(t, tc.args, args)
+		})
+	}
+}
+
+func TestResolveRequiredPackagesForManager(t *testing.T) {
+	testCases := map[string]struct {
+		raw     interface{}
+		manager string
+		expect  []string
+		err     error
+	}{
+		"legacy list applies": {
+			raw:     []interface{}{"curl", "jq"},
+			manager: "apt",
+			expect:  []string{"curl", "jq"},
+		},
+		"manager-specific map": {
+			raw: map[string]interface{}{
+				"apk": []interface{}{"ca-certificates"},
+				"apt": []interface{}{"ca-certificates", "curl"},
+			},
+			manager: "apt",
+			expect:  []string{"ca-certificates", "curl"},
+		},
+		"apt-get alias works": {
+			raw: map[string]interface{}{
+				"apt-get": []interface{}{"curl"},
+			},
+			manager: "apt",
+			expect:  []string{"curl"},
+		},
+		"missing manager package set": {
+			raw: map[string]interface{}{
+				"apk": []interface{}{"curl"},
+			},
+			manager: "dnf",
+			err:     errRemoteMissingPackageSet,
+		},
+		"invalid package name": {
+			raw:     []interface{}{"curl", "bad name"},
+			manager: "apt",
+			err:     errRemoteInvalidPackageName,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			pkgs, err := resolveRequiredPackagesForManager(tc.raw, tc.manager)
+			if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expect, pkgs)
+		})
+	}
+}
+
+func TestPackageCheckCommand(t *testing.T) {
+	testCases := map[string]struct {
+		manager string
+		pkg     string
+		cmd     string
+		args    []string
+		err     error
+	}{
+		"apk": {
+			manager: "apk",
+			pkg:     "gpgme",
+			cmd:     "apk",
+			args:    []string{"info", "-e", "gpgme"},
+		},
+		"apt": {
+			manager: "apt",
+			pkg:     "libgpgme11",
+			cmd:     "dpkg",
+			args:    []string{"-s", "libgpgme11"},
+		},
+		"dnf": {
+			manager: "dnf",
+			pkg:     "gpgme",
+			cmd:     "dnf",
+			args:    []string{"list", "installed", "gpgme"},
+		},
+		"brew": {
+			manager: "brew",
+			pkg:     "gpgme",
+			cmd:     "brew",
+			args:    []string{"list", "--formula", "gpgme"},
+		},
+		"unknown manager": {
+			manager: "yum",
+			pkg:     "gpgme",
+			err:     errRemoteNoPackageManager,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			cmd, args, err := packageCheckCommand(tc.manager, tc.pkg)
+			if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.cmd, cmd)
+			assert.Equal(t, tc.args, args)
+		})
+	}
+}
+
+func TestFilterMissingPackages(t *testing.T) {
+	runner := func(_ context.Context, name string, args ...string) error {
+		pkg := args[len(args)-1]
+		if pkg == "installed-pkg" {
+			return nil
+		}
+		if pkg == "missing-pkg" {
+			return errors.New("not installed")
+		}
+
+		return fmt.Errorf("unexpected package in test runner: %s via %s", pkg, name)
+	}
+
+	missing, err := filterMissingPackages(
+		context.Background(),
+		"apt",
+		[]string{"installed-pkg", "missing-pkg"},
+		runner,
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"missing-pkg"}, missing)
+}
+
+func TestResolveInstallInvocation(t *testing.T) {
+	testCases := map[string]struct {
+		available map[string]bool
+		geteuid   int
+		cmd       string
+		args      []string
+		err       error
+	}{
+		"root installs directly": {
+			available: map[string]bool{},
+			geteuid:   0,
+			cmd:       "apt-get",
+			args:      []string{"install", "-y", "curl"},
+		},
+		"non-root uses sudo when available": {
+			available: map[string]bool{"sudo": true},
+			geteuid:   1000,
+			cmd:       "sudo",
+			args:      []string{"-n", "apt-get", "install", "-y", "curl"},
+		},
+		"non-root without sudo errors": {
+			available: map[string]bool{},
+			geteuid:   1000,
+			err:       errRemoteRootRequired,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			lookPath := func(file string) (string, error) {
+				if tc.available[file] {
+					return "/usr/bin/" + file, nil
+				}
+
+				return "", errors.New("not found")
+			}
+
+			cmd, args, err := resolveInstallInvocation(
+				"apt-get",
+				[]string{"install", "-y"},
+				[]string{"curl"},
+				lookPath,
+				func() int { return tc.geteuid },
+			)
+			if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.cmd, cmd)
+			assert.Equal(t, tc.args, args)
+		})
 	}
 }

@@ -54,9 +54,13 @@ var (
 	errRemoteChecksumOpen       = errors.New("failed opening file for checksum")
 	errRemoteChecksumRead       = errors.New("failed reading file for checksum")
 	errRemoteSignatureRequired  = errors.New("signature is required for remote driver")
+	errRemotePackageCheck       = errors.New("failed checking required package presence for remote driver")
 	errRemotePackageInstall     = errors.New("failed installing required packages for remote driver")
+	errRemoteRequiredPackages   = errors.New("invalid requiredPackages for remote driver")
 	errRemoteInvalidPackageName = errors.New("invalid package name for remote driver")
+	errRemoteMissingPackageSet  = errors.New("requiredPackages does not define packages for detected package manager")
 	errRemoteNoPackageManager   = errors.New("no supported package manager found for remote driver")
+	errRemoteRootRequired       = errors.New("root privileges are required to install required packages for remote driver")
 	errRemotePublicKeyMissing   = errors.New("publicKey is missing for remote driver signature verification")
 	errRemotePublicKeyInvalid   = errors.New("publicKey is invalid for remote driver signature verification")
 	errRemoteSignatureMissing   = errors.New("signature is missing for remote driver")
@@ -191,53 +195,181 @@ func (d *RemoteDriver) installRequiredPackages() {
 		return
 	}
 
-	key := ""
-	if _, err := exec.LookPath("apk"); err == nil {
-		key = "apk"
-	} else if _, err := exec.LookPath("apt"); err == nil {
-		key = "apt"
-	} else if _, err := exec.LookPath("brew"); err == nil {
-		key = "brew"
-	} else if _, err := exec.LookPath("dnf"); err == nil {
-		key = "dnf"
-	} else {
+	manager, binary, installArgs, err := resolvePackageInstaller(exec.LookPath)
+	if err != nil {
 		panic(fmt.Errorf("%w: %w: %s", ErrDriverError, errRemoteNoPackageManager, d.meta.Name))
 	}
 
-	rawList, ok := raw.(map[string]interface{})[key].([]interface{})
-	if !ok || len(rawList) == 0 {
+	pkgs, err := resolveRequiredPackagesForManager(raw, manager)
+	if err != nil {
+		panic(fmt.Errorf("%w: %w: %w", ErrDriverError, errRemoteRequiredPackages, err))
+	}
+	if len(pkgs) == 0 {
 		return
 	}
 
-	pkgs := make([]string, 0, len(rawList))
-	for _, p := range rawList {
+	ctx := context.Background()
+	missingPkgs, err := filterMissingPackages(ctx, manager, pkgs, runCommand)
+	if err != nil {
+		panic(fmt.Errorf("%w: %w %s: %w", ErrDriverError, errRemotePackageCheck, d.meta.Name, err))
+	}
+	if len(missingPkgs) == 0 {
+		dipper.Logger.Infof("[remote-driver] required packages already present for %s with %s: %v", d.meta.Name, manager, pkgs)
+
+		return
+	}
+
+	cmdName, cmdArgs, err := resolveInstallInvocation(binary, installArgs, missingPkgs, exec.LookPath, os.Geteuid)
+	if err != nil {
+		panic(fmt.Errorf("%w: %w: %s", ErrDriverError, err, d.meta.Name))
+	}
+
+	cmd := exec.CommandContext(ctx, cmdName, cmdArgs...)
+
+	dipper.Logger.Infof("[remote-driver] installing required packages for %s with %s: %v", d.meta.Name, manager, missingPkgs)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		panic(fmt.Errorf("%w: %w %s: %s", ErrDriverError, errRemotePackageInstall, d.meta.Name, string(out)))
+	}
+}
+
+func runCommand(ctx context.Context, name string, args ...string) error {
+	return exec.CommandContext(ctx, name, args...).Run() //nolint:wrapcheck
+}
+
+func resolvePackageInstaller(lookPath func(file string) (string, error)) (string, string, []string, error) {
+	if _, err := lookPath("apk"); err == nil {
+		return "apk", "apk", []string{"add", "--no-cache"}, nil
+	}
+	if _, err := lookPath("apt-get"); err == nil {
+		return "apt", "apt-get", []string{"install", "-y"}, nil
+	}
+	if _, err := lookPath("apt"); err == nil {
+		return "apt", "apt", []string{"install", "-y"}, nil
+	}
+	if _, err := lookPath("dnf"); err == nil {
+		return "dnf", "dnf", []string{"install", "-y"}, nil
+	}
+	if _, err := lookPath("brew"); err == nil {
+		return "brew", "brew", []string{"install"}, nil
+	}
+
+	return "", "", nil, errRemoteNoPackageManager
+}
+
+func resolveRequiredPackagesForManager(raw interface{}, manager string) ([]string, error) {
+	if rawList, ok := raw.([]interface{}); ok {
+		return parsePackageList(rawList)
+	}
+
+	byManager, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, errRemoteRequiredPackages
+	}
+
+	keys := []string{manager}
+	if manager == "apt" {
+		keys = append(keys, "apt-get")
+	}
+	for _, key := range keys {
+		rawList, exists := byManager[key]
+		if !exists {
+			continue
+		}
+
+		pkgs, err := parsePackageList(rawList)
+		if err != nil {
+			return nil, err
+		}
+
+		return pkgs, nil
+	}
+
+	return nil, errRemoteMissingPackageSet
+}
+
+func parsePackageList(rawList interface{}) ([]string, error) {
+	if list, ok := rawList.([]string); ok {
+		pkgs := make([]string, 0, len(list))
+		for _, name := range list {
+			if !isValidPackageName(name) {
+				return nil, fmt.Errorf("%w: %v", errRemoteInvalidPackageName, name)
+			}
+			pkgs = append(pkgs, name)
+		}
+
+		return pkgs, nil
+	}
+
+	list, ok := rawList.([]interface{})
+	if !ok {
+		return nil, errRemoteRequiredPackages
+	}
+
+	pkgs := make([]string, 0, len(list))
+	for _, p := range list {
 		name, ok := p.(string)
 		if !ok || !isValidPackageName(name) {
-			panic(fmt.Errorf("%w: %w: %v", ErrDriverError, errRemoteInvalidPackageName, p))
+			return nil, fmt.Errorf("%w: %v", errRemoteInvalidPackageName, p)
 		}
 		pkgs = append(pkgs, name)
 	}
 
-	ctx := context.Background()
+	return pkgs, nil
+}
 
-	var cmd *exec.Cmd
-	switch key {
+func filterMissingPackages(
+	ctx context.Context,
+	manager string,
+	pkgs []string,
+	runner func(context.Context, string, ...string) error,
+) ([]string, error) {
+	missing := make([]string, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		checkCmd, checkArgs, err := packageCheckCommand(manager, pkg)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := runner(ctx, checkCmd, checkArgs...); err != nil {
+			missing = append(missing, pkg)
+		}
+	}
+
+	return missing, nil
+}
+
+func packageCheckCommand(manager string, pkg string) (string, []string, error) {
+	switch manager {
 	case "apk":
-		cmd = exec.CommandContext(ctx, "apk", append([]string{"add", "--no-cache"}, pkgs...)...) //nolint:gosec
+		return "apk", []string{"info", "-e", pkg}, nil
 	case "apt":
-		cmd = exec.CommandContext(ctx, "apt", append([]string{"install", "-y"}, pkgs...)...) //nolint:gosec
-	case "brew":
-		cmd = exec.CommandContext(ctx, "brew", append([]string{"install"}, pkgs...)...) //nolint:gosec
+		return "dpkg", []string{"-s", pkg}, nil
 	case "dnf":
-		cmd = exec.CommandContext(ctx, "dnf", append([]string{"install", "-y"}, pkgs...)...) //nolint:gosec
+		return "dnf", []string{"list", "installed", pkg}, nil
+	case "brew":
+		return "brew", []string{"list", "--formula", pkg}, nil
 	default:
-		panic(fmt.Errorf("%w: %w: %s", ErrDriverError, errRemoteNoPackageManager, d.meta.Name))
+		return "", nil, errRemoteNoPackageManager
+	}
+}
+
+func resolveInstallInvocation(
+	binary string,
+	installArgs []string,
+	pkgs []string,
+	lookPath func(file string) (string, error),
+	geteuid func() int,
+) (string, []string, error) {
+	args := append(append([]string{}, installArgs...), pkgs...)
+	if geteuid() == 0 {
+		return binary, args, nil
 	}
 
-	dipper.Logger.Infof("[remote-driver] installing required packages for %s: %v", d.meta.Name, pkgs)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		panic(fmt.Errorf("%w: %w %s: %s", ErrDriverError, errRemotePackageInstall, d.meta.Name, string(out)))
+	if _, err := lookPath("sudo"); err == nil {
+		return "sudo", append([]string{"-n", binary}, args...), nil
 	}
+
+	return "", nil, errRemoteRootRequired
 }
 
 func isValidPackageName(name string) bool {
