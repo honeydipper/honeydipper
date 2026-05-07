@@ -124,7 +124,6 @@ func ParseYaml(pattern string) interface{} {
 	if err != nil {
 		panic(err)
 	}
-	Recursive(data, RegexParser)
 
 	return data
 }

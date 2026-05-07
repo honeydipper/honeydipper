@@ -20,7 +20,10 @@ func Compare(actual string, criteria interface{}) bool {
 
 	strVal, ok := criteria.(string)
 	if ok {
-		return (strVal == actual)
+		if !strings.HasPrefix(strVal, ":regex:") {
+			return (strVal == actual)
+		}
+		criteria = Must(regexp.Compile(strVal[7:])).(*regexp.Regexp)
 	}
 
 	re, ok := criteria.(*regexp.Regexp)
