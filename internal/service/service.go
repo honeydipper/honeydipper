@@ -214,6 +214,10 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		panic(err)
 	}
 
+	if resolvedDriverMeta["type"] == "null" {
+		return false, driverName, nil
+	}
+
 	driverRuntime := driver.NewDriver(feature, resolvedDriverMeta, driverData, dynamicData)
 	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverRuntime.Handler.Meta())
 
