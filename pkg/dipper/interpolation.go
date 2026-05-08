@@ -56,8 +56,8 @@ var FuncMap = template.FuncMap{
 }
 
 // InterpolateStr : interpolate a string and return a string.
-func InterpolateStr(pattern string, data interface{}) string {
-	ret := Interpolate(pattern, data)
+func InterpolateStr(mode, pattern string, data interface{}) string {
+	ret := Interpolate(mode, pattern, data)
 	if ret != nil {
 		return fmt.Sprintf("%+v", ret)
 	}
@@ -66,29 +66,34 @@ func InterpolateStr(pattern string, data interface{}) string {
 }
 
 // InterpolateGoTemplate : parse the string as go template.
-func InterpolateGoTemplate(isLoading bool, title string, pattern string, data interface{}, funcs ...template.FuncMap) interface{} {
+func InterpolateGoTemplate(mode string, title string, pattern string, data interface{}, funcs ...template.FuncMap) interface{} {
 	ldelim := "{{"
 	rdelim := "}}"
-	if isLoading {
+	if mode == "loading" {
 		ldelim = "{%"
 		rdelim = "%}"
 	}
 	if strings.Contains(pattern, ldelim) {
 		var ret interface{}
 		useRet := false
-		returnFuncMap := template.FuncMap{
-			"duration": func(s string) string {
+
+		returnFuncMap := template.FuncMap{}
+		if mode != "embedded" && mode != "dollar" {
+			returnFuncMap["duration"] = func(s string) string {
 				ret = Must(time.ParseDuration(s)).(time.Duration)
 				useRet = true
 
 				return ""
-			},
-			"return": func(v interface{}) string {
+			}
+			returnFuncMap["return"] = func(v interface{}) string {
 				useRet = true
 				ret = v
 
 				return ""
-			},
+			}
+			returnFuncMap["render"] = func(t interface{}, data interface{}) interface{} {
+				return Interpolate("embedded", t, data)
+			}
 		}
 
 		tmpl := template.New(title)
@@ -133,9 +138,9 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 	allowNull := (v[1] == '?')
 	var parsed string
 	if allowNull {
-		parsed = InterpolateStr(v[2:], data)
+		parsed = InterpolateStr("dollar", v[2:], data)
 	} else {
-		parsed = InterpolateStr(v[1:], data)
+		parsed = InterpolateStr("dollar", v[1:], data)
 	}
 
 	quote := strings.IndexAny(parsed, "\"'`")
@@ -157,7 +162,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 		ret, _ := GetMapData(data, key)
 		if rv := reflect.ValueOf(ret); rv.IsValid() && !rv.IsZero() {
 			if strings.HasPrefix(key, "sysData.") {
-				return Interpolate(ret, data)
+				return Interpolate("dollar", ret, data)
 			}
 
 			return ret
@@ -179,7 +184,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 }
 
 // Interpolate : go through the map data structure to find and parse all the templates.
-func Interpolate(source interface{}, data interface{}, funcs ...template.FuncMap) interface{} {
+func Interpolate(mode string, source interface{}, data interface{}, funcs ...template.FuncMap) interface{} {
 	switch v := source.(type) {
 	case string:
 		if strings.HasPrefix(v, "$") {
@@ -188,7 +193,7 @@ func Interpolate(source interface{}, data interface{}, funcs ...template.FuncMap
 
 		var ret string
 
-		switch retAnything := InterpolateGoTemplate(false, "go", v, data, funcs...).(type) {
+		switch retAnything := InterpolateGoTemplate(mode, "go", v, data, funcs...).(type) {
 		case *bytes.Buffer:
 			ret = retAnything.String()
 		case string:
@@ -205,7 +210,7 @@ func Interpolate(source interface{}, data interface{}, funcs ...template.FuncMap
 				}
 			}()
 
-			return Interpolate(ParseYaml(ret[6:]), data, funcs...)
+			return Interpolate(mode, ParseYaml(ret[6:]), data, funcs...)
 		}
 
 		if strings.HasPrefix(ret, ":yaml_safe:") {
@@ -223,21 +228,21 @@ func Interpolate(source interface{}, data interface{}, funcs ...template.FuncMap
 	case map[string]interface{}:
 		ret := map[string]interface{}{}
 		for k, val := range v {
-			ret[k] = Interpolate(val, data, funcs...)
+			ret[k] = Interpolate(mode, val, data, funcs...)
 		}
 
 		return ret
 	case []string:
 		ret := []string{}
 		for _, val := range v {
-			ret = append(ret, InterpolateStr(val, data))
+			ret = append(ret, InterpolateStr(mode, val, data))
 		}
 
 		return ret
 	case []interface{}:
 		ret := []interface{}{}
 		for _, val := range v {
-			ret = append(ret, Interpolate(val, data, funcs...))
+			ret = append(ret, Interpolate(mode, val, data, funcs...))
 		}
 
 		return ret

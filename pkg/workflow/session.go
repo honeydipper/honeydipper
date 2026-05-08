@@ -175,8 +175,8 @@ func (w *Session) buildEnvData() map[string]interface{} {
 func (w *Session) interpolateFunction(f *config.Function) *config.Function {
 	envData := w.buildEnvData()
 	interpolatedFunc := *f
-	interpolatedFunc.Target.System = dipper.InterpolateStr(f.Target.System, envData)
-	interpolatedFunc.Target.Function = dipper.InterpolateStr(f.Target.Function, envData)
+	interpolatedFunc.Target.System = dipper.InterpolateStr("session", f.Target.System, envData)
+	interpolatedFunc.Target.Function = dipper.InterpolateStr("session", f.Target.Function, envData)
 
 	return &interpolatedFunc
 }

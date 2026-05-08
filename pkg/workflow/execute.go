@@ -104,7 +104,7 @@ func (w *Session) callWorkflow() {
 	)
 	// Handle named workflow execution.
 	e := w.buildEnvData()
-	name := dipper.InterpolateStr(w.Workflow.Workflow, e)
+	name := dipper.InterpolateStr("execute", w.Workflow.Workflow, e)
 	w.setPerforming("calling workflow: " + name)
 
 	src, ok := w.store.GetConfig().DataSet.Workflows[name]
@@ -229,11 +229,11 @@ func (w *Session) callDriver(f string) {
 		envData := w.buildEnvData()
 		if layers, ok := w.Workflow.Local.([]any); ok {
 			for _, layer := range layers {
-				delta := dipper.Interpolate(layer, envData).(map[string]any)
+				delta := dipper.Interpolate("execute", layer, envData).(map[string]any)
 				locals = dipper.MergeMap(locals, delta)
 			}
 		} else {
-			locals = dipper.Interpolate(w.Workflow.Local, envData).(map[string]interface{})
+			locals = dipper.Interpolate("execute", w.Workflow.Local, envData).(map[string]interface{})
 		}
 	}
 
@@ -285,7 +285,7 @@ func (w *Session) sendEventbusMessage() {
 // If no matching case is found, it executes the default branch if present.
 func (w *Session) executeSwitch() {
 	envData := w.buildEnvData()
-	match := dipper.InterpolateStr(w.Workflow.Switch, envData)
+	match := dipper.InterpolateStr("execute", w.Workflow.Switch, envData)
 	for key, branch := range w.Workflow.Cases {
 		if key == match {
 			w.setPerforming("executing branch: " + key)

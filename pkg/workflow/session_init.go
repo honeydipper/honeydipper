@@ -102,7 +102,7 @@ func (w *Session) injectNamedCTX(name string, firstTime bool) {
 	ctx, ok := namedCTXs.(map[string]interface{})["*"]
 	if firstTime && ok {
 		ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
-		ctx = dipper.Interpolate(ctx, envData)
+		ctx = dipper.Interpolate("context", ctx, envData)
 		w.Ctx = dipper.MergeMap(w.Ctx, ctx)
 		w.store.GetLogger().Debugf("session [%s.%s] depth %d merged global values (*) from named context %s to workflow",
 			w.ID,
@@ -116,7 +116,7 @@ func (w *Session) injectNamedCTX(name string, firstTime bool) {
 		ctx, ok := namedCTXs.(map[string]interface{})["_events"]
 		if ok {
 			ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
-			ctx = dipper.Interpolate(ctx, envData)
+			ctx = dipper.Interpolate("context", ctx, envData)
 			w.Ctx = dipper.MergeMap(w.Ctx, ctx)
 		}
 	}
@@ -125,7 +125,7 @@ func (w *Session) injectNamedCTX(name string, firstTime bool) {
 		ctx, ok := namedCTXs.(map[string]interface{})[w.Workflow.Name]
 		if ok {
 			ctx = dipper.MustDeepCopyMap(ctx.(map[string]interface{}))
-			ctx = dipper.Interpolate(ctx, envData)
+			ctx = dipper.Interpolate("context", ctx, envData)
 			w.Ctx = dipper.MergeMap(w.Ctx, ctx)
 			w.store.GetLogger().Debugf("session [%s.%s] depth %d merged named context [%s] to [%s]",
 				w.ID,
@@ -141,8 +141,8 @@ func (w *Session) injectNamedCTX(name string, firstTime bool) {
 // injectCTXs loads the contexts specified through context or contexts fields.
 func (w *Session) injectCTXs() {
 	envdata := w.buildEnvData()
-	w.Workflow.Context = dipper.InterpolateStr(w.Workflow.Context, envdata)
-	w.Workflow.Contexts = dipper.Interpolate(w.Workflow.Contexts, envdata)
+	w.Workflow.Context = dipper.InterpolateStr("context", w.Workflow.Context, envdata)
+	w.Workflow.Contexts = dipper.Interpolate("context", w.Workflow.Contexts, envdata)
 
 	if w.Workflow.Context != "" {
 		if !slices.Contains(w.LoadedContexts, w.Workflow.Context) {
@@ -229,7 +229,7 @@ func (w *Session) injectLocalCTX() {
 		}
 		for _, l := range layers {
 			envData := w.buildEnvData()
-			locals := dipper.Interpolate(l, envData)
+			locals := dipper.Interpolate("context", l, envData)
 			envData["ctx"] = dipper.MergeMap(envData["ctx"].(map[string]interface{}), locals)
 			w.Ctx = envData["ctx"].(map[string]interface{})
 		}
@@ -242,39 +242,39 @@ func (w *Session) interpolateWorkflow() {
 	envData := w.buildEnvData()
 	ret := *v
 
-	ret.Name = dipper.InterpolateStr(v.Name, envData)
+	ret.Name = dipper.InterpolateStr("session", v.Name, envData)
 	if v.IterateParallel == nil {
 		// for iterate parallel workflow, description is interpolated in each child session to
 		// include the current item value. For non-iterate parallel workflow, we can interpolate
 		// description here.
-		ret.Description = dipper.InterpolateStr(v.Description, envData)
+		ret.Description = dipper.InterpolateStr("session", v.Description, envData)
 	}
-	ret.If = dipper.Interpolate(v.If, envData).([]string)
-	ret.IfAny = dipper.Interpolate(v.IfAny, envData).([]string)
-	ret.Unless = dipper.Interpolate(v.Unless, envData).([]string)
-	ret.UnlessAll = dipper.Interpolate(v.UnlessAll, envData).([]string)
-	ret.Match = dipper.Interpolate(v.Match, envData)
-	ret.UnlessMatch = dipper.Interpolate(v.UnlessMatch, envData)
-	ret.Retry = dipper.InterpolateStr(v.Retry, envData)
-	ret.Backoff = dipper.InterpolateStr(v.Backoff, envData)
-	ret.Wait = dipper.InterpolateStr(v.Wait, envData)
-	ret.CallFunction = dipper.InterpolateStr(v.CallFunction, envData)
-	ret.CallDriver = dipper.InterpolateStr(v.CallDriver, envData)
-	ret.SendEvent = dipper.Interpolate(v.SendEvent, envData)
-	ret.Resume = dipper.InterpolateStr(v.Resume, envData)
-	ret.CacheKey = dipper.InterpolateStr(v.CacheKey, envData)
-	ret.CacheTTL = dipper.InterpolateStr(v.CacheTTL, envData)
+	ret.If = dipper.Interpolate("session", v.If, envData).([]string)
+	ret.IfAny = dipper.Interpolate("session", v.IfAny, envData).([]string)
+	ret.Unless = dipper.Interpolate("session", v.Unless, envData).([]string)
+	ret.UnlessAll = dipper.Interpolate("session", v.UnlessAll, envData).([]string)
+	ret.Match = dipper.Interpolate("session", v.Match, envData)
+	ret.UnlessMatch = dipper.Interpolate("session", v.UnlessMatch, envData)
+	ret.Retry = dipper.InterpolateStr("session", v.Retry, envData)
+	ret.Backoff = dipper.InterpolateStr("session", v.Backoff, envData)
+	ret.Wait = dipper.InterpolateStr("session", v.Wait, envData)
+	ret.CallFunction = dipper.InterpolateStr("session", v.CallFunction, envData)
+	ret.CallDriver = dipper.InterpolateStr("session", v.CallDriver, envData)
+	ret.SendEvent = dipper.Interpolate("session", v.SendEvent, envData)
+	ret.Resume = dipper.InterpolateStr("session", v.Resume, envData)
+	ret.CacheKey = dipper.InterpolateStr("session", v.CacheKey, envData)
+	ret.CacheTTL = dipper.InterpolateStr("session", v.CacheTTL, envData)
 
-	ret.Iterate = dipper.Interpolate(v.Iterate, envData)
+	ret.Iterate = dipper.Interpolate("session", v.Iterate, envData)
 	if ret.Iterate == nil && v.Iterate != nil {
 		ret.Iterate = []interface{}{}
 	}
-	ret.IterateParallel = dipper.Interpolate(v.IterateParallel, envData)
+	ret.IterateParallel = dipper.Interpolate("session", v.IterateParallel, envData)
 	if ret.IterateParallel == nil && v.IterateParallel != nil {
 		ret.IterateParallel = []interface{}{}
 	}
 	if v.IterateParallel != nil {
-		ret.IteratePool = dipper.InterpolateStr(v.IteratePool, envData)
+		ret.IteratePool = dipper.InterpolateStr("session", v.IteratePool, envData)
 	}
 
 	// ret.While = v.While                     // repeatedly interpolated later

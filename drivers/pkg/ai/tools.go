@@ -85,7 +85,7 @@ func (w *ChatWrapper) toolCallHandler(jsonMessage string, args map[string]any, n
 			"prefix": w.prefix,
 			"step":   w.step,
 		}
-		local = dipper.Interpolate(local, envData)
+		local = dipper.Interpolate("ai-tools", local, envData)
 		dipper.Recursive(local, w.fetchCache)
 
 		if len(wf.Local.(map[string]any)) > 0 {
@@ -124,13 +124,13 @@ func (w *ChatWrapper) toolCallDriverHandler(name string, args map[string]any, wf
 		"prefix": w.prefix,
 		"step":   w.step,
 	}
-	msg.Payload = dipper.Interpolate(msg.Payload, envData)
+	msg.Payload = dipper.Interpolate("ai-tools", msg.Payload, envData)
 	noWaitData, _ := dipper.GetMapData(wf.Local, "no_wait")
-	noWait := dipper.IsTruthy(dipper.Interpolate(noWaitData, envData))
+	noWait := dipper.IsTruthy(dipper.Interpolate("ai-tools", noWaitData, envData))
 
 	// interpolate the labels
 	for k, v := range msg.Labels {
-		msg.Labels[k] = dipper.InterpolateStr(v, envData)
+		msg.Labels[k] = dipper.InterpolateStr("ai-tools", v, envData)
 	}
 
 	// setup callee information
@@ -150,7 +150,7 @@ func (w *ChatWrapper) toolCallDriverHandler(name string, args map[string]any, wf
 
 	// interpolate the return
 	o, _ := dipper.GetMapData(wf.Local, "output")
-	o = dipper.Interpolate(o, envData)
+	o = dipper.Interpolate("ai-tools", o, envData)
 
 	w.relayFuncReturn(name, callID, dipper.Must(json.Marshal(o)).([]byte))
 }

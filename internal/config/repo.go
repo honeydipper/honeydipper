@@ -142,7 +142,7 @@ func (c *Repo) loadFile(filename string) {
 		},
 		"options": c.repo.Options,
 	}
-	switch ret := dipper.InterpolateGoTemplate(true, filename, string(yamlFile), envData).(type) {
+	switch ret := dipper.InterpolateGoTemplate("loading", filename, string(yamlFile), envData).(type) {
 	case *bytes.Buffer:
 		yamlFile = ret.Bytes()
 	case string:
