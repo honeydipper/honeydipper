@@ -46,7 +46,7 @@ func OperatorFeatures(_ *config.DataSet) map[string]interface{} {
 }
 
 func applyInterpolatedLabel(msg *dipper.Message, name, pattern string, ctx interface{}, params map[string]interface{}) {
-	value := dipper.InterpolateStr(pattern, map[string]interface{}{
+	value := dipper.InterpolateStr("labels", pattern, map[string]interface{}{
 		"ctx":    ctx,
 		"params": params,
 	})
@@ -117,7 +117,7 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 	}
 	finalParams := params
 	if params != nil {
-		finalParams = dipper.Interpolate(params, map[string]interface{}{
+		finalParams = dipper.Interpolate("operator", params, map[string]interface{}{
 			"sysData": sysData,
 			"data":    data,
 			"event":   event,

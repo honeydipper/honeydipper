@@ -75,7 +75,7 @@ func (w *Session) processWorkflowExport() {
 // processExport interpolate the given data and add it to the export stack.
 func (w *Session) processExport(exportMap map[string]interface{}, envData map[string]interface{}) {
 	funcMap := config.GetInterpolationFuncMap(w.store.GetConfig())
-	delta := dipper.Interpolate(exportMap, envData, funcMap).(map[string]interface{})
+	delta := dipper.Interpolate("export", exportMap, envData, funcMap).(map[string]interface{})
 	w.Ctx = dipper.MergeMap(w.Ctx, dipper.MustDeepCopy(delta))
 	envData["ctx"] = w.Ctx
 	if len(delta) > 0 {

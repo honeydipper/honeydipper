@@ -56,8 +56,8 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		envData := map[string]interface{}{
 			"sysData": sysData,
 		}
-		match = dipper.Interpolate(match, envData).(map[string]interface{})
-		params = dipper.Interpolate(params, envData).(map[string]interface{})
+		match = dipper.Interpolate("trigger", match, envData).(map[string]interface{})
+		params = dipper.Interpolate("trigger", params, envData).(map[string]interface{})
 	}
 
 	return current, &CollapsedTrigger{
@@ -76,7 +76,7 @@ func (t *CollapsedTrigger) ExportContext(eventName string, envData map[string]in
 	envData["sysData"] = t.SysData
 
 	for _, layer := range t.Exports {
-		delta := dipper.Interpolate(layer, envData)
+		delta := dipper.Interpolate("trigger", layer, envData)
 		newCtx = dipper.MergeMap(newCtx, delta)
 	}
 

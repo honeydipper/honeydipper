@@ -83,11 +83,11 @@ func (w *Session) checkLoopCondition() bool {
 
 	switch {
 	case w.Workflow.WhileMatch != nil:
-		scenario := dipper.Interpolate(w.Workflow.WhileMatch, envData)
+		scenario := dipper.Interpolate("condition", w.Workflow.WhileMatch, envData)
 
 		return dipper.CompareAll(w.Ctx, scenario)
 	case w.Workflow.UntilMatch != nil:
-		scenario := dipper.Interpolate(w.Workflow.UntilMatch, envData)
+		scenario := dipper.Interpolate("condition", w.Workflow.UntilMatch, envData)
 		if scenario != nil && reflect.ValueOf(scenario).Len() > 0 {
 			return !dipper.CompareAll(w.Ctx, scenario)
 		}
@@ -95,7 +95,7 @@ func (w *Session) checkLoopCondition() bool {
 		return true
 	case len(w.Workflow.While) > 0:
 		for _, c := range w.Workflow.While {
-			c = dipper.InterpolateStr(c, envData)
+			c = dipper.InterpolateStr("condition", c, envData)
 			if !isTruthy(c) {
 				return false
 			}
@@ -104,7 +104,7 @@ func (w *Session) checkLoopCondition() bool {
 		return true
 	case len(w.Workflow.WhileAny) > 0:
 		for _, c := range w.Workflow.WhileAny {
-			c = dipper.InterpolateStr(c, envData)
+			c = dipper.InterpolateStr("condition", c, envData)
 			if isTruthy(c) {
 				return true
 			}
@@ -113,7 +113,7 @@ func (w *Session) checkLoopCondition() bool {
 		return false
 	case len(w.Workflow.Until) > 0:
 		for _, c := range w.Workflow.Until {
-			c = dipper.InterpolateStr(c, envData)
+			c = dipper.InterpolateStr("condition", c, envData)
 			if isTruthy(c) {
 				return false
 			}
@@ -122,7 +122,7 @@ func (w *Session) checkLoopCondition() bool {
 		return true
 	case len(w.Workflow.UntilAll) > 0:
 		for _, c := range w.Workflow.UntilAll {
-			c = dipper.InterpolateStr(c, envData)
+			c = dipper.InterpolateStr("condition", c, envData)
 			if !isTruthy(c) {
 				return true
 			}

@@ -18,18 +18,19 @@ import (
 )
 
 func TestInterpolateStr(t *testing.T) {
-	parsed := InterpolateStr("{{ index . \"hello\" }} {{ index . \"world\" }}", map[string]interface{}{
+	parsed := InterpolateStr("", "{{ index . \"hello\" }} {{ index . \"world\" }}", map[string]interface{}{
 		"hello": "hello",
 		"world": "world",
 	})
 	assert.Equal(t, "hello world", parsed, "parsing go template")
 	assert.Panics(t, func() {
-		InterpolateStr("{{ index . 'hello' }} {{ index . \"world\" }}", map[string]interface{}{"h": "hellow"})
+		InterpolateStr("", "{{ index . 'hello' }} {{ index . \"world\" }}", map[string]interface{}{"h": "hellow"})
 	}, "parsing panics with wrong template")
 }
 
 func TestInterpolate(t *testing.T) {
 	parsed := Interpolate(
+		"",
 		map[string]interface{}{
 			"notmpl":    "raw",
 			"templated": " this is used by {{ index . \"user\" }}",
@@ -87,12 +88,12 @@ test:
 }
 
 func TestInterpolateGoTemplate(t *testing.T) {
-	assert.Equal(t, "{% not interpolated %}", InterpolateGoTemplate(false, "go", "{% not interpolated %}", map[string]interface{}{}), "should not interpolate {%%} in non-loading time")
-	assert.Equal(t, "{{ not interpolated }}", InterpolateGoTemplate(true, "test.yml", "{{ not interpolated }}", map[string]interface{}{}), "should not interpolate {{}} in loading time")
-	assert.Equal(t, "test", InterpolateGoTemplate(false, "go", "{{ .env.TEST_ENV }}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}).(*bytes.Buffer).String(), "should interpolate {{}} in non-loading time")
-	assert.Equal(t, "test", InterpolateGoTemplate(true, "test.yml", "{% .env.TEST_ENV %}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}).(*bytes.Buffer).String(), "should interpolate {%%} in loading time")
-	assert.Equal(t, true, InterpolateGoTemplate(false, "go", "{{ return true }}", map[string]interface{}{}), "should return a boolean type")
-	assert.Equal(t, map[string]interface{}{"foo": "bar"}, InterpolateGoTemplate(false, "go", "{{ dict \"foo\" \"bar\" | return }}", map[string]interface{}{}), "should return a map type")
+	assert.Equal(t, "{% not interpolated %}", InterpolateGoTemplate("", "go", "{% not interpolated %}", map[string]interface{}{}), "should not interpolate {%%} in non-loading time")
+	assert.Equal(t, "{{ not interpolated }}", InterpolateGoTemplate("loading", "test.yml", "{{ not interpolated }}", map[string]interface{}{}), "should not interpolate {{}} in loading time")
+	assert.Equal(t, "test", InterpolateGoTemplate("", "go", "{{ .env.TEST_ENV }}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}).(*bytes.Buffer).String(), "should interpolate {{}} in non-loading time")
+	assert.Equal(t, "test", InterpolateGoTemplate("loading", "test.yml", "{% .env.TEST_ENV %}", map[string]interface{}{"env": map[string]interface{}{"TEST_ENV": "test"}}).(*bytes.Buffer).String(), "should interpolate {%%} in loading time")
+	assert.Equal(t, true, InterpolateGoTemplate("", "go", "{{ return true }}", map[string]interface{}{}), "should return a boolean type")
+	assert.Equal(t, map[string]interface{}{"foo": "bar"}, InterpolateGoTemplate("", "go", "{{ dict \"foo\" \"bar\" | return }}", map[string]interface{}{}), "should return a map type")
 }
 
 func TestFuncMap_FromPath(t *testing.T) {
@@ -101,17 +102,17 @@ func TestFuncMap_FromPath(t *testing.T) {
 			"key": "value",
 		},
 	}
-	result := InterpolateStr(`{{ fromPath . "nested.key" }}`, data)
+	result := InterpolateStr("", `{{ fromPath . "nested.key" }}`, data)
 	assert.Equal(t, "value", result, "fromPath should extract nested value")
 }
 
 func TestFuncMap_Now(t *testing.T) {
-	result := InterpolateGoTemplate(false, "test", "{{ now | ISO8601 }}", map[string]interface{}{})
+	result := InterpolateGoTemplate("", "test", "{{ now | ISO8601 }}", map[string]interface{}{})
 	assert.NotEmpty(t, result.(*bytes.Buffer).String(), "now should return current time")
 }
 
 func TestFuncMap_Duration(t *testing.T) {
-	result := InterpolateGoTemplate(false, "test", `{{ duration "1h" }}`, map[string]interface{}{})
+	result := InterpolateGoTemplate("", "test", `{{ duration "1h" }}`, map[string]interface{}{})
 	assert.Equal(t, time.Duration(3600000000000), result.(time.Duration), "duration should parse duration string")
 }
 
@@ -119,7 +120,7 @@ func TestFuncMap_ISO8601(t *testing.T) {
 	data := map[string]interface{}{
 		"time": "2024-01-15T10:30:00Z",
 	}
-	result := InterpolateStr("{{ now | ISO8601 }}", data)
+	result := InterpolateStr("", "{{ now | ISO8601 }}", data)
 	assert.Contains(t, result, "T", "ISO8601 should format time in RFC3339")
 	assert.Contains(t, result, ":", "ISO8601 should include time separators")
 }
@@ -131,7 +132,7 @@ func TestFuncMap_ToYaml(t *testing.T) {
 			"num": 42,
 		},
 	}
-	result := InterpolateStr("{{ toYaml .obj }}", data)
+	result := InterpolateStr("", "{{ toYaml .obj }}", data)
 	assert.Contains(t, result, "key: value", "toYaml should convert to YAML")
 	assert.Contains(t, result, "num: 42", "toYaml should include all fields")
 }
@@ -142,15 +143,38 @@ func TestFuncMap_CueValidateError(t *testing.T) {
 	}
 	schema := `{name: string, age: int}`
 
-	result := InterpolateGoTemplate(false, "test", `{{ cue_validate_error .schema "test" .data }}`, map[string]interface{}{
+	result := InterpolateGoTemplate("", "test", `{{ cue_validate_error .schema "test" .data }}`, map[string]interface{}{
 		"schema": schema,
 		"data":   map[string]interface{}{"name": "John", "age": 30},
 	})
 	assert.Equal(t, "", result.(*bytes.Buffer).String(), "cue_validate_error should return empty string for valid data")
 
-	result = InterpolateGoTemplate(false, "test", `{{ cue_validate_error .schema "test" .data }}`, map[string]interface{}{
+	result = InterpolateGoTemplate("", "test", `{{ cue_validate_error .schema "test" .data }}`, map[string]interface{}{
 		"schema": schema,
 		"data":   map[string]interface{}{"name": "John", "age": "thirty"},
 	})
 	assert.NotEqual(t, "", result.(*bytes.Buffer).String(), "cue_validate_error should return error for invalid data")
+}
+
+func TestInterpolateGoTemplate_Render(t *testing.T) {
+	// render a string template with custom data
+	result := InterpolateGoTemplate("", "test", `{{ render .tmpl .data }}`, map[string]interface{}{
+		"tmpl": "hello {{ .name }}",
+		"data": map[string]interface{}{"name": "world"},
+	})
+	assert.Equal(t, "hello world", result.(*bytes.Buffer).String(), "render should interpolate a string template with custom data")
+
+	// render a map structure with custom data
+	result = InterpolateGoTemplate("", "test", `{{ render .tmpl .data | toJson }}`, map[string]interface{}{
+		"tmpl": map[string]interface{}{
+			"greeting": "hello {{ .name }}",
+		},
+		"data": map[string]interface{}{"name": "world"},
+	})
+	assert.Equal(t, `{"greeting":"hello world"}`, result.(*bytes.Buffer).String(), "render should interpolate a map structure with custom data")
+
+	// render is not available in embedded mode — return func should not be registered
+	assert.Panics(t, func() {
+		InterpolateGoTemplate("embedded", "test", `{{ render "x" . }}`, map[string]interface{}{})
+	}, "render should not be available in embedded mode")
 }

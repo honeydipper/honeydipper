@@ -190,7 +190,7 @@ func readFile(root string, file string) string {
 }
 
 func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config) {
-	name := dipper.InterpolateStr(item.Name, envData)
+	name := dipper.InterpolateStr("docgen", item.Name, envData)
 	dipper.Logger.Infof("Generating file %s from template %s", name, item.Template)
 	tmpl, ok := tmplCache[item.Template]
 	if !ok {
@@ -212,7 +212,7 @@ func createItem(item DocItem, envData map[string]interface{}, cfg *config.Config
 		}
 	}
 
-	doc := dipper.InterpolateStr(tmpl, envData)
+	doc := dipper.InterpolateStr("docgen", tmpl, envData)
 
 	file := path.Join(cfg.DocDst, name)
 	ensureDirExists(file)

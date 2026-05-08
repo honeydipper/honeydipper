@@ -75,7 +75,7 @@ func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Con
 		// once, in the inner most function. After that, the parameters can be used for export in all outer
 		// layers.
 		squashedParams := envData["params"]
-		envData["params"] = dipper.Interpolate(squashedParams, envData, template.FuncMap{
+		envData["params"] = dipper.Interpolate("export", squashedParams, envData, template.FuncMap{
 			"decrypt": func(v string) string {
 				return ""
 			},
@@ -92,16 +92,16 @@ func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Con
 		newCtx = newCtxData.(map[string]interface{})
 	}
 
-	delta := dipper.Interpolate(f.Export, envData, funcMap)
+	delta := dipper.Interpolate("export", f.Export, envData, funcMap)
 	exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 	newCtx = dipper.MergeMap(newCtx, delta)
 	switch status {
 	case "success":
-		delta := dipper.Interpolate(f.ExportOnSuccess, envData, funcMap)
+		delta := dipper.Interpolate("export", f.ExportOnSuccess, envData, funcMap)
 		exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 		newCtx = dipper.MergeMap(newCtx, delta)
 	case "failure":
-		delta := dipper.Interpolate(f.ExportOnFailure, envData, funcMap)
+		delta := dipper.Interpolate("export", f.ExportOnFailure, envData, funcMap)
 		exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 		newCtx = dipper.MergeMap(newCtx, delta)
 	}
