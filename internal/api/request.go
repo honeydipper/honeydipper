@@ -8,6 +8,7 @@ package api
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -58,14 +59,21 @@ func (a *Request) Dispatch() {
 	a.results = map[string]interface{}{}
 	a.store.SaveRequest(a)
 
+	labels := map[string]interface{}{
+		"fn":           a.fn,
+		"uuid":         a.uuid,
+		"service":      a.service,
+		"content-type": a.contentType,
+	}
+	if a.fn == "eventInteract" {
+		if user := a.getPrincipalUser(); user != "" {
+			labels["user"] = user
+		}
+	}
+
 	dipper.Must(a.store.caller.Call("api-broadcast", "send", map[string]interface{}{
 		"subject": "call",
-		"labels": map[string]interface{}{
-			"fn":           a.fn,
-			"uuid":         a.uuid,
-			"service":      a.service,
-			"content-type": a.contentType,
-		},
+		"labels":  labels,
 		"payload": a.params,
 	}))
 
@@ -100,6 +108,24 @@ func (a *Request) Dispatch() {
 			time.Sleep(a.ackTimeout)
 		}
 	}()
+}
+
+func (a *Request) getPrincipalUser() string {
+	p, ok := a.ctx.Get("principal")
+	if !ok {
+		return ""
+	}
+
+	principal, ok := p.(Principal)
+	if !ok {
+		return ""
+	}
+
+	if user := strings.TrimSpace(principal.ProfileName); user != "" {
+		return user
+	}
+
+	return strings.TrimSpace(principal.Subject)
 }
 
 func (a *Request) dispatchLocal() {

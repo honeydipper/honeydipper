@@ -52,7 +52,7 @@ type rerunSessionStarter interface {
 type sessionController interface {
 	PauseSession(sessionID string) (map[string]interface{}, error)
 	ResumeSessionByID(sessionID string) (map[string]interface{}, error)
-	InteractSessionByID(sessionID string, key string) (map[string]interface{}, error)
+	InteractSessionByID(sessionID string, key string, actor string) (map[string]interface{}, error)
 	CancelSessionByID(sessionID string, reason string) (map[string]interface{}, error)
 }
 
@@ -123,7 +123,8 @@ func handleSessionControl(resp *api.Response, action string) {
 		ret, err = controller.ResumeSessionByID(sessionID)
 	case "interact":
 		key := dipper.MustGetMapDataStr(input, "key")
-		ret, err = controller.InteractSessionByID(sessionID, key)
+		actor := resolveSessionControlActor(resp.Request, input)
+		ret, err = controller.InteractSessionByID(sessionID, key, actor)
 	case "cancel":
 		reason, _ := dipper.GetMapDataStr(input, "reason")
 		ret, err = controller.CancelSessionByID(sessionID, reason)
@@ -164,6 +165,32 @@ func normalizeSessionControlInput(payload map[string]interface{}) map[string]int
 	}
 
 	return ret
+}
+
+func resolveSessionControlActor(req *dipper.Message, input map[string]interface{}) string {
+	if req == nil || req.Labels == nil {
+		if user, ok := dipper.GetMapDataStr(input, "user"); ok {
+			return strings.TrimSpace(user)
+		}
+
+		return ""
+	}
+
+	if user := strings.TrimSpace(req.Labels["user"]); user != "" {
+		return user
+	}
+	if profileName := strings.TrimSpace(req.Labels["profile_name"]); profileName != "" {
+		return profileName
+	}
+	if subject := strings.TrimSpace(req.Labels["subject"]); subject != "" {
+		return subject
+	}
+
+	if user, ok := dipper.GetMapDataStr(input, "user"); ok {
+		return strings.TrimSpace(user)
+	}
+
+	return ""
 }
 
 func rerunSession(sessionID string) (map[string]interface{}, error) {

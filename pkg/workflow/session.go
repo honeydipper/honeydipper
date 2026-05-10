@@ -398,6 +398,60 @@ func (w *Session) resolveWaitingInteractiveOptions() interface{} {
 	return nil
 }
 
+func appendUniqueInteractiveEntries(ret []any, seen map[string]bool, entries []any) []any {
+	for _, entry := range entries {
+		entryMap, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		key, _ := dipper.GetMapDataStr(entryMap, "key")
+		user, _ := dipper.GetMapDataStr(entryMap, "user")
+		at, _ := dipper.GetMapDataStr(entryMap, "at")
+		signature := key + "\x00" + user + "\x00" + at
+		if seen[signature] {
+			continue
+		}
+
+		seen[signature] = true
+		ret = append(ret, entryMap)
+	}
+
+	return ret
+}
+
+func (w *Session) resolveInteractiveInteractions() interface{} {
+	ret := []any{}
+	seen := map[string]bool{}
+	for current := w; current != nil; current = current.child {
+		if current.Ctx == nil {
+			continue
+		}
+
+		raw, ok := current.Ctx["interactive_interactions"]
+		if ok && raw != nil {
+			if entries, ok := raw.([]any); ok {
+				ret = appendUniqueInteractiveEntries(ret, seen, entries)
+
+				continue
+			}
+		}
+
+		raw, ok = current.Ctx["interactive_interaction"]
+		if ok && raw != nil {
+			if entry, ok := raw.(map[string]any); ok {
+				ret = appendUniqueInteractiveEntries(ret, seen, []any{entry})
+			}
+		}
+	}
+
+	if len(ret) == 0 {
+		return nil
+	}
+
+	return ret
+}
+
 func (w *Session) canRerun() bool {
 	return w.parent == nil && w.OriginalWorkflow != nil
 }
@@ -471,6 +525,9 @@ func (w *Session) Dump() map[string]interface{} {
 	}
 	if options := w.resolveWaitingInteractiveOptions(); options != nil {
 		data["interactive_options"] = options
+	}
+	if interactions := w.resolveInteractiveInteractions(); interactions != nil {
+		data["interactive_interactions"] = interactions
 	}
 
 	ret := map[string]interface{}{

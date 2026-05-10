@@ -500,6 +500,89 @@ func (s *PersistedStore) resolveInteractiveMessage(optionKey string, messages an
 	return msg, nil
 }
 
+func resolveInteractiveOptionInfo(optionKey string, options any) map[string]any {
+	findFromOption := func(option map[string]any) map[string]any {
+		ret := map[string]any{}
+		label, _ := dipper.GetMapDataStr(option, "label")
+		if strings.TrimSpace(label) == "" {
+			label, _ = dipper.GetMapDataStr(option, "title")
+		}
+		if strings.TrimSpace(label) != "" {
+			ret["label"] = label
+		}
+		if style, ok := dipper.GetMapDataStr(option, "style"); ok && strings.TrimSpace(style) != "" {
+			ret["style"] = style
+		}
+
+		return ret
+	}
+
+	switch opts := options.(type) {
+	case map[string]any:
+		if option, ok := opts[optionKey].(map[string]any); ok {
+			return findFromOption(option)
+		}
+	case []any:
+		for _, item := range opts {
+			option, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			k, _ := dipper.GetMapDataStr(option, "key")
+			if k != optionKey {
+				continue
+			}
+
+			return findFromOption(option)
+		}
+	}
+
+	return map[string]any{}
+}
+
+func buildInteractiveSelectionEntry(key string, actor string, optionInfo map[string]any) map[string]any {
+	entry := map[string]any{
+		"key": key,
+		"at":  time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if actor = strings.TrimSpace(actor); actor != "" {
+		entry["user"] = actor
+	}
+	if label, ok := dipper.GetMapDataStr(optionInfo, "label"); ok && strings.TrimSpace(label) != "" {
+		entry["label"] = label
+	}
+	if style, ok := dipper.GetMapDataStr(optionInfo, "style"); ok && strings.TrimSpace(style) != "" {
+		entry["style"] = style
+	}
+
+	return entry
+}
+
+func recordInteractiveSelection(target map[string]any, entry map[string]any) {
+	if target == nil || entry == nil {
+		return
+	}
+
+	raw := target["interactive_interactions"]
+	if raw == nil {
+		target["interactive_interactions"] = []any{dipper.MustDeepCopyMap(entry)}
+		delete(target, "interactive_interaction")
+
+		return
+	}
+
+	history, ok := raw.([]any)
+	if !ok {
+		target["interactive_interactions"] = []any{dipper.MustDeepCopyMap(entry)}
+		delete(target, "interactive_interaction")
+
+		return
+	}
+
+	target["interactive_interactions"] = append(history, dipper.MustDeepCopyMap(entry))
+	delete(target, "interactive_interaction")
+}
+
 type controlStackResult struct {
 	root      *Session
 	children  []string
@@ -689,7 +772,7 @@ func (s *PersistedStore) ResumeSessionByID(sessionID string) (map[string]interfa
 }
 
 // InteractSessionByID resumes a waiting session using a keyed interactive option.
-func (s *PersistedStore) InteractSessionByID(sessionID string, key string) (map[string]interface{}, error) {
+func (s *PersistedStore) InteractSessionByID(sessionID string, key string, actor string) (map[string]interface{}, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return nil, ErrInteractiveOptionNotFound
@@ -748,6 +831,20 @@ func (s *PersistedStore) InteractSessionByID(sessionID string, key string) (map[
 
 		return nil, err
 	}
+
+	optionInfo := resolveInteractiveOptionInfo(key, options)
+	entry := buildInteractiveSelectionEntry(key, actor, optionInfo)
+	if tail.Ctx == nil {
+		tail.Ctx = map[string]any{}
+	}
+	recordInteractiveSelection(tail.Ctx, entry)
+	if root != tail {
+		if root.Ctx == nil {
+			root.Ctx = map[string]any{}
+		}
+		recordInteractiveSelection(root.Ctx, entry)
+	}
+	s.persist(root)
 
 	resumeKey := tail.ID + "." + tail.CurrentMsg.Labels["cursor"]
 	if customResumeKey, ok := tail.Ctx["resume_key"]; ok && customResumeKey != nil {

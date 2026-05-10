@@ -247,3 +247,21 @@ func TestNormalizeSessionControlInput_WithInvalidJSONBody(t *testing.T) {
 		t.Fatalf("expected no parsed key for invalid body json, got %+v", out)
 	}
 }
+
+func TestResolveSessionControlActor_FromRequestLabel(t *testing.T) {
+	req := &dipper.Message{Labels: map[string]string{"user": "charles"}}
+
+	actor := resolveSessionControlActor(req, map[string]interface{}{"user": "ignored"})
+
+	if actor != "charles" {
+		t.Fatalf("expected actor from request labels, got %q", actor)
+	}
+}
+
+func TestResolveSessionControlActor_FromInputFallback(t *testing.T) {
+	actor := resolveSessionControlActor(nil, map[string]interface{}{"user": "manual-user"})
+
+	if actor != "manual-user" {
+		t.Fatalf("expected actor from input fallback, got %q", actor)
+	}
+}

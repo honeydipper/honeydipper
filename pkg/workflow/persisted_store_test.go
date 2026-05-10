@@ -23,6 +23,8 @@ type fakeHelper struct {
 	calls []string
 	// custom response mapping keyed by feature+":"+method or feature+":"+method+":"+key
 	resp map[string][]byte
+	// captured values persisted via cache:rpush calls.
+	rpushValues []string
 }
 
 func (f *fakeHelper) record(feature, method string) {
@@ -33,6 +35,13 @@ func (f *fakeHelper) record(feature, method string) {
 
 func (f *fakeHelper) Call(feature, method string, params interface{}, labelsKV ...string) ([]byte, error) {
 	f.record(feature, method)
+	if feature == "cache" && method == "rpush" {
+		if m, ok := params.(map[string]any); ok {
+			if value, ok := m["value"].(string); ok {
+				f.rpushValues = append(f.rpushValues, value)
+			}
+		}
+	}
 	// allow key-sensitive responses when params is a map containing "key"
 	if m, ok := params.(map[string]any); ok {
 		if k, ok := m["key"].(string); ok {
@@ -789,12 +798,32 @@ func TestInteractSessionByID_ResumesFromInteractiveOption(t *testing.T) {
 		},
 	})
 
-	ret, err := ps.InteractSessionByID("ctl-interact", "approve")
+	ret, err := ps.InteractSessionByID("ctl-interact", "approve", "charles")
 	if err != nil {
 		t.Fatalf("InteractSessionByID returned error: %v", err)
 	}
 	if ret["action"] != "interact" {
 		t.Fatalf("expected action=interact, got %+v", ret)
+	}
+
+	if len(fh.rpushValues) == 0 {
+		t.Fatalf("expected interaction persistence via cache:rpush")
+	}
+	persisted := &Session{}
+	persisted.Unmarshal([]byte(fh.rpushValues[len(fh.rpushValues)-1]))
+	interactions, ok := persisted.Ctx["interactive_interactions"].([]any)
+	if !ok || len(interactions) != 1 {
+		t.Fatalf("expected one persisted interaction history entry, got %+v", persisted.Ctx["interactive_interactions"])
+	}
+	first, ok := interactions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected interaction entry map, got %T", interactions[0])
+	}
+	if first["key"] != "approve" {
+		t.Fatalf("expected recorded key approve, got %+v", first)
+	}
+	if first["user"] != "charles" {
+		t.Fatalf("expected recorded user charles, got %+v", first)
 	}
 
 	ps.Wait()
@@ -813,7 +842,7 @@ func TestInteractSessionByID_KeyNotFound(t *testing.T) {
 	buf, _ := json.Marshal(stack)
 	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-interact-miss"] = buf
 
-	_, err := ps.InteractSessionByID("ctl-interact-miss", "reject")
+	_, err := ps.InteractSessionByID("ctl-interact-miss", "reject", "charles")
 	if err == nil {
 		t.Fatal("expected error when interactive key does not exist")
 	}
