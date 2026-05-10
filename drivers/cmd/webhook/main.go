@@ -195,7 +195,7 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 func writeCustomizedResponse(w http.ResponseWriter, matched map[string]any, tpl string, eventData interface{}) {
 	dipper.Logger.Debugf("[%s] webhook responding with template: %s", driver.Service, tpl)
 	ctype, _ := dipper.GetMapDataStr(matched, "parameters.response_content_type")
-	resp := dipper.InterpolateStr(tpl, map[string]any{"event": eventData})
+	resp := dipper.InterpolateStr("webhook-response", tpl, map[string]any{"event": eventData})
 	if ctype == "" {
 		ctype = "application/text"
 	}

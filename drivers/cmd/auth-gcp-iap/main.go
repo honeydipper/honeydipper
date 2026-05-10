@@ -40,7 +40,7 @@ func main() {
 func authWebRequest(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	driver.GetLogger().Debugf("payloads are: %+v", m.Payload)
-	token := dipper.InterpolateStr("$headers.X-Goog-Iap-Jwt-Assertion.0,headers.x-goog-iap-jwt-assertion.0", m.Payload)
+	token := dipper.InterpolateStr("auth-gcp-iap", "$headers.X-Goog-Iap-Jwt-Assertion.0,headers.x-goog-iap-jwt-assertion.0", m.Payload)
 	audience := dipper.MustGetMapDataStr(driver.Options, "data.audience")
 
 	payload := dipper.Must(idtoken.Validate(context.Background(), token, audience)).(*idtoken.Payload)
