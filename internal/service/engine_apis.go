@@ -25,6 +25,7 @@ var (
 	ErrSessionControlUnsupported = errors.New("session store does not support session control")
 	ErrUnknownSessionAction      = errors.New("unknown action")
 	ErrSessionStoreNoRerun       = errors.New("session store does not support rerun")
+	ErrUnauthorized              = errors.New("unauthorized: session does not belong to this repository")
 )
 
 func setupEngineAPIs() {
@@ -36,6 +37,10 @@ func setupEngineAPIs() {
 	engine.APIs["eventInteract"] = handleEventInteract
 	engine.APIs["eventCancel"] = handleEventCancel
 	engine.APIs["ghEventList"] = handleGHEventList
+	engine.APIs["ghEventRerun"] = handleGHEventRerun
+	engine.APIs["ghEventPause"] = handleGHEventPause
+	engine.APIs["ghEventResume"] = handleGHEventResume
+	engine.APIs["ghEventInteract"] = handleGHEventInteract
 }
 
 type rerunSessionStarter interface {
@@ -362,4 +367,103 @@ func getSessionGitRepo(event map[string]interface{}) string {
 	}
 
 	return ""
+}
+
+func verifySessionBelongsToGHSlug(sessionID string, ghSlug string) error {
+	if sessionStore == nil {
+		return ErrSessionNotFound
+	}
+
+	session := workflow.GetStoredSession(sessionStore, sessionID)
+	if session == nil {
+		return ErrSessionNotFound
+	}
+
+	// Extract git_repo from session's EventCtx
+	var repo string
+	if session.EventCtx != nil {
+		if r, ok := session.EventCtx["git_repo"].(string); ok {
+			repo = r
+		}
+	}
+
+	if strings.TrimSpace(repo) == "" {
+		return ErrUnauthorized
+	}
+
+	normalizedSlug := strings.ToLower(strings.Trim(strings.TrimSpace(ghSlug), "/"))
+	normalizedRepo := strings.ToLower(strings.Trim(strings.TrimSpace(repo), "/"))
+
+	if normalizedSlug == "" {
+		return ErrUnauthorized
+	}
+
+	isRepo := strings.Contains(normalizedSlug, "/")
+	if (isRepo && normalizedRepo == normalizedSlug) || (!isRepo && strings.HasPrefix(normalizedRepo, normalizedSlug+"/")) {
+		return nil
+	}
+
+	return ErrUnauthorized
+}
+
+func handleGHEventRerun(resp *api.Response) {
+	defer func() {
+		if r := recover(); r != nil {
+			resp.ReturnError(r.(error))
+		}
+	}()
+
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	sessionID := dipper.MustGetMapDataStr(resp.Request.Payload, "sessionID")
+	ghSlug, _ := dipper.GetMapDataStr(resp.Request.Payload, "gh_slug")
+
+	if err := verifySessionBelongsToGHSlug(sessionID, ghSlug); err != nil {
+		resp.ReturnError(err)
+
+		return
+	}
+
+	resp.Return(dipper.Must(rerunSession(sessionID)).(map[string]interface{}))
+}
+
+func handleGHEventPause(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	ghSlug, _ := dipper.GetMapDataStr(resp.Request.Payload, "gh_slug")
+	sessionID := dipper.MustGetMapDataStr(resp.Request.Payload, "sessionID")
+
+	if err := verifySessionBelongsToGHSlug(sessionID, ghSlug); err != nil {
+		resp.ReturnError(err)
+
+		return
+	}
+
+	handleSessionControl(resp, "pause")
+}
+
+func handleGHEventResume(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	ghSlug, _ := dipper.GetMapDataStr(resp.Request.Payload, "gh_slug")
+	sessionID := dipper.MustGetMapDataStr(resp.Request.Payload, "sessionID")
+
+	if err := verifySessionBelongsToGHSlug(sessionID, ghSlug); err != nil {
+		resp.ReturnError(err)
+
+		return
+	}
+
+	handleSessionControl(resp, "resume")
+}
+
+func handleGHEventInteract(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	ghSlug, _ := dipper.GetMapDataStr(resp.Request.Payload, "gh_slug")
+	sessionID := dipper.MustGetMapDataStr(resp.Request.Payload, "sessionID")
+
+	if err := verifySessionBelongsToGHSlug(sessionID, ghSlug); err != nil {
+		resp.ReturnError(err)
+
+		return
+	}
+
+	handleSessionControl(resp, "interact")
 }
