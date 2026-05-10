@@ -39,6 +39,10 @@ var (
 	ErrSessionNotFound = errors.New("session not found")
 	// ErrSessionTerminated is an error when resuming or continuing a terminated session.
 	ErrSessionTerminated = errors.New("session already terminated")
+	// ErrSessionNotInteractive is returned when a session is not waiting for interactive input.
+	ErrSessionNotInteractive = errors.New("session not interactive")
+	// ErrInteractiveOptionNotFound is returned when an interaction key does not match any option.
+	ErrInteractiveOptionNotFound = errors.New("interactive option not found")
 )
 
 // StoreHelper represents objects that offers functions for sessions and the store to use.

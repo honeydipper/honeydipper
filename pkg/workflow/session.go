@@ -378,6 +378,80 @@ func (w *Session) resolveLogStream() interface{} {
 	return nil
 }
 
+func (w *Session) resolveWaitingInteractiveOptions() interface{} {
+	tail := w
+	for tail != nil && tail.child != nil {
+		tail = tail.child
+	}
+
+	if tail == nil || tail.Ctx == nil || tail.Workflow == nil {
+		return nil
+	}
+	if tail.State == SessionStateDone || tail.Workflow.Wait == "" {
+		return nil
+	}
+
+	if options, ok := tail.Ctx["interactive_options"]; ok {
+		return options
+	}
+
+	return nil
+}
+
+func appendUniqueInteractiveEntries(ret []any, seen map[string]bool, entries []any) []any {
+	for _, entry := range entries {
+		entryMap, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		key, _ := dipper.GetMapDataStr(entryMap, "key")
+		user, _ := dipper.GetMapDataStr(entryMap, "user")
+		at, _ := dipper.GetMapDataStr(entryMap, "at")
+		signature := key + "\x00" + user + "\x00" + at
+		if seen[signature] {
+			continue
+		}
+
+		seen[signature] = true
+		ret = append(ret, entryMap)
+	}
+
+	return ret
+}
+
+func (w *Session) resolveInteractiveInteractions() interface{} {
+	ret := []any{}
+	seen := map[string]bool{}
+	for current := w; current != nil; current = current.child {
+		if current.Ctx == nil {
+			continue
+		}
+
+		raw, ok := current.Ctx["interactive_interactions"]
+		if ok && raw != nil {
+			if entries, ok := raw.([]any); ok {
+				ret = appendUniqueInteractiveEntries(ret, seen, entries)
+
+				continue
+			}
+		}
+
+		raw, ok = current.Ctx["interactive_interaction"]
+		if ok && raw != nil {
+			if entry, ok := raw.(map[string]any); ok {
+				ret = appendUniqueInteractiveEntries(ret, seen, []any{entry})
+			}
+		}
+	}
+
+	if len(ret) == 0 {
+		return nil
+	}
+
+	return ret
+}
+
 func (w *Session) canRerun() bool {
 	return w.parent == nil && w.OriginalWorkflow != nil
 }
@@ -427,29 +501,37 @@ func (w *Session) Dump() map[string]interface{} {
 		}
 	}
 
-	ret := map[string]interface{}{
-		"data": map[string]any{
-			"brief":       w.Brief(),
-			"description": description,
-			"state":       state,
-			"output":      w.Ctx["_output"],
-			"log_stream":  w.resolveLogStream(),
-			"rerun": map[string]any{
-				"available": w.canRerun(),
-			},
-			"controls": map[string]any{
-				"paused":        w.Paused,
-				"cancelled":     w.Cancelled,
-				"cancel_reason": w.CancelReason,
-			},
-			"is_noop":    isNoop,
-			"is_hook":    w.IsHook,
-			"session_id": w.ID,
-			"event_id":   w.EventID,
-			"event_name": w.GetEventName(),
-			"event_ctx":  w.EventCtx,
-			"parent":     w.Parent,
+	data := map[string]any{
+		"brief":       w.Brief(),
+		"description": description,
+		"state":       state,
+		"output":      w.Ctx["_output"],
+		"log_stream":  w.resolveLogStream(),
+		"rerun": map[string]any{
+			"available": w.canRerun(),
 		},
+		"controls": map[string]any{
+			"paused":        w.Paused,
+			"cancelled":     w.Cancelled,
+			"cancel_reason": w.CancelReason,
+		},
+		"is_noop":    isNoop,
+		"is_hook":    w.IsHook,
+		"session_id": w.ID,
+		"event_id":   w.EventID,
+		"event_name": w.GetEventName(),
+		"event_ctx":  w.EventCtx,
+		"parent":     w.Parent,
+	}
+	if options := w.resolveWaitingInteractiveOptions(); options != nil {
+		data["interactive_options"] = options
+	}
+	if interactions := w.resolveInteractiveInteractions(); interactions != nil {
+		data["interactive_interactions"] = interactions
+	}
+
+	ret := map[string]interface{}{
+		"data":   data,
 		"labels": labels,
 	}
 

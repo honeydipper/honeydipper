@@ -201,3 +201,40 @@ func TestTypeLocalSAMLMetadataAPI(t *testing.T) {
 	def := Def{ReqType: TypeLocal, Method: http.MethodGet, Name: "samlSPMetadata", Local: samlSPMetadataHandler, AllowAnonymous: true}
 	store.HandleHTTPRequest(mockReqCtx, def)
 }
+
+func TestRequestAttachPrincipalUserLabel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockReqCtx := mock_api.NewMockRequestContext(ctrl)
+	mockReqCtx.EXPECT().Get(gomock.Eq("principal")).AnyTimes().Return(Principal{
+		Subject:     "charles-subject",
+		ProfileName: "charles",
+	}, true)
+	mockReqCtx.EXPECT().GetPath().Times(1).Return("/api/events/123/interact")
+	mockReqCtx.EXPECT().GetPayload(gomock.Eq(http.MethodPost)).Times(1).Return(map[string]interface{}{"sessionID": "123"})
+	mockReqCtx.EXPECT().ContentType().Times(1).Return("application/json")
+	mockReqCtx.EXPECT().AbortWithStatusJSON(gomock.Eq(http.StatusInternalServerError), gomock.Any()).Times(1)
+
+	mockRPCCaller := mock_dipper.NewMockRPCCaller(ctrl)
+	mockRPCCaller.EXPECT().Call(
+		gomock.Eq("api-broadcast"),
+		gomock.Eq("send"),
+		gomock.AssignableToTypeOf(map[string]interface{}{}),
+	).Times(1).DoAndReturn(func(_, _ string, params map[string]interface{}, _ ...string) ([]byte, error) {
+		labels := params["labels"].(map[string]interface{})
+		if labels["user"] != "charles" {
+			t.Fatalf("expected forwarded principal user label, got %+v", labels)
+		}
+
+		return []byte("1"), nil
+	})
+
+	store := NewStore(mockRPCCaller)
+	store.config = map[string]interface{}{}
+	store.writeTimeout = time.Millisecond
+	store.newUUID = func() string { return "req-1" }
+
+	def := Def{Method: http.MethodPost, Name: "eventInteract", Service: "engine", ReqType: TypeFirst, AttachPrincipalUser: true, AllowAnonymous: true}
+	store.HandleHTTPRequest(mockReqCtx, def)
+}

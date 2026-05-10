@@ -6,6 +6,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"sync"
 	"testing"
@@ -22,6 +23,8 @@ type fakeHelper struct {
 	calls []string
 	// custom response mapping keyed by feature+":"+method or feature+":"+method+":"+key
 	resp map[string][]byte
+	// captured values persisted via cache:rpush calls.
+	rpushValues []string
 }
 
 func (f *fakeHelper) record(feature, method string) {
@@ -32,6 +35,13 @@ func (f *fakeHelper) record(feature, method string) {
 
 func (f *fakeHelper) Call(feature, method string, params interface{}, labelsKV ...string) ([]byte, error) {
 	f.record(feature, method)
+	if feature == "cache" && method == "rpush" {
+		if m, ok := params.(map[string]any); ok {
+			if value, ok := m["value"].(string); ok {
+				f.rpushValues = append(f.rpushValues, value)
+			}
+		}
+	}
 	// allow key-sensitive responses when params is a map containing "key"
 	if m, ok := params.(map[string]any); ok {
 		if k, ok := m["key"].(string); ok {
@@ -760,5 +770,83 @@ func TestResumeSessionByID_WithPendingMessageContinuesOnce(t *testing.T) {
 	}
 	if lrangeCalls < 2 {
 		t.Fatalf("expected resume to trigger ContinueSession when pending message exists, got cache:lrange calls=%d", lrangeCalls)
+	}
+}
+
+func TestInteractSessionByID_ResumesFromInteractiveOption(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-interact", &config.Workflow{Name: "wf", Wait: "30s"}, ps)
+	s.State = SessionStateAction
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "4", "status": SessionStatusSuccess}}
+	s.Ctx["interactive_options"] = []any{map[string]any{"key": "approve", "title": "Approve"}}
+	s.Ctx["interactive_messages"] = map[string]any{
+		"approve": map[string]any{
+			"payload": map[string]any{"approved": true},
+		},
+	}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-interact"] = buf
+
+	// Return a mismatched cursor so async ContinueSession exits quickly.
+	fh.resp["scheduler:cancel:"+"ctl-interact.4"] = dipper.SerializeContent(map[string]any{
+		"labels": map[string]any{
+			"sessionID": "ctl-interact",
+			"cursor":    "999",
+		},
+	})
+
+	ret, err := ps.InteractSessionByID("ctl-interact", "approve", "charles")
+	if err != nil {
+		t.Fatalf("InteractSessionByID returned error: %v", err)
+	}
+	if ret["action"] != "interact" {
+		t.Fatalf("expected action=interact, got %+v", ret)
+	}
+
+	if len(fh.rpushValues) == 0 {
+		t.Fatalf("expected interaction persistence via cache:rpush")
+	}
+	persisted := &Session{}
+	persisted.Unmarshal([]byte(fh.rpushValues[len(fh.rpushValues)-1]))
+	interactions, ok := persisted.Ctx["interactive_interactions"].([]any)
+	if !ok || len(interactions) != 1 {
+		t.Fatalf("expected one persisted interaction history entry, got %+v", persisted.Ctx["interactive_interactions"])
+	}
+	first, ok := interactions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected interaction entry map, got %T", interactions[0])
+	}
+	if first["key"] != "approve" {
+		t.Fatalf("expected recorded key approve, got %+v", first)
+	}
+	if first["user"] != "charles" {
+		t.Fatalf("expected recorded user charles, got %+v", first)
+	}
+
+	ps.Wait()
+}
+
+func TestInteractSessionByID_KeyNotFound(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-interact-miss", &config.Workflow{Name: "wf", Wait: "30s"}, ps)
+	s.State = SessionStateAction
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "2", "status": SessionStatusSuccess}}
+	s.Ctx["interactive_options"] = map[string]any{"approve": map[string]any{"title": "Approve"}}
+	s.Ctx["interactive_messages"] = map[string]any{"approve": map[string]any{"payload": map[string]any{"approved": true}}}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-interact-miss"] = buf
+
+	_, err := ps.InteractSessionByID("ctl-interact-miss", "reject", "charles")
+	if err == nil {
+		t.Fatal("expected error when interactive key does not exist")
+	}
+	if !errors.Is(err, ErrInteractiveOptionNotFound) {
+		t.Fatalf("expected ErrInteractiveOptionNotFound, got %v", err)
 	}
 }

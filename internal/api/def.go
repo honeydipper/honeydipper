@@ -20,6 +20,7 @@ type Def struct {
 	Object              string
 	Name                string
 	Method              string
+	AttachPrincipalUser bool
 	ReqType             int
 	Local               LocalHandlerFunc
 	Service             string
@@ -89,6 +90,9 @@ func GetDefs() map[string]map[string]Def {
 		},
 		"events/:sessionID/resume": {
 			http.MethodPost: {Object: "event", Name: "eventResume", ReqType: TypeFirst, Service: "engine"},
+		},
+		"events/:sessionID/interact": {
+			http.MethodPost: {Object: "event", Name: "eventInteract", AttachPrincipalUser: true, ReqType: TypeFirst, Service: "engine"},
 		},
 		"events/:sessionID/cancel": {
 			http.MethodPost: {Object: "event", Name: "eventCancel", ReqType: TypeFirst, Service: "engine"},

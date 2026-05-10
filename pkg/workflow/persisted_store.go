@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -425,6 +426,163 @@ func isIgnorableChildControlErr(err error) bool {
 	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionTerminated)
 }
 
+func hasInteractiveOptionKey(optionKey string, options any) bool {
+	switch opts := options.(type) {
+	case map[string]any:
+		_, ok := opts[optionKey]
+
+		return ok
+	case []any:
+		for _, item := range opts {
+			option, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			k, _ := dipper.GetMapDataStr(option, "key")
+			if k == optionKey {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (s *PersistedStore) resolveInteractiveMessage(optionKey string, messages any) (*dipper.Message, error) {
+	selected := any(nil)
+	found := false
+
+	switch opts := messages.(type) {
+	case map[string]any:
+		selected, found = opts[optionKey]
+	case []any:
+		for _, item := range opts {
+			option, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			k, _ := dipper.GetMapDataStr(option, "key")
+			if k == optionKey {
+				selected = option
+				found = true
+
+				break
+			}
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("%w: %s", ErrInteractiveOptionNotFound, optionKey)
+	}
+
+	msg := &dipper.Message{}
+	if selectedMap, ok := selected.(map[string]any); ok {
+		if rawMsg, hasRaw := selectedMap["message"]; hasRaw {
+			dipper.Must(mapstructure.Decode(rawMsg, msg))
+		} else if _, hasPayload := selectedMap["payload"]; hasPayload {
+			dipper.Must(mapstructure.Decode(selectedMap, msg))
+		} else {
+			msg.Payload = selectedMap
+		}
+	} else {
+		msg.Payload = map[string]any{"value": selected}
+	}
+
+	if msg.Payload == nil {
+		msg.Payload = map[string]any{}
+	}
+	if payload, ok := msg.Payload.(map[string]any); ok {
+		if _, exists := payload["key"]; !exists {
+			payload["key"] = optionKey
+		}
+	}
+
+	return msg, nil
+}
+
+func resolveInteractiveOptionInfo(optionKey string, options any) map[string]any {
+	findFromOption := func(option map[string]any) map[string]any {
+		ret := map[string]any{}
+		label, _ := dipper.GetMapDataStr(option, "label")
+		if strings.TrimSpace(label) == "" {
+			label, _ = dipper.GetMapDataStr(option, "title")
+		}
+		if strings.TrimSpace(label) != "" {
+			ret["label"] = label
+		}
+		if style, ok := dipper.GetMapDataStr(option, "style"); ok && strings.TrimSpace(style) != "" {
+			ret["style"] = style
+		}
+
+		return ret
+	}
+
+	switch opts := options.(type) {
+	case map[string]any:
+		if option, ok := opts[optionKey].(map[string]any); ok {
+			return findFromOption(option)
+		}
+	case []any:
+		for _, item := range opts {
+			option, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			k, _ := dipper.GetMapDataStr(option, "key")
+			if k != optionKey {
+				continue
+			}
+
+			return findFromOption(option)
+		}
+	}
+
+	return map[string]any{}
+}
+
+func buildInteractiveSelectionEntry(key string, actor string, optionInfo map[string]any) map[string]any {
+	entry := map[string]any{
+		"key": key,
+		"at":  time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if actor = strings.TrimSpace(actor); actor != "" {
+		entry["user"] = actor
+	}
+	if label, ok := dipper.GetMapDataStr(optionInfo, "label"); ok && strings.TrimSpace(label) != "" {
+		entry["label"] = label
+	}
+	if style, ok := dipper.GetMapDataStr(optionInfo, "style"); ok && strings.TrimSpace(style) != "" {
+		entry["style"] = style
+	}
+
+	return entry
+}
+
+func recordInteractiveSelection(target map[string]any, entry map[string]any) {
+	if target == nil || entry == nil {
+		return
+	}
+
+	raw := target["interactive_interactions"]
+	if raw == nil {
+		target["interactive_interactions"] = []any{dipper.MustDeepCopyMap(entry)}
+		delete(target, "interactive_interaction")
+
+		return
+	}
+
+	history, ok := raw.([]any)
+	if !ok {
+		target["interactive_interactions"] = []any{dipper.MustDeepCopyMap(entry)}
+		delete(target, "interactive_interaction")
+
+		return
+	}
+
+	target["interactive_interactions"] = append(history, dipper.MustDeepCopyMap(entry))
+	delete(target, "interactive_interaction")
+}
+
 type controlStackResult struct {
 	root      *Session
 	children  []string
@@ -611,6 +769,96 @@ func (s *PersistedStore) ResumeSessionByID(sessionID string) (map[string]interfa
 	}
 
 	return s.controlResult(rootResult.root, "resume"), nil
+}
+
+// InteractSessionByID resumes a waiting session using a keyed interactive option.
+func (s *PersistedStore) InteractSessionByID(sessionID string, key string, actor string) (map[string]interface{}, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, ErrInteractiveOptionNotFound
+	}
+
+	stack, lockKey, err := s.loadStackForControl(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	root := stack[0]
+	tail := stack[len(stack)-1]
+	if root.State == SessionStateDone {
+		s.unlockSessionKey(lockKey)
+
+		return nil, ErrSessionTerminated
+	}
+	if root.State == SessionStateInit {
+		s.unlockSessionKey(lockKey)
+
+		return nil, fmt.Errorf("%w: session not yet controllable", ErrWorkflowError)
+	}
+	if tail.Workflow == nil || tail.Workflow.Wait == "" {
+		s.unlockSessionKey(lockKey)
+
+		return nil, ErrSessionNotInteractive
+	}
+	if tail.Ctx == nil {
+		s.unlockSessionKey(lockKey)
+
+		return nil, ErrSessionNotInteractive
+	}
+
+	options, ok := tail.Ctx["interactive_options"]
+	if !ok || options == nil {
+		s.unlockSessionKey(lockKey)
+
+		return nil, ErrSessionNotInteractive
+	}
+	if !hasInteractiveOptionKey(key, options) {
+		s.unlockSessionKey(lockKey)
+
+		return nil, fmt.Errorf("%w: %s", ErrInteractiveOptionNotFound, key)
+	}
+
+	messages, ok := tail.Ctx["interactive_messages"]
+	if !ok || messages == nil {
+		s.unlockSessionKey(lockKey)
+
+		return nil, fmt.Errorf("%w: %s", ErrInteractiveOptionNotFound, key)
+	}
+
+	msg, err := s.resolveInteractiveMessage(key, messages)
+	if err != nil {
+		s.unlockSessionKey(lockKey)
+
+		return nil, err
+	}
+
+	optionInfo := resolveInteractiveOptionInfo(key, options)
+	entry := buildInteractiveSelectionEntry(key, actor, optionInfo)
+	if tail.Ctx == nil {
+		tail.Ctx = map[string]any{}
+	}
+	recordInteractiveSelection(tail.Ctx, entry)
+	if root != tail {
+		if root.Ctx == nil {
+			root.Ctx = map[string]any{}
+		}
+		recordInteractiveSelection(root.Ctx, entry)
+	}
+	s.persist(root)
+
+	resumeKey := tail.ID + "." + tail.CurrentMsg.Labels["cursor"]
+	if customResumeKey, ok := tail.Ctx["resume_key"]; ok && customResumeKey != nil {
+		if v, ok := customResumeKey.(string); ok && strings.TrimSpace(v) != "" {
+			resumeKey = v
+		}
+	}
+
+	s.unlockSessionKey(lockKey)
+	if !s.ResumeSession(resumeKey, msg) {
+		return nil, ErrSessionNotFound
+	}
+
+	return s.controlResult(root, "interact"), nil
 }
 
 // CancelSessionByID marks a session as cancelled and schedules it to converge to terminal state.
