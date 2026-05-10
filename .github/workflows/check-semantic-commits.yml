@@ -19,6 +19,7 @@ jobs:
         with:
           validateSingleCommit: true
           scopes: |
+            api
             config
             core
             deps

@@ -108,6 +108,34 @@ func GetDefs() map[string]map[string]Def {
 				EntitlementKey:      "gh_slug",
 			},
 		},
+		"gh/events/:sessionID/rerun/*gh_slug": {
+			http.MethodPost: {
+				Object: "gh_event", Name: "ghEventRerun", ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
+		},
+		"gh/events/:sessionID/pause/*gh_slug": {
+			http.MethodPost: {
+				Object: "gh_event", Name: "ghEventPause", ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
+		},
+		"gh/events/:sessionID/resume/*gh_slug": {
+			http.MethodPost: {
+				Object: "gh_event", Name: "ghEventResume", ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
+		},
+		"gh/events/:sessionID/interact/*gh_slug": {
+			http.MethodPost: {
+				Object: "gh_event", Name: "ghEventInteract", AttachPrincipalUser: true, ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github",
+				EntitlementKey:      "gh_slug",
+			},
+		},
 		"pods/:pod_id/log/chunk": {
 			http.MethodGet: {
 				Object: "pod_log", Name: "podLogChunk", ReqType: TypeFirst, Service: "operator",
