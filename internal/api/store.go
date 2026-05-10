@@ -785,19 +785,20 @@ func (l *Store) GetRequest(def Def, c RequestContext) *Request {
 	payload := c.GetPayload(def.Method)
 
 	return &Request{
-		store:       l,
-		ctx:         c,
-		uuid:        l.newUUID(),
-		urlPath:     path,
-		method:      def.Method,
-		local:       def.Local,
-		fn:          def.Name,
-		params:      payload,
-		reqType:     def.ReqType,
-		service:     def.Service,
-		ackTimeout:  l.getAckTimeout(def),
-		timeout:     l.getTimeout(def),
-		contentType: c.ContentType(),
+		store:               l,
+		ctx:                 c,
+		uuid:                l.newUUID(),
+		urlPath:             path,
+		method:              def.Method,
+		local:               def.Local,
+		fn:                  def.Name,
+		params:              payload,
+		attachPrincipalUser: def.AttachPrincipalUser,
+		reqType:             def.ReqType,
+		service:             def.Service,
+		ackTimeout:          l.getAckTimeout(def),
+		timeout:             l.getTimeout(def),
+		contentType:         c.ContentType(),
 	}
 }
 

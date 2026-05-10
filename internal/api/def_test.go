@@ -103,5 +103,8 @@ func TestGetDefsIncludesSessionControlRoutes(t *testing.T) {
 		if def.ReqType != TypeFirst {
 			t.Fatalf("unexpected req type %d for route %s", def.ReqType, tt.path)
 		}
+		if tt.name == "eventInteract" && !def.AttachPrincipalUser {
+			t.Fatalf("expected AttachPrincipalUser to be enabled for route %s", tt.path)
+		}
 	}
 }

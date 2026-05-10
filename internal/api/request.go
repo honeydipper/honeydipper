@@ -26,11 +26,12 @@ type Request struct {
 	uuid        string
 	contentType string
 
-	reqType int
-	local   LocalHandlerFunc
-	fn      string
-	service string
-	params  map[string]interface{}
+	reqType             int
+	local               LocalHandlerFunc
+	fn                  string
+	service             string
+	params              map[string]interface{}
+	attachPrincipalUser bool
 
 	results  map[string]interface{}
 	err      error
@@ -65,7 +66,7 @@ func (a *Request) Dispatch() {
 		"service":      a.service,
 		"content-type": a.contentType,
 	}
-	if a.fn == "eventInteract" {
+	if a.attachPrincipalUser {
 		if user := a.getPrincipalUser(); user != "" {
 			labels["user"] = user
 		}
