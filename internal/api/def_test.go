@@ -78,6 +78,7 @@ func TestGetDefsIncludesSessionControlRoutes(t *testing.T) {
 	}{
 		{path: "events/:sessionID/pause", name: "eventPause"},
 		{path: "events/:sessionID/resume", name: "eventResume"},
+		{path: "events/:sessionID/interact", name: "eventInteract"},
 		{path: "events/:sessionID/cancel", name: "eventCancel"},
 	}
 

@@ -6,6 +6,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"sync"
 	"testing"
@@ -760,5 +761,63 @@ func TestResumeSessionByID_WithPendingMessageContinuesOnce(t *testing.T) {
 	}
 	if lrangeCalls < 2 {
 		t.Fatalf("expected resume to trigger ContinueSession when pending message exists, got cache:lrange calls=%d", lrangeCalls)
+	}
+}
+
+func TestInteractSessionByID_ResumesFromInteractiveOption(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-interact", &config.Workflow{Name: "wf", Wait: "30s"}, ps)
+	s.State = SessionStateAction
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "4", "status": SessionStatusSuccess}}
+	s.Ctx["interactive_options"] = []any{map[string]any{"key": "approve", "title": "Approve"}}
+	s.Ctx["interactive_messages"] = map[string]any{
+		"approve": map[string]any{
+			"payload": map[string]any{"approved": true},
+		},
+	}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-interact"] = buf
+
+	// Return a mismatched cursor so async ContinueSession exits quickly.
+	fh.resp["scheduler:cancel:"+"ctl-interact.4"] = dipper.SerializeContent(map[string]any{
+		"labels": map[string]any{
+			"sessionID": "ctl-interact",
+			"cursor":    "999",
+		},
+	})
+
+	ret, err := ps.InteractSessionByID("ctl-interact", "approve")
+	if err != nil {
+		t.Fatalf("InteractSessionByID returned error: %v", err)
+	}
+	if ret["action"] != "interact" {
+		t.Fatalf("expected action=interact, got %+v", ret)
+	}
+
+	ps.Wait()
+}
+
+func TestInteractSessionByID_KeyNotFound(t *testing.T) {
+	ps := makePersistedStoreWithFake()
+	fh := ps.StoreHelper.(*fakeHelper)
+
+	s := NewSession("ctl-interact-miss", &config.Workflow{Name: "wf", Wait: "30s"}, ps)
+	s.State = SessionStateAction
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{"cursor": "2", "status": SessionStatusSuccess}}
+	s.Ctx["interactive_options"] = map[string]any{"approve": map[string]any{"title": "Approve"}}
+	s.Ctx["interactive_messages"] = map[string]any{"approve": map[string]any{"payload": map[string]any{"approved": true}}}
+	stack := []*Session{s}
+	buf, _ := json.Marshal(stack)
+	fh.resp["cache:lrange:"+StoreSessionPrefix+"ctl-interact-miss"] = buf
+
+	_, err := ps.InteractSessionByID("ctl-interact-miss", "reject")
+	if err == nil {
+		t.Fatal("expected error when interactive key does not exist")
+	}
+	if !errors.Is(err, ErrInteractiveOptionNotFound) {
+		t.Fatalf("expected ErrInteractiveOptionNotFound, got %v", err)
 	}
 }

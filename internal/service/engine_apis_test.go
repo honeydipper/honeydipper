@@ -212,3 +212,38 @@ func TestFilterSessionsByGitRepo_ExcludeMissingCtx(t *testing.T) {
 		t.Fatalf("expected 3 items (2 markers + 1 session), got %d", len(got))
 	}
 }
+
+func TestNormalizeSessionControlInput_WithJSONBody(t *testing.T) {
+	payload := map[string]interface{}{
+		"sessionID": "sess-1",
+		"body":      `{"key":"approve","reason":"because"}`,
+	}
+
+	out := normalizeSessionControlInput(payload)
+
+	if out["sessionID"] != "sess-1" {
+		t.Fatalf("expected sessionID to be preserved, got %+v", out)
+	}
+	if out["key"] != "approve" {
+		t.Fatalf("expected key from body, got %+v", out)
+	}
+	if out["reason"] != "because" {
+		t.Fatalf("expected reason from body, got %+v", out)
+	}
+}
+
+func TestNormalizeSessionControlInput_WithInvalidJSONBody(t *testing.T) {
+	payload := map[string]interface{}{
+		"sessionID": "sess-1",
+		"body":      `not-json`,
+	}
+
+	out := normalizeSessionControlInput(payload)
+
+	if out["sessionID"] != "sess-1" {
+		t.Fatalf("expected sessionID to be preserved, got %+v", out)
+	}
+	if _, ok := out["key"]; ok {
+		t.Fatalf("expected no parsed key for invalid body json, got %+v", out)
+	}
+}

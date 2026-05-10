@@ -1176,6 +1176,49 @@ func TestDump_LogStream_PrefersNearestSession(t *testing.T) {
 	}
 }
 
+func TestDump_InteractiveOptions_FromWaitingLeaf(t *testing.T) {
+	root := newSession(&cfg.Workflow{})
+	root.State = SessionStateAction
+
+	leaf := newSession(&cfg.Workflow{Wait: "5s"})
+	leaf.State = SessionStateAction
+	leaf.Ctx["interactive_options"] = map[string]any{
+		"kind": "approval",
+		"choices": []any{
+			map[string]any{"label": "approve", "value": "yes"},
+		},
+	}
+	root.child = leaf
+
+	dump := root.Dump()
+	data := dump["data"].(map[string]any)
+
+	options, ok := data["interactive_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected interactive_options map in dump, got %T", data["interactive_options"])
+	}
+	if options["kind"] != "approval" {
+		t.Fatalf("expected interactive_options.kind approval, got %v", options["kind"])
+	}
+}
+
+func TestDump_InteractiveOptions_IgnoredWhenLeafNotWaiting(t *testing.T) {
+	root := newSession(&cfg.Workflow{})
+	root.State = SessionStateAction
+
+	leaf := newSession(&cfg.Workflow{})
+	leaf.State = SessionStateAction
+	leaf.Ctx["interactive_options"] = map[string]any{"kind": "approval"}
+	root.child = leaf
+
+	dump := root.Dump()
+	data := dump["data"].(map[string]any)
+
+	if _, ok := data["interactive_options"]; ok {
+		t.Fatal("expected interactive_options to be absent when leaf is not waiting")
+	}
+}
+
 func TestDump_RerunAvailability(t *testing.T) {
 	s := newSession(&cfg.Workflow{Name: "rerunnable"})
 	s.State = SessionStateDone

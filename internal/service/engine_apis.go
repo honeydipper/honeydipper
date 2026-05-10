@@ -33,6 +33,7 @@ func setupEngineAPIs() {
 	engine.APIs["eventRerun"] = handleEventRerun
 	engine.APIs["eventPause"] = handleEventPause
 	engine.APIs["eventResume"] = handleEventResume
+	engine.APIs["eventInteract"] = handleEventInteract
 	engine.APIs["eventCancel"] = handleEventCancel
 	engine.APIs["ghEventList"] = handleGHEventList
 }
@@ -51,6 +52,7 @@ type rerunSessionStarter interface {
 type sessionController interface {
 	PauseSession(sessionID string) (map[string]interface{}, error)
 	ResumeSessionByID(sessionID string) (map[string]interface{}, error)
+	InteractSessionByID(sessionID string, key string) (map[string]interface{}, error)
 	CancelSessionByID(sessionID string, reason string) (map[string]interface{}, error)
 }
 
@@ -83,6 +85,10 @@ func handleEventResume(resp *api.Response) {
 	handleSessionControl(resp, "resume")
 }
 
+func handleEventInteract(resp *api.Response) {
+	handleSessionControl(resp, "interact")
+}
+
 func handleEventCancel(resp *api.Response) {
 	handleSessionControl(resp, "cancel")
 }
@@ -96,6 +102,8 @@ func handleSessionControl(resp *api.Response, action string) {
 
 	resp.Request = dipper.DeserializePayload(resp.Request)
 	sessionID := dipper.MustGetMapDataStr(resp.Request.Payload, "sessionID")
+	rawPayload, _ := resp.Request.Payload.(map[string]interface{})
+	input := normalizeSessionControlInput(rawPayload)
 
 	controller, ok := sessionStore.(sessionController)
 	if !ok {
@@ -113,8 +121,11 @@ func handleSessionControl(resp *api.Response, action string) {
 		ret, err = controller.PauseSession(sessionID)
 	case "resume":
 		ret, err = controller.ResumeSessionByID(sessionID)
+	case "interact":
+		key := dipper.MustGetMapDataStr(input, "key")
+		ret, err = controller.InteractSessionByID(sessionID, key)
 	case "cancel":
-		reason, _ := dipper.GetMapDataStr(resp.Request.Payload, "reason")
+		reason, _ := dipper.GetMapDataStr(input, "reason")
 		ret, err = controller.CancelSessionByID(sessionID, reason)
 	default:
 		err = ErrUnknownSessionAction
@@ -126,6 +137,33 @@ func handleSessionControl(resp *api.Response, action string) {
 	}
 
 	resp.Return(ret)
+}
+
+func normalizeSessionControlInput(payload map[string]interface{}) map[string]interface{} {
+	if payload == nil {
+		return map[string]interface{}{}
+	}
+
+	ret := map[string]interface{}{}
+	for k, v := range payload {
+		ret[k] = v
+	}
+
+	body, ok := payload["body"].(string)
+	if !ok || strings.TrimSpace(body) == "" {
+		return ret
+	}
+
+	bodyMap := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(body), &bodyMap); err != nil {
+		return ret
+	}
+
+	for k, v := range bodyMap {
+		ret[k] = v
+	}
+
+	return ret
 }
 
 func rerunSession(sessionID string) (map[string]interface{}, error) {

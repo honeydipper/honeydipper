@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -425,6 +426,80 @@ func isIgnorableChildControlErr(err error) bool {
 	return errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionTerminated)
 }
 
+func hasInteractiveOptionKey(optionKey string, options any) bool {
+	switch opts := options.(type) {
+	case map[string]any:
+		_, ok := opts[optionKey]
+
+		return ok
+	case []any:
+		for _, item := range opts {
+			option, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			k, _ := dipper.GetMapDataStr(option, "key")
+			if k == optionKey {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (s *PersistedStore) resolveInteractiveMessage(optionKey string, messages any) (*dipper.Message, error) {
+	selected := any(nil)
+	found := false
+
+	switch opts := messages.(type) {
+	case map[string]any:
+		selected, found = opts[optionKey]
+	case []any:
+		for _, item := range opts {
+			option, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			k, _ := dipper.GetMapDataStr(option, "key")
+			if k == optionKey {
+				selected = option
+				found = true
+
+				break
+			}
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("%w: %s", ErrInteractiveOptionNotFound, optionKey)
+	}
+
+	msg := &dipper.Message{}
+	if selectedMap, ok := selected.(map[string]any); ok {
+		if rawMsg, hasRaw := selectedMap["message"]; hasRaw {
+			dipper.Must(mapstructure.Decode(rawMsg, msg))
+		} else if _, hasPayload := selectedMap["payload"]; hasPayload {
+			dipper.Must(mapstructure.Decode(selectedMap, msg))
+		} else {
+			msg.Payload = selectedMap
+		}
+	} else {
+		msg.Payload = map[string]any{"value": selected}
+	}
+
+	if msg.Payload == nil {
+		msg.Payload = map[string]any{}
+	}
+	if payload, ok := msg.Payload.(map[string]any); ok {
+		if _, exists := payload["key"]; !exists {
+			payload["key"] = optionKey
+		}
+	}
+
+	return msg, nil
+}
+
 type controlStackResult struct {
 	root      *Session
 	children  []string
@@ -611,6 +686,82 @@ func (s *PersistedStore) ResumeSessionByID(sessionID string) (map[string]interfa
 	}
 
 	return s.controlResult(rootResult.root, "resume"), nil
+}
+
+// InteractSessionByID resumes a waiting session using a keyed interactive option.
+func (s *PersistedStore) InteractSessionByID(sessionID string, key string) (map[string]interface{}, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, ErrInteractiveOptionNotFound
+	}
+
+	stack, lockKey, err := s.loadStackForControl(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	root := stack[0]
+	tail := stack[len(stack)-1]
+	if root.State == SessionStateDone {
+		s.unlockSessionKey(lockKey)
+
+		return nil, ErrSessionTerminated
+	}
+	if root.State == SessionStateInit {
+		s.unlockSessionKey(lockKey)
+
+		return nil, fmt.Errorf("%w: session not yet controllable", ErrWorkflowError)
+	}
+	if tail.Workflow == nil || tail.Workflow.Wait == "" {
+		s.unlockSessionKey(lockKey)
+
+		return nil, ErrSessionNotInteractive
+	}
+	if tail.Ctx == nil {
+		s.unlockSessionKey(lockKey)
+
+		return nil, ErrSessionNotInteractive
+	}
+
+	options, ok := tail.Ctx["interactive_options"]
+	if !ok || options == nil {
+		s.unlockSessionKey(lockKey)
+
+		return nil, ErrSessionNotInteractive
+	}
+	if !hasInteractiveOptionKey(key, options) {
+		s.unlockSessionKey(lockKey)
+
+		return nil, fmt.Errorf("%w: %s", ErrInteractiveOptionNotFound, key)
+	}
+
+	messages, ok := tail.Ctx["interactive_messages"]
+	if !ok || messages == nil {
+		s.unlockSessionKey(lockKey)
+
+		return nil, fmt.Errorf("%w: %s", ErrInteractiveOptionNotFound, key)
+	}
+
+	msg, err := s.resolveInteractiveMessage(key, messages)
+	if err != nil {
+		s.unlockSessionKey(lockKey)
+
+		return nil, err
+	}
+
+	resumeKey := tail.ID + "." + tail.CurrentMsg.Labels["cursor"]
+	if customResumeKey, ok := tail.Ctx["resume_key"]; ok && customResumeKey != nil {
+		if v, ok := customResumeKey.(string); ok && strings.TrimSpace(v) != "" {
+			resumeKey = v
+		}
+	}
+
+	s.unlockSessionKey(lockKey)
+	if !s.ResumeSession(resumeKey, msg) {
+		return nil, ErrSessionNotFound
+	}
+
+	return s.controlResult(root, "interact"), nil
 }
 
 // CancelSessionByID marks a session as cancelled and schedules it to converge to terminal state.

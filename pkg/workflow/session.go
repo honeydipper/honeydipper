@@ -378,6 +378,26 @@ func (w *Session) resolveLogStream() interface{} {
 	return nil
 }
 
+func (w *Session) resolveWaitingInteractiveOptions() interface{} {
+	tail := w
+	for tail != nil && tail.child != nil {
+		tail = tail.child
+	}
+
+	if tail == nil || tail.Ctx == nil || tail.Workflow == nil {
+		return nil
+	}
+	if tail.State == SessionStateDone || tail.Workflow.Wait == "" {
+		return nil
+	}
+
+	if options, ok := tail.Ctx["interactive_options"]; ok {
+		return options
+	}
+
+	return nil
+}
+
 func (w *Session) canRerun() bool {
 	return w.parent == nil && w.OriginalWorkflow != nil
 }
@@ -427,29 +447,34 @@ func (w *Session) Dump() map[string]interface{} {
 		}
 	}
 
-	ret := map[string]interface{}{
-		"data": map[string]any{
-			"brief":       w.Brief(),
-			"description": description,
-			"state":       state,
-			"output":      w.Ctx["_output"],
-			"log_stream":  w.resolveLogStream(),
-			"rerun": map[string]any{
-				"available": w.canRerun(),
-			},
-			"controls": map[string]any{
-				"paused":        w.Paused,
-				"cancelled":     w.Cancelled,
-				"cancel_reason": w.CancelReason,
-			},
-			"is_noop":    isNoop,
-			"is_hook":    w.IsHook,
-			"session_id": w.ID,
-			"event_id":   w.EventID,
-			"event_name": w.GetEventName(),
-			"event_ctx":  w.EventCtx,
-			"parent":     w.Parent,
+	data := map[string]any{
+		"brief":       w.Brief(),
+		"description": description,
+		"state":       state,
+		"output":      w.Ctx["_output"],
+		"log_stream":  w.resolveLogStream(),
+		"rerun": map[string]any{
+			"available": w.canRerun(),
 		},
+		"controls": map[string]any{
+			"paused":        w.Paused,
+			"cancelled":     w.Cancelled,
+			"cancel_reason": w.CancelReason,
+		},
+		"is_noop":    isNoop,
+		"is_hook":    w.IsHook,
+		"session_id": w.ID,
+		"event_id":   w.EventID,
+		"event_name": w.GetEventName(),
+		"event_ctx":  w.EventCtx,
+		"parent":     w.Parent,
+	}
+	if options := w.resolveWaitingInteractiveOptions(); options != nil {
+		data["interactive_options"] = options
+	}
+
+	ret := map[string]interface{}{
+		"data":   data,
 		"labels": labels,
 	}
 
