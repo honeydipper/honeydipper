@@ -216,6 +216,11 @@ func lookup(msg *dipper.Message) {
 	var client interface{}
 	var err error
 
+	// Initialize client pool if not already done (handles secure loader case)
+	if _clientPool == nil {
+		loadOptions(msg)
+	}
+
 	// Try each secret name in order, return the first one found
 	for _, name := range names {
 		name = strings.TrimSpace(name)
