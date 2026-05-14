@@ -173,9 +173,13 @@ func NewStore(c dipper.RPCCaller) *Store {
 
 func userProfileHandler(r *Request) (map[string]interface{}, error) {
 	profileName := ""
+	subject := ""
+	provider := ""
 	if p, ok := r.ctx.Get("principal"); ok {
 		principal := p.(Principal)
 		profileName = principal.ProfileName
+		subject = principal.Subject
+		provider = principal.Provider
 		if profileName == "" {
 			profileName = principal.Subject
 		}
@@ -183,6 +187,8 @@ func userProfileHandler(r *Request) (map[string]interface{}, error) {
 
 	return map[string]interface{}{
 		"profile_name": profileName,
+		"subject":      subject,
+		"provider":     provider,
 	}, nil
 }
 

@@ -24,3 +24,5 @@ path: /user/profile
 expectedCode: 200
 expectedContent:
   profile_name: test
+  subject: test
+  provider: auth-simple
