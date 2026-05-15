@@ -14,8 +14,12 @@ import (
 	"google.golang.org/api/option"
 )
 
-// ErrFailedCreateClient means failure during create client.
-var ErrFailedCreateClient = errors.New("unable to create gcloud pubsub client")
+var (
+	// ErrFailedCreateClient means failure during create client.
+	ErrFailedCreateClient = errors.New("unable to create gcloud pubsub client")
+	// ErrFailedPublish means failure during publish.
+	ErrFailedPublish = errors.New("failed to publish message to gcloud pubsub")
+)
 
 // SubscriberConfig stores all gcloud pubsub subscriber information.
 type SubscriberConfig struct {
@@ -45,10 +49,13 @@ func main() {
 
 	driver = dipper.NewDriver(os.Args[1], "gcloud-pubsub")
 	driver.Start = start
+	driver.Commands["publish"] = publish
 	driver.Run()
 }
 
-func getPubsubClient(ctx context.Context, serviceAccountBytes, project string) *pubsub.Client {
+var getPubsubClient = newPubsubClient
+
+func newPubsubClient(ctx context.Context, serviceAccountBytes, project string) *pubsub.Client {
 	var (
 		client *pubsub.Client
 		err    error
@@ -67,6 +74,10 @@ func getPubsubClient(ctx context.Context, serviceAccountBytes, project string) *
 }
 
 func loadOptions() {
+	serviceAccount, _ = driver.GetOptionStr("data.service_account")
+}
+
+func loadSubscriberOptions() {
 	events, ok := driver.GetOption("dynamicData.collapsedEvents")
 	dipper.Logger.Debugf("[%s] pubsub events %+v", driver.Service, events)
 	if !ok {
@@ -75,11 +86,6 @@ func loadOptions() {
 	pubsubEvents, ok := events.(map[string]interface{})
 	if !ok {
 		dipper.Logger.Panicf("[%s] pubsub subscription data should be a map of event to conditions", driver.Service)
-	}
-
-	serviceAccount, ok = driver.GetOptionStr("data.service_account")
-	if !ok {
-		dipper.Logger.Warningf("[%s] doesn't find service account in driver data", driver.Service)
 	}
 
 	subscriberConfigs = map[string]*SubscriberConfig{}
@@ -121,7 +127,10 @@ func loadOptions() {
 
 func start(msg *dipper.Message) {
 	loadOptions()
-	go subscribeAll()
+	if driver.Service == "receiver" {
+		loadSubscriberOptions()
+		go subscribeAll()
+	}
 }
 
 type msgHandler func(ctx context.Context, msg *pubsub.Message)
@@ -166,6 +175,64 @@ func msgHandlerBuilder(config *SubscriberConfig) msgHandler {
 	}
 
 	return ret
+}
+
+func publish(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	params := msg.Payload
+
+	project := dipper.MustGetMapDataStr(params, "project")
+	topicName := dipper.MustGetMapDataStr(params, "topic")
+
+	sa := serviceAccount
+	if overrideSA, ok := dipper.GetMapDataStr(params, "service_account"); ok {
+		sa = overrideSA
+	}
+
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	client := getPubsubClient(ctx, sa, project)
+	defer client.Close()
+
+	publisher := client.Publisher(topicName)
+	defer publisher.Stop()
+
+	pubMsg := &pubsub.Message{}
+
+	if data, ok := dipper.GetMapData(params, "data"); ok {
+		switch v := data.(type) {
+		case string:
+			pubMsg.Data = []byte(v)
+		default:
+			encoded, err := json.Marshal(v)
+			if err != nil {
+				panic(fmt.Errorf("%w: %w", ErrFailedPublish, err))
+			}
+			pubMsg.Data = encoded
+		}
+	}
+
+	if attrs, ok := dipper.GetMapData(params, "attributes"); ok {
+		if attrMap, ok := attrs.(map[string]interface{}); ok {
+			pubMsg.Attributes = make(map[string]string, len(attrMap))
+			for k, v := range attrMap {
+				pubMsg.Attributes[k] = fmt.Sprintf("%v", v)
+			}
+		}
+	}
+
+	result := publisher.Publish(ctx, pubMsg)
+	messageID, err := result.Get(ctx)
+	if err != nil {
+		panic(fmt.Errorf("%w: %w", ErrFailedPublish, err))
+	}
+
+	msg.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"messageID": messageID,
+		},
+	}
 }
 
 func subscribeAll() {
