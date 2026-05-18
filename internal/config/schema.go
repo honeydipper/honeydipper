@@ -63,6 +63,7 @@ type Workflow struct {
 	Context     string
 	Contexts    interface{}
 	Local       interface{} `json:"with" mapstructure:"with"`
+	Parameters  interface{} `json:"parameters" mapstructure:"parameters"`
 
 	Match       interface{} `json:"if_match" mapstructure:"if_match"`
 	UnlessMatch interface{} `json:"unless_match" mapstructure:"unelss_match"`
@@ -93,6 +94,7 @@ type Workflow struct {
 	Function     Function
 	CallFunction string `json:"call_function" mapstructure:"call_function"`
 	CallDriver   string `json:"call_driver" mapstructure:"call_driver"`
+	CallAgent    string `json:"call_agent" mapstructure:"call_agent"`
 	Steps        []Workflow
 	Threads      []Workflow
 	Wait         string
@@ -152,10 +154,32 @@ func (r RepoInfo) Key() RepoKey {
 	return RepoKey{Repo: r.Repo, Branch: r.Branch, Path: r.Path, InitFile: r.InitFile}
 }
 
+// AgentToolDef defines if the workflow is a workflow or a system.
+type AgentToolDef struct {
+	Type string
+	Name string
+}
+
+// Agent is a abstract data structure including AI driver, prompt and tools definitions for an agent session.
+type Agent struct {
+	Name               string
+	Driver             string
+	Engine             string
+	SystemPrompt       string `json:"system_prompt" mapstructure:"system_prompt"`
+	InferencePrompt    string `json:"inference_prompt" mapstructure:"inference_prompt"`
+	ShouldEmitThoughts bool   `json:"should_emit_thoughts" mapstructure:"should_emit_thoughts"`
+	ShouldStream       bool   `json:"should_stream" mapstructure:"should_stream"`
+	Tools              []AgentToolDef
+	ModelData          map[string]interface{} `json:"model_data" mapstructure:"model_data"`
+	Description        string
+	Meta               interface{}
+}
+
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.
 type DataSet struct {
 	Systems   map[string]System
 	Rules     []Rule
+	Agents    map[string]Agent
 	Drivers   map[string]interface{}
 	Includes  []string
 	Repos     []RepoInfo

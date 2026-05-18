@@ -62,6 +62,7 @@ func (p *CommandProvider) ReturnInterrupted(call *Message) {
 	msg := *call
 	msg.Channel = p.Channel
 	msg.Subject = p.InterruptedSubject
+	msg.Labels["dipper_call_subject"] = call.Subject
 
 	Logger.Warningf("[operator] interrupted, sessionID: %+v", msg)
 
@@ -96,7 +97,7 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 
 	retMsg := &Message{
 		Channel: p.Channel,
-		Subject: p.Subject,
+		Subject: p.returnSubject(call.Subject),
 		Labels:  call.Labels,
 	}
 	delete(retMsg.Labels, "backoff_ms")
@@ -225,6 +226,15 @@ func (w *commandWrapper) attempt(replyChannel chan Message) {
 		}
 	}()
 	w.f(&m)
+}
+
+// returnSubject maps an incoming call subject to its corresponding return subject.
+func (p *CommandProvider) returnSubject(callSubject string) string {
+	if callSubject == EventbusAgentCommand {
+		return EventbusAgentContinue
+	}
+
+	return p.Subject
 }
 
 // Router : route the message to rpc handlers.

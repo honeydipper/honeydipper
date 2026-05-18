@@ -369,13 +369,13 @@ func TestInjectLocalCTX(t *testing.T) {
 	if s.Ctx["a"] != "b" {
 		t.Error("local ctx not merged from slice")
 	}
-	// skip when there is callDriver
+	// local context (with) is always merged even when callDriver is set; use parameters field for driver params
 	s.Workflow.CallDriver = "drv"
 	s.Ctx = map[string]interface{}{}
 	s.Workflow.Local = map[string]interface{}{"foo": "baz"}
 	s.injectLocalCTX()
-	if _, ok := s.Ctx["foo"]; ok {
-		t.Error("should not merge when callDriver is set")
+	if s.Ctx["foo"] != "baz" {
+		t.Error("should still merge local ctx when callDriver is set")
 	}
 }
 

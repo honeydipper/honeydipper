@@ -207,6 +207,21 @@ func (s *PersistedStore) EmitResult(w *Session) {
 	mesg["topic"] = "workflow"
 	mesg["subject"] = BroadcaseSubjectResult
 	dipper.Must(s.CallNoWait("driver:redispubsub", "send", mesg))
+
+	if id := w.OriginLabels["agent_session_id"]; id != "" {
+		s.SendMessage(&dipper.Message{
+			Channel: "eventbus",
+			Subject: "agent_continue",
+			Labels: map[string]string{
+				"agent_session_id": id,
+				"turn_id":          w.OriginLabels["turn_id"],
+				"tool_call_id":     w.OriginLabels["tool_call_id"],
+				"status":           w.CurrentMsg.Labels["status"],
+				"reason":           w.CurrentMsg.Labels["reason"],
+			},
+			Payload: mesg,
+		})
+	}
 }
 
 func (s *PersistedStore) uncaughtErrorHandler(w *Session, msg *dipper.Message) func(r error) {
@@ -238,7 +253,7 @@ func (s *PersistedStore) uncaughtErrorHandler(w *Session, msg *dipper.Message) f
 		if w.ID != "" {
 			s.persist(w)
 		}
-		if w.Parent == "" && w.EventID != "" {
+		if w.Parent == "" && (w.EventID != "" || w.OriginLabels["agent_session_id"] != "") {
 			if w.ID == "" {
 				w.ID = s.GetNextID()
 				s.persist(w)
@@ -298,9 +313,16 @@ func (s *PersistedStore) StartDynamicSession(spec *dipper.Message, ctx map[strin
 // ContinueSession continues a session with given dipper message.
 func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message, child *Session) {
 	defer dipper.SafeExitOnError("[workflow] error when loading workflow session %s", sessionID)
+
+	agentLockID := msg.Labels["agent_session_id"]
+
 	w := s.loadSession(sessionID, msg, child)
 	if w == nil {
 		return
+	}
+
+	if agentLockID != "" {
+		w.AgentLockID = agentLockID
 	}
 
 	defer dipper.SafeExitOnError("[workflow] error when starting workflow session", s.uncaughtErrorHandler(w, msg))
@@ -311,21 +333,33 @@ func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message, 
 // ResumeSession resume a session that is in waiting state.
 func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
 	m := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
+
+	if m.Labels == nil {
+		m.Labels = map[string]string{}
+	}
+
+	agentLockID := m.Labels["agent_session_id"]
+	sessionSeqStr := m.Labels["session_seq"]
+	if m.Subject == "agent_response" && agentLockID != "" && sessionSeqStr != "" {
+		sessionSeq := dipper.Must(strconv.Atoi(sessionSeqStr)).(int)
+		s.lockAgentStreamKey(agentLockID, sessionSeq)
+	}
+
 	data, _ := s.Call("scheduler", "cancel", map[string]any{"type": "session", "key": key})
 	if data == nil {
 		s.Warningf("unable to resume for key %s, no payload received from waiter.", key)
+		if m.Subject == "agent_response" && agentLockID != "" && sessionSeqStr != "" {
+			s.unlockAgentStreamKey(agentLockID)
+		}
 
 		return false
 	}
 
 	payload := dipper.DeserializeContent(data)
-	s.Debugf("resuming session with key %s and payload %+v", key, payload)
+	s.Debugf("resuming session with key %s and payload %+v", key, m)
 	sessionID := dipper.MustGetMapDataStr(payload, "labels.sessionID")
 	cursor := dipper.MustGetMapDataStr(payload, "labels.cursor")
 
-	if m.Labels == nil {
-		m.Labels = map[string]string{}
-	}
 	m.Labels["sessionID"] = sessionID
 	m.Labels["cursor"] = cursor
 	if _, ok := m.Labels["status"]; !ok {
@@ -350,6 +384,25 @@ func (s *PersistedStore) unlockSessionKey(key string) {
 	})
 	if err != nil {
 		s.Debugf("failed to unlock session key %s (lock will auto-expire): %v", key, err)
+	}
+}
+
+func (s *PersistedStore) lockAgentStreamKey(agentSessionID string, sq int) {
+	dipper.Must(s.Call("locker", "lock", map[string]interface{}{
+		"name":   StoreAgentLockPrefix + agentSessionID,
+		"expire": "3600s",
+		"sq":     sq,
+	}))
+}
+
+func (s *PersistedStore) unlockAgentStreamKey(agentSessionID string) {
+	_, err := s.Call("locker", "unlock", map[string]interface{}{
+		"name": StoreAgentLockPrefix + agentSessionID,
+	})
+	if err != nil {
+		s.Warningf("failed to unlock agent stream key %s (lock will auto-expire): %v", agentSessionID, err)
+	} else {
+		s.Debugf("unlocked agent stream key %s", agentSessionID)
 	}
 }
 
@@ -927,6 +980,19 @@ func (s *PersistedStore) persist(w *Session) {
 		ttl = time.Hour * 24
 	}
 
+	// Find the tail session to decide whether to release the agent stream lock.
+	tail := root
+	for tail.child != nil {
+		tail = tail.child
+	}
+	agentLockIDToRelease := ""
+	if root.AgentLockID != "" &&
+		((tail.Workflow.CallAgent != "" && tail.State == SessionStateAction) ||
+			(root.child == nil && root.Parent == "" && root.State == SessionStateDone)) {
+		agentLockIDToRelease = root.AgentLockID
+		root.AgentLockID = ""
+	}
+
 	current := root
 	cursor := ""
 	for {
@@ -977,6 +1043,9 @@ func (s *PersistedStore) persist(w *Session) {
 		}
 	} else {
 		s.unlockSessionKey(key)
+		if agentLockIDToRelease != "" {
+			s.unlockAgentStreamKey(agentLockIDToRelease)
+		}
 	}
 
 	if root.State == SessionStateDone && root.Parent == "" {
@@ -1025,7 +1094,23 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 	} else {
 		s.Infof("session [%s.%s] loaded from cache", w.ID, tail.CurrentMsg.Labels["cursor"])
 	}
-	if tail.CurrentMsg.Labels["cursor"] != msg.Labels["cursor"] {
+
+	if tail.Workflow.CallAgent != "" {
+		// allow streaming agent response to continue the session without matching cursor,
+		// as long as the agent_session_id matches, to better support long-running agent sessions.
+		agentSessionID := tail.CurrentMsg.Labels["agent_session_id"]
+		if agentSessionID != "" && agentSessionID != msg.Labels["agent_session_id"] {
+			s.Warningf("session %s ignoring mismatched agent_session_id: expected %s, got %s",
+				sessionID,
+				agentSessionID,
+				msg.Labels["agent_session_id"],
+			)
+			s.unlockSessionKey(key)
+
+			return nil
+		}
+	} else if tail.CurrentMsg.Labels["cursor"] != msg.Labels["cursor"] {
+		// For non-agent sessions, cursor must match to prevent out-of-order message processing.
 		s.Warningf("session %s ignoring mismatched cursor: expected %s, got %s",
 			sessionID,
 			tail.CurrentMsg.Labels["cursor"],

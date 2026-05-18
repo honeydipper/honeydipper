@@ -168,11 +168,14 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	dipper.Logger.Infof("[operator] routing message %s.%s", msg.Channel, msg.Subject)
 	defer dipper.SafeExitOnError("[operator] continue on processing messages")
 	switch {
-	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusCommand:
+	case msg.Channel == dipper.ChannelEventbus && (msg.Subject == dipper.EventbusCommand || msg.Subject == dipper.EventbusAgentCommand):
 		ret = handleEventbusCommand(msg)
 	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturnInterrupted:
 		retryInterruptedSession(msg)
-	case msg.Channel == dipper.ChannelEventbus && (msg.Subject == dipper.EventbusReturn || msg.Subject == dipper.EventbusMessage):
+	case msg.Channel == dipper.ChannelEventbus &&
+		(msg.Subject == dipper.EventbusReturn ||
+			msg.Subject == dipper.EventbusMessage ||
+			msg.Subject == dipper.EventbusAgentContinue):
 		ret = []RoutedMessage{
 			{
 				driverRuntime: operator.getDriverRuntime(dipper.ChannelEventbus),
@@ -243,11 +246,21 @@ func retryInterruptedSession(msg *dipper.Message) {
 	drainingFuncs.Add(1)
 	daemon.Go(func() {
 		defer drainingFuncs.Done()
-		if engine.drainingGroup != nil {
-			engine.drainingGroup.Wait()
+		resumeSubject := dipper.EventbusCommand
+		if msg.Labels["dipper_call_subject"] == dipper.EventbusAgentCommand {
+			resumeSubject = dipper.EventbusAgentCommand
 		}
-		msg.Subject = dipper.EventbusCommand
+		delete(msg.Labels, "dipper_call_subject")
+		msg.Subject = resumeSubject
 		msg.Labels["interrupted"] = "true"
-		engine.getDriverRuntime(dipper.ChannelEventbus).SendMessage(msg)
+		if operator.drainingGroup != nil {
+			// all drivers should be in draining mode before the message
+			// is sent to the queue. The redisqueue driver will still
+			// write to the queue but won't read from the queue. This
+			// is to avoid the retried message gets picked up by the
+			// redisqueue driver again.
+			operator.drainingGroup.Wait()
+		}
+		operator.getDriverRuntime(dipper.ChannelEventbus).SendMessage(msg)
 	})
 }

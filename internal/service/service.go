@@ -535,7 +535,12 @@ func (s *Service) serviceLoop() {
 
 func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
 	defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-	expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.Handler.Meta().Name)
+
+	expectKey := fmt.Sprintf("%s:%s", msg.Channel, msg.Subject)
+	if runtime != nil {
+		expectKey = fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.Handler.Meta().Name)
+	}
+
 	if expects, ok := s.deleteExpect(expectKey); ok {
 		for _, f := range expects {
 			go func(f ExpectHandler) {
@@ -897,6 +902,7 @@ func (s *Service) WindDown() {
 	s.config.AdvanceStage(s.name, config.StageDrained)
 }
 
+// StopAll stops all services and the daemon.
 func StopAll() {
 	drained := &sync.WaitGroup{}
 	for _, s := range Services {
@@ -913,4 +919,14 @@ func StopAll() {
 
 func (s *Service) Ready() <-chan struct{} {
 	return s.ready
+}
+
+// GetConfig returns the service's current configuration.
+func (s *Service) GetConfig() *config.Config {
+	return s.config
+}
+
+// EmitMessage emits a message to the service's router.
+func (s *Service) EmitMessage(msg dipper.Message) {
+	s.process(msg, nil)
 }

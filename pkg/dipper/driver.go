@@ -94,19 +94,25 @@ func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 	}
 
 	driver.RPCProvider.Init("rpc", "return", driver.Out)
+	driver.RPCProvider.Handler = driver.ctx
+	if service == "agent" {
+		driver.InterruptedChannel = ChannelEventbus
+		driver.RPCProvider.InterruptedSubject = EventbusRPCInterrupted
+	}
 	driver.RPCCallerBase.Init(&driver, "rpc", "call")
 	driver.ctx, driver.cancel = context.WithCancel(context.Background())
 	driver.CommandProvider.Init(ChannelEventbus, EventbusReturn, EventbusReturnInterrupted, driver.Out, driver.ctx)
 
 	driver.MessageHandlers = map[string]MessageHandler{
-		"command:options":  driver.ReceiveOptions,
-		"command:ping":     driver.Ping,
-		"command:start":    driver.start,
-		"command:stop":     driver.stop,
-		"command:drain":    driver.drain,
-		"rpc:call":         driver.RPCProvider.Router,
-		"rpc:return":       driver.HandleReturn,
-		"eventbus:command": driver.CommandProvider.Router,
+		"command:options":        driver.ReceiveOptions,
+		"command:ping":           driver.Ping,
+		"command:start":          driver.start,
+		"command:stop":           driver.stop,
+		"command:drain":          driver.drain,
+		"rpc:call":               driver.RPCProvider.Router,
+		"rpc:return":             driver.HandleReturn,
+		"eventbus:command":       driver.CommandProvider.Router,
+		"eventbus:agent_command": driver.CommandProvider.Router,
 	}
 
 	driver.GetLogger()
@@ -341,6 +347,7 @@ func (d *Driver) Flush(shutdown bool) {
 
 	if !shutdown {
 		d.ctx, d.cancel = context.WithCancel(context.Background())
-		d.Handler = d.ctx
+		d.CommandProvider.Handler = d.ctx
+		d.RPCProvider.Handler = d.ctx
 	}
 }

@@ -86,6 +86,8 @@ type Session struct {
 	OrigMsg *dipper.Message
 	// OrigChild is the original child session before hook execution.
 	OrigChild *Session
+	// OriginLabels is a copy of the labels from the initial trigger message.
+	OriginLabels map[string]string
 
 	// CurrentHook is the current hook that is being executed.
 	CurrentHook string
@@ -108,6 +110,9 @@ type Session struct {
 	Cancelled bool
 	// CancelReason captures optional user-provided cancellation reason.
 	CancelReason string
+	// AgentLockID holds the agent_session_id whose stream lock is currently held by this root session.
+	// Persisted so the lock can be released after intermediate function calls reload the session.
+	AgentLockID string
 	// AsyncChildren tracks detached async child session IDs created by this frame.
 	AsyncChildren map[string]bool
 	// PendingMessages is a queue of messages received in paused state.
@@ -345,6 +350,7 @@ func (w *Session) checkIsNoop() bool {
 	case w.Workflow.Wait != "":
 	case w.Workflow.Switch != "":
 	case w.Workflow.Resume != "":
+	case w.Workflow.CallAgent != "":
 	default:
 		ret = true
 	}

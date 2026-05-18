@@ -81,6 +81,10 @@ func (w *Session) injectMsg(msg *dipper.Message) {
 			w.Event = map[string]interface{}{}
 		}
 		w.EventID = msg.Labels["eventID"]
+		w.OriginLabels = make(map[string]string, len(msg.Labels))
+		for k, v := range msg.Labels {
+			w.OriginLabels[k] = v
+		}
 	}
 	if w.EventID != "" {
 		w.CurrentMsg.Labels["eventID"] = w.EventID
@@ -222,7 +226,7 @@ func (w *Session) initCTX(eventCtx map[string]interface{}, rerunCtx map[string]i
 
 // injects the workflow local context data.
 func (w *Session) injectLocalCTX() {
-	if w.Workflow.Local != nil && w.Workflow.CallDriver == "" {
+	if w.Workflow.Local != nil {
 		layers, ok := w.Workflow.Local.([]interface{})
 		if !ok {
 			layers = []interface{}{w.Workflow.Local}

@@ -7,6 +7,7 @@
 package dipper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -246,11 +247,14 @@ func (c *RPCCallerBase) HandleReturn(m *Message) {
 
 // RPCProvider : an interface for providing RPC handling feature.
 type RPCProvider struct {
-	Live          sync.WaitGroup
-	RPCHandlers   map[string]MessageHandler
-	DefaultReturn io.Writer
-	Channel       string
-	Subject       string
+	Live               sync.WaitGroup
+	RPCHandlers        map[string]MessageHandler
+	DefaultReturn      io.Writer
+	Channel            string
+	Subject            string
+	Handler            context.Context
+	InterruptedChannel string
+	InterruptedSubject string
 }
 
 // Init : initializing rpc provider.
@@ -309,7 +313,12 @@ func (p *RPCProvider) Router(msg *Message) {
 	if !ok {
 		f, ok = p.RPCHandlers[method+"|interruptible"]
 		if !ok {
-			p.ReturnError(msg, "unknown method "+method)
+			if msg.Labels["rpcID"] != RPCSkip {
+				p.Live.Add(1) // ReturnError will call Done, so add before to avoid panic
+				p.ReturnError(msg, "unknown method "+method)
+			} else {
+				GetLogger("rpc", "info").Warningf("unknown method: %s", method)
+			}
 
 			return
 		}
@@ -351,5 +360,37 @@ func (p *RPCProvider) Router(msg *Message) {
 			<-returnerExited
 		}()
 	}
+
+	// NoWait interruptible: run handler concurrently and send an eventbus notification
+	// if the driver's context is cancelled before the handler completes.
+	if msg.Labels["rpcID"] == RPCSkip && msg.Labels["interruptible"] == "true" &&
+		p.Handler != nil && p.InterruptedSubject != "" {
+		handlerDone := make(chan struct{})
+
+		go func() {
+			defer close(handlerDone)
+			defer SafeExitOnError("[rpc] interruptible NoWait handler panic")
+			f(msg)
+		}()
+
+		select {
+		case <-handlerDone:
+			// completed normally
+		case <-p.Handler.Done():
+			select {
+			case <-handlerDone:
+				// handler finished just before context was canceled; nothing to do
+			default:
+				SendMessage(p.DefaultReturn, &Message{
+					Channel: p.InterruptedChannel,
+					Subject: p.InterruptedSubject,
+					Labels:  msg.Labels,
+				})
+			}
+		}
+
+		return
+	}
+
 	f(msg)
 }

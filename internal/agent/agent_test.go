@@ -1,0 +1,1376 @@
+// Copyright 2026 PayPal Inc.
+
+// This Source Code Form is subject to the terms of the MIT License.
+// If a copy of the MIT License was not distributed with this file,
+// you can obtain one at https://mit-license.org/.
+
+//go:build !integration
+// +build !integration
+
+package agent
+
+import (
+	"encoding/json"
+	"os"
+	"sync"
+	"testing"
+
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/op/go-logging"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// ---------------------------------------------------------------------------
+// TestMain
+// ---------------------------------------------------------------------------
+
+func TestMain(m *testing.M) {
+	if dipper.Logger == nil {
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
+		defer f.Close()
+		dipper.GetLogger("test-agent", "DEBUG", f, f)
+	}
+	os.Exit(m.Run())
+}
+
+// ---------------------------------------------------------------------------
+// mockStore – implements AgentStore for tests
+// ---------------------------------------------------------------------------
+
+type mockStore struct {
+	mu      sync.Mutex
+	calls   []string
+	resp    map[string][]byte
+	emitted []*dipper.Message
+	cfg     *config.Config
+	logger  *logging.Logger
+}
+
+func newMockStore(cfg *config.Config) *mockStore {
+	if cfg == nil {
+		cfg = &config.Config{DataSet: &config.DataSet{
+			Agents:    map[string]config.Agent{},
+			Systems:   map[string]config.System{},
+			Workflows: map[string]config.Workflow{},
+		}}
+	}
+
+	return &mockStore{
+		resp: map[string][]byte{},
+		cfg:  cfg,
+	}
+}
+
+func (m *mockStore) record(s string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, s)
+}
+
+func (m *mockStore) getCalls() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return append([]string(nil), m.calls...)
+}
+
+func (m *mockStore) hasCall(s string) bool {
+	for _, c := range m.getCalls() {
+		if c == s {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *mockStore) getEmitted() []*dipper.Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return append([]*dipper.Message(nil), m.emitted...)
+}
+
+// Call looks up responses by "feature:method" and optionally "feature:method:key".
+func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ...string) ([]byte, error) {
+	base := feature + ":" + method
+	if p, ok := params.(map[string]interface{}); ok {
+		if k, ok2 := p["key"].(string); ok2 {
+			full := base + ":" + k
+			if v, ok3 := m.resp[full]; ok3 {
+				m.record(base)
+
+				return v, nil
+			}
+		}
+	}
+	m.record(base)
+	if v, ok := m.resp[base]; ok {
+		return v, nil
+	}
+
+	return []byte("1"), nil
+}
+
+func (m *mockStore) CallNoWait(feature, method string, params interface{}, labelsKV ...string) error {
+	m.record(feature + ":" + method)
+
+	return nil
+}
+
+func (m *mockStore) CallRaw(feature, method string, params []byte, labelsKV ...string) ([]byte, error) {
+	return m.Call(feature, method, nil, labelsKV...)
+}
+
+func (m *mockStore) CallRawNoWait(feature, method string, params []byte, rpcID string, labelsKV ...string) error {
+	return m.CallNoWait(feature, method, nil, labelsKV...)
+}
+
+func (m *mockStore) GetName() string { return "mock-store" }
+
+func (m *mockStore) StartInference(msg *dipper.Message)    {}
+func (m *mockStore) ContinueInference(msg *dipper.Message) {}
+func (m *mockStore) ReceiveInference(msg *dipper.Message)  {}
+
+func (m *mockStore) GetAgent(name string) *config.Agent {
+	a := m.cfg.DataSet.Agents[name]
+
+	return &a
+}
+
+func (m *mockStore) GetSystem(name string) *config.System {
+	s := m.cfg.DataSet.Systems[name]
+
+	return &s
+}
+
+func (m *mockStore) GetWorkflow(name string) *config.Workflow {
+	w := m.cfg.DataSet.Workflows[name]
+
+	return &w
+}
+
+func (m *mockStore) EmitMessage(msg dipper.Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.emitted = append(m.emitted, &msg)
+}
+
+func (m *mockStore) GetConfig() *config.Config { return m.cfg }
+
+func (m *mockStore) Stop() {}
+func (m *mockStore) Wait() {}
+
+func (m *mockStore) GetLogger() *logging.Logger { return m.logger }
+
+// ---------------------------------------------------------------------------
+// mockStoreHelper – implements StoreHelper for PersistentAgentStore tests
+// ---------------------------------------------------------------------------
+
+type mockStoreHelper struct {
+	mockStore
+}
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+func mustMarshalJSON(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+
+	return b
+}
+
+func makeSystemWithFunc(funcName string) config.System {
+	return config.System{
+		Functions: map[string]config.Function{
+			funcName: {
+				Driver:    "testdriver",
+				RawAction: "action",
+				Meta: map[string]interface{}{
+					"description": "does " + funcName,
+					"inputs": []interface{}{
+						map[string]interface{}{
+							"name":        "param1",
+							"type":        "string",
+							"description": "first parameter",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func makeWorkflow(name, desc string) config.Workflow {
+	return config.Workflow{
+		Name:        name,
+		Description: desc,
+		Meta: map[string]interface{}{
+			"description": "meta desc for " + name,
+			"inputs": []interface{}{
+				map[string]interface{}{
+					"name":        "wfparam",
+					"type":        "string",
+					"description": "wf parameter",
+				},
+			},
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AgentSession.setup tests
+// ---------------------------------------------------------------------------
+
+func TestSetup_NewSession(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:   "myagent",
+		Driver: "openai",
+		Engine: "gpt-4",
+	}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name":  "myagent",
+			"caller_id":   "sess-1",
+			"caller_type": "workflow",
+		},
+		Payload: map[string]interface{}{
+			"type": AgentSessionTypeInference,
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+
+	assert.NotEmpty(t, s.ID)
+	assert.Equal(t, "sess-1", s.CallerID)
+	assert.Equal(t, "workflow", s.CallerType)
+	assert.Equal(t, AgentSessionTypeInference, s.Type)
+	assert.Equal(t, AgentSessionDefaultTTL, s.TTL)
+	assert.Equal(t, "myagent", s.Agent.Name)
+	assert.Same(t, msg, s.CurrentMsg)
+	assert.Equal(t, store, s.store)
+}
+
+func TestSetup_DefaultsToChatTurnType(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	msg := &dipper.Message{
+		Labels:  map[string]string{"agent_name": "a"},
+		Payload: map[string]interface{}{},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+
+	assert.Equal(t, AgentSessionTypeChatTurn, s.Type)
+}
+
+func TestSetup_CustomTTL(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "a",
+		},
+		Payload: map[string]interface{}{
+			"ttl": "7200",
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+
+	assert.Equal(t, "7200", s.TTL)
+}
+
+func TestSetup_RestoreFromCache(t *testing.T) {
+	store := newMockStore(nil)
+
+	existing := &AgentSession{
+		ID:         "session-abc",
+		CallerID:   "orig-caller",
+		CallerType: "engine",
+		Type:       AgentSessionTypeInference,
+		TTL:        "1800",
+		History: []AgentMessage{
+			{Role: RoleSystem, Content: "system prompt"},
+			{Role: RoleUser, Content: "hello"},
+		},
+	}
+	store.resp["cache:load:"+AgentKeyPrefix+"session-abc"] = mustMarshalJSON(existing)
+
+	newMsg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_session_id": "session-abc",
+		},
+		Payload: map[string]interface{}{},
+	}
+
+	s := &AgentSession{}
+	s.setup(newMsg, store)
+
+	assert.Equal(t, "session-abc", s.ID)
+	assert.Equal(t, "orig-caller", s.CallerID)
+	assert.Equal(t, "engine", s.CallerType)
+	assert.Equal(t, "1800", s.TTL)
+	require.Len(t, s.History, 2)
+	assert.Equal(t, RoleSystem, s.History[0].Role)
+	assert.Same(t, newMsg, s.CurrentMsg)
+	assert.True(t, store.hasCall("cache:load"))
+}
+
+func TestSetup_ChatTurn_NewConvo(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "a",
+		},
+		Payload: map[string]interface{}{
+			"type": AgentSessionTypeChatTurn,
+			// no convo_id
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+
+	assert.Equal(t, AgentSessionTypeChatTurn, s.Type)
+	assert.NotEmpty(t, s.ConvoID)
+	assert.Empty(t, s.History) // no lrange call needed for new convo
+	assert.False(t, store.hasCall("cache:lrange"))
+}
+
+func TestSetup_ChatTurn_ExistingConvo(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	history := []AgentMessage{
+		{Role: RoleSystem, Content: "sys"},
+		{Role: RoleUser, Content: "hi"},
+		{Role: RoleAgent, Content: "hello!"},
+	}
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-1"] = mustMarshalJSON(history)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "a",
+		},
+		Payload: map[string]interface{}{
+			"type":     AgentSessionTypeChatTurn,
+			"convo_id": "convo-1",
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+
+	assert.Equal(t, "convo-1", s.ConvoID)
+	require.Len(t, s.History, 3)
+	assert.Equal(t, RoleAgent, s.History[2].Role)
+	assert.True(t, store.hasCall("cache:lrange"))
+}
+
+// ---------------------------------------------------------------------------
+// AgentSession.run tests
+// ---------------------------------------------------------------------------
+
+func TestRun_AddsSystemPromptAndUserMessage(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{
+		Name:         "a",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "You are helpful.",
+	}
+
+	msg := &dipper.Message{
+		Labels:  map[string]string{"agent_name": "a"},
+		Payload: map[string]interface{}{"text": "ping"},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+	s.run()
+
+	require.Len(t, s.History, 2)
+	assert.Equal(t, RoleSystem, s.History[0].Role)
+	assert.Equal(t, "You are helpful.", s.History[0].Content)
+	assert.Equal(t, RoleUser, s.History[1].Role)
+	assert.Equal(t, "ping", s.History[1].Content)
+
+	assert.True(t, store.hasCall("cache:save"))
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+}
+
+func TestRun_InferenceTypeUsesInferencePrompt(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{
+		Name:            "a",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		SystemPrompt:    "system",
+		InferencePrompt: "inference-specific-prompt",
+	}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "a",
+		},
+		Payload: map[string]interface{}{
+			"type": AgentSessionTypeInference,
+			"text": "q",
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+	s.run()
+
+	require.True(t, len(s.History) >= 1)
+	assert.Equal(t, "inference-specific-prompt", s.History[0].Content)
+}
+
+func TestRun_SkipsSystemPromptWhenHistoryExists(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{
+		Name:         "a",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "should not appear",
+	}
+
+	msg := &dipper.Message{
+		Labels:  map[string]string{"agent_name": "a"},
+		Payload: map[string]interface{}{"text": "followup"},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+	s.History = []AgentMessage{{Role: RoleSystem, Content: "original"}}
+	s.run()
+
+	// History should have [original system, user message] but NOT a second system entry.
+	require.Len(t, s.History, 2)
+	assert.Equal(t, RoleSystem, s.History[0].Role)
+	assert.Equal(t, "original", s.History[0].Content)
+	assert.Equal(t, RoleUser, s.History[1].Role)
+	assert.Equal(t, "followup", s.History[1].Content)
+}
+
+func TestRun_WithUserLabel(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a", Driver: "openai", Engine: "e"}
+
+	msg := &dipper.Message{
+		Labels:  map[string]string{"agent_name": "a"},
+		Payload: map[string]interface{}{"text": "hello", "user": "alice"},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store)
+	s.run()
+
+	userMsg := s.History[len(s.History)-1]
+	assert.Equal(t, RoleUser, userMsg.Role)
+	assert.Equal(t, "alice", userMsg.User)
+	assert.Equal(t, "hello", userMsg.Content)
+}
+
+// ---------------------------------------------------------------------------
+// AgentSession.recover tests
+// ---------------------------------------------------------------------------
+
+func TestRecover(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Engine: "gpt-4",
+	}
+
+	s := &AgentSession{
+		store: store,
+		Agent: &config.Agent{Name: "a", Driver: "openai", Engine: "gpt-4"},
+		ID:    "recover-id",
+		History: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+			{Role: RoleUser, Content: "hello"},
+		},
+	}
+
+	s.recover()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+	// recover should NOT modify History
+	assert.Len(t, s.History, 2)
+}
+
+// ---------------------------------------------------------------------------
+// AgentSession.BuildTools tests
+// ---------------------------------------------------------------------------
+
+func TestBuildTools_SystemTool(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["mysys"] = makeSystemWithFunc("doThing")
+	agentA := config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Tools: []config.AgentToolDef{
+			{Type: "system", Name: "mysys"},
+		},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store: store,
+		Agent: &agentA,
+	}
+
+	tools := s.BuildTools()
+
+	require.Contains(t, tools, "sys_mysys__doThing")
+	tool := tools["sys_mysys__doThing"]
+	assert.Equal(t, "sys_mysys__doThing", tool.Name)
+	assert.Equal(t, "does doThing", tool.Description)
+	require.Contains(t, tool.Params, "param1")
+}
+
+func TestBuildTools_WorkflowTool(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Workflows["mywf"] = makeWorkflow("mywf", "my workflow")
+	agentA := config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Tools: []config.AgentToolDef{
+			{Type: "workflow", Name: "mywf"},
+		},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store: store,
+		Agent: &agentA,
+	}
+
+	tools := s.BuildTools()
+
+	require.Contains(t, tools, "wf__mywf")
+	tool := tools["wf__mywf"]
+	assert.Equal(t, "wf__mywf", tool.Name)
+	assert.Equal(t, "my workflow", tool.Description) // prefers Workflow.Description over Meta
+	require.Contains(t, tool.Params, "wfparam")
+}
+
+func TestBuildTools_WorkflowTool_UsesMetaDescriptionWhenEmpty(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Workflows["mywf"] = makeWorkflow("mywf", "") // empty Description
+	agentA := config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Tools: []config.AgentToolDef{
+			{Type: "workflow", Name: "mywf"},
+		},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store: store,
+		Agent: &agentA,
+	}
+
+	tools := s.BuildTools()
+
+	tool := tools["wf__mywf"]
+	assert.Equal(t, "meta desc for mywf", tool.Description)
+}
+
+func TestBuildTools_DuplicateSystemToolSkipped(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["mysys"] = makeSystemWithFunc("fn1")
+	agentA := config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Tools: []config.AgentToolDef{
+			{Type: "system", Name: "mysys"},
+			{Type: "system", Name: "mysys"}, // duplicate
+		},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store: store,
+		Agent: &agentA,
+	}
+
+	tools := s.BuildTools()
+
+	// Only one entry despite duplicate tool defs.
+	assert.Len(t, tools, 1)
+}
+
+func TestBuildTools_DuplicateWorkflowToolSkipped(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Workflows["wf1"] = makeWorkflow("wf1", "wf1 desc")
+	agentA := config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Tools: []config.AgentToolDef{
+			{Type: "workflow", Name: "wf1"},
+			{Type: "workflow", Name: "wf1"},
+		},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store: store,
+		Agent: &agentA,
+	}
+
+	tools := s.BuildTools()
+
+	assert.Len(t, tools, 1)
+}
+
+func TestBuildTools_ParamTypeDefaultsToString(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["s"] = config.System{
+		Functions: map[string]config.Function{
+			"fn": {
+				Driver:    "d",
+				RawAction: "a",
+				Meta: map[string]interface{}{
+					"description": "fn",
+					"inputs": []interface{}{
+						map[string]interface{}{
+							"name":        "p",
+							"description": "no type field",
+							// "type" is intentionally absent
+						},
+					},
+				},
+			},
+		},
+	}
+	agentA := config.Agent{
+		Name:  "a",
+		Tools: []config.AgentToolDef{{Type: "system", Name: "s"}},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store: store,
+		Agent: &agentA,
+	}
+	tools := s.BuildTools()
+
+	require.Contains(t, tools, "sys_s__fn")
+	param := tools["sys_s__fn"].Params["p"].(map[string]interface{})
+	assert.Equal(t, "string", param["type"])
+}
+
+func TestBuildTools_Mixed(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["s1"] = makeSystemWithFunc("fn1")
+	store.cfg.DataSet.Systems["s2"] = makeSystemWithFunc("fn2")
+	store.cfg.DataSet.Workflows["wf1"] = makeWorkflow("wf1", "w")
+	agentA := config.Agent{
+		Name: "a",
+		Tools: []config.AgentToolDef{
+			{Type: "system", Name: "s1"},
+			{Type: "system", Name: "s2"},
+			{Type: "workflow", Name: "wf1"},
+		},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store: store,
+		Agent: &agentA,
+	}
+	tools := s.BuildTools()
+
+	assert.Len(t, tools, 3)
+	assert.Contains(t, tools, "sys_s1__fn1")
+	assert.Contains(t, tools, "sys_s2__fn2")
+	assert.Contains(t, tools, "wf__wf1")
+}
+
+// ---------------------------------------------------------------------------
+// AgentSession.processAgentMessage tests
+// ---------------------------------------------------------------------------
+
+func newSessionForMsgProcessing(t *testing.T, store *mockStore) *AgentSession {
+	t.Helper()
+	store.cfg.DataSet.Agents["a"] = config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Engine: "gpt-4",
+	}
+	agent := store.cfg.DataSet.Agents["a"]
+
+	return &AgentSession{
+		store: store,
+		Agent: &agent,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels:  map[string]string{},
+			Payload: map[string]interface{}{"text": "re-run input"},
+		},
+	}
+}
+
+func TestProcessAgentMessage_ToolCalls(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["s1"] = makeSystemWithFunc("fn1")
+
+	s := newSessionForMsgProcessing(t, store)
+	s.Agent.Tools = []config.AgentToolDef{{Type: "system", Name: "s1"}}
+
+	agentMsg := &AgentMessage{
+		Role: RoleAgent,
+		ToolCalls: []AgentToolCall{
+			{FuncName: "sys_s1__fn1", Params: map[string]interface{}{"param1": "val"}},
+		},
+	}
+
+	s.processAgentMessage(agentMsg)
+
+	// History should contain the agent message.
+	require.Len(t, s.History, 1)
+	assert.Equal(t, RoleAgent, s.History[0].Role)
+
+	// nextToolCall should have emitted agent_command.
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_command", emitted[0].Subject)
+}
+
+func TestProcessAgentMessage_FinalReply(t *testing.T) {
+	store := newMockStore(nil)
+	s := newSessionForMsgProcessing(t, store)
+
+	agentMsg := &AgentMessage{
+		Role:    RoleAgent,
+		Content: "Here is the answer.",
+	}
+
+	s.processAgentMessage(agentMsg)
+
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_response", emitted[0].Subject)
+	assert.Equal(t, s.ID, emitted[0].Labels["agent_session_id"])
+}
+
+func TestProcessAgentMessage_Thinking_NotEmittedByDefault(t *testing.T) {
+	store := newMockStore(nil)
+	s := newSessionForMsgProcessing(t, store)
+	s.Agent.ShouldEmitThoughts = false
+
+	agentMsg := &AgentMessage{
+		Role:       RoleAgent,
+		IsThinking: true,
+		Content:    "I am thinking...",
+	}
+
+	s.processAgentMessage(agentMsg)
+
+	// Thinking tokens are NOT emitted when ShouldEmitThoughts=false.
+	assert.Empty(t, store.getEmitted())
+}
+
+func TestProcessAgentMessage_Thinking_EmittedWhenEnabled(t *testing.T) {
+	store := newMockStore(nil)
+	s := newSessionForMsgProcessing(t, store)
+	s.Agent.ShouldEmitThoughts = true
+
+	agentMsg := &AgentMessage{
+		Role:       RoleAgent,
+		IsThinking: true,
+		Content:    "reasoning...",
+	}
+
+	s.processAgentMessage(agentMsg)
+
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_response", emitted[0].Subject)
+}
+
+func TestProcessAgentMessage_Thinking_DoesNotRerun(t *testing.T) {
+	store := newMockStore(nil)
+	s := newSessionForMsgProcessing(t, store)
+
+	agentMsg := &AgentMessage{
+		Role:       RoleAgent,
+		IsThinking: true,
+		Content:    "thinking...",
+	}
+
+	s.processAgentMessage(agentMsg)
+
+	// run() should NOT have been called (no send_to_model).
+	assert.False(t, store.hasCall("driver:openai:send_to_model"))
+}
+
+func TestProcessAgentMessage_NonAgentRole_Reruns(t *testing.T) {
+	store := newMockStore(nil)
+	s := newSessionForMsgProcessing(t, store)
+
+	agentMsg := &AgentMessage{
+		Role:    "tool",
+		Content: "some tool output",
+	}
+
+	s.processAgentMessage(agentMsg)
+
+	// Non-agent role (not thinking, no tool calls) should trigger s.run().
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+}
+
+// ---------------------------------------------------------------------------
+// AgentSession.nextToolCall tests
+// ---------------------------------------------------------------------------
+
+func TestNextToolCall_SystemDispatch(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["mysys"] = makeSystemWithFunc("doWork")
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "tc-session",
+		CurrentCall: 0,
+		ToolCalls: []AgentToolCall{
+			{FuncName: "sys_mysys__doWork", Params: map[string]interface{}{"param1": "v1"}},
+		},
+	}
+
+	s.nextToolCall()
+
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_command", emitted[0].Subject)
+	assert.Equal(t, s.ID, emitted[0].Labels["agent_session_id"])
+	assert.True(t, store.hasCall("cache:save")) // persist() was called
+}
+
+func TestNextToolCall_WorkflowDispatch(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Workflows["mywf"] = makeWorkflow("mywf", "desc")
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "tc-wf-session",
+		CurrentCall: 0,
+		ToolCalls: []AgentToolCall{
+			{FuncName: "wf__mywf", Params: map[string]interface{}{"wfparam": "v"}},
+		},
+	}
+
+	s.nextToolCall()
+
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_workflow", emitted[0].Subject)
+	assert.Equal(t, "mywf", emitted[0].Payload.(map[string]interface{})["do"].(map[string]interface{})["call_workflow"])
+}
+
+func TestNextToolCall_AllDone_DoesNothing(t *testing.T) {
+	store := newMockStore(nil)
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "done-session",
+		CurrentCall: 2,
+		ToolCalls:   []AgentToolCall{{}, {}}, // 2 entries, CurrentCall == len
+	}
+
+	s.nextToolCall()
+
+	assert.Empty(t, store.getEmitted())
+	assert.False(t, store.hasCall("cache:save"))
+}
+
+// ---------------------------------------------------------------------------
+// AgentSession.processToolResult tests
+// ---------------------------------------------------------------------------
+
+func TestProcessToolResult_WorkflowResult_Advances(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["s1"] = makeSystemWithFunc("fn1")
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "tr-session",
+		CurrentCall: 0,
+		ToolCalls: []AgentToolCall{
+			{FuncName: "wf__mywf"},
+			{FuncName: "wf__otherwf"},
+		},
+		History: []AgentMessage{
+			{
+				Role: RoleAgent,
+				ToolCalls: []AgentToolCall{
+					{FuncName: "wf__mywf"},
+					{FuncName: "wf__otherwf"},
+				},
+			},
+		},
+	}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"turn_id":      "1",
+			"tool_call_id": "0",
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{"output": "done"},
+		},
+	}
+
+	s.processToolResult(msg)
+
+	// Result should be appended.
+	require.Len(t, s.ToolResults, 1)
+	assert.Equal(t, "done", s.ToolResults[0]["data"])
+
+	// CurrentCall should be incremented and next tool dispatched.
+	assert.Equal(t, 1, s.CurrentCall)
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_workflow", emitted[0].Subject)
+	assert.Equal(t, "otherwf", emitted[0].Payload.(map[string]interface{})["do"].(map[string]interface{})["call_workflow"])
+}
+
+func TestProcessToolResult_CommandResult_Advances(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["mysys"] = makeSystemWithFunc("doWork")
+
+	toolCalls := []AgentToolCall{
+		{FuncName: "sys_mysys__doWork", Params: map[string]interface{}{"param1": "v"}},
+		{FuncName: "sys_mysys__doWork", Params: map[string]interface{}{"param1": "v2"}},
+	}
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "cmd-session",
+		CurrentCall: 0,
+		ToolCalls:   toolCalls,
+		History: []AgentMessage{
+			{Role: RoleAgent, ToolCalls: toolCalls},
+		},
+	}
+
+	msg := &dipper.Message{
+		Subject: "agent_command_result",
+		Labels:  map[string]string{"status": "success", "turn_id": "1", "tool_call_id": "0"},
+		Payload: map[string]interface{}{},
+	}
+
+	s.processToolResult(msg)
+
+	// Result was appended (may be nil from empty Export, which is valid).
+	assert.Len(t, s.ToolResults, 1)
+
+	// Advances to the next call.
+	assert.Equal(t, 1, s.CurrentCall)
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_command", emitted[0].Subject)
+}
+
+func TestProcessToolResult_FeedsBackWhenAllDone(t *testing.T) {
+	// When the last tool call result is received, the session feeds all
+	// collected results back to the model.
+	store := newMockStore(nil)
+
+	toolCalls := []AgentToolCall{{FuncName: "wf__done"}}
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "feed-session",
+		CurrentCall: 0, // pointing to the only (last) tool call
+		ToolCalls:   toolCalls,
+		ToolResults: []map[string]interface{}{{"prev": "result"}},
+		History: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+			{Role: RoleAgent, ToolCalls: toolCalls},
+		},
+		CurrentMsg: &dipper.Message{
+			Labels:  map[string]string{},
+			Payload: map[string]interface{}{"text": "continue"},
+		},
+	}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"turn_id":      "2",
+			"tool_call_id": "0",
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{"output": "finalval"},
+		},
+	}
+
+	s.processToolResult(msg)
+
+	// ToolResults should have the new result appended.
+	require.Len(t, s.ToolResults, 2)
+
+	// processAgentMessage should have been called → EmitMessage for tool_result response.
+	emitted := store.getEmitted()
+	require.NotEmpty(t, emitted)
+	assert.Equal(t, "agent_response", emitted[0].Subject)
+}
+
+// ---------------------------------------------------------------------------
+// appendConvoHistory tests
+// ---------------------------------------------------------------------------
+
+func TestAppendConvoHistory_WithConvoID_CallsRpush(t *testing.T) {
+	store := newMockStore(nil)
+
+	s := &AgentSession{
+		store:   store,
+		Agent:   &config.Agent{},
+		ID:      "hist-session",
+		ConvoID: "convo-99",
+	}
+
+	s.appendConvoHistory(AgentMessage{Role: RoleUser, Content: "hello"})
+
+	require.Len(t, s.History, 1)
+	assert.True(t, store.hasCall("cache:rpush"))
+}
+
+func TestAppendConvoHistory_WithoutConvoID_NoCacheCall(t *testing.T) {
+	store := newMockStore(nil)
+
+	s := &AgentSession{
+		store:   store,
+		Agent:   &config.Agent{},
+		ID:      "hist-session",
+		ConvoID: "", // no convo
+	}
+
+	s.appendConvoHistory(AgentMessage{Role: RoleUser, Content: "hello"})
+
+	require.Len(t, s.History, 1)
+	assert.False(t, store.hasCall("cache:rpush"))
+}
+
+// ---------------------------------------------------------------------------
+// persist / load tests
+// ---------------------------------------------------------------------------
+
+func TestPersist_WritesToCache(t *testing.T) {
+	store := newMockStore(nil)
+
+	s := &AgentSession{
+		store: store,
+		Agent: &config.Agent{},
+		ID:    "persist-session",
+		TTL:   "1h",
+	}
+
+	s.persist()
+
+	assert.True(t, store.hasCall("cache:save"))
+}
+
+func TestLoad_ReadsFromCache(t *testing.T) {
+	store := newMockStore(nil)
+
+	data := &AgentSession{
+		ID:       "load-session",
+		CallerID: "caller",
+		Type:     AgentSessionTypeInference,
+		TTL:      "1200",
+	}
+	store.resp["cache:load:"+AgentKeyPrefix+"load-session"] = mustMarshalJSON(data)
+
+	s := &AgentSession{store: store}
+	s.load("load-session")
+
+	assert.Equal(t, "load-session", s.ID)
+	assert.Equal(t, "caller", s.CallerID)
+	assert.Equal(t, "1200", s.TTL)
+	assert.True(t, store.hasCall("cache:load"))
+}
+
+// ---------------------------------------------------------------------------
+// PersistentAgentStore tests
+// ---------------------------------------------------------------------------
+
+func TestNewAgentStore_CreatesValidStore(t *testing.T) {
+	helper := &mockStoreHelper{
+		mockStore: *newMockStore(nil),
+	}
+
+	store := NewAgentStore(helper)
+	assert.NotNil(t, store)
+
+	pas, ok := store.(*PersistentAgentStore)
+	require.True(t, ok)
+	assert.NotNil(t, pas.Logger)
+}
+
+func TestPersistentAgentStore_GetLogger(t *testing.T) {
+	helper := &mockStoreHelper{
+		mockStore: *newMockStore(nil),
+	}
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+	assert.NotNil(t, store.GetLogger())
+	assert.Equal(t, store.Logger, store.GetLogger())
+}
+
+func TestPersistentAgentStore_GetAgent(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	agent := store.GetAgent("bot")
+	assert.Equal(t, "bot", agent.Name)
+	assert.Equal(t, "openai", agent.Driver)
+}
+
+func TestPersistentAgentStore_GetSystem(t *testing.T) {
+	sys := makeSystemWithFunc("fn1")
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents:    map[string]config.Agent{},
+		Systems:   map[string]config.System{"s1": sys},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	s := store.GetSystem("s1")
+	require.Contains(t, s.Functions, "fn1")
+}
+
+func TestPersistentAgentStore_GetWorkflow(t *testing.T) {
+	wf := makeWorkflow("wf1", "my workflow")
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents:    map[string]config.Agent{},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{"wf1": wf},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	w := store.GetWorkflow("wf1")
+	assert.Equal(t, "my workflow", w.Description)
+}
+
+func TestPersistentAgentStore_StopAndWait(t *testing.T) {
+	helper := &mockStoreHelper{mockStore: *newMockStore(nil)}
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	// Before Stop, stopped flag is false.
+	assert.False(t, store.stopped.Load())
+
+	store.Stop()
+	assert.True(t, store.stopped.Load())
+
+	// Wait should return immediately (no in-flight sessions).
+	done := make(chan struct{})
+	go func() {
+		store.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		// success
+	default:
+		// Wait returned synchronously, also fine.
+	}
+}
+
+func TestPersistentAgentStore_StartInference(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name":  "bot",
+			"caller_id":   "c1",
+			"caller_type": "engine",
+		},
+		Payload: map[string]interface{}{"text": "hello"},
+	}
+
+	store.StartInference(msg)
+
+	// send_to_model should have been called on the helper.
+	assert.True(t, helper.hasCall("driver:openai:send_to_model"))
+	// session should have been persisted.
+	assert.True(t, helper.hasCall("cache:save"))
+}
+
+func TestPersistentAgentStore_ReceiveInference(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+
+	// Build a persisted session.
+	existing := &AgentSession{
+		ID:         "rcv-session",
+		CallerID:   "c1",
+		CallerType: "engine",
+		Type:       AgentSessionTypeInference,
+		TTL:        "1h",
+		Agent:      &config.Agent{Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		History:    []AgentMessage{{Role: RoleSystem, Content: "sys"}},
+	}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	helper.resp["cache:load:"+AgentKeyPrefix+"rcv-session"] = mustMarshalJSON(existing)
+
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	agentMsg := AgentMessage{Role: RoleAgent, Content: "response!"}
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_session_id": "rcv-session",
+		},
+		Payload: map[string]interface{}{
+			"message": map[string]interface{}{
+				"Role":    RoleAgent,
+				"Content": "response!",
+			},
+		},
+	}
+	_ = agentMsg
+
+	store.ReceiveInference(msg)
+
+	// processAgentResponse → processAgentMessage → EmitMessage (agent_response).
+	assert.True(t, helper.hasCall("cache:load"))
+}
+
+func TestPersistentAgentStore_ContinueInference_ProcessResult(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+
+	// Two tool calls; CurrentCall=0 means we're processing the first result
+	// and should advance to dispatch the second.
+	toolCalls := []AgentToolCall{
+		{FuncName: "wf__firststep"},
+		{FuncName: "wf__secondstep"},
+	}
+	existing := &AgentSession{
+		ID:          "cont-session",
+		CallerID:    "c1",
+		CallerType:  "engine",
+		Type:        AgentSessionTypeInference,
+		TTL:         "1h",
+		Agent:       &config.Agent{Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		CurrentCall: 0,
+		ToolCalls:   toolCalls,
+		ToolResults: []map[string]interface{}{},
+		History: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+			{Role: RoleAgent, ToolCalls: toolCalls},
+		},
+	}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	helper.resp["cache:load:"+AgentKeyPrefix+"cont-session"] = mustMarshalJSON(existing)
+
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	msg := &dipper.Message{
+		Subject: "agent_workflow_result",
+		Labels: map[string]string{
+			"agent_session_id": "cont-session",
+			"turn_id":          "2",
+			"tool_call_id":     "0",
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{"output": "ok"},
+		},
+	}
+
+	store.ContinueInference(msg)
+
+	// Session was loaded from cache.
+	assert.True(t, helper.hasCall("cache:load"))
+	// Advancing to next tool dispatches the second workflow.
+	emitted := helper.getEmitted()
+	require.NotEmpty(t, emitted)
+	assert.Equal(t, "agent_workflow", emitted[0].Subject)
+	assert.Equal(t, "secondstep", emitted[0].Payload.(map[string]interface{})["do"].(map[string]interface{})["call_workflow"])
+}
+
+func TestPersistentAgentStore_ContinueInference_Recover(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+
+	existing := &AgentSession{
+		ID:      "rcv2-session",
+		Type:    AgentSessionTypeInference,
+		TTL:     "1h",
+		Agent:   &config.Agent{Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		History: []AgentMessage{{Role: RoleSystem, Content: "sys"}},
+	}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	helper.resp["cache:load:"+AgentKeyPrefix+"rcv2-session"] = mustMarshalJSON(existing)
+
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_session_id": "rcv2-session",
+			"recover":          "true",
+		},
+		Payload: map[string]interface{}{},
+	}
+
+	store.ContinueInference(msg)
+
+	// recover() should dispatch send_to_model.
+	assert.True(t, helper.hasCall("driver:openai:send_to_model"))
+}

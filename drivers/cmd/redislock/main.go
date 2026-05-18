@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,6 +28,8 @@ var (
 	ErrFailToLock = errors.New("fail to lock")
 	// ErrFailToUnlock means not being able to unlock.
 	ErrFailToUnlock = errors.New("fail to unlock")
+	// ErrOutOfSync means the given sequence number is lower than the current lock serial.
+	ErrOutOfSync = errors.New("out of sync")
 )
 
 // Locker holds the driver, configurations and runtime information.
@@ -71,10 +74,38 @@ func main() {
 	l.nodeID = dipper.GetIP()
 }
 
+func waitForSeq(ctx context.Context, client redisclient.Options, seqKey string, sq int, strict bool) bool {
+	for {
+		currentSeq, _ := strconv.ParseInt(dipper.Must(client.Get(ctx, seqKey).Result()).(string), 10, 64)
+		if strict {
+			if currentSeq > int64(sq) {
+				panic(ErrOutOfSync)
+			}
+			if currentSeq == int64(sq) {
+				return true
+			}
+		} else if currentSeq >= int64(sq) {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
 func (l *Locker) lock(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	expire := dipper.Must(time.ParseDuration(dipper.MustGetMapDataStr(msg.Payload, "expire"))).(time.Duration)
 	name := dipper.MustGetMapDataStr(msg.Payload, "name")
+	sq, hasSq := dipper.GetMapDataInt(msg.Payload, "sq")
+	strict, _ := dipper.GetMapDataBool(msg.Payload, "strict")
+
+	seqExpire := 24 * time.Hour
+	if seqExpireStr, ok := dipper.GetMapDataStr(msg.Payload, "seq_expire"); ok {
+		seqExpire = dipper.Must(time.ParseDuration(seqExpireStr)).(time.Duration)
+	}
 
 	ctx, cancel := l.driver.GetContext(msg)
 	defer cancel()
@@ -82,12 +113,25 @@ func (l *Locker) lock(msg *dipper.Message) {
 	client := redisclient.NewClient(l.redisOptions)
 	defer client.Close()
 
+	var seqKey string
+	if hasSq {
+		seqKey = l.prefix + name + ":seq"
+		dipper.Must(client.SetNX(ctx, seqKey, "1", seqExpire).Result())
+		if !waitForSeq(ctx, client, seqKey, sq, strict) {
+			return
+		}
+	}
+
 	for !dipper.Must(client.SetNX(ctx, l.prefix+name, l.nodeID, expire).Result()).(bool) {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(100 * time.Millisecond):
 		}
+	}
+
+	if hasSq {
+		dipper.Must(client.Incr(ctx, seqKey).Result())
 	}
 
 	msg.Reply <- dipper.Message{}

@@ -26,6 +26,8 @@ const (
 	StoreSessionPrefix = "stack:"
 	// StoreEvenPrefix is the prefix for mapping events to persisted session stacks.
 	StoreEventPrefix = "event:"
+	// StoreAgentLockPrefix is the prefix for per-agent-session streaming locks.
+	StoreAgentLockPrefix = "agent-stream:"
 	// StoreSessionIdWrap is the number when reached causes the session ID counter to reset.
 	StoreSessionIDWrap = 10000000000
 	// StoreSessionIdBatch is the number of IDs to reserve each time.

@@ -9,6 +9,7 @@ package service
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
@@ -57,6 +58,8 @@ func StartEngine(cfg *config.Config) {
 	engine.ServiceReload = buildRuleMap
 	engine.EmitMetrics = engineMetrics
 	engine.addResponder("eventbus:message", createSessions)
+	engine.addResponder("eventbus:agent_workflow", createSessions)
+	engine.addResponder("eventbus:agent_response", continueAgentSession)
 	engine.addResponder("eventbus:return", continueSession)
 	engine.addResponder("scheduler:session", continueSession)
 	setupEngineAPIs()
@@ -137,6 +140,34 @@ func continueSession(d *driver.Runtime, msg *dipper.Message) {
 	}
 	dipper.Logger.Infof("[engine] command return for session %s", sessionID)
 	go sessionStore.ContinueSession(sessionID, msg, nil)
+}
+
+// continueAgentSession routes an agent_response message back to the workflow session that
+// issued the call_agent. The caller_id label encodes "<sessionID>.<cursor>" so the workflow
+// engine can load and resume the correct pending session.
+func continueAgentSession(_ *driver.Runtime, msg *dipper.Message) {
+	defer dipper.SafeExitOnError("[engine] continue processing rules")
+	<-engine.Ready()
+	msg = dipper.DeserializePayload(msg)
+	if msg.Labels["caller_type"] != "workflow" {
+		return
+	}
+	callerID := msg.Labels["caller_id"]
+	lastDot := strings.LastIndex(callerID, ".")
+	if lastDot < 0 {
+		dipper.Logger.Warningf("[engine] agent_response with invalid caller_id: %s", callerID)
+
+		return
+	}
+	sessionID := callerID[:lastDot]
+	cursor := callerID[lastDot+1:]
+	msg.Labels["sessionID"] = sessionID
+	msg.Labels["cursor"] = cursor
+	if _, ok := msg.Labels["status"]; !ok {
+		msg.Labels["status"] = "success"
+	}
+	dipper.Logger.Infof("[engine] agent response for session %s", sessionID)
+	go sessionStore.ResumeSession(sessionID, msg)
 }
 
 // buildRuleMap : the purpose is to build a quick map from event(system/trigger) to something that is operable.

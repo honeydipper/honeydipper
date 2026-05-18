@@ -557,3 +557,105 @@ func TestEnterWait_WithResumeKey(t *testing.T) {
 		t.Errorf("expected custom key, got %v", params["key"])
 	}
 }
+
+func TestCallAgent_RegistersSchedulerDue(t *testing.T) {
+	s := makeExecuteSession()
+	es := &execTestStore{}
+	s.store = es
+	s.Workflow.CallAgent = "openai"
+	s.Ctx["text"] = "hello"
+	s.CurrentMsg.Labels["cursor"] = "3"
+
+	s.callAgent()
+
+	// Should send agent_start message
+	if len(es.lastSentMessages) != 1 {
+		t.Fatalf("expected 1 message sent, got %d", len(es.lastSentMessages))
+	}
+	if es.lastSentMessages[0].Subject != "agent_start" {
+		t.Errorf("expected agent_start, got %s", es.lastSentMessages[0].Subject)
+	}
+	// cursor should be incremented
+	if s.CurrentMsg.Labels["cursor"] != "4" {
+		t.Errorf("expected cursor 4, got %s", s.CurrentMsg.Labels["cursor"])
+	}
+	// scheduler.once must be called
+	if es.lastCallFeature != "scheduler" || es.lastCallMethod != "once" {
+		t.Errorf("scheduler not called: %s %s", es.lastCallFeature, es.lastCallMethod)
+	}
+	params, ok := es.lastCallParams.(map[string]any)
+	if !ok || params["type"] != "session" {
+		t.Errorf("unexpected scheduler params: %v", es.lastCallParams)
+	}
+	if params["key"] != s.ID {
+		t.Errorf("unexpected scheduler key: %v", params["key"])
+	}
+	dueMsg, _ := params["due_message"].(map[string]any)
+	labels, _ := dueMsg["labels"].(map[string]any)
+	if labels["status"] != "error" {
+		t.Errorf("expected due_message status error, got %v", labels["status"])
+	}
+	if labels["reason"] != "agent response timeout" {
+		t.Errorf("expected due_message reason 'agent response timeout', got %v", labels["reason"])
+	}
+}
+
+func TestCallAgent_StreamingNonFinalReregisters(t *testing.T) {
+	s := makeExecuteSession()
+	es := &execTestStore{}
+	s.store = es
+	s.Workflow.CallAgent = "openai"
+	s.Ctx["agent_session_id"] = "agt-1"
+	s.Ctx["agent_message"] = map[string]any{"is_complete": false}
+	s.CurrentMsg.Labels["cursor"] = "5"
+
+	s.callAgent()
+
+	// No new agent_start message should be sent
+	if len(es.lastSentMessages) != 0 {
+		t.Errorf("expected no message sent for streaming non-final, got %d", len(es.lastSentMessages))
+	}
+	// cursor must NOT be incremented
+	if s.CurrentMsg.Labels["cursor"] != "5" {
+		t.Errorf("cursor should stay 5, got %s", s.CurrentMsg.Labels["cursor"])
+	}
+	// scheduler due entry must still be re-registered
+	if es.lastCallFeature != "scheduler" || es.lastCallMethod != "once" {
+		t.Errorf("scheduler not called for streaming re-register: %s %s", es.lastCallFeature, es.lastCallMethod)
+	}
+	params, _ := es.lastCallParams.(map[string]any)
+	if params["key"] != s.ID {
+		t.Errorf("unexpected scheduler key for streaming: %v", params["key"])
+	}
+	dueMsg, _ := params["due_message"].(map[string]any)
+	labels, _ := dueMsg["labels"].(map[string]any)
+	if labels["status"] != "error" {
+		t.Errorf("expected due_message status error, got %v", labels["status"])
+	}
+	if labels["reason"] != "agent response timeout" {
+		t.Errorf("expected due_message reason 'agent response timeout', got %v", labels["reason"])
+	}
+}
+
+func TestAgentTimeout_Default(t *testing.T) {
+	s := makeExecuteSession()
+	if s.agentTimeout() != time.Hour {
+		t.Errorf("default agent timeout should be 1h, got %v", s.agentTimeout())
+	}
+}
+
+func TestAgentTimeout_Custom(t *testing.T) {
+	s := makeExecuteSession()
+	s.Ctx["agent_timeout"] = "30m"
+	if s.agentTimeout() != 30*time.Minute {
+		t.Errorf("expected 30m, got %v", s.agentTimeout())
+	}
+}
+
+func TestAgentTimeout_Invalid(t *testing.T) {
+	s := makeExecuteSession()
+	s.Ctx["agent_timeout"] = "notaduration"
+	if s.agentTimeout() != time.Hour {
+		t.Errorf("invalid duration should fall back to 1h, got %v", s.agentTimeout())
+	}
+}
