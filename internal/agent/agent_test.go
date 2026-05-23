@@ -133,6 +133,7 @@ func (m *mockStore) GetName() string { return "mock-store" }
 func (m *mockStore) StartInference(msg *dipper.Message)    {}
 func (m *mockStore) ContinueInference(msg *dipper.Message) {}
 func (m *mockStore) ReceiveInference(msg *dipper.Message)  {}
+func (m *mockStore) PollInference(msg *dipper.Message)     {}
 
 func (m *mockStore) GetAgent(name string) *config.Agent {
 	a := m.cfg.DataSet.Agents[name]
@@ -238,9 +239,7 @@ func TestSetup_NewSession(t *testing.T) {
 
 	msg := &dipper.Message{
 		Labels: map[string]string{
-			"agent_name":  "myagent",
-			"caller_id":   "sess-1",
-			"caller_type": "workflow",
+			"agent_name": "myagent",
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeInference,
@@ -248,15 +247,13 @@ func TestSetup_NewSession(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
+	s.setup(msg, store, false)
 
 	assert.NotEmpty(t, s.ID)
-	assert.Equal(t, "sess-1", s.CallerID)
-	assert.Equal(t, "workflow", s.CallerType)
 	assert.Equal(t, AgentSessionTypeInference, s.Type)
 	assert.Equal(t, AgentSessionDefaultTTL, s.TTL)
 	assert.Equal(t, "myagent", s.Agent.Name)
-	assert.Same(t, msg, s.CurrentMsg)
+	assert.Equal(t, msg, s.CurrentMsg)
 	assert.Equal(t, store, s.store)
 }
 
@@ -270,7 +267,7 @@ func TestSetup_DefaultsToChatTurnType(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
+	s.setup(msg, store, false)
 
 	assert.Equal(t, AgentSessionTypeChatTurn, s.Type)
 }
@@ -289,7 +286,7 @@ func TestSetup_CustomTTL(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
+	s.setup(msg, store, false)
 
 	assert.Equal(t, "7200", s.TTL)
 }
@@ -298,17 +295,16 @@ func TestSetup_RestoreFromCache(t *testing.T) {
 	store := newMockStore(nil)
 
 	existing := &AgentSession{
-		ID:         "session-abc",
-		CallerID:   "orig-caller",
-		CallerType: "engine",
-		Type:       AgentSessionTypeInference,
-		TTL:        "1800",
-		History: []AgentMessage{
-			{Role: RoleSystem, Content: "system prompt"},
-			{Role: RoleUser, Content: "hello"},
-		},
+		ID:      "session-abc",
+		ConvoID: "convo-abc",
+		Type:    AgentSessionTypeInference,
+		TTL:     "1800",
 	}
 	store.resp["cache:load:"+AgentKeyPrefix+"session-abc"] = mustMarshalJSON(existing)
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-abc"] = mustMarshalJSON([]AgentMessage{
+		{Role: RoleSystem, Content: "system prompt"},
+		{Role: RoleUser, Content: "hello"},
+	})
 
 	newMsg := &dipper.Message{
 		Labels: map[string]string{
@@ -318,15 +314,12 @@ func TestSetup_RestoreFromCache(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(newMsg, store)
+	s.setup(newMsg, store, false)
 
 	assert.Equal(t, "session-abc", s.ID)
-	assert.Equal(t, "orig-caller", s.CallerID)
-	assert.Equal(t, "engine", s.CallerType)
 	assert.Equal(t, "1800", s.TTL)
-	require.Len(t, s.History, 2)
-	assert.Equal(t, RoleSystem, s.History[0].Role)
-	assert.Same(t, newMsg, s.CurrentMsg)
+	require.Len(t, s.history, 2)
+	assert.Equal(t, RoleSystem, s.history[0].Role)
 	assert.True(t, store.hasCall("cache:load"))
 }
 
@@ -345,11 +338,11 @@ func TestSetup_ChatTurn_NewConvo(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
+	s.setup(msg, store, false)
 
 	assert.Equal(t, AgentSessionTypeChatTurn, s.Type)
 	assert.NotEmpty(t, s.ConvoID)
-	assert.Empty(t, s.History) // no lrange call needed for new convo
+	assert.Empty(t, s.history) // no lrange call needed for new convo
 	assert.False(t, store.hasCall("cache:lrange"))
 }
 
@@ -375,11 +368,11 @@ func TestSetup_ChatTurn_ExistingConvo(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
+	s.setup(msg, store, false)
 
 	assert.Equal(t, "convo-1", s.ConvoID)
-	require.Len(t, s.History, 3)
-	assert.Equal(t, RoleAgent, s.History[2].Role)
+	require.Len(t, s.history, 3)
+	assert.Equal(t, RoleAgent, s.history[2].Role)
 	assert.True(t, store.hasCall("cache:lrange"))
 }
 
@@ -402,14 +395,14 @@ func TestRun_AddsSystemPromptAndUserMessage(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
+	s.setup(msg, store, false)
 	s.run()
 
-	require.Len(t, s.History, 2)
-	assert.Equal(t, RoleSystem, s.History[0].Role)
-	assert.Equal(t, "You are helpful.", s.History[0].Content)
-	assert.Equal(t, RoleUser, s.History[1].Role)
-	assert.Equal(t, "ping", s.History[1].Content)
+	require.Len(t, s.history, 2)
+	assert.Equal(t, RoleSystem, s.history[0].Role)
+	assert.Equal(t, "You are helpful.", s.history[0].Content)
+	assert.Equal(t, RoleUser, s.history[1].Role)
+	assert.Equal(t, "ping", s.history[1].Content)
 
 	assert.True(t, store.hasCall("cache:save"))
 	assert.True(t, store.hasCall("driver:openai:send_to_model"))
@@ -436,11 +429,11 @@ func TestRun_InferenceTypeUsesInferencePrompt(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
+	s.setup(msg, store, false)
 	s.run()
 
-	require.True(t, len(s.History) >= 1)
-	assert.Equal(t, "inference-specific-prompt", s.History[0].Content)
+	require.True(t, len(s.history) >= 1)
+	assert.Equal(t, "inference-specific-prompt", s.history[0].Content)
 }
 
 func TestRun_SkipsSystemPromptWhenHistoryExists(t *testing.T) {
@@ -458,16 +451,16 @@ func TestRun_SkipsSystemPromptWhenHistoryExists(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
-	s.History = []AgentMessage{{Role: RoleSystem, Content: "original"}}
+	s.setup(msg, store, false)
+	s.history = []AgentMessage{{Role: RoleSystem, Content: "original"}}
 	s.run()
 
 	// History should have [original system, user message] but NOT a second system entry.
-	require.Len(t, s.History, 2)
-	assert.Equal(t, RoleSystem, s.History[0].Role)
-	assert.Equal(t, "original", s.History[0].Content)
-	assert.Equal(t, RoleUser, s.History[1].Role)
-	assert.Equal(t, "followup", s.History[1].Content)
+	require.Len(t, s.history, 2)
+	assert.Equal(t, RoleSystem, s.history[0].Role)
+	assert.Equal(t, "original", s.history[0].Content)
+	assert.Equal(t, RoleUser, s.history[1].Role)
+	assert.Equal(t, "followup", s.history[1].Content)
 }
 
 func TestRun_WithUserLabel(t *testing.T) {
@@ -480,10 +473,10 @@ func TestRun_WithUserLabel(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store)
+	s.setup(msg, store, false)
 	s.run()
 
-	userMsg := s.History[len(s.History)-1]
+	userMsg := s.history[len(s.history)-1]
 	assert.Equal(t, RoleUser, userMsg.Role)
 	assert.Equal(t, "alice", userMsg.User)
 	assert.Equal(t, "hello", userMsg.Content)
@@ -502,10 +495,11 @@ func TestRecover(t *testing.T) {
 	}
 
 	s := &AgentSession{
-		store: store,
-		Agent: &config.Agent{Name: "a", Driver: "openai", Engine: "gpt-4"},
-		ID:    "recover-id",
-		History: []AgentMessage{
+		store:      store,
+		CurrentMsg: &dipper.Message{Labels: map[string]string{"timeout": "9s"}},
+		Agent:      &config.Agent{Name: "a", Driver: "openai", Engine: "gpt-4"},
+		ID:         "recover-id",
+		history: []AgentMessage{
 			{Role: RoleSystem, Content: "sys"},
 			{Role: RoleUser, Content: "hello"},
 		},
@@ -514,8 +508,8 @@ func TestRecover(t *testing.T) {
 	s.recover()
 
 	assert.True(t, store.hasCall("driver:openai:send_to_model"))
-	// recover should NOT modify History
-	assert.Len(t, s.History, 2)
+	// recover should NOT modify history
+	assert.Len(t, s.history, 2)
 }
 
 // ---------------------------------------------------------------------------
@@ -749,8 +743,8 @@ func TestProcessAgentMessage_ToolCalls(t *testing.T) {
 	s.processAgentMessage(agentMsg)
 
 	// History should contain the agent message.
-	require.Len(t, s.History, 1)
-	assert.Equal(t, RoleAgent, s.History[0].Role)
+	require.Len(t, s.history, 1)
+	assert.Equal(t, RoleAgent, s.history[0].Role)
 
 	// nextToolCall should have emitted agent_command.
 	emitted := store.getEmitted()
@@ -769,10 +763,10 @@ func TestProcessAgentMessage_FinalReply(t *testing.T) {
 
 	s.processAgentMessage(agentMsg)
 
-	emitted := store.getEmitted()
-	require.Len(t, emitted, 1)
-	assert.Equal(t, "agent_response", emitted[0].Subject)
-	assert.Equal(t, s.ID, emitted[0].Labels["agent_session_id"])
+	// Final reply is persisted to cache; engine retrieves it on the next poll.
+	assert.True(t, store.hasCall("cache:save"))
+	require.Len(t, s.history, 1)
+	assert.Equal(t, "Here is the answer.", s.history[0].Content)
 }
 
 func TestProcessAgentMessage_Thinking_NotEmittedByDefault(t *testing.T) {
@@ -790,24 +784,6 @@ func TestProcessAgentMessage_Thinking_NotEmittedByDefault(t *testing.T) {
 
 	// Thinking tokens are NOT emitted when ShouldEmitThoughts=false.
 	assert.Empty(t, store.getEmitted())
-}
-
-func TestProcessAgentMessage_Thinking_EmittedWhenEnabled(t *testing.T) {
-	store := newMockStore(nil)
-	s := newSessionForMsgProcessing(t, store)
-	s.Agent.ShouldEmitThoughts = true
-
-	agentMsg := &AgentMessage{
-		Role:       RoleAgent,
-		IsThinking: true,
-		Content:    "reasoning...",
-	}
-
-	s.processAgentMessage(agentMsg)
-
-	emitted := store.getEmitted()
-	require.Len(t, emitted, 1)
-	assert.Equal(t, "agent_response", emitted[0].Subject)
 }
 
 func TestProcessAgentMessage_Thinking_DoesNotRerun(t *testing.T) {
@@ -924,7 +900,7 @@ func TestProcessToolResult_WorkflowResult_Advances(t *testing.T) {
 			{FuncName: "wf__mywf"},
 			{FuncName: "wf__otherwf"},
 		},
-		History: []AgentMessage{
+		history: []AgentMessage{
 			{
 				Role: RoleAgent,
 				ToolCalls: []AgentToolCall{
@@ -974,7 +950,7 @@ func TestProcessToolResult_CommandResult_Advances(t *testing.T) {
 		ID:          "cmd-session",
 		CurrentCall: 0,
 		ToolCalls:   toolCalls,
-		History: []AgentMessage{
+		history: []AgentMessage{
 			{Role: RoleAgent, ToolCalls: toolCalls},
 		},
 	}
@@ -1010,7 +986,7 @@ func TestProcessToolResult_FeedsBackWhenAllDone(t *testing.T) {
 		CurrentCall: 0, // pointing to the only (last) tool call
 		ToolCalls:   toolCalls,
 		ToolResults: []map[string]interface{}{{"prev": "result"}},
-		History: []AgentMessage{
+		history: []AgentMessage{
 			{Role: RoleSystem, Content: "sys"},
 			{Role: RoleAgent, ToolCalls: toolCalls},
 		},
@@ -1035,10 +1011,8 @@ func TestProcessToolResult_FeedsBackWhenAllDone(t *testing.T) {
 	// ToolResults should have the new result appended.
 	require.Len(t, s.ToolResults, 2)
 
-	// processAgentMessage should have been called → EmitMessage for tool_result response.
-	emitted := store.getEmitted()
-	require.NotEmpty(t, emitted)
-	assert.Equal(t, "agent_response", emitted[0].Subject)
+	// processAgentMessage → run() should have fed the results back to the model driver.
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1057,7 +1031,7 @@ func TestAppendConvoHistory_WithConvoID_CallsRpush(t *testing.T) {
 
 	s.appendConvoHistory(AgentMessage{Role: RoleUser, Content: "hello"})
 
-	require.Len(t, s.History, 1)
+	require.Len(t, s.history, 1)
 	assert.True(t, store.hasCall("cache:rpush"))
 }
 
@@ -1073,7 +1047,7 @@ func TestAppendConvoHistory_WithoutConvoID_NoCacheCall(t *testing.T) {
 
 	s.appendConvoHistory(AgentMessage{Role: RoleUser, Content: "hello"})
 
-	require.Len(t, s.History, 1)
+	require.Len(t, s.history, 1)
 	assert.False(t, store.hasCall("cache:rpush"))
 }
 
@@ -1091,7 +1065,7 @@ func TestPersist_WritesToCache(t *testing.T) {
 		TTL:   "1h",
 	}
 
-	s.persist()
+	s.persist(false)
 
 	assert.True(t, store.hasCall("cache:save"))
 }
@@ -1100,18 +1074,16 @@ func TestLoad_ReadsFromCache(t *testing.T) {
 	store := newMockStore(nil)
 
 	data := &AgentSession{
-		ID:       "load-session",
-		CallerID: "caller",
-		Type:     AgentSessionTypeInference,
-		TTL:      "1200",
+		ID:   "load-session",
+		Type: AgentSessionTypeInference,
+		TTL:  "1200",
 	}
 	store.resp["cache:load:"+AgentKeyPrefix+"load-session"] = mustMarshalJSON(data)
 
-	s := &AgentSession{store: store}
-	s.load("load-session")
+	s := &AgentSession{}
+	s.load("load-session", store)
 
 	assert.Equal(t, "load-session", s.ID)
-	assert.Equal(t, "caller", s.CallerID)
 	assert.Equal(t, "1200", s.TTL)
 	assert.True(t, store.hasCall("cache:load"))
 }
@@ -1222,11 +1194,7 @@ func TestPersistentAgentStore_StartInference(t *testing.T) {
 	store := NewAgentStore(helper).(*PersistentAgentStore)
 
 	msg := &dipper.Message{
-		Labels: map[string]string{
-			"agent_name":  "bot",
-			"caller_id":   "c1",
-			"caller_type": "engine",
-		},
+		Labels:  map[string]string{"agent_name": "bot"},
 		Payload: map[string]interface{}{"text": "hello"},
 	}
 
@@ -1249,13 +1217,11 @@ func TestPersistentAgentStore_ReceiveInference(t *testing.T) {
 
 	// Build a persisted session.
 	existing := &AgentSession{
-		ID:         "rcv-session",
-		CallerID:   "c1",
-		CallerType: "engine",
-		Type:       AgentSessionTypeInference,
-		TTL:        "1h",
-		Agent:      &config.Agent{Name: "bot", Driver: "openai", Engine: "gpt-4"},
-		History:    []AgentMessage{{Role: RoleSystem, Content: "sys"}},
+		ID:      "rcv-session",
+		Type:    AgentSessionTypeInference,
+		TTL:     "1h",
+		Agent:   &config.Agent{Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		history: []AgentMessage{{Role: RoleSystem, Content: "sys"}},
 	}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
 	helper.resp["cache:load:"+AgentKeyPrefix+"rcv-session"] = mustMarshalJSON(existing)
@@ -1299,21 +1265,20 @@ func TestPersistentAgentStore_ContinueInference_ProcessResult(t *testing.T) {
 	}
 	existing := &AgentSession{
 		ID:          "cont-session",
-		CallerID:    "c1",
-		CallerType:  "engine",
+		ConvoID:     "convo-cont",
 		Type:        AgentSessionTypeInference,
 		TTL:         "1h",
 		Agent:       &config.Agent{Name: "bot", Driver: "openai", Engine: "gpt-4"},
 		CurrentCall: 0,
 		ToolCalls:   toolCalls,
 		ToolResults: []map[string]interface{}{},
-		History: []AgentMessage{
-			{Role: RoleSystem, Content: "sys"},
-			{Role: RoleAgent, ToolCalls: toolCalls},
-		},
 	}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
 	helper.resp["cache:load:"+AgentKeyPrefix+"cont-session"] = mustMarshalJSON(existing)
+	helper.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-cont"] = mustMarshalJSON([]AgentMessage{
+		{Role: RoleSystem, Content: "sys"},
+		{Role: RoleAgent, ToolCalls: toolCalls},
+	})
 
 	store := NewAgentStore(helper).(*PersistentAgentStore)
 
@@ -1351,13 +1316,16 @@ func TestPersistentAgentStore_ContinueInference_Recover(t *testing.T) {
 
 	existing := &AgentSession{
 		ID:      "rcv2-session",
+		ConvoID: "convo-rcv2",
 		Type:    AgentSessionTypeInference,
 		TTL:     "1h",
 		Agent:   &config.Agent{Name: "bot", Driver: "openai", Engine: "gpt-4"},
-		History: []AgentMessage{{Role: RoleSystem, Content: "sys"}},
 	}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
 	helper.resp["cache:load:"+AgentKeyPrefix+"rcv2-session"] = mustMarshalJSON(existing)
+	helper.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-rcv2"] = mustMarshalJSON([]AgentMessage{
+		{Role: RoleSystem, Content: "sys"},
+	})
 
 	store := NewAgentStore(helper).(*PersistentAgentStore)
 

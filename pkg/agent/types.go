@@ -29,9 +29,8 @@ type Message struct {
 	IsThinking bool                     // true when the message carries intermediate model reasoning.
 	ToolCalls  []ToolCall               // non-empty when the model requests tool invocations.
 	ToolResult []map[string]interface{} // non-empty for tool-result messages; Content will be empty.
-	Content    string                   `json:"content" mapstructure:"content"`         // the main content of the message.
-	IsComplete bool                     `json:"is_complete" mapstructure:"is_complete"` // true when this is the final (non-streaming) message for a turn.
-	ChunkSeq   int                      // sequence number for ordering message chunks within a turn.
+	Content    string                   `json:"content" mapstructure:"content"`
+	IsComplete bool                     `json:"is_complete" mapstructure:"is_complete"`
 }
 
 // Tool describes a callable tool exposed to the model.

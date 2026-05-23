@@ -95,6 +95,7 @@ type Workflow struct {
 	CallFunction string `json:"call_function" mapstructure:"call_function"`
 	CallDriver   string `json:"call_driver" mapstructure:"call_driver"`
 	CallAgent    string `json:"call_agent" mapstructure:"call_agent"`
+	WaitAgent    string `json:"wait_agent" mapstructure:"wait_agent"`
 	Steps        []Workflow
 	Threads      []Workflow
 	Wait         string

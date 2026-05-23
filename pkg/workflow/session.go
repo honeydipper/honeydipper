@@ -110,9 +110,6 @@ type Session struct {
 	Cancelled bool
 	// CancelReason captures optional user-provided cancellation reason.
 	CancelReason string
-	// AgentLockID holds the agent_session_id whose stream lock is currently held by this root session.
-	// Persisted so the lock can be released after intermediate function calls reload the session.
-	AgentLockID string
 	// AsyncChildren tracks detached async child session IDs created by this frame.
 	AsyncChildren map[string]bool
 	// PendingMessages is a queue of messages received in paused state.
@@ -351,6 +348,7 @@ func (w *Session) checkIsNoop() bool {
 	case w.Workflow.Switch != "":
 	case w.Workflow.Resume != "":
 	case w.Workflow.CallAgent != "":
+	case w.Workflow.WaitAgent != "":
 	default:
 		ret = true
 	}

@@ -12,6 +12,7 @@ import (
 // AgentStore is the interface used by agent sessions to interact with the store.
 type AgentStore interface {
 	StartInference(msg *dipper.Message)
+	PollInference(msg *dipper.Message)
 	ContinueInference(msg *dipper.Message)
 	ReceiveInference(msg *dipper.Message)
 
@@ -57,18 +58,20 @@ func (p *PersistentAgentStore) GetLogger() *logging.Logger {
 
 // emitErrorResponse sends an agent_response with status=error back to the workflow
 // session identified by callerID. It is a no-op when callerID is empty.
-func (p *PersistentAgentStore) emitErrorResponse(callerID, callerType, reason string) {
-	if callerID == "" {
+func (p *PersistentAgentStore) emitErrorResponse(msg *dipper.Message, reason string) {
+	resumeKey := msg.Labels["resume_key"]
+	if resumeKey == "" {
+		p.Warningf("[agent] cannot emit error response without resume key in message %+v", msg.Labels)
+
 		return
 	}
 	p.EmitMessage(dipper.Message{
 		Channel: dipper.ChannelEventbus,
 		Subject: "agent_response",
 		Labels: map[string]string{
-			"caller_id":   callerID,
-			"caller_type": callerType,
-			"status":      "error",
-			"reason":      reason,
+			"resume_key": resumeKey,
+			"status":     "error",
+			"reason":     reason,
 		},
 	})
 }
@@ -77,14 +80,26 @@ func (p *PersistentAgentStore) emitErrorResponse(callerID, callerType, reason st
 func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	p.wg.Add(1)
 	defer p.wg.Done()
-	callerID := msg.Labels["caller_id"]
-	callerType := msg.Labels["caller_type"]
-	defer dipper.SafeExitOnError("[agent] error in StartInference", func(r error) {
-		p.emitErrorResponse(callerID, callerType, r.Error())
+	resumeKey := msg.Labels["resume_key"]
+	defer dipper.SafeExitOnError("[agent] error in handleAgentStart", func(r interface{}) {
+		p.emitErrorResponse(msg, r.(error).Error())
 	})
 	p.Infof("[agent] StartInference agent=%s", msg.Labels["agent_name"])
 	s := &AgentSession{}
-	s.setup(msg, p)
+	s.setup(msg, p, true)
+	p.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "agent_response",
+		Labels: map[string]string{
+			"resume_key":       resumeKey,
+			"agent_session_id": s.ID,
+		},
+	})
+	defer dipper.SafeExitOnError("[agent] error in running inference %", func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = r.(error).Error()
+		}
+	})
 	s.run()
 }
 
@@ -92,12 +107,15 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 func (p *PersistentAgentStore) ContinueInference(msg *dipper.Message) {
 	p.wg.Add(1)
 	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in ContinueInference")
 	p.Infof("[agent] ContinueInference session=%s subject=%s", msg.Labels["agent_session_id"], msg.Subject)
 	s := &AgentSession{}
-	defer dipper.SafeExitOnError("[agent] error in ContinueInference", func(r error) {
-		p.emitErrorResponse(s.CallerID, s.CallerType, r.Error())
+	defer dipper.SafeExitOnError("[agent] error in ContinueInference", func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = r.(error).Error()
+		}
 	})
-	s.setup(msg, p)
+	s.setup(msg, p, true)
 	if msg.Labels["recover"] == "true" {
 		s.recover()
 	} else {
@@ -113,7 +131,12 @@ func (p *PersistentAgentStore) ReceiveInference(msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[agent] error in ReceiveInference")
 	p.Infof("[agent] ReceiveInference session=%s", msg.Labels["agent_session_id"])
 	s := &AgentSession{}
-	s.setup(msg, p)
+	s.setup(msg, p, true)
+	defer dipper.SafeExitOnError("[agent] error in process agent response", func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = r.(error).Error()
+		}
+	})
 	s.processAgentResponse(msg)
 }
 
@@ -155,4 +178,17 @@ func NewAgentStore(helper StoreHelper) AgentStore {
 		StoreHelper: helper,
 		Logger:      dipper.GetLogger("agent", "INFO"),
 	}
+}
+
+func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in handleAgentPoll", func(r interface{}) {
+		p.emitErrorResponse(msg, r.(error).Error())
+	})
+	p.Infof("[agent] PollInference session=%s", msg.Labels["agent_session_id"])
+
+	s := &AgentSession{}
+	s.setup(msg, p, true)
+	s.processAgentPoll(msg)
 }

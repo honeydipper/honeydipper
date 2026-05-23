@@ -96,7 +96,7 @@ func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 	driver.RPCProvider.Init("rpc", "return", driver.Out)
 	driver.RPCProvider.Handler = driver.ctx
 	if service == "agent" {
-		driver.InterruptedChannel = ChannelEventbus
+		driver.InterruptedChannel = "agentbus"
 		driver.RPCProvider.InterruptedSubject = EventbusRPCInterrupted
 	}
 	driver.RPCCallerBase.Init(&driver, "rpc", "call")

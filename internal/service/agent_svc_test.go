@@ -51,6 +51,7 @@ func (m *mockAgentStore) hasCall(s string) bool {
 func (m *mockAgentStore) StartInference(_ *dipper.Message)    { m.record("start") }
 func (m *mockAgentStore) ContinueInference(_ *dipper.Message) { m.record("continue") }
 func (m *mockAgentStore) ReceiveInference(_ *dipper.Message)  { m.record("receive") }
+func (m *mockAgentStore) PollInference(_ *dipper.Message)     { m.record("poll") }
 func (m *mockAgentStore) Stop()                               {}
 func (m *mockAgentStore) Wait()                               {}
 
@@ -207,7 +208,11 @@ func setupHandlerGlobals(t *testing.T) *mockAgentStore {
 
 func TestHandleAgentStart(t *testing.T) {
 	mock := setupHandlerGlobals(t)
-	msg := &dipper.Message{Channel: dipper.ChannelEventbus, Subject: SubjectEventbusAgentStart}
+	msg := &dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: SubjectEventbusAgentStart,
+		Labels:  map[string]string{"resume_key": "test-resume-key"},
+	}
 	handleAgentStart(nil, msg)
 	assert.Eventually(t, func() bool { return mock.hasCall("start") }, 200*time.Millisecond, 5*time.Millisecond)
 }
@@ -224,4 +229,15 @@ func TestHandleAgentReceive(t *testing.T) {
 	msg := &dipper.Message{Channel: ChannelAgentbus, Subject: SubjectAgentbusReceive}
 	handleAgentReceive(nil, msg)
 	assert.Eventually(t, func() bool { return mock.hasCall("receive") }, 200*time.Millisecond, 5*time.Millisecond)
+}
+
+func TestHandleAgentPoll(t *testing.T) {
+	mock := setupHandlerGlobals(t)
+	msg := &dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: SubjectEventbusAgentPoll,
+		Labels:  map[string]string{"resume_key": "test-resume-key"},
+	}
+	handleAgentPoll(nil, msg)
+	assert.Eventually(t, func() bool { return mock.hasCall("poll") }, 200*time.Millisecond, 5*time.Millisecond)
 }

@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
@@ -14,11 +16,14 @@ import (
 
 // Session type constants, cache key prefixes, default TTL, and role labels.
 const (
-	AgentSessionTypeInference = agentpkg.SessionTypeInference
-	AgentSessionTypeChatTurn  = agentpkg.SessionTypeChatTurn
-	AgentKeyPrefix            = "agent_session:"
-	ConvoHistoryKeyPrefix     = "convo_history:"
-	AgentSessionDefaultTTL    = "1h"
+	AgentSessionTypeInference      = agentpkg.SessionTypeInference
+	AgentSessionTypeChatTurn       = agentpkg.SessionTypeChatTurn
+	AgentKeyPrefix                 = "agent_session:"
+	ConvoHistoryKeyPrefix          = "convo_history:"
+	AgentSessionDefaultTTL         = "72h"
+	AgentSessionDefaultTimeout     = "1h"
+	AgentSessionDefaultPollTimeout = time.Second * 9
+	MinPollInterval                = time.Second * 2
 
 	RoleSystem     = agentpkg.RoleSystem
 	RoleUser       = agentpkg.RoleUser
@@ -29,20 +34,19 @@ const (
 
 // AgentSession holds the runtime state of a single agent inference or chat-turn session.
 type AgentSession struct {
-	ID          string
-	CallerID    string
-	CallerType  string
-	ConvoID     string
-	Agent       *config.Agent
-	History     []AgentMessage
-	CurrentMsg  *dipper.Message
-	Type        string
-	TTL         string
-	CurrentCall int
-	SessionSeq  int
-	ChunkSeq    int
-	ToolCalls   []AgentToolCall
-	ToolResults []map[string]interface{}
+	ID           string
+	ConvoID      string
+	Agent        *config.Agent
+	history      []AgentMessage
+	CurrentMsg   *dipper.Message
+	Type         string
+	TTL          string
+	CurrentCall  int
+	ToolCalls    []AgentToolCall
+	ToolResults  []map[string]interface{}
+	LastPoll     int
+	LastPollTime time.Time
+	ErrorReason  string
 
 	store AgentStore
 }
@@ -60,7 +64,7 @@ func (s *AgentSession) log() *logging.Logger {
 }
 
 // persist serialises the session and writes it to the cache.
-func (s *AgentSession) persist() {
+func (s *AgentSession) persist(unlocking bool) {
 	if log := s.log(); log != nil {
 		log.Debugf("[agent] session [%s] persisting to cache", s.ID)
 	}
@@ -70,14 +74,20 @@ func (s *AgentSession) persist() {
 		"value": string(dipper.SerializeContent(s)),
 		"ttl":   s.TTL,
 	}))
+
+	if unlocking {
+		dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
+			"name": AgentKeyPrefix + s.ID,
+		}))
+	}
 }
 
 // load reads and deserialises a previously persisted session from the cache.
-func (s *AgentSession) load(id string) {
-	if log := s.log(); log != nil {
+func (s *AgentSession) load(id string, store AgentStore) {
+	if log := store.GetLogger(); log != nil {
 		log.Debugf("[agent] session [%s] loading from cache", id)
 	}
-	ret := dipper.Must(s.store.Call("cache", "load", map[string]interface{}{
+	ret := dipper.Must(store.Call("cache", "load", map[string]interface{}{
 		"key": AgentKeyPrefix + id,
 	})).([]byte)
 
@@ -86,22 +96,46 @@ func (s *AgentSession) load(id string) {
 
 // setup initialises a new session or restores an existing one from cache.
 // Returns the conversation ID.
-func (s *AgentSession) setup(msg *dipper.Message, store AgentStore) {
-	s.store = store
-	if id, ok := msg.Labels["agent_session_id"]; ok && id != "" {
-		s.load(id)
-		s.CurrentMsg = msg
-
-		return
+func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool) {
+	id, ok := msg.Labels["agent_session_id"]
+	if !ok || id == "" {
+		id = dipper.NewUUID()
 	}
 
-	s.ID = dipper.NewUUID()
-	s.CallerID = msg.Labels["caller_id"]
-	s.CallerType = msg.Labels["caller_type"]
+	if locking {
+		dipper.Must(store.Call("locker", "lock", map[string]interface{}{
+			"name":   AgentKeyPrefix + id,
+			"expire": "600s",
+		}))
+	}
 
+	if ok && id != "" {
+		s.load(id, store)
+		s.store = store
+		s.loadConvoHistory()
+	} else {
+		s.initNewSession(id, msg, store)
+	}
+
+	if log := s.log(); log != nil {
+		log.Infof("[agent] session [%s] created type=%s agent=%s", s.ID, s.Type, msg.Labels["agent_name"])
+	}
+}
+
+// initNewSession populates a freshly created session from the incoming message.
+func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store AgentStore) {
+	s.store = store
+	s.CurrentMsg = msg
+	s.ID = id
 	s.Type, _ = dipper.GetMapDataStr(msg.Payload, "type")
 	if s.Type == "" {
 		s.Type = agentpkg.SessionTypeChatTurn
+	}
+
+	s.Agent = s.store.GetAgent(msg.Labels["agent_name"])
+	s.TTL = AgentSessionDefaultTTL
+	if ttl, ok := dipper.GetMapDataStr(msg.Payload, "ttl"); ok && ttl != "" {
+		s.TTL = ttl
 	}
 
 	if convoID, ok := dipper.GetMapDataStr(msg.Payload, "convo_id"); ok && convoID != "" {
@@ -110,21 +144,14 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore) {
 	} else {
 		s.ConvoID = dipper.NewUUID()
 	}
-
-	s.Agent = s.store.GetAgent(msg.Labels["agent_name"])
-	s.CurrentMsg = msg
-
-	s.TTL = AgentSessionDefaultTTL
-	if ttl, ok := dipper.GetMapDataStr(msg.Payload, "ttl"); ok {
-		s.TTL = ttl
-	}
-	if log := s.log(); log != nil {
-		log.Infof("[agent] session [%s] created type=%s agent=%s", s.ID, s.Type, msg.Labels["agent_name"])
-	}
 }
 
 // loadConvoHistory fetches the multi-turn conversation history from the cache.
 func (s *AgentSession) loadConvoHistory() {
+	if s.ConvoID == "" {
+		return
+	}
+
 	ret := dipper.Must(s.store.Call("cache", "lrange", map[string]interface{}{
 		"key": ConvoHistoryKeyPrefix + s.ConvoID,
 	})).([]byte)
@@ -132,12 +159,12 @@ func (s *AgentSession) loadConvoHistory() {
 	var history []AgentMessage
 	dipper.Must(json.Unmarshal(ret, &history))
 
-	s.History = history
+	s.history = history
 }
 
 // appendConvoHistory appends a message to the in-memory history and the cache.
 func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
-	s.History = append(s.History, msg)
+	s.history = append(s.history, msg)
 
 	if s.ConvoID != "" {
 		dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
@@ -151,7 +178,7 @@ func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
 func (s *AgentSession) run() {
 	tools := s.BuildTools()
 
-	if len(s.History) == 0 {
+	if len(s.history) == 0 {
 		systemPrompt := s.Agent.SystemPrompt
 		if s.Type == AgentSessionTypeInference && len(s.Agent.InferencePrompt) > 0 {
 			systemPrompt = s.Agent.InferencePrompt
@@ -164,25 +191,30 @@ func (s *AgentSession) run() {
 
 	text := dipper.MustGetMapDataStr(s.CurrentMsg.Payload, "text")
 	user, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "user")
+	timeout := s.CurrentMsg.Labels["timeout"]
+	if timeout == "" {
+		timeout = AgentSessionDefaultTimeout
+	}
 	s.appendConvoHistory(AgentMessage{
 		Role:    RoleUser,
 		User:    user,
 		Content: text,
 	})
+	s.LastPoll = len(s.history)
 
-	s.persist()
+	s.persist(true)
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
-			s.ID, s.Agent.Driver, s.Agent.Engine, len(s.History), len(tools))
+			s.ID, s.Agent.Driver, s.Agent.Engine, len(s.history), len(tools))
 	}
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":        s.Agent.Engine,
-		"history":       s.History,
+		"history":       s.history,
 		"tools":         tools,
 		"type":          s.Type,
 		"model_data":    s.Agent.ModelData,
 		"should_stream": s.Agent.ShouldStream,
-	}, "agent_session_id", s.ID, "chunk_sq", strconv.Itoa(s.ChunkSeq), "timeout", s.TTL))
+	}, "agent_session_id", s.ID, "timeout", timeout))
 }
 
 func (s *AgentSession) recover() {
@@ -191,14 +223,21 @@ func (s *AgentSession) recover() {
 	}
 
 	tools := s.BuildTools()
+	var timeout string
+	if s.CurrentMsg != nil {
+		timeout = s.CurrentMsg.Labels["timeout"]
+	}
+	if timeout == "" {
+		timeout = AgentSessionDefaultTimeout
+	}
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":        s.Agent.Engine,
-		"history":       s.History,
+		"history":       s.history,
 		"tools":         tools,
 		"type":          s.Type,
 		"model_data":    s.Agent.ModelData,
 		"should_stream": s.Agent.ShouldStream,
-	}, "agent_session_id", s.ID, "chunk_sq", strconv.Itoa(s.ChunkSeq), "timeout", s.TTL))
+	}, "agent_session_id", s.ID, "timeout", timeout))
 }
 
 // BuildTools assembles the tool map from the agent's configured system and workflow tools.
@@ -304,51 +343,13 @@ func (s *AgentSession) addWorkflowTool(tools map[string]AgentTool, toolDef confi
 func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 	s.CurrentMsg = msg
 	m := dipper.MustGetMapData(msg.Payload, "message").(map[string]interface{})
-
-	if msg.Labels["status"] != "" && msg.Labels["status"] != "success" {
-		errRet := dipper.Message{
-			Channel: "eventbus",
-			Subject: "agent_response",
-			Labels: map[string]string{
-				"agent_session_id": s.ID,
-				"convo_id":         s.ConvoID,
-				"caller_id":        s.CallerID,
-				"caller_type":      s.CallerType,
-				"session_seq":      strconv.Itoa(s.SessionSeq),
-				"status":           msg.Labels["status"],
-				"reason":           msg.Labels["reason"],
-			},
-		}
-		if s.SessionSeq > 0 {
-			s.SessionSeq++
-			errRet.Labels["session_seq"] = strconv.Itoa(s.SessionSeq)
-		}
-		s.store.EmitMessage(errRet)
-
-		return
-	}
-
 	var agentMsg AgentMessage
 	dipper.Must(mapstructure.Decode(m, &agentMsg))
 	if log := s.log(); log != nil {
 		log.Debugf("[agent] session [%s] response received role=%s thinking=%v tool_calls=%d",
 			s.ID, agentMsg.Role, agentMsg.IsThinking, len(agentMsg.ToolCalls))
 	}
-	if agentMsg.ChunkSeq > 0 {
-		dipper.Must(s.store.Call("locker", "lock", map[string]interface{}{
-			"name":   AgentKeyPrefix + "lock:" + s.ID,
-			"expire": "30s",
-			"sq":     agentMsg.ChunkSeq,
-		}))
-		s.setup(msg, s.store) // refresh session data in case of updates during streaming
-		s.ChunkSeq = agentMsg.ChunkSeq
-	}
 	s.processAgentMessage(&agentMsg)
-	if agentMsg.ChunkSeq > 0 {
-		dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
-			"name": AgentKeyPrefix + "lock:" + s.ID,
-		}))
-	}
 }
 
 // processAgentMessage routes a decoded model message: triggers tool calls, handles thinking
@@ -363,34 +364,10 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		return
 	}
 
-	if !agentMsg.IsThinking || s.Agent.ShouldEmitThoughts {
-		msg := dipper.Message{
-			Channel: "eventbus",
-			Subject: "agent_response",
-			Labels: map[string]string{
-				"agent_session_id": s.ID,
-				"convo_id":         s.ConvoID,
-				"caller_id":        s.CallerID,
-				"caller_type":      s.CallerType,
-			},
-			Payload: map[string]interface{}{
-				"message": agentMsg,
-			},
-		}
-		if agentMsg.ChunkSeq > 0 {
-			s.SessionSeq++
-			msg.Labels["session_seq"] = strconv.Itoa(s.SessionSeq)
-			s.persist()
-		}
-		s.store.EmitMessage(msg)
-	}
-
-	if agentMsg.IsThinking {
-		return
-	}
-
 	if agentMsg.Role != RoleAgent {
 		s.run()
+	} else {
+		s.persist(true)
 	}
 }
 
@@ -400,7 +377,7 @@ func (s *AgentSession) nextToolCall() {
 		return
 	}
 
-	s.persist()
+	s.persist(true)
 
 	c := s.ToolCalls[s.CurrentCall]
 	if log := s.log(); log != nil {
@@ -418,7 +395,7 @@ func (s *AgentSession) nextToolCall() {
 			Subject: "agent_command",
 			Labels: map[string]string{
 				"agent_session_id": s.ID,
-				"turn_id":          strconv.Itoa(len(s.History)),
+				"turn_id":          strconv.Itoa(len(s.history)),
 				"tool_call_id":     strconv.Itoa(s.CurrentCall),
 			},
 			Payload: map[string]interface{}{
@@ -440,7 +417,7 @@ func (s *AgentSession) nextToolCall() {
 				"message": map[string]interface{}{
 					"labels": map[string]string{
 						"agent_session_id": s.ID,
-						"turn_id":          strconv.Itoa(len(s.History)),
+						"turn_id":          strconv.Itoa(len(s.history)),
 						"tool_call_id":     strconv.Itoa(s.CurrentCall),
 					},
 				},
@@ -459,10 +436,10 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 
 	turn_id, _ := strconv.Atoi(msg.Labels["turn_id"])
 
-	if turn_id != len(s.History) {
+	if turn_id != len(s.history) {
 		if log := s.log(); log != nil {
 			log.Warningf("[agent] session [%s] received out-of-order tool result for turn %d (current turn is %d)",
-				s.ID, turn_id, len(s.History))
+				s.ID, turn_id, len(s.history))
 		}
 
 		return
@@ -479,7 +456,7 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 	}
 
 	var data interface{}
-	c := s.History[len(s.History)-1].ToolCalls[s.CurrentCall]
+	c := s.history[len(s.history)-1].ToolCalls[s.CurrentCall]
 	switch {
 	case strings.HasPrefix(c.FuncName, "sys_"):
 		sysName := c.FuncName[len("sys_"):strings.LastIndex(c.FuncName, "__")]
@@ -516,4 +493,115 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 
 		s.processAgentMessage(&agentMsg)
 	}
+}
+
+func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
+	log := s.log()
+	if log == nil {
+		log = dipper.GetLogger("agent", "INFO")
+	}
+
+	if s.LastPoll == len(s.history) {
+		if s.LastPoll > 0 && s.history[s.LastPoll-1].IsComplete {
+			log.Panicf("[agent] session [%s] poll after completion", s.ID)
+		}
+	}
+	log.Infof("[agent] session [%s] poll received lastpoll=%d resume_key %s", s.ID, s.LastPoll, msg.Labels["resume_key"])
+
+	timeout := AgentSessionDefaultPollTimeout
+	if t, ok := msg.Labels["timeout"]; ok {
+		timeout = dipper.Must(time.ParseDuration(t)).(time.Duration)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	for {
+		for (s.LastPoll == len(s.history) && s.ErrorReason == "") || (!s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval) {
+			select {
+			case <-ctx.Done():
+				log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
+				labels := msg.Labels
+				labels["status"] = "failure"
+				labels["reason"] = "poll timeout after " + timeout.String()
+				dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
+					"name": AgentKeyPrefix + s.ID,
+				}))
+				s.store.EmitMessage(dipper.Message{
+					Channel: dipper.ChannelEventbus,
+					Subject: "agent_response",
+					Labels:  labels,
+				})
+
+				return
+			default:
+			}
+			dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
+				"name": AgentKeyPrefix + s.ID,
+			}))
+
+			time.Sleep(time.Second)
+			s.setup(msg, s.store, true)
+		}
+
+		if s.emitPollResponse(msg) {
+			return
+		}
+	}
+}
+
+func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
+	buf := strings.Builder{}
+	if marker, ok := msg.Labels["last_poll"]; ok {
+		s.LastPoll = dipper.Must(strconv.Atoi(marker)).(int)
+	}
+	for i := s.LastPoll; i < len(s.history); i++ {
+		am := s.history[i]
+		if am.Role != RoleAgent {
+			continue
+		}
+
+		if am.IsThinking && !s.Agent.ShouldStream {
+			continue
+		}
+
+		buf.WriteString(am.Content)
+	}
+
+	labels := msg.Labels
+	am := AgentMessage{
+		Role:    RoleAgent,
+		Content: buf.String(),
+	}
+
+	if h := len(s.history); h > 0 {
+		am.IsComplete = s.history[h-1].IsComplete
+	}
+
+	if s.ErrorReason != "" {
+		am.IsComplete = true
+		labels["status"] = "error"
+		labels["reason"] = s.ErrorReason
+	} else {
+		labels["status"] = "ok"
+	}
+
+	s.LastPoll = len(s.history)
+	labels["last_poll"] = strconv.Itoa(s.LastPoll)
+	if am.Content == "" && s.ErrorReason == "" {
+		s.persist(false)
+
+		return false
+	}
+
+	s.store.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "agent_response",
+		Labels:  labels,
+		Payload: map[string]interface{}{
+			"message": am,
+		},
+	})
+	s.LastPollTime = time.Now()
+	s.persist(true)
+
+	return true
 }

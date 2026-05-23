@@ -19,9 +19,11 @@ const (
 	ChannelAgentbus        = "agentbus"
 	SubjectAgentbusReceive = "receive"
 
-	SubjectEventbusAgentStart    = "agent_start"
-	SubjectEventbusAgentContinue = dipper.EventbusAgentContinue
-	SubjectEventbusAgentRecover  = "agent_recover"
+	SubjectEventbusAgentStart     = "agent_start"
+	SubjectEventbusAgentContinue  = dipper.EventbusAgentContinue
+	SubjectEventbusAgentRecover   = "agent_recover"
+	SubjectAgentbusRPCInterrupted = "rpc_interrupted"
+	SubjectEventbusAgentPoll      = "agent_poll"
 )
 
 var (
@@ -46,8 +48,9 @@ func StartAgent(cfg *config.Config) {
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentStart, handleAgentStart)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentContinue, handleAgentContinue)
 	agentSvc.addResponder(ChannelAgentbus+":"+SubjectAgentbusReceive, handleAgentReceive)
-	agentSvc.addResponder(dipper.ChannelEventbus+":"+dipper.EventbusRPCInterrupted, handleRPCInterrupted)
+	agentSvc.addResponder(ChannelAgentbus+":"+SubjectAgentbusRPCInterrupted, handleRPCInterrupted)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentRecover, handleAgentRecover)
+	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentPoll, handleAgentPoll)
 
 	// Build the store before start() so the package-level var is set
 	// before any goroutine spawned by a responder can reference it.
@@ -78,8 +81,10 @@ func AgentFeatures(c *config.DataSet) map[string]interface{} {
 // Agentbus messages from AI drivers are handled entirely by responders and do not need routing.
 func agentRoute(msg *dipper.Message) []RoutedMessage {
 	if msg.Channel == dipper.ChannelEventbus {
-		if bus := agentSvc.getDriverRuntime(dipper.ChannelEventbus); bus != nil {
-			return []RoutedMessage{{driverRuntime: bus, message: msg}}
+		if msg.Subject == "agent_command" || msg.Subject == "agent_workflow" || msg.Subject == "agent_response" {
+			if bus := agentSvc.getDriverRuntime(dipper.ChannelEventbus); bus != nil {
+				return []RoutedMessage{{driverRuntime: bus, message: msg}}
+			}
 		}
 	}
 
@@ -88,20 +93,18 @@ func agentRoute(msg *dipper.Message) []RoutedMessage {
 
 // handleAgentStart receives an agentbus:start message and calls StartInference on the store.
 func handleAgentStart(_ *driver.Runtime, msg *dipper.Message) {
-	callerID := msg.Labels["caller_id"]
-	callerType := msg.Labels["caller_type"]
+	resumeKey := msg.Labels["resume_key"]
+	if resumeKey == "" {
+		dipper.Logger.Panicf("agent recevied start request without resume key %+v", msg.Labels)
+	}
 	defer dipper.SafeExitOnError("[agent] error in handleAgentStart", func(r error) {
-		if callerID == "" {
-			return
-		}
 		agentStore.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: "agent_response",
 			Labels: map[string]string{
-				"caller_id":   callerID,
-				"caller_type": callerType,
-				"status":      "error",
-				"reason":      r.Error(),
+				"resume_key": resumeKey,
+				"status":     "error",
+				"reason":     r.Error(),
 			},
 		})
 	})
@@ -125,7 +128,7 @@ func handleAgentReceive(_ *driver.Runtime, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[agent] error in handleAgentReceive")
 	<-agentSvc.Ready()
 	msg = dipper.DeserializePayload(msg)
-	go agentStore.ReceiveInference(msg)
+	agentStore.ReceiveInference(msg)
 }
 
 // handleRPCInterrupted handles an eventbus:rpc/interrupted notification from an AI-model
@@ -160,4 +163,26 @@ func handleAgentRecover(_ *driver.Runtime, msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	msg.Labels["recover"] = "true"
 	go agentStore.ContinueInference(msg)
+}
+
+func handleAgentPoll(_ *driver.Runtime, msg *dipper.Message) {
+	resumeKey := msg.Labels["resume_key"]
+	if resumeKey == "" {
+		dipper.Logger.Panicf("[agent] poll request received without resume key %+v", msg.Labels)
+	}
+	defer dipper.SafeExitOnError("[agent] error in handleAgentPoll", func(r error) {
+		agentStore.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: "agent_response",
+			Labels: map[string]string{
+				"resume_key": resumeKey,
+				"status":     "error",
+				"reason":     r.Error(),
+			},
+		})
+	})
+	<-agentSvc.Ready()
+
+	msg = dipper.DeserializePayload(msg)
+	go agentStore.PollInference(msg)
 }

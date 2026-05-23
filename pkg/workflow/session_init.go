@@ -268,6 +268,8 @@ func (w *Session) interpolateWorkflow() {
 	ret.Resume = dipper.InterpolateStr("session", v.Resume, envData)
 	ret.CacheKey = dipper.InterpolateStr("session", v.CacheKey, envData)
 	ret.CacheTTL = dipper.InterpolateStr("session", v.CacheTTL, envData)
+	ret.CallAgent = dipper.InterpolateStr("session", v.CallAgent, envData)
+	ret.WaitAgent = dipper.InterpolateStr("session", v.WaitAgent, envData)
 
 	ret.Iterate = dipper.Interpolate("session", v.Iterate, envData)
 	if ret.Iterate == nil && v.Iterate != nil {
