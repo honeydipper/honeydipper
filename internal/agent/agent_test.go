@@ -757,8 +757,9 @@ func TestProcessAgentMessage_FinalReply(t *testing.T) {
 	s := newSessionForMsgProcessing(t, store)
 
 	agentMsg := &AgentMessage{
-		Role:    RoleAgent,
-		Content: "Here is the answer.",
+		Role:       RoleAgent,
+		Content:    "Here is the answer.",
+		IsComplete: true,
 	}
 
 	s.processAgentMessage(agentMsg)
@@ -767,6 +768,37 @@ func TestProcessAgentMessage_FinalReply(t *testing.T) {
 	assert.True(t, store.hasCall("cache:save"))
 	require.Len(t, s.history, 1)
 	assert.Equal(t, "Here is the answer.", s.history[0].Content)
+}
+
+func TestProcessAgentMessage_StreamingChunk(t *testing.T) {
+	store := newMockStore(nil)
+	s := newSessionForMsgProcessing(t, store)
+
+	// Non-complete streaming chunks must be accumulated in PendingContent,
+	// not written to convo history, to avoid one Redis rpush per chunk.
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Hello"})
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: ", world"})
+
+	assert.Equal(t, "Hello, world", s.PendingContent)
+	assert.Empty(t, s.history, "streaming chunks must not appear in history")
+	assert.True(t, store.hasCall("cache:save"))
+}
+
+func TestProcessAgentMessage_StreamingComplete(t *testing.T) {
+	store := newMockStore(nil)
+	s := newSessionForMsgProcessing(t, store)
+
+	// Simulate two chunks followed by a final IsComplete=true message.
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk1"})
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk2"})
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "", IsComplete: true})
+
+	// PendingContent should be cleared after the complete message.
+	assert.Empty(t, s.PendingContent)
+	// History should contain exactly one entry with all content merged.
+	require.Len(t, s.history, 1)
+	assert.Equal(t, "Chunk1Chunk2", s.history[0].Content)
+	assert.True(t, s.history[0].IsComplete)
 }
 
 func TestProcessAgentMessage_Thinking_NotEmittedByDefault(t *testing.T) {
