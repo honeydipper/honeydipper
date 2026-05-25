@@ -359,7 +359,7 @@ func (w *Session) waitAgent() {
 	delete(labels, "performing")
 
 	w.incCursor()
-	labels["agent_session"] = w.Workflow.WaitAgent
+	labels["agent_session_id"] = w.Workflow.WaitAgent
 	labels["resume_key"] = w.ID + "." + w.CurrentMsg.Labels["cursor"]
 	labels["timeout"] = w.agentTimeout()
 	if resumeKey, _ := dipper.GetMapDataStr(w.Ctx, "resume_key"); resumeKey != "" {
@@ -376,11 +376,19 @@ func (w *Session) waitAgent() {
 	})
 	duration := dipper.Must(time.ParseDuration(w.agentTimeout())).(time.Duration)
 	if _, ok := w.Ctx["timeout_message"]; !ok {
+		labels := map[string]string{}
+		for k, v := range w.CurrentMsg.Labels {
+			labels[k] = v
+		}
+		labels["agent_session_id"] = w.Workflow.WaitAgent
+		labels["status"] = "failure"
+		labels["reason"] = "poll timeout (engine) after " + w.agentTimeout()
+
+		if w.EventID != "" {
+			labels["eventID"] = w.EventID
+		}
 		w.Ctx["timeout_message"] = map[string]any{
-			"labels": map[string]any{
-				"status": "failure",
-				"reason": "poll timeout (engine) after " + w.agentTimeout(),
-			},
+			"labels": labels,
 		}
 	}
 	w.waitPeriod(duration)

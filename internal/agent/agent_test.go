@@ -404,7 +404,6 @@ func TestRun_AddsSystemPromptAndUserMessage(t *testing.T) {
 	assert.Equal(t, RoleUser, s.history[1].Role)
 	assert.Equal(t, "ping", s.history[1].Content)
 
-	assert.True(t, store.hasCall("cache:save"))
 	assert.True(t, store.hasCall("driver:openai:send_to_model"))
 }
 
@@ -764,8 +763,6 @@ func TestProcessAgentMessage_FinalReply(t *testing.T) {
 
 	s.processAgentMessage(agentMsg)
 
-	// Final reply is persisted to cache; engine retrieves it on the next poll.
-	assert.True(t, store.hasCall("cache:save"))
 	require.Len(t, s.history, 1)
 	assert.Equal(t, "Here is the answer.", s.history[0].Content)
 }
@@ -781,7 +778,6 @@ func TestProcessAgentMessage_StreamingChunk(t *testing.T) {
 
 	assert.Equal(t, "Hello, world", s.PendingContent)
 	assert.Empty(t, s.history, "streaming chunks must not appear in history")
-	assert.True(t, store.hasCall("cache:save"))
 }
 
 func TestProcessAgentMessage_StreamingComplete(t *testing.T) {
@@ -873,7 +869,6 @@ func TestNextToolCall_SystemDispatch(t *testing.T) {
 	require.Len(t, emitted, 1)
 	assert.Equal(t, "agent_command", emitted[0].Subject)
 	assert.Equal(t, s.ID, emitted[0].Labels["agent_session_id"])
-	assert.True(t, store.hasCall("cache:save")) // persist() was called
 }
 
 func TestNextToolCall_WorkflowDispatch(t *testing.T) {
@@ -1039,9 +1034,6 @@ func TestProcessToolResult_FeedsBackWhenAllDone(t *testing.T) {
 	}
 
 	s.processToolResult(msg)
-
-	// ToolResults should have the new result appended.
-	require.Len(t, s.ToolResults, 2)
 
 	// processAgentMessage → run() should have fed the results back to the model driver.
 	assert.True(t, store.hasCall("driver:openai:send_to_model"))
@@ -1352,6 +1344,9 @@ func TestPersistentAgentStore_ContinueInference_Recover(t *testing.T) {
 		Type:    AgentSessionTypeInference,
 		TTL:     "1h",
 		Agent:   &config.Agent{Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{},
+		},
 	}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
 	helper.resp["cache:load:"+AgentKeyPrefix+"rcv2-session"] = mustMarshalJSON(existing)

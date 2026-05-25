@@ -91,7 +91,9 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 		}
 	}()
 
-	if _, ok := call.Labels["sessionID"]; !ok {
+	_, hasSessionID := call.Labels["sessionID"]
+	_, hasAgentSessionID := call.Labels["agent_session_id"]
+	if !hasSessionID && !hasAgentSessionID {
 		return
 	}
 

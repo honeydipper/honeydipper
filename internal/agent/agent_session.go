@@ -65,6 +65,13 @@ func (s *AgentSession) log() *logging.Logger {
 	return s.store.GetLogger()
 }
 
+// unlock releases the session lock in the store.
+func (s *AgentSession) unlock() {
+	dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
+		"name": AgentKeyPrefix + s.ID,
+	}))
+}
+
 // persist serialises the session and writes it to the cache.
 func (s *AgentSession) persist(unlocking bool) {
 	if log := s.log(); log != nil {
@@ -78,9 +85,7 @@ func (s *AgentSession) persist(unlocking bool) {
 	}))
 
 	if unlocking {
-		dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
-			"name": AgentKeyPrefix + s.ID,
-		}))
+		s.unlock()
 	}
 }
 
@@ -178,8 +183,6 @@ func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
 
 // run appends the current user message and dispatches the conversation to the AI driver.
 func (s *AgentSession) run() {
-	tools := s.BuildTools()
-
 	if len(s.history) == 0 {
 		systemPrompt := s.Agent.SystemPrompt
 		if s.Type == AgentSessionTypeInference && len(s.Agent.InferencePrompt) > 0 {
@@ -193,10 +196,6 @@ func (s *AgentSession) run() {
 
 	text := dipper.MustGetMapDataStr(s.CurrentMsg.Payload, "text")
 	user, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "user")
-	timeout := s.CurrentMsg.Labels["timeout"]
-	if timeout == "" {
-		timeout = AgentSessionDefaultTimeout
-	}
 	s.appendConvoHistory(AgentMessage{
 		Role:    RoleUser,
 		User:    user,
@@ -204,19 +203,7 @@ func (s *AgentSession) run() {
 	})
 	s.LastPoll = len(s.history)
 
-	s.persist(true)
-	if log := s.log(); log != nil {
-		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
-			s.ID, s.Agent.Driver, s.Agent.Engine, len(s.history), len(tools))
-	}
-	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
-		"engine":        s.Agent.Engine,
-		"history":       s.history,
-		"tools":         tools,
-		"type":          s.Type,
-		"model_data":    s.Agent.ModelData,
-		"should_stream": s.Agent.ShouldStream,
-	}, "agent_session_id", s.ID, "timeout", timeout))
+	s.sendToDriver()
 }
 
 func (s *AgentSession) recover() {
@@ -224,13 +211,18 @@ func (s *AgentSession) recover() {
 		log.Infof("[agent] session [%s] recovering from cache after restart", s.ID)
 	}
 
+	s.sendToDriver()
+}
+
+func (s *AgentSession) sendToDriver() {
 	tools := s.BuildTools()
-	var timeout string
-	if s.CurrentMsg != nil {
-		timeout = s.CurrentMsg.Labels["timeout"]
-	}
+	timeout := s.CurrentMsg.Labels["timeout"]
 	if timeout == "" {
 		timeout = AgentSessionDefaultTimeout
+	}
+	if log := s.log(); log != nil {
+		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
+			s.ID, s.Agent.Driver, s.Agent.Engine, len(s.history), len(tools))
 	}
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":        s.Agent.Engine,
@@ -269,7 +261,14 @@ func (s *AgentSession) addSystemTool(tools map[string]AgentTool, toolDef config.
 			continue
 		}
 
+		if f.Meta == nil {
+			continue
+		}
 		meta := f.Meta.(map[string]interface{})
+		if skip, ok := dipper.GetMapData(meta, "skip_agent"); ok && dipper.IsTruthy(skip) {
+			continue
+		}
+
 		desc := ""
 		if d, ok := meta["description"]; ok {
 			desc = d.(string)
@@ -343,13 +342,16 @@ func (s *AgentSession) addWorkflowTool(tools map[string]AgentTool, toolDef confi
 
 // processAgentResponse decodes the model's response message and hands it to processAgentMessage.
 func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
-	s.CurrentMsg = msg
 	m := dipper.MustGetMapData(msg.Payload, "message").(map[string]interface{})
 	var agentMsg AgentMessage
 	dipper.Must(mapstructure.Decode(m, &agentMsg))
 	if log := s.log(); log != nil {
 		log.Debugf("[agent] session [%s] response received role=%s thinking=%v tool_calls=%d",
 			s.ID, agentMsg.Role, agentMsg.IsThinking, len(agentMsg.ToolCalls))
+	}
+
+	if msg.Labels["status"] != "success" && msg.Labels["status"] != "" {
+		s.ErrorReason = msg.Labels["reason"]
 	}
 	s.processAgentMessage(&agentMsg)
 }
@@ -361,7 +363,6 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
 	if agentMsg.Role == RoleAgent && !agentMsg.IsComplete && !agentMsg.IsThinking && len(agentMsg.ToolCalls) == 0 {
 		s.PendingContent += agentMsg.Content
-		s.persist(true)
 
 		return
 	}
@@ -373,7 +374,6 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		agentMsg.Content = s.PendingContent + agentMsg.Content
 		s.PendingContent = ""
 		s.appendConvoHistory(*agentMsg)
-		s.persist(true)
 
 		return
 	}
@@ -389,9 +389,7 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	}
 
 	if agentMsg.Role != RoleAgent {
-		s.run()
-	} else {
-		s.persist(true)
+		s.sendToDriver()
 	}
 }
 
@@ -401,8 +399,6 @@ func (s *AgentSession) nextToolCall() {
 		return
 	}
 
-	s.persist(true)
-
 	c := s.ToolCalls[s.CurrentCall]
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] dispatching tool call %d/%d: %s",
@@ -411,8 +407,6 @@ func (s *AgentSession) nextToolCall() {
 	if strings.HasPrefix(c.FuncName, "sys_") {
 		sysName := c.FuncName[len("sys_"):strings.LastIndex(c.FuncName, "__")]
 		fName := c.FuncName[strings.LastIndex(c.FuncName, "__")+2:]
-		sys := s.store.GetSystem(sysName)
-		f := sys.Functions[fName]
 
 		s.store.EmitMessage(dipper.Message{
 			Channel: "eventbus",
@@ -423,8 +417,13 @@ func (s *AgentSession) nextToolCall() {
 				"tool_call_id":     strconv.Itoa(s.CurrentCall),
 			},
 			Payload: map[string]interface{}{
-				"ctx":      c.Params,
-				"function": f,
+				"ctx": c.Params,
+				"function": map[string]interface{}{
+					"target": map[string]interface{}{
+						"system":   sysName,
+						"function": fName,
+					},
+				},
 			},
 		})
 	} else if strings.HasPrefix(c.FuncName, "wf__") {
@@ -437,6 +436,7 @@ func (s *AgentSession) nextToolCall() {
 				"data": c.Params,
 				"do": map[string]interface{}{
 					"call_workflow": wfName,
+					"context":       "_agent_tool_call",
 				},
 				"message": map[string]interface{}{
 					"labels": map[string]string{
@@ -514,6 +514,7 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 			Role:       RoleToolResult,
 			ToolResult: s.ToolResults,
 		}
+		s.ToolResults = nil
 
 		s.processAgentMessage(&agentMsg)
 	}
@@ -548,9 +549,6 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 				labels := msg.Labels
 				labels["status"] = "failure"
 				labels["reason"] = "poll timeout after " + timeout.String()
-				dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
-					"name": AgentKeyPrefix + s.ID,
-				}))
 				s.store.EmitMessage(dipper.Message{
 					Channel: dipper.ChannelEventbus,
 					Subject: "agent_response",
@@ -560,9 +558,7 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 				return
 			default:
 			}
-			dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
-				"name": AgentKeyPrefix + s.ID,
-			}))
+			s.unlock()
 
 			time.Sleep(time.Second)
 			s.setup(msg, s.store, true)
@@ -619,6 +615,7 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 		labels["status"] = "ok"
 	}
 
+	s.LastPoll = len(s.history)
 	if newContent == "" && s.ErrorReason == "" && !am.IsComplete {
 		s.persist(false)
 
@@ -628,7 +625,6 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 	s.PendingOffset += len(newContent)
 	if am.IsComplete || s.ErrorReason != "" {
 		// Final poll response: reset tracking state.
-		s.LastPoll = len(s.history)
 		s.PendingOffset = 0
 		s.PendingContent = ""
 	}
@@ -643,7 +639,6 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 		},
 	})
 	s.LastPollTime = time.Now()
-	s.persist(true)
 
 	return true
 }
