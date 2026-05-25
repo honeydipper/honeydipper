@@ -379,6 +379,25 @@ func (s *AgentSession) addAgentTool(tools map[string]AgentTool, toolDef config.A
 	}
 }
 
+// notifyParentFailure emits an agent_continue failure message to the parent session.
+// It is a no-op when ParentSessionID is empty.
+func (s *AgentSession) notifyParentFailure(reason string) {
+	if s.ParentSessionID == "" {
+		return
+	}
+	s.store.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: dipper.EventbusAgentContinue,
+		Labels: map[string]string{
+			"agent_session_id": s.ParentSessionID,
+			"turn_id":          s.ParentTurnID,
+			"tool_call_id":     s.ParentToolCallID,
+			"status":           "failure",
+			"reason":           reason,
+		},
+	})
+}
+
 // notifyParent emits an agent_continue message to the parent session when a sub-agent
 // session completes as a tool call.
 func (s *AgentSession) notifyParent(agentMsg AgentMessage) {
@@ -411,6 +430,9 @@ func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 
 	if msg.Labels["status"] != "success" && msg.Labels["status"] != "" {
 		s.ErrorReason = msg.Labels["reason"]
+		s.notifyParentFailure(s.ErrorReason)
+
+		return
 	}
 	s.processAgentMessage(&agentMsg)
 }

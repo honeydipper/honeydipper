@@ -120,6 +120,7 @@ func (p *PersistentAgentStore) ContinueInference(msg *dipper.Message) {
 		if s.ErrorReason == "" {
 			s.ErrorReason = r.(error).Error()
 		}
+		s.notifyParentFailure(s.ErrorReason)
 	})
 
 	if msg.Labels["recover"] == "true" {
@@ -143,6 +144,7 @@ func (p *PersistentAgentStore) ReceiveInference(msg *dipper.Message) {
 		if s.ErrorReason == "" {
 			s.ErrorReason = r.(error).Error()
 		}
+		s.notifyParentFailure(s.ErrorReason)
 	})
 	s.processAgentResponse(msg)
 }
