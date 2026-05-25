@@ -183,17 +183,6 @@ func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
 
 // run appends the current user message and dispatches the conversation to the AI driver.
 func (s *AgentSession) run() {
-	if len(s.history) == 0 {
-		systemPrompt := s.Agent.SystemPrompt
-		if s.Type == AgentSessionTypeInference && len(s.Agent.InferencePrompt) > 0 {
-			systemPrompt = s.Agent.InferencePrompt
-		}
-		s.appendConvoHistory(AgentMessage{
-			Role:    RoleSystem,
-			Content: systemPrompt,
-		})
-	}
-
 	text := dipper.MustGetMapDataStr(s.CurrentMsg.Payload, "text")
 	user, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "user")
 	s.appendConvoHistory(AgentMessage{
@@ -220,13 +209,30 @@ func (s *AgentSession) sendToDriver() {
 	if timeout == "" {
 		timeout = AgentSessionDefaultTimeout
 	}
+
+	// Build the system prompt from the current agent config (inference vs chat).
+	systemPrompt := s.Agent.SystemPrompt
+	if s.Type == AgentSessionTypeInference && len(s.Agent.InferencePrompt) > 0 {
+		systemPrompt = s.Agent.InferencePrompt
+	}
+
+	// Prepend the system prompt ephemerally; filter any legacy persisted system
+	// messages so the driver always sees exactly one, up-to-date system entry.
+	history := make([]AgentMessage, 0, len(s.history)+1)
+	history = append(history, AgentMessage{Role: RoleSystem, Content: systemPrompt})
+	for _, m := range s.history {
+		if m.Role != RoleSystem {
+			history = append(history, m)
+		}
+	}
+
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
-			s.ID, s.Agent.Driver, s.Agent.Engine, len(s.history), len(tools))
+			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
 	}
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":        s.Agent.Engine,
-		"history":       s.history,
+		"history":       history,
 		"tools":         tools,
 		"type":          s.Type,
 		"model_data":    s.Agent.ModelData,

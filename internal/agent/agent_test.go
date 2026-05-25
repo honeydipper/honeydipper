@@ -40,12 +40,13 @@ func TestMain(m *testing.M) {
 // ---------------------------------------------------------------------------
 
 type mockStore struct {
-	mu      sync.Mutex
-	calls   []string
-	resp    map[string][]byte
-	emitted []*dipper.Message
-	cfg     *config.Config
-	logger  *logging.Logger
+	mu           sync.Mutex
+	calls        []string
+	resp         map[string][]byte
+	emitted      []*dipper.Message
+	cfg          *config.Config
+	logger       *logging.Logger
+	noWaitParams map[string]map[string]interface{}
 }
 
 func newMockStore(cfg *config.Config) *mockStore {
@@ -115,9 +116,28 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 }
 
 func (m *mockStore) CallNoWait(feature, method string, params interface{}, labelsKV ...string) error {
-	m.record(feature + ":" + method)
+	key := feature + ":" + method
+	m.record(key)
+	if p, ok := params.(map[string]interface{}); ok {
+		m.mu.Lock()
+		if m.noWaitParams == nil {
+			m.noWaitParams = map[string]map[string]interface{}{}
+		}
+		m.noWaitParams[key] = p
+		m.mu.Unlock()
+	}
 
 	return nil
+}
+
+func (m *mockStore) getNoWaitParams(key string) map[string]interface{} { //nolint:unparam
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.noWaitParams == nil {
+		return nil
+	}
+
+	return m.noWaitParams[key]
 }
 
 func (m *mockStore) CallRaw(feature, method string, params []byte, labelsKV ...string) ([]byte, error) {
@@ -398,13 +418,20 @@ func TestRun_AddsSystemPromptAndUserMessage(t *testing.T) {
 	s.setup(msg, store, false)
 	s.run()
 
-	require.Len(t, s.history, 2)
-	assert.Equal(t, RoleSystem, s.history[0].Role)
-	assert.Equal(t, "You are helpful.", s.history[0].Content)
-	assert.Equal(t, RoleUser, s.history[1].Role)
-	assert.Equal(t, "ping", s.history[1].Content)
+	// Persisted history contains only the user message; no system message stored.
+	require.Len(t, s.history, 1)
+	assert.Equal(t, RoleUser, s.history[0].Role)
+	assert.Equal(t, "ping", s.history[0].Content)
 
+	// Driver receives ephemeral history with system prompt prepended.
 	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+	require.Len(t, driverHistory, 2)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, "You are helpful.", driverHistory[0].Content)
+	assert.Equal(t, RoleUser, driverHistory[1].Role)
 }
 
 func TestRun_InferenceTypeUsesInferencePrompt(t *testing.T) {
@@ -431,17 +458,25 @@ func TestRun_InferenceTypeUsesInferencePrompt(t *testing.T) {
 	s.setup(msg, store, false)
 	s.run()
 
-	require.True(t, len(s.history) >= 1)
-	assert.Equal(t, "inference-specific-prompt", s.history[0].Content)
+	// Driver receives the inference-specific prompt, not the general system prompt.
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+	require.NotEmpty(t, driverHistory)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, "inference-specific-prompt", driverHistory[0].Content)
 }
 
-func TestRun_SkipsSystemPromptWhenHistoryExists(t *testing.T) {
+func TestRun_AgentSwitchUsesCurrentSystemPrompt(t *testing.T) {
+	// Simulates a mid-conversation agent switch: the persisted history has no
+	// system message (new behaviour), but sendToDriver always injects the
+	// current agent's system prompt ephemerally.
 	store := newMockStore(nil)
 	store.cfg.DataSet.Agents["a"] = config.Agent{
 		Name:         "a",
 		Driver:       "openai",
 		Engine:       "gpt-4",
-		SystemPrompt: "should not appear",
+		SystemPrompt: "new agent prompt",
 	}
 
 	msg := &dipper.Message{
@@ -451,15 +486,24 @@ func TestRun_SkipsSystemPromptWhenHistoryExists(t *testing.T) {
 
 	s := &AgentSession{}
 	s.setup(msg, store, false)
-	s.history = []AgentMessage{{Role: RoleSystem, Content: "original"}}
+	// Pre-existing history from a prior turn (no system message).
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "previous message"},
+		{Role: RoleAgent, Content: "previous reply"},
+	}
 	s.run()
 
-	// History should have [original system, user message] but NOT a second system entry.
-	require.Len(t, s.history, 2)
-	assert.Equal(t, RoleSystem, s.history[0].Role)
-	assert.Equal(t, "original", s.history[0].Content)
-	assert.Equal(t, RoleUser, s.history[1].Role)
-	assert.Equal(t, "followup", s.history[1].Content)
+	// Persisted history gains the new user message; still no system message.
+	require.Len(t, s.history, 3)
+	assert.Equal(t, RoleUser, s.history[2].Role)
+	assert.Equal(t, "followup", s.history[2].Content)
+
+	// Driver receives current agent's system prompt at position 0.
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, "new agent prompt", driverHistory[0].Content)
 }
 
 func TestRun_WithUserLabel(t *testing.T) {
@@ -507,8 +551,16 @@ func TestRecover(t *testing.T) {
 	s.recover()
 
 	assert.True(t, store.hasCall("driver:openai:send_to_model"))
-	// recover should NOT modify history
+	// recover should NOT modify the persisted history slice
 	assert.Len(t, s.history, 2)
+	// Driver receives the current agent's system prompt (legacy entry filtered out)
+	// with only the user message appended after it.
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+	require.Len(t, driverHistory, 2)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, RoleUser, driverHistory[1].Role)
 }
 
 // ---------------------------------------------------------------------------
