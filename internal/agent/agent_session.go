@@ -49,6 +49,7 @@ type AgentSession struct {
 	PendingContent string
 	PendingOffset  int
 	ErrorReason    string
+	TotalTokens    int
 
 	store AgentStore
 }
@@ -58,6 +59,7 @@ type (
 	AgentMessage  = agentpkg.Message
 	AgentTool     = agentpkg.Tool
 	AgentToolCall = agentpkg.ToolCall
+	AgentState    = agentpkg.State
 )
 
 // log returns the logger from the store, or nil if unavailable.
@@ -379,6 +381,7 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	if agentMsg.Role == RoleAgent && agentMsg.IsComplete {
 		agentMsg.Content = s.PendingContent + agentMsg.Content
 		s.PendingContent = ""
+		s.TotalTokens += agentMsg.InputTokens + agentMsg.OutputTokens
 		s.appendConvoHistory(*agentMsg)
 
 		return
@@ -642,6 +645,11 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 		Labels:  labels,
 		Payload: map[string]interface{}{
 			"message": am,
+			"state": AgentState{
+				HistoryLen:  len(s.history),
+				TotalTokens: s.TotalTokens,
+				ConvoID:     s.ConvoID,
+			},
 		},
 	})
 	s.LastPollTime = time.Now()
