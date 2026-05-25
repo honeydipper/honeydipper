@@ -191,8 +191,9 @@ func (w *Session) progress() {
 			return
 		case w.pending:
 			w.resume()
-			if w.pending {
-				// a hook is fired in resume and the session is still pending.
+			if w.pending || w.State == SessionStateDone {
+				// a hook is fired in resume and the session is still pending,
+				// or the session completed during resume.
 				return
 			}
 
