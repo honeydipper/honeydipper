@@ -34,22 +34,25 @@ const (
 
 // AgentSession holds the runtime state of a single agent inference or chat-turn session.
 type AgentSession struct {
-	ID             string
-	ConvoID        string
-	Agent          *config.Agent
-	history        []AgentMessage
-	CurrentMsg     *dipper.Message
-	Type           string
-	TTL            string
-	CurrentCall    int
-	ToolCalls      []AgentToolCall
-	ToolResults    []map[string]interface{}
-	LastPoll       int
-	LastPollTime   time.Time
-	PendingContent string
-	PendingOffset  int
-	ErrorReason    string
-	TotalTokens    int
+	ID               string
+	ConvoID          string
+	Agent            *config.Agent
+	history          []AgentMessage
+	CurrentMsg       *dipper.Message
+	Type             string
+	TTL              string
+	CurrentCall      int
+	ToolCalls        []AgentToolCall
+	ToolResults      []map[string]interface{}
+	LastPoll         int
+	LastPollTime     time.Time
+	PendingContent   string
+	PendingOffset    int
+	ErrorReason      string
+	TotalTokens      int
+	ParentSessionID  string
+	ParentTurnID     string
+	ParentToolCallID string
 
 	store AgentStore
 }
@@ -252,6 +255,8 @@ func (s *AgentSession) BuildTools() map[string]AgentTool {
 			s.addSystemTool(tools, toolDef)
 		case "workflow":
 			s.addWorkflowTool(tools, toolDef)
+		case "agent":
+			s.addAgentTool(tools, toolDef)
 		}
 	}
 
@@ -348,6 +353,52 @@ func (s *AgentSession) addWorkflowTool(tools map[string]AgentTool, toolDef confi
 	}
 }
 
+// addAgentTool registers a named agent as a callable tool.
+func (s *AgentSession) addAgentTool(tools map[string]AgentTool, toolDef config.AgentToolDef) {
+	fname := "ag__" + toolDef.Name
+	if _, exists := tools[fname]; exists {
+		return
+	}
+
+	ag := s.store.GetAgent(toolDef.Name)
+	desc := ag.Description
+	if desc == "" {
+		desc = "Call the " + toolDef.Name + " agent"
+	}
+
+	tools[fname] = AgentTool{
+		Name:        fname,
+		Description: desc,
+		Params: map[string]interface{}{
+			"input": map[string]interface{}{
+				"name":        "input",
+				"type":        "string",
+				"description": "The input text to send to the agent",
+			},
+		},
+	}
+}
+
+// notifyParent emits an agent_continue message to the parent session when a sub-agent
+// session completes as a tool call.
+func (s *AgentSession) notifyParent(agentMsg AgentMessage) {
+	s.store.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: dipper.EventbusAgentContinue,
+		Labels: map[string]string{
+			"agent_session_id": s.ParentSessionID,
+			"turn_id":          s.ParentTurnID,
+			"tool_call_id":     s.ParentToolCallID,
+			"status":           "success",
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{
+				"output": agentMsg.Content,
+			},
+		},
+	})
+}
+
 // processAgentResponse decodes the model's response message and hands it to processAgentMessage.
 func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 	m := dipper.MustGetMapData(msg.Payload, "message").(map[string]interface{})
@@ -383,6 +434,9 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		s.PendingContent = ""
 		s.TotalTokens += agentMsg.InputTokens + agentMsg.OutputTokens
 		s.appendConvoHistory(*agentMsg)
+		if s.ParentSessionID != "" {
+			s.notifyParent(*agentMsg)
+		}
 
 		return
 	}
@@ -413,7 +467,8 @@ func (s *AgentSession) nextToolCall() {
 		log.Infof("[agent] session [%s] dispatching tool call %d/%d: %s",
 			s.ID, s.CurrentCall+1, len(s.ToolCalls), c.FuncName)
 	}
-	if strings.HasPrefix(c.FuncName, "sys_") {
+	switch {
+	case strings.HasPrefix(c.FuncName, "sys_"):
 		sysName := c.FuncName[len("sys_"):strings.LastIndex(c.FuncName, "__")]
 		fName := c.FuncName[strings.LastIndex(c.FuncName, "__")+2:]
 
@@ -435,7 +490,7 @@ func (s *AgentSession) nextToolCall() {
 				},
 			},
 		})
-	} else if strings.HasPrefix(c.FuncName, "wf__") {
+	case strings.HasPrefix(c.FuncName, "wf__"):
 		wfName := c.FuncName[len("wf__"):]
 
 		s.store.EmitMessage(dipper.Message{
@@ -454,6 +509,23 @@ func (s *AgentSession) nextToolCall() {
 						"tool_call_id":     strconv.Itoa(s.CurrentCall),
 					},
 				},
+			},
+		})
+	case strings.HasPrefix(c.FuncName, "ag__"):
+		subAgentName := c.FuncName[len("ag__"):]
+		input := c.Params["input"]
+
+		s.store.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: "agent_call",
+			Labels: map[string]string{
+				"agent_session_id": s.ID,
+				"turn_id":          strconv.Itoa(len(s.history)),
+				"tool_call_id":     strconv.Itoa(s.CurrentCall),
+				"sub_agent_name":   subAgentName,
+			},
+			Payload: map[string]interface{}{
+				"input": input,
 			},
 		})
 	}
@@ -504,6 +576,9 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 		}, s.store.GetConfig())
 
 	case strings.HasPrefix(c.FuncName, "wf__"):
+		data, _ = dipper.GetMapData(msg.Payload, "data.output")
+
+	case strings.HasPrefix(c.FuncName, "ag__"):
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
 	}
 

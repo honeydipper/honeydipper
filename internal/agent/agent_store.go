@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/op/go-logging"
 )
@@ -15,6 +17,7 @@ type AgentStore interface {
 	PollInference(msg *dipper.Message)
 	ContinueInference(msg *dipper.Message)
 	ReceiveInference(msg *dipper.Message)
+	StartAgentCall(msg *dipper.Message)
 
 	GetAgent(name string) *config.Agent
 	GetSystem(name string) *config.System
@@ -184,6 +187,50 @@ func NewAgentStore(helper StoreHelper) AgentStore {
 	}
 }
 
+// StartAgentCall handles an eventbus:agent_call dispatched by a parent session's tool call.
+// It creates a new inference session for the named sub-agent, initiates its first driver call,
+// and persists it. The sub-agent session will notify the parent via eventbus:agent_continue
+// when it produces its final complete message.
+func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in StartAgentCall", func(r interface{}) {
+		p.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusAgentContinue,
+			Labels: map[string]string{
+				"agent_session_id": msg.Labels["agent_session_id"],
+				"turn_id":          msg.Labels["turn_id"],
+				"tool_call_id":     msg.Labels["tool_call_id"],
+				"status":           "failure",
+				"reason":           fmt.Sprintf("%v", r),
+			},
+		})
+	})
+	p.Infof("[agent] StartAgentCall sub_agent=%s parent=%s", msg.Labels["sub_agent_name"], msg.Labels["agent_session_id"])
+
+	// Build a synthetic start message for the sub-agent session.
+	subMsg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": msg.Labels["sub_agent_name"],
+		},
+		Payload: map[string]interface{}{
+			"text": dipper.MustGetMapDataStr(msg.Payload, "input"),
+			"type": agentpkg.SessionTypeInference,
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(subMsg, p, false)
+	s.ParentSessionID = msg.Labels["agent_session_id"]
+	s.ParentTurnID = msg.Labels["turn_id"]
+	s.ParentToolCallID = msg.Labels["tool_call_id"]
+
+	defer s.persist(false)
+	s.run()
+}
+
+// PollInference handles an incoming poll request for an inference session.
 func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	p.wg.Add(1)
 	defer p.wg.Done()

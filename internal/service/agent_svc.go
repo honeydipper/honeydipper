@@ -24,6 +24,7 @@ const (
 	SubjectEventbusAgentRecover   = "agent_recover"
 	SubjectAgentbusRPCInterrupted = "rpc_interrupted"
 	SubjectEventbusAgentPoll      = "agent_poll"
+	SubjectEventbusAgentCall      = "agent_call"
 )
 
 var (
@@ -51,6 +52,7 @@ func StartAgent(cfg *config.Config) {
 	agentSvc.addResponder(ChannelAgentbus+":"+SubjectAgentbusRPCInterrupted, handleRPCInterrupted)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentRecover, handleAgentRecover)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentPoll, handleAgentPoll)
+	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentCall, handleAgentCall)
 
 	// Build the store before start() so the package-level var is set
 	// before any goroutine spawned by a responder can reference it.
@@ -163,6 +165,27 @@ func handleAgentRecover(_ *driver.Runtime, msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	msg.Labels["recover"] = "true"
 	go agentStore.ContinueInference(msg)
+}
+
+// handleAgentCall handles an eventbus:agent_call dispatched by an agent session
+// when a model invokes a sub-agent as a tool.
+func handleAgentCall(_ *driver.Runtime, msg *dipper.Message) {
+	defer dipper.SafeExitOnError("[agent] error in handleAgentCall", func(r error) {
+		agentStore.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusAgentContinue,
+			Labels: map[string]string{
+				"agent_session_id": msg.Labels["agent_session_id"],
+				"turn_id":          msg.Labels["turn_id"],
+				"tool_call_id":     msg.Labels["tool_call_id"],
+				"status":           "failure",
+				"reason":           r.Error(),
+			},
+		})
+	})
+	<-agentSvc.Ready()
+	msg = dipper.DeserializePayload(msg)
+	go agentStore.StartAgentCall(msg)
 }
 
 func handleAgentPoll(_ *driver.Runtime, msg *dipper.Message) {
