@@ -215,11 +215,14 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 	// Build a synthetic start message for the sub-agent session.
 	subMsg := &dipper.Message{
 		Labels: map[string]string{
-			"agent_name": msg.Labels["sub_agent_name"],
+			"agent_name":       msg.Labels["sub_agent_name"],
+			"unified_convo_id": msg.Labels["unified_convo_id"],
 		},
 		Payload: map[string]interface{}{
-			"text": dipper.MustGetMapDataStr(msg.Payload, "input"),
-			"type": agentpkg.SessionTypeInference,
+			"text":             dipper.MustGetMapDataStr(msg.Payload, "input"),
+			"type":             agentpkg.SessionTypeInference,
+			"convo_id":         fmt.Sprintf("%s-%s", msg.Labels["convo_id"], msg.Labels["sub_agent_name"]),
+			"unified_convo_id": msg.Labels["unified_convo_id"],
 		},
 	}
 

@@ -70,6 +70,19 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 					Subject: dipper.EventbusReturn,
 					Labels:  newLabels,
 				})
+			} else if agentSessionID := msg.Labels["agent_session_id"]; agentSessionID != "" {
+				eventbus := operator.getDriverRuntime(dipper.ChannelEventbus)
+				eventbus.SendMessage(&dipper.Message{
+					Channel: dipper.ChannelEventbus,
+					Subject: dipper.EventbusAgentContinue,
+					Labels: map[string]string{
+						"agent_session_id": agentSessionID,
+						"turn_id":          msg.Labels["turn_id"],
+						"tool_call_id":     msg.Labels["tool_call_id"],
+						"status":           "failure",
+						"reason":           fmt.Sprintf("%v", r),
+					},
+				})
 			}
 			panic(r)
 		}

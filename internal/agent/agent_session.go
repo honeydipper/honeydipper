@@ -489,6 +489,15 @@ func (s *AgentSession) nextToolCall() {
 		log.Infof("[agent] session [%s] dispatching tool call %d/%d: %s",
 			s.ID, s.CurrentCall+1, len(s.ToolCalls), c.FuncName)
 	}
+
+	unifiedConvoID := s.CurrentMsg.Labels["unified_convo_id"]
+	if unifiedConvoID == "" {
+		unifiedConvoID, _ = dipper.GetMapDataStr(s.CurrentMsg.Payload, "convo_id")
+	}
+	if unifiedConvoID == "" {
+		unifiedConvoID = s.ConvoID
+	}
+
 	switch {
 	case strings.HasPrefix(c.FuncName, "sys_"):
 		sysName := c.FuncName[len("sys_"):strings.LastIndex(c.FuncName, "__")]
@@ -501,6 +510,7 @@ func (s *AgentSession) nextToolCall() {
 				"agent_session_id": s.ID,
 				"turn_id":          strconv.Itoa(len(s.history)),
 				"tool_call_id":     strconv.Itoa(s.CurrentCall),
+				"unified_convo_id": unifiedConvoID, // for unified history access in workflows
 			},
 			Payload: map[string]interface{}{
 				"ctx": c.Params,
@@ -523,12 +533,19 @@ func (s *AgentSession) nextToolCall() {
 				"do": map[string]interface{}{
 					"call_workflow": wfName,
 					"context":       "_agent_tool_call",
+					"with": map[string]interface{}{
+						"agent_session_id": s.ID,
+						"turn_id":          strconv.Itoa(len(s.history)),
+						"convo_id":         s.ConvoID,
+						"unified_convo_id": unifiedConvoID, // for unified history access in workflows
+					},
 				},
 				"message": map[string]interface{}{
 					"labels": map[string]string{
 						"agent_session_id": s.ID,
 						"turn_id":          strconv.Itoa(len(s.history)),
 						"tool_call_id":     strconv.Itoa(s.CurrentCall),
+						"unified_convo_id": unifiedConvoID, // for unified history access in workflows
 					},
 				},
 			},
@@ -545,6 +562,8 @@ func (s *AgentSession) nextToolCall() {
 				"turn_id":          strconv.Itoa(len(s.history)),
 				"tool_call_id":     strconv.Itoa(s.CurrentCall),
 				"sub_agent_name":   subAgentName,
+				"convo_id":         s.ConvoID,
+				"unified_convo_id": unifiedConvoID, // for unified history access in sub-agents
 			},
 			Payload: map[string]interface{}{
 				"input": input,
