@@ -195,11 +195,11 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 	if len(f.Driver) == 0 {
 		childSystem, ok := operator.config.DataSet.Systems[f.Target.System]
 		if !ok {
-			dipper.Logger.Panicf("[operator] system not defined %s", f.Target.System)
+			panic(fmt.Errorf("[operator] system not defined %s", f.Target.System))
 		}
 		childFunction, ok := childSystem.Functions[f.Target.Function]
 		if !ok {
-			dipper.Logger.Panicf("[operator] function not defined %s.%s", f.Target.System, f.Target.Function)
+			panic(fmt.Errorf("[operator] function not defined %s.%s", f.Target.System, f.Target.Function))
 		}
 		driver, rawaction, params, sysData = collapseFunction(&childSystem, &childFunction)
 
@@ -214,7 +214,7 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 		driver = f.Driver
 		rawaction = f.RawAction
 		if len(f.Target.System) > 0 {
-			dipper.Logger.Panicf("[operator] function cannot have both driver and target %s.%s %s", f.Target.System, f.Target.Function, driver)
+			panic(fmt.Errorf("[operator] function cannot have both driver and target %s.%s %s", f.Target.System, f.Target.Function, driver))
 		}
 	}
 
@@ -225,7 +225,7 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 		}
 		err := mergo.Merge(&sysData, currentSysDataCopy, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
-			dipper.Logger.Panicf("[operator] unable to merge parameters %+v", err)
+			panic(fmt.Errorf("[operator] unable to merge parameters: %w", err))
 		}
 	}
 	if f.Parameters != nil {
@@ -235,7 +235,7 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 		}
 		err := mergo.Merge(&params, currentParamCopy, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
-			dipper.Logger.Panicf("[operator] unable to merge parameters %+v", err)
+			panic(fmt.Errorf("[operator] unable to merge parameters: %w", err))
 		}
 	}
 

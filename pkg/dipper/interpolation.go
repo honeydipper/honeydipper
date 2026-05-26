@@ -109,7 +109,7 @@ func InterpolateGoTemplate(mode string, title string, pattern string, data inter
 		buf := new(bytes.Buffer)
 		if err := parsed.Execute(buf, data); err != nil {
 			Logger.Warningf("interpolation pattern failed: %+v", pattern)
-			Logger.Panicf("failed to interpolate: %+v", err)
+			panic(fmt.Errorf("failed to interpolate: %w", err))
 		}
 
 		if useRet {

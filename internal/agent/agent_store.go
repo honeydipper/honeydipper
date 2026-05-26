@@ -85,7 +85,7 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	defer p.wg.Done()
 	resumeKey := msg.Labels["resume_key"]
 	defer dipper.SafeExitOnError("[agent] error in handleAgentStart", func(r interface{}) {
-		p.emitErrorResponse(msg, r.(error).Error())
+		p.emitErrorResponse(msg, fmt.Sprintf("%v", r))
 	})
 	p.Infof("[agent] StartInference agent=%s", msg.Labels["agent_name"])
 	s := &AgentSession{}
@@ -101,8 +101,9 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error in running inference for %s", resumeKey, func(r interface{}) {
 		if s.ErrorReason == "" {
-			s.ErrorReason = r.(error).Error()
+			s.ErrorReason = fmt.Sprintf("%v", r)
 		}
+		s.notifyParentFailure(s.ErrorReason)
 	})
 	s.run()
 }
@@ -118,7 +119,7 @@ func (p *PersistentAgentStore) ContinueInference(msg *dipper.Message) {
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error in ContinueInference", func(r interface{}) {
 		if s.ErrorReason == "" {
-			s.ErrorReason = r.(error).Error()
+			s.ErrorReason = fmt.Sprintf("%v", r)
 		}
 		s.notifyParentFailure(s.ErrorReason)
 	})
@@ -142,7 +143,7 @@ func (p *PersistentAgentStore) ReceiveInference(msg *dipper.Message) {
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error in process agent response", func(r interface{}) {
 		if s.ErrorReason == "" {
-			s.ErrorReason = r.(error).Error()
+			s.ErrorReason = fmt.Sprintf("%v", r)
 		}
 		s.notifyParentFailure(s.ErrorReason)
 	})
@@ -237,7 +238,7 @@ func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	p.wg.Add(1)
 	defer p.wg.Done()
 	defer dipper.SafeExitOnError("[agent] error in handleAgentPoll", func(r interface{}) {
-		p.emitErrorResponse(msg, r.(error).Error())
+		p.emitErrorResponse(msg, fmt.Sprintf("%v", r))
 	})
 	p.Infof("[agent] PollInference session=%s", msg.Labels["agent_session_id"])
 
