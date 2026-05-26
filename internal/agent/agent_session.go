@@ -89,6 +89,13 @@ func (s *AgentSession) persist(unlocking bool) {
 		"ttl":   s.TTL,
 	}))
 
+	// TRACK CONVERSATION
+	err := trackSessionInConversation(s.store, s.ConvoID, s.ID)
+	if err != nil {
+		s.log().Errorf("[agent] failed to track session %s in convo %s: %v", s.ID, s.ConvoID, err)
+	}
+
+
 	if unlocking {
 		s.unlock()
 	}
