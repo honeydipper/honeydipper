@@ -74,6 +74,7 @@ func main() {
 	driver.RPCHandlers["lrange"] = lrange
 	driver.RPCHandlers["blpop"] = blpop
 	driver.RPCHandlers["rpush"] = rpush
+	driver.RPCHandlers["ltrim"] = ltrim
 	driver.RPCHandlers["del"] = del
 	driver.RPCHandlers["exists"] = exists
 	driver.RPCHandlers["scan"] = scan
@@ -348,6 +349,22 @@ func blpop(msg *dipper.Message) {
 		Payload: []byte(ret),
 		IsRaw:   true,
 	}
+}
+
+func ltrim(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	start := dipper.MustGetMapDataInt(msg.Payload, "start")
+	stop := dipper.MustGetMapDataInt(msg.Payload, "stop")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+	if err := client.LTrim(ctx, key, int64(start), int64(stop)).Err(); err != nil && !errors.Is(err, redis.Nil) {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+	msg.Reply <- dipper.Message{}
 }
 
 func del(msg *dipper.Message) {

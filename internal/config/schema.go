@@ -170,6 +170,7 @@ type Agent struct {
 	InferencePrompt    string `json:"inference_prompt" mapstructure:"inference_prompt"`
 	ShouldEmitThoughts bool   `json:"should_emit_thoughts" mapstructure:"should_emit_thoughts"`
 	ShouldStream       bool   `json:"should_stream" mapstructure:"should_stream"`
+	MaxHistoryLen      int    `json:"max_history_len" mapstructure:"max_history_len"`
 	Tools              []AgentToolDef
 	ModelData          map[string]interface{} `json:"model_data" mapstructure:"model_data"`
 	Description        string

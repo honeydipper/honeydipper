@@ -175,6 +175,7 @@ func (s *AgentSession) loadConvoHistory() {
 }
 
 // appendConvoHistory appends a message to the in-memory history and the cache.
+// If the agent has MaxHistoryLen set, older entries beyond that limit are trimmed.
 func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
 	s.history = append(s.history, msg)
 
@@ -183,6 +184,15 @@ func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
 			"key":   ConvoHistoryKeyPrefix + s.ConvoID,
 			"value": string(dipper.SerializeContent(msg)),
 		}))
+
+		if s.Agent != nil && s.Agent.MaxHistoryLen > 0 && len(s.history) > s.Agent.MaxHistoryLen {
+			s.history = s.history[len(s.history)-s.Agent.MaxHistoryLen:]
+			dipper.Must(s.store.Call("cache", "ltrim", map[string]interface{}{
+				"key":   ConvoHistoryKeyPrefix + s.ConvoID,
+				"start": -s.Agent.MaxHistoryLen,
+				"stop":  -1,
+			}))
+		}
 	}
 }
 
