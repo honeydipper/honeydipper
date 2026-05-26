@@ -208,11 +208,11 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 	if len(f.Driver) == 0 {
 		childSystem, ok := operator.config.DataSet.Systems[f.Target.System]
 		if !ok {
-			panic(fmt.Errorf("[operator] system not defined %s", f.Target.System))
+			panic(fmt.Errorf("%w: system not defined %s", ErrOperatorError, f.Target.System))
 		}
 		childFunction, ok := childSystem.Functions[f.Target.Function]
 		if !ok {
-			panic(fmt.Errorf("[operator] function not defined %s.%s", f.Target.System, f.Target.Function))
+			panic(fmt.Errorf("%w: function not defined %s.%s", ErrOperatorError, f.Target.System, f.Target.Function))
 		}
 		driver, rawaction, params, sysData = collapseFunction(&childSystem, &childFunction)
 
@@ -227,7 +227,7 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 		driver = f.Driver
 		rawaction = f.RawAction
 		if len(f.Target.System) > 0 {
-			panic(fmt.Errorf("[operator] function cannot have both driver and target %s.%s %s", f.Target.System, f.Target.Function, driver))
+			panic(fmt.Errorf("%w: function cannot have both driver and target %s.%s %s", ErrOperatorError, f.Target.System, f.Target.Function, driver))
 		}
 	}
 
