@@ -276,7 +276,18 @@ func rpush(msg *dipper.Message) {
 	var ttl time.Duration
 	ttlData, _ := dipper.GetMapData(msg.Payload, "ttl")
 	if ttlData != nil {
-		ttl = time.Duration(ttlData.(float64))
+		switch t := ttlData.(type) {
+		case int64:
+			ttl = time.Second * time.Duration(t)
+		case int:
+			ttl = time.Second * time.Duration(t)
+		case float64:
+			ttl = time.Duration(t)
+		case string:
+			ttl = dipper.Must(time.ParseDuration(t)).(time.Duration)
+		default:
+			log.Panicf("[%s] redis cache unknown TTL type %+v", driver.Service, t)
+		}
 	}
 
 	valStr, ok := val.(string)

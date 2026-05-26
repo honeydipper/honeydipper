@@ -36,6 +36,7 @@ const (
 type AgentSession struct {
 	ID               string
 	ConvoID          string
+	UnifiedConvoID   string
 	Agent            *config.Agent
 	history          []AgentMessage
 	CurrentMsg       *dipper.Message
@@ -78,6 +79,8 @@ func (s *AgentSession) unlock() {
 }
 
 // persist serialises the session and writes it to the cache.
+// When unlocking is true the session lock is released and, if the session
+// has reached a terminal state, the shared ConvoState is updated too.
 func (s *AgentSession) persist(unlocking bool) {
 	if log := s.log(); log != nil {
 		log.Debugf("[agent] session [%s] persisting to cache", s.ID)
@@ -91,7 +94,54 @@ func (s *AgentSession) persist(unlocking bool) {
 
 	if unlocking {
 		s.unlock()
+		s.syncConvoStateStatus()
 	}
+}
+
+// syncConvoStateStatus updates the session's status in the shared ConvoState(s) when
+// the session has reached a terminal state (complete or failed).
+// It is called after the session lock has been released to avoid nested locking.
+func (s *AgentSession) syncConvoStateStatus() {
+	var status string
+	switch {
+	case s.ErrorReason != "":
+		status = ConvoSessionStatusFailed
+	case len(s.history) > 0 && s.history[len(s.history)-1].IsComplete:
+		status = ConvoSessionStatusComplete
+	default:
+		return // not yet terminal
+	}
+
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.updateSessionStatus(s.ID, status)
+	})
+	if s.UnifiedConvoID != "" && s.UnifiedConvoID != s.ConvoID {
+		lockedConvoStateUpdate(s.UnifiedConvoID, s.store, func(cs *ConvoState) {
+			cs.updateSessionStatus(s.ID, status)
+		})
+	}
+}
+
+// checkCancelled returns true when the conversation's ConvoState (or the shared
+// unified ConvoState) has been marked cancelled.
+// It is a non-locking read that accepts eventual consistency.
+func (s *AgentSession) checkCancelled() bool {
+	if s.ConvoID == "" {
+		return false
+	}
+	cs := &ConvoState{}
+	cs.load(s.ConvoID, s.store)
+	if cs.Cancelled {
+		return true
+	}
+	if s.UnifiedConvoID != "" && s.UnifiedConvoID != s.ConvoID {
+		ucs := &ConvoState{}
+		ucs.load(s.UnifiedConvoID, s.store)
+
+		return ucs.Cancelled
+	}
+
+	return false
 }
 
 // load reads and deserialises a previously persisted session from the cache.
@@ -156,6 +206,41 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 	} else {
 		s.ConvoID = dipper.NewUUID()
 	}
+
+	// Capture the unified conversation ID; fall back to the session's own convo ID.
+	s.UnifiedConvoID = msg.Labels["unified_convo_id"]
+	if s.UnifiedConvoID == "" {
+		if u, ok := dipper.GetMapDataStr(msg.Payload, "unified_convo_id"); ok && u != "" {
+			s.UnifiedConvoID = u
+		}
+	}
+	if s.UnifiedConvoID == "" {
+		s.UnifiedConvoID = s.ConvoID
+	}
+
+	// Register this session in the shared conversation state so that it can be
+	// queried for display and subject to controls such as cancellation.
+	agentName := msg.Labels["agent_name"]
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		if cs.TTL == "" {
+			cs.TTL = ConvoStreamTTL
+		}
+		cs.UnifiedConvoID = s.UnifiedConvoID
+		cs.registerSession(s.ID, agentName, s.Type)
+	})
+	// Also register in the unified convo state when it spans multiple convo IDs
+	// (i.e. sub-agent sessions whose convo_id differs from unified_convo_id).
+	if s.UnifiedConvoID != s.ConvoID {
+		lockedConvoStateUpdate(s.UnifiedConvoID, s.store, func(cs *ConvoState) {
+			if cs.TTL == "" {
+				cs.TTL = ConvoStreamTTL
+			}
+			if cs.UnifiedConvoID == "" {
+				cs.UnifiedConvoID = s.UnifiedConvoID
+			}
+			cs.registerSession(s.ID, agentName, s.Type)
+		})
+	}
 }
 
 // loadConvoHistory fetches the multi-turn conversation history from the cache.
@@ -180,9 +265,11 @@ func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
 	s.history = append(s.history, msg)
 
 	if s.ConvoID != "" {
+		convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
 		dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
 			"key":   ConvoHistoryKeyPrefix + s.ConvoID,
 			"value": string(dipper.SerializeContent(msg)),
+			"ttl":   float64(convoTTL), // nanoseconds; compatible with old and new rpush handler
 		}))
 
 		if s.Agent != nil && s.Agent.MaxHistoryLen > 0 && len(s.history) > s.Agent.MaxHistoryLen {
@@ -430,6 +517,13 @@ func (s *AgentSession) notifyParent(agentMsg AgentMessage) {
 
 // processAgentResponse decodes the model's response message and hands it to processAgentMessage.
 func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
+	// Honour a cancellation that arrived while the model was running.
+	if s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+		s.notifyParentFailure(s.ErrorReason)
+
+		return
+	}
 	m := dipper.MustGetMapData(msg.Payload, "message").(map[string]interface{})
 	var agentMsg AgentMessage
 	dipper.Must(mapstructure.Decode(m, &agentMsg))
@@ -697,6 +791,14 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 
 			time.Sleep(time.Second)
 			s.setup(msg, s.store, true)
+
+			// Check whether the conversation was cancelled while waiting.
+			if s.checkCancelled() {
+				s.ErrorReason = "conversation cancelled"
+
+				break
+			}
+
 			noNewContent = s.LastPoll == len(s.history) && len(s.PendingContent) <= s.PendingOffset
 			rateLimited = !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
 		}

@@ -53,6 +53,7 @@ func (m *mockAgentStore) ContinueInference(_ *dipper.Message) { m.record("contin
 func (m *mockAgentStore) ReceiveInference(_ *dipper.Message)  { m.record("receive") }
 func (m *mockAgentStore) PollInference(_ *dipper.Message)     { m.record("poll") }
 func (m *mockAgentStore) StartAgentCall(_ *dipper.Message)    { m.record("agent_call") }
+func (m *mockAgentStore) CancelConvo(_ *dipper.Message)       { m.record("cancel_convo") }
 func (m *mockAgentStore) Stop()                               {}
 func (m *mockAgentStore) Wait()                               {}
 

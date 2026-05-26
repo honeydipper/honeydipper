@@ -25,6 +25,7 @@ const (
 	SubjectAgentbusRPCInterrupted = "rpc_interrupted"
 	SubjectEventbusAgentPoll      = "agent_poll"
 	SubjectEventbusAgentCall      = "agent_call"
+	SubjectEventbusConvoCancel    = "convo_cancel"
 )
 
 var (
@@ -53,6 +54,7 @@ func StartAgent(cfg *config.Config) {
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentRecover, handleAgentRecover)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentPoll, handleAgentPoll)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentCall, handleAgentCall)
+	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusConvoCancel, handleConvoCancel)
 
 	// Build the store before start() so the package-level var is set
 	// before any goroutine spawned by a responder can reference it.
@@ -208,4 +210,14 @@ func handleAgentPoll(_ *driver.Runtime, msg *dipper.Message) {
 
 	msg = dipper.DeserializePayload(msg)
 	go agentStore.PollInference(msg)
+}
+
+// handleConvoCancel receives an eventbus:convo_cancel message and marks the
+// conversation as cancelled so that all active sessions abort on their next
+// poll cycle.
+func handleConvoCancel(_ *driver.Runtime, msg *dipper.Message) {
+	defer dipper.SafeExitOnError("[agent] error in handleConvoCancel")
+	<-agentSvc.Ready()
+	msg = dipper.DeserializePayload(msg)
+	go agentStore.CancelConvo(msg)
 }

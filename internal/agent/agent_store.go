@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
@@ -18,6 +19,7 @@ type AgentStore interface {
 	ContinueInference(msg *dipper.Message)
 	ReceiveInference(msg *dipper.Message)
 	StartAgentCall(msg *dipper.Message)
+	CancelConvo(msg *dipper.Message)
 
 	GetAgent(name string) *config.Agent
 	GetSystem(name string) *config.System
@@ -249,4 +251,49 @@ func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	s.setup(msg, p, true)
 	defer s.persist(true)
 	s.processAgentPoll(msg)
+}
+
+// CancelConvo marks the conversation identified by convo_id or unified_convo_id as cancelled.
+// Active sessions belonging to the conversation will detect this flag on their
+// next poll cycle and abort with a "conversation cancelled" error.
+func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in CancelConvo")
+
+	convoID := msg.Labels["convo_id"]
+	if convoID == "" {
+		convoID, _ = dipper.GetMapDataStr(msg.Payload, "convo_id")
+	}
+	unifiedConvoID := msg.Labels["unified_convo_id"]
+	if unifiedConvoID == "" {
+		unifiedConvoID, _ = dipper.GetMapDataStr(msg.Payload, "unified_convo_id")
+	}
+
+	if convoID == "" && unifiedConvoID == "" {
+		p.Warningf("[agent] CancelConvo called without convo_id or unified_convo_id")
+
+		return
+	}
+
+	cancelOne := func(id string) {
+		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
+			cs.Cancelled = true
+			for i := range cs.Sessions {
+				if cs.Sessions[i].Status == ConvoSessionStatusActive {
+					cs.Sessions[i].Status = ConvoSessionStatusCancelled
+					cs.Sessions[i].UpdatedAt = time.Now()
+				}
+			}
+		})
+	}
+
+	if convoID != "" {
+		p.Infof("[agent] CancelConvo convo=%s", convoID)
+		cancelOne(convoID)
+	}
+	if unifiedConvoID != "" && unifiedConvoID != convoID {
+		p.Infof("[agent] CancelConvo unified_convo=%s", unifiedConvoID)
+		cancelOne(unifiedConvoID)
+	}
 }

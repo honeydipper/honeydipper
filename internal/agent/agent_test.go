@@ -155,6 +155,7 @@ func (m *mockStore) ContinueInference(msg *dipper.Message) {}
 func (m *mockStore) ReceiveInference(msg *dipper.Message)  {}
 func (m *mockStore) PollInference(msg *dipper.Message)     {}
 func (m *mockStore) StartAgentCall(msg *dipper.Message)    {}
+func (m *mockStore) CancelConvo(msg *dipper.Message)       {}
 
 func (m *mockStore) GetAgent(name string) *config.Agent {
 	a := m.cfg.DataSet.Agents[name]
@@ -911,6 +912,7 @@ func TestNextToolCall_SystemDispatch(t *testing.T) {
 		Agent:       &config.Agent{Driver: "openai"},
 		ID:          "tc-session",
 		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
 		ToolCalls: []AgentToolCall{
 			{FuncName: "sys_mysys__doWork", Params: map[string]interface{}{"param1": "v1"}},
 		},
@@ -933,6 +935,7 @@ func TestNextToolCall_WorkflowDispatch(t *testing.T) {
 		Agent:       &config.Agent{Driver: "openai"},
 		ID:          "tc-wf-session",
 		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
 		ToolCalls: []AgentToolCall{
 			{FuncName: "wf__mywf", Params: map[string]interface{}{"wfparam": "v"}},
 		},
@@ -976,6 +979,7 @@ func TestProcessToolResult_WorkflowResult_Advances(t *testing.T) {
 		Agent:       &config.Agent{Driver: "openai"},
 		ID:          "tr-session",
 		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
 		ToolCalls: []AgentToolCall{
 			{FuncName: "wf__mywf"},
 			{FuncName: "wf__otherwf"},
@@ -1029,6 +1033,7 @@ func TestProcessToolResult_CommandResult_Advances(t *testing.T) {
 		Agent:       &config.Agent{Driver: "openai"},
 		ID:          "cmd-session",
 		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
 		ToolCalls:   toolCalls,
 		history: []AgentMessage{
 			{Role: RoleAgent, ToolCalls: toolCalls},
@@ -1349,6 +1354,7 @@ func TestPersistentAgentStore_ContinueInference_ProcessResult(t *testing.T) {
 		CurrentCall: 0,
 		ToolCalls:   toolCalls,
 		ToolResults: []map[string]interface{}{},
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
 	}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
 	helper.resp["cache:load:"+AgentKeyPrefix+"cont-session"] = mustMarshalJSON(existing)
