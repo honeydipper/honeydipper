@@ -45,9 +45,57 @@ const (
 	InfiniteDuration time.Duration = -1
 )
 
+// agentDefs returns API route definitions served by the agent service.
+func agentDefs() map[string]map[string]Def {
+	return map[string]map[string]Def{
+		"convos": {
+			http.MethodGet: {Object: "convo", Name: "convoList", ReqType: TypeFirst, Service: "agent"},
+		},
+		"convos/:convoID/history": {
+			http.MethodGet: {Object: "convo", Name: "convoHistory", ReqType: TypeFirst, Service: "agent"},
+		},
+	}
+}
+
+// ghEventDefs returns API route definitions for GitHub-scoped event operations.
+func ghEventDefs() map[string]map[string]Def {
+	return map[string]map[string]Def{
+		"gh/events/*gh_slug": {
+			http.MethodGet: {
+				Object: "gh_event", Name: "ghEventList", ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github", EntitlementKey: "gh_slug",
+			},
+		},
+		"gh/events/:sessionID/rerun/*gh_slug": {
+			http.MethodPost: {
+				Object: "gh_event", Name: "ghEventRerun", ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github", EntitlementKey: "gh_slug",
+			},
+		},
+		"gh/events/:sessionID/pause/*gh_slug": {
+			http.MethodPost: {
+				Object: "gh_event", Name: "ghEventPause", ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github", EntitlementKey: "gh_slug",
+			},
+		},
+		"gh/events/:sessionID/resume/*gh_slug": {
+			http.MethodPost: {
+				Object: "gh_event", Name: "ghEventResume", ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github", EntitlementKey: "gh_slug",
+			},
+		},
+		"gh/events/:sessionID/interact/*gh_slug": {
+			http.MethodPost: {
+				Object: "gh_event", Name: "ghEventInteract", AttachPrincipalUser: true, ReqType: TypeFirst, Service: "engine",
+				EntitlementProvider: "auth-github", EntitlementKey: "gh_slug",
+			},
+		},
+	}
+}
+
 // GetDefs return definition for all known API calls.
 func GetDefs() map[string]map[string]Def {
-	return map[string]map[string]Def{
+	defs := map[string]map[string]Def{
 		"auth/saml/login": {
 			http.MethodGet: {
 				Object: "everything", Name: "samlLogin", ReqType: TypeLocal,
@@ -101,41 +149,6 @@ func GetDefs() map[string]map[string]Def {
 			http.MethodGet:  {Object: "event", Name: "eventList", ReqType: TypeFirst, Service: "engine"},
 			http.MethodPost: {Object: "event", Name: "eventAdd", ReqType: TypeFirst, Service: "receiver"},
 		},
-		"gh/events/*gh_slug": {
-			http.MethodGet: {
-				Object: "gh_event", Name: "ghEventList", ReqType: TypeFirst, Service: "engine",
-				EntitlementProvider: "auth-github",
-				EntitlementKey:      "gh_slug",
-			},
-		},
-		"gh/events/:sessionID/rerun/*gh_slug": {
-			http.MethodPost: {
-				Object: "gh_event", Name: "ghEventRerun", ReqType: TypeFirst, Service: "engine",
-				EntitlementProvider: "auth-github",
-				EntitlementKey:      "gh_slug",
-			},
-		},
-		"gh/events/:sessionID/pause/*gh_slug": {
-			http.MethodPost: {
-				Object: "gh_event", Name: "ghEventPause", ReqType: TypeFirst, Service: "engine",
-				EntitlementProvider: "auth-github",
-				EntitlementKey:      "gh_slug",
-			},
-		},
-		"gh/events/:sessionID/resume/*gh_slug": {
-			http.MethodPost: {
-				Object: "gh_event", Name: "ghEventResume", ReqType: TypeFirst, Service: "engine",
-				EntitlementProvider: "auth-github",
-				EntitlementKey:      "gh_slug",
-			},
-		},
-		"gh/events/:sessionID/interact/*gh_slug": {
-			http.MethodPost: {
-				Object: "gh_event", Name: "ghEventInteract", AttachPrincipalUser: true, ReqType: TypeFirst, Service: "engine",
-				EntitlementProvider: "auth-github",
-				EntitlementKey:      "gh_slug",
-			},
-		},
 		"pods/:pod_id/log/chunk": {
 			http.MethodGet: {
 				Object: "pod_log", Name: "podLogChunk", ReqType: TypeFirst, Service: "operator",
@@ -166,6 +179,14 @@ func GetDefs() map[string]map[string]Def {
 			},
 		},
 	}
+	for path, methods := range ghEventDefs() {
+		defs[path] = methods
+	}
+	for path, methods := range agentDefs() {
+		defs[path] = methods
+	}
+
+	return defs
 }
 
 // GetDefsByName return definition for all known API calls.

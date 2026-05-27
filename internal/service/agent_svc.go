@@ -59,6 +59,7 @@ func StartAgent(cfg *config.Config) {
 	// Build the store before start() so the package-level var is set
 	// before any goroutine spawned by a responder can reference it.
 	agentStore = agent.NewAgentStore(agentSvc)
+	setupAgentAPIs()
 	agentSvc.Drain = func() {
 		agentStore.Stop()
 		agentStore.Wait()
