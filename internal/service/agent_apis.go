@@ -7,6 +7,7 @@
 package service
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -81,10 +82,17 @@ func handleConvoCancelAPI(resp *api.Response) {
 func handleConvoTurnAPI(resp *api.Response) {
 	resp.Request = dipper.DeserializePayload(resp.Request)
 	convoID := dipper.MustGetMapDataStr(resp.Request.Payload, "convoID")
-	text := dipper.MustGetMapDataStr(resp.Request.Payload, "text")
-	user, _ := dipper.GetMapDataStr(resp.Request.Payload, "user")
 
-	agentStore.StartTurn(convoID, text, user)
+	// POST body arrives as a JSON string under payload["body"].
+	var body struct {
+		Text string `json:"text"`
+		User string `json:"user"`
+	}
+	if bodyStr, ok := dipper.GetMapDataStr(resp.Request.Payload, "body"); ok && bodyStr != "" {
+		_ = json.Unmarshal([]byte(bodyStr), &body)
+	}
+
+	agentStore.StartTurn(convoID, body.Text, body.User)
 
 	resp.Return([]byte(`{"ok":true}`))
 }
