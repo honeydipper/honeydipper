@@ -25,6 +25,9 @@ type AgentStore interface {
 	// StartTurn fires a new chat turn on an existing conversation without a
 	// return path back to a workflow. It is used by the UI-initiated turn API.
 	StartTurn(convoID, text, user string)
+	// StartNewConvo starts a brand-new conversation for the named agent and
+	// returns the generated convo_id synchronously. The session runs asynchronously.
+	StartNewConvo(agentName, text, user string) string
 
 	GetAgent(name string) *config.Agent
 	GetSystem(name string) *config.System
@@ -213,28 +216,51 @@ func (p *PersistentAgentStore) StartTurn(convoID, text, user string) {
 			return
 		}
 
-		msg := &dipper.Message{
-			Labels: map[string]string{
-				"agent_name": agentName,
-			},
-			Payload: map[string]interface{}{
-				"text":     text,
-				"user":     user,
-				"convo_id": convoID,
-			},
-		}
-
 		p.Infof("[agent] StartTurn convo=%s agent=%s", convoID, agentName)
-		s := &AgentSession{}
-		s.setup(msg, p, true)
-		defer s.persist(true)
-		defer dipper.SafeExitOnError("[agent] error running StartTurn for convo "+convoID, func(r interface{}) {
-			if s.ErrorReason == "" {
-				s.ErrorReason = fmt.Sprintf("%v", r)
-			}
-		})
-		s.run()
+		p.runTurn(agentName, convoID, text, user)
 	}()
+}
+
+// StartNewConvo starts a brand-new conversation for the named agent and returns
+// the generated convo_id synchronously. The session runs asynchronously.
+func (p *PersistentAgentStore) StartNewConvo(agentName, text, user string) string {
+	convoID := dipper.NewUUID()
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		defer dipper.SafeExitOnError("[agent] error in StartNewConvo")
+
+		p.Infof("[agent] StartNewConvo convo=%s agent=%s", convoID, agentName)
+		p.runTurn(agentName, convoID, text, user)
+	}()
+
+	return convoID
+}
+
+// runTurn creates and runs a single chat-turn session for the given agent and
+// conversation. It must be called from within a goroutine that has already
+// incremented p.wg; it does NOT add/done the WaitGroup itself.
+func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user string) {
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": agentName,
+		},
+		Payload: map[string]interface{}{
+			"text":     text,
+			"user":     user,
+			"convo_id": convoID,
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, p, true)
+	defer s.persist(true)
+	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = fmt.Sprintf("%v", r)
+		}
+	})
+	s.run()
 }
 
 // NewAgentStore creates an AgentStore backed by the provided StoreHelper.

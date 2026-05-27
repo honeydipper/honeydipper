@@ -49,7 +49,11 @@ const (
 func agentDefs() map[string]map[string]Def {
 	return map[string]map[string]Def{
 		"convos": {
-			http.MethodGet: {Object: "convo", Name: "convoList", ReqType: TypeFirst, Service: "agent"},
+			http.MethodGet:  {Object: "convo", Name: "convoList", ReqType: TypeFirst, Service: "agent"},
+			http.MethodPost: {Object: "convo", Name: "convoNew", AttachPrincipalUser: true, ReqType: TypeFirst, Service: "agent"},
+		},
+		"agents": {
+			http.MethodGet: {Object: "agent", Name: "agentList", ReqType: TypeFirst, Service: "agent"},
 		},
 		"convos/:convoID/history": {
 			http.MethodGet: {Object: "convo", Name: "convoHistory", ReqType: TypeFirst, Service: "agent"},
@@ -58,7 +62,7 @@ func agentDefs() map[string]map[string]Def {
 			http.MethodPost: {Object: "convo", Name: "convoCancel", ReqType: TypeFirst, Service: "agent"},
 		},
 		"convos/:convoID/turn": {
-			http.MethodPost: {Object: "convo", Name: "convoTurn", ReqType: TypeFirst, Service: "agent"},
+			http.MethodPost: {Object: "convo", Name: "convoTurn", AttachPrincipalUser: true, ReqType: TypeFirst, Service: "agent"},
 		},
 	}
 }
