@@ -166,3 +166,128 @@ data:
 	assert.Equal(t, "bar", MustGetMapDataStr(data, "data.item2"), "data.item2 should container decrypted data")
 	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
 }
+
+func TestDecryptAllWithPattern(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: "ENC[noexist,YWFiYmNjZGQ=]:Bearer %s"
+`
+
+	c := &RPCCallerBase{}
+
+	expect := []MessageReceiver{
+		&NullReceiver{
+			SendMessageFunc: func(msg *Message) {
+				assert.Equalf(t,
+					Message{
+						Channel: "rpc",
+						Subject: "call",
+						IsRaw:   true,
+						Payload: []byte("aabbccdd"),
+						Labels: map[string]string{
+							"caller":  "-",
+							"feature": "driver:noexist",
+							"method":  "decrypt",
+							"rpcID":   "0",
+						},
+					},
+					*msg,
+					"should make call to decrypt item2",
+				)
+				c.HandleReturn(&Message{
+					Channel: "rpc",
+					Subject: "return",
+					IsRaw:   true,
+					Size:    18,
+					Payload: []byte("decrypted aabbccdd"),
+					Labels: map[string]string{
+						"caller":  "-",
+						"feature": "driver:noexist",
+						"method":  "decrypt",
+						"rpcID":   "0",
+						"status":  "success",
+					},
+				})
+			},
+		},
+	}
+
+	data := wrapDecryptAll(t, doc, expect, c)
+	assert.Equal(t, "Bearer decrypted aabbccdd", MustGetMapDataStr(data, "data.item2"), "data.item2 should have pattern applied")
+	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
+}
+
+func TestDecryptAllWithLookUpAndPattern(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: "LOOKUP[kvstore,foo]:%s@domain.com"
+`
+
+	c := &RPCCallerBase{}
+
+	expect := []MessageReceiver{
+		&NullReceiver{
+			SendMessageFunc: func(msg *Message) {
+				assert.Equalf(t,
+					Message{
+						Channel: "rpc",
+						Subject: "call",
+						IsRaw:   true,
+						Payload: []byte("foo"),
+						Labels: map[string]string{
+							"caller":  "-",
+							"feature": "driver:kvstore",
+							"method":  "lookup",
+							"rpcID":   "0",
+						},
+					},
+					*msg,
+					"should make call to lookup for item2",
+				)
+				c.HandleReturn(&Message{
+					Channel: "rpc",
+					Subject: "return",
+					IsRaw:   true,
+					Size:    3,
+					Payload: []byte("user"),
+					Labels: map[string]string{
+						"caller":  "-",
+						"feature": "driver:kvstore",
+						"method":  "lookup",
+						"rpcID":   "0",
+						"status":  "success",
+					},
+				})
+			},
+		},
+	}
+
+	data := wrapDecryptAll(t, doc, expect, c)
+	assert.Equal(t, "user@domain.com", MustGetMapDataStr(data, "data.item2"), "data.item2 should have pattern applied")
+	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
+}
+
+func TestDecryptAllWithDeferredAndPattern(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item3:
+    item4: "ENC[deferred,driver1,YWFiYmNjZGQ=]:Bearer %s"
+`
+
+	c := &RPCCallerBase{}
+
+	expect := []MessageReceiver{
+		&NullReceiver{
+			SendMessageFunc: func(msg *Message) {
+				assert.Fail(t, "should not make calls for delayed decryption.")
+			},
+		},
+	}
+
+	data := wrapDecryptAll(t, doc, expect, c)
+	assert.Equal(t, "ENC[driver1,YWFiYmNjZGQ=]:Bearer %s", MustGetMapDataStr(data, "data.item3.item4"), "item4 should be stripped off one deferred flag and preserve pattern")
+	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
+}
