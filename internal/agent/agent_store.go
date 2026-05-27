@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,7 @@ type AgentStore interface {
 	ContinueInference(msg *dipper.Message)
 	ReceiveInference(msg *dipper.Message)
 	StartAgentCall(msg *dipper.Message)
+	StartMCPCall(msg *dipper.Message)
 	CancelConvo(msg *dipper.Message)
 
 	GetAgent(name string) *config.Agent
@@ -236,6 +238,69 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 
 	defer s.persist(false)
 	s.run()
+}
+
+// StartMCPCall handles an eventbus:mcp_call dispatched by an agent session's tool call.
+// It forwards the call synchronously to the MCP driver via RPC and emits the result as
+// an eventbus:agent_continue message back to the originating session.
+func (p *PersistentAgentStore) StartMCPCall(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in StartMCPCall", func(r interface{}) {
+		p.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusAgentContinue,
+			Labels: map[string]string{
+				"agent_session_id": msg.Labels["agent_session_id"],
+				"turn_id":          msg.Labels["turn_id"],
+				"tool_call_id":     msg.Labels["tool_call_id"],
+				"status":           "failure",
+				"reason":           fmt.Sprintf("%v", r),
+			},
+		})
+	})
+
+	msg = dipper.DeserializePayload(msg)
+	serverName := dipper.MustGetMapDataStr(msg.Payload, "server")
+	toolName := dipper.MustGetMapDataStr(msg.Payload, "tool")
+	args, _ := dipper.GetMapData(msg.Payload, "args")
+
+	p.Infof("[agent] StartMCPCall server=%s tool=%s session=%s", serverName, toolName, msg.Labels["agent_session_id"])
+
+	result, callErr := p.Call("driver:mcp", "call_tool", map[string]interface{}{
+		"server": serverName,
+		"tool":   toolName,
+		"args":   args,
+	})
+
+	status := "success"
+	reason := ""
+	var output interface{}
+
+	if callErr != nil {
+		status = "failure"
+		reason = callErr.Error()
+	} else {
+		var resultMap map[string]interface{}
+		if jsonErr := json.Unmarshal(result, &resultMap); jsonErr == nil {
+			output = resultMap["output"]
+		}
+	}
+
+	p.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: dipper.EventbusAgentContinue,
+		Labels: map[string]string{
+			"agent_session_id": msg.Labels["agent_session_id"],
+			"turn_id":          msg.Labels["turn_id"],
+			"tool_call_id":     msg.Labels["tool_call_id"],
+			"status":           status,
+			"reason":           reason,
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{"output": output},
+		},
+	})
 }
 
 // PollInference handles an incoming poll request for an inference session.

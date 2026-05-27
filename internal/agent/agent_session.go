@@ -354,6 +354,8 @@ func (s *AgentSession) BuildTools() map[string]AgentTool {
 			s.addWorkflowTool(tools, toolDef)
 		case "agent":
 			s.addAgentTool(tools, toolDef)
+		case "mcp":
+			s.addMCPTool(tools, toolDef)
 		}
 	}
 
@@ -473,6 +475,81 @@ func (s *AgentSession) addAgentTool(tools map[string]AgentTool, toolDef config.A
 				"description": "The input text to send to the agent",
 			},
 		},
+	}
+}
+
+// addMCPTool registers all tools exposed by a named remote MCP server as callable tools.
+// It calls the MCP driver's list_tools RPC synchronously and creates one AgentTool per
+// remote tool, named mcp__<serverName>__<toolName>.
+func (s *AgentSession) addMCPTool(tools map[string]AgentTool, toolDef config.AgentToolDef) {
+	prefix := "mcp__" + toolDef.Name + "__"
+
+	raw, err := s.store.Call("driver:mcp", "list_tools", map[string]interface{}{
+		"server": toolDef.Name,
+	})
+	if err != nil {
+		if log := s.log(); log != nil {
+			log.Errorf("[agent] session [%s] failed to list tools for MCP server %q: %v",
+				s.ID, toolDef.Name, err)
+		}
+
+		return
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		if log := s.log(); log != nil {
+			log.Errorf("[agent] session [%s] failed to decode list_tools response for %q: %v",
+				s.ID, toolDef.Name, err)
+		}
+
+		return
+	}
+
+	toolList, _ := payload["tools"].([]interface{})
+	for _, item := range toolList {
+		def, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		name, _ := def["name"].(string)
+		desc, _ := def["description"].(string)
+		if name == "" {
+			continue
+		}
+
+		fname := prefix + name
+		if _, exists := tools[fname]; exists {
+			continue
+		}
+
+		params := map[string]interface{}{}
+		schema, _ := def["input_schema"].(map[string]interface{})
+		props, _ := schema["properties"].(map[string]interface{})
+		for pname, pval := range props {
+			prop, ok := pval.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			ptype, _ := prop["type"].(string)
+			if ptype == "" {
+				ptype = "string"
+			}
+			pdesc, _ := prop["description"].(string)
+			params[pname] = map[string]interface{}{
+				"name":        pname,
+				"type":        ptype,
+				"description": pdesc,
+			}
+		}
+
+		tools[fname] = AgentTool{
+			Name:        fname,
+			Description: desc,
+			Params:      params,
+		}
 	}
 }
 
@@ -673,6 +750,33 @@ func (s *AgentSession) nextToolCall() {
 				"input": input,
 			},
 		})
+	case strings.HasPrefix(c.FuncName, "mcp__"):
+		// Strip the "mcp__" prefix then split on the first "__" to get server and tool.
+		rest := c.FuncName[len("mcp__"):]
+		sep := strings.Index(rest, "__")
+		var mcpServer, mcpTool string
+		if sep >= 0 {
+			mcpServer = rest[:sep]
+			mcpTool = rest[sep+2:]
+		} else {
+			mcpServer = rest
+		}
+
+		s.store.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: "mcp_call",
+			Labels: map[string]string{
+				"agent_session_id": s.ID,
+				"turn_id":          strconv.Itoa(len(s.history)),
+				"tool_call_id":     strconv.Itoa(s.CurrentCall),
+				"unified_convo_id": unifiedConvoID,
+			},
+			Payload: map[string]interface{}{
+				"server": mcpServer,
+				"tool":   mcpTool,
+				"args":   c.Params,
+			},
+		})
 	}
 }
 
@@ -724,6 +828,8 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
 
 	case strings.HasPrefix(c.FuncName, "ag__"):
+		data, _ = dipper.GetMapData(msg.Payload, "data.output")
+	case strings.HasPrefix(c.FuncName, "mcp__"):
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
 	}
 
