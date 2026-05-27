@@ -207,6 +207,21 @@ func (s *PersistedStore) EmitResult(w *Session) {
 	mesg["topic"] = "workflow"
 	mesg["subject"] = BroadcaseSubjectResult
 	dipper.Must(s.CallNoWait("driver:redispubsub", "send", mesg))
+
+	if id := w.OriginLabels["agent_session_id"]; id != "" {
+		s.SendMessage(&dipper.Message{
+			Channel: "eventbus",
+			Subject: "agent_continue",
+			Labels: map[string]string{
+				"agent_session_id": id,
+				"turn_id":          w.OriginLabels["turn_id"],
+				"tool_call_id":     w.OriginLabels["tool_call_id"],
+				"status":           w.CurrentMsg.Labels["status"],
+				"reason":           w.CurrentMsg.Labels["reason"],
+			},
+			Payload: mesg,
+		})
+	}
 }
 
 func (s *PersistedStore) uncaughtErrorHandler(w *Session, msg *dipper.Message) func(r error) {
@@ -238,7 +253,7 @@ func (s *PersistedStore) uncaughtErrorHandler(w *Session, msg *dipper.Message) f
 		if w.ID != "" {
 			s.persist(w)
 		}
-		if w.Parent == "" && w.EventID != "" {
+		if w.Parent == "" && (w.EventID != "" || w.OriginLabels["agent_session_id"] != "") {
 			if w.ID == "" {
 				w.ID = s.GetNextID()
 				s.persist(w)
@@ -298,6 +313,7 @@ func (s *PersistedStore) StartDynamicSession(spec *dipper.Message, ctx map[strin
 // ContinueSession continues a session with given dipper message.
 func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message, child *Session) {
 	defer dipper.SafeExitOnError("[workflow] error when loading workflow session %s", sessionID)
+
 	w := s.loadSession(sessionID, msg, child)
 	if w == nil {
 		return
@@ -311,6 +327,11 @@ func (s *PersistedStore) ContinueSession(sessionID string, msg *dipper.Message, 
 // ResumeSession resume a session that is in waiting state.
 func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
 	m := dipper.Must(dipper.MessageCopy(msg)).(*dipper.Message)
+
+	if m.Labels == nil {
+		m.Labels = map[string]string{}
+	}
+
 	data, _ := s.Call("scheduler", "cancel", map[string]any{"type": "session", "key": key})
 	if data == nil {
 		s.Warningf("unable to resume for key %s, no payload received from waiter.", key)
@@ -319,13 +340,10 @@ func (s *PersistedStore) ResumeSession(key string, msg *dipper.Message) bool {
 	}
 
 	payload := dipper.DeserializeContent(data)
-	s.Debugf("resuming session with key %s and payload %+v", key, payload)
+	s.Debugf("resuming session with key %s and payload %+v", key, m)
 	sessionID := dipper.MustGetMapDataStr(payload, "labels.sessionID")
 	cursor := dipper.MustGetMapDataStr(payload, "labels.cursor")
 
-	if m.Labels == nil {
-		m.Labels = map[string]string{}
-	}
 	m.Labels["sessionID"] = sessionID
 	m.Labels["cursor"] = cursor
 	if _, ok := m.Labels["status"]; !ok {
@@ -1025,7 +1043,9 @@ func (s *PersistedStore) loadSession(sessionID string, msg *dipper.Message, chil
 	} else {
 		s.Infof("session [%s.%s] loaded from cache", w.ID, tail.CurrentMsg.Labels["cursor"])
 	}
+
 	if tail.CurrentMsg.Labels["cursor"] != msg.Labels["cursor"] {
+		// For non-agent sessions, cursor must match to prevent out-of-order message processing.
 		s.Warningf("session %s ignoring mismatched cursor: expected %s, got %s",
 			sessionID,
 			tail.CurrentMsg.Labels["cursor"],

@@ -82,6 +82,8 @@ type Service struct {
 	ready              chan struct{}
 	context            context.Context
 	cancel             context.CancelFunc
+	sequences          map[string]chan dipper.Message
+	sequenceLock       sync.Mutex
 
 	Drain func()
 }
@@ -106,6 +108,7 @@ func NewService(cfg *config.Config, name string) *Service {
 		driverRuntimes: map[string]*driver.Runtime{},
 		expects:        map[string][]ExpectHandler{},
 		responders:     map[string][]MessageResponder{},
+		sequences:      map[string]chan dipper.Message{},
 		ready:          make(chan struct{}),
 	}
 	svc.context, svc.cancel = context.WithCancel(context.Background())
@@ -503,7 +506,7 @@ func (s *Service) serviceLoop() {
 
 				s.driverLock.Lock()
 				defer s.driverLock.Unlock()
-				go s.process(*msg, runtime)
+				s.process(*msg, runtime)
 			}()
 
 		case !ok && chosen < len(orderedRuntimes):
@@ -531,55 +534,6 @@ func (s *Service) serviceLoop() {
 		}()
 	}
 	dipper.Logger.Warningf("[%s] service closed for business", s.name)
-}
-
-func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
-	defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-	expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.Handler.Meta().Name)
-	if expects, ok := s.deleteExpect(expectKey); ok {
-		for _, f := range expects {
-			go func(f ExpectHandler) {
-				defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-				f(&msg)
-			}(f)
-		}
-	}
-
-	key := fmt.Sprintf("%s:%s", msg.Channel, msg.Subject)
-	// responder
-	if responders, ok := s.responders[key]; ok {
-		for _, f := range responders {
-			go func(f MessageResponder) {
-				defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-				f(runtime, &msg)
-			}(f)
-		}
-	}
-
-	go func(msg *dipper.Message) {
-		defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-
-		// transformer
-		if transformers, ok := s.transformers[key]; ok {
-			for _, f := range transformers {
-				msg = f(runtime, msg)
-				if msg == nil {
-					break
-				}
-			}
-		}
-
-		if msg != nil && s.Route != nil {
-			// router
-			routedMsgs := s.Route(msg)
-
-			if len(routedMsgs) > 0 {
-				for _, routedMsg := range routedMsgs {
-					routedMsg.driverRuntime.SendMessage(routedMsg.message)
-				}
-			}
-		}
-	}(&msg)
 }
 
 func (s *Service) addResponder(channelSubject string, f MessageResponder) {
@@ -878,6 +832,17 @@ func (s *Service) WindDown() {
 		s.Drain()
 	}
 
+	deadline := time.Now().Add(time.Second * 15)
+	for time.Now().Before(deadline) {
+		s.sequenceLock.Lock()
+		empty := len(s.sequences) == 0
+		s.sequenceLock.Unlock()
+		if empty {
+			break
+		}
+		time.Sleep(DriverGracefulTimeout * time.Millisecond)
+	}
+
 	s.driverLock.Lock()
 	s.exitingGroup = &sync.WaitGroup{}
 	for _, d := range s.driverRuntimes {
@@ -897,6 +862,7 @@ func (s *Service) WindDown() {
 	s.config.AdvanceStage(s.name, config.StageDrained)
 }
 
+// StopAll stops all services and the daemon.
 func StopAll() {
 	drained := &sync.WaitGroup{}
 	for _, s := range Services {
@@ -913,4 +879,14 @@ func StopAll() {
 
 func (s *Service) Ready() <-chan struct{} {
 	return s.ready
+}
+
+// GetConfig returns the service's current configuration.
+func (s *Service) GetConfig() *config.Config {
+	return s.config
+}
+
+// EmitMessage emits a message to the service's router.
+func (s *Service) EmitMessage(msg dipper.Message) {
+	s.process(msg, nil)
 }

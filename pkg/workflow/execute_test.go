@@ -557,3 +557,94 @@ func TestEnterWait_WithResumeKey(t *testing.T) {
 		t.Errorf("expected custom key, got %v", params["key"])
 	}
 }
+
+func TestCallAgent_RegistersSchedulerDue(t *testing.T) {
+	s := makeExecuteSession()
+	es := &execTestStore{}
+	s.store = es
+	s.Workflow.CallAgent = "openai"
+	s.Ctx["text"] = "hello"
+	s.CurrentMsg.Labels["cursor"] = "3"
+
+	s.callAgent()
+
+	// Should send agent_start message
+	if len(es.lastSentMessages) != 1 {
+		t.Fatalf("expected 1 message sent, got %d", len(es.lastSentMessages))
+	}
+	if es.lastSentMessages[0].Subject != "agent_start" {
+		t.Errorf("expected agent_start, got %s", es.lastSentMessages[0].Subject)
+	}
+	// cursor should be incremented
+	if s.CurrentMsg.Labels["cursor"] != "4" {
+		t.Errorf("expected cursor 4, got %s", s.CurrentMsg.Labels["cursor"])
+	}
+	// scheduler.once must be called
+	if es.lastCallFeature != "scheduler" || es.lastCallMethod != "once" {
+		t.Errorf("scheduler not called: %s %s", es.lastCallFeature, es.lastCallMethod)
+	}
+	params, ok := es.lastCallParams.(map[string]any)
+	if !ok || params["type"] != "session" {
+		t.Errorf("unexpected scheduler params: %v", es.lastCallParams)
+	}
+	// waitPeriod uses key = w.ID + "." + cursor
+	if params["key"] != s.ID+".4" {
+		t.Errorf("unexpected scheduler key: %v", params["key"])
+	}
+}
+
+func TestWaitAgent_SendsPollAndSchedules(t *testing.T) {
+	s := makeExecuteSession()
+	es := &execTestStore{}
+	s.store = es
+	s.Workflow.WaitAgent = "openai"
+	s.CurrentMsg.Labels["cursor"] = "5"
+
+	s.waitAgent()
+
+	// Should send agent_poll message
+	if len(es.lastSentMessages) != 1 {
+		t.Fatalf("expected 1 message sent, got %d", len(es.lastSentMessages))
+	}
+	if es.lastSentMessages[0].Subject != "agent_poll" {
+		t.Errorf("expected agent_poll, got %s", es.lastSentMessages[0].Subject)
+	}
+	// cursor must be incremented
+	if s.CurrentMsg.Labels["cursor"] != "6" {
+		t.Errorf("expected cursor 6, got %s", s.CurrentMsg.Labels["cursor"])
+	}
+	// scheduler.once must be registered with key = w.ID + "." + cursor
+	if es.lastCallFeature != "scheduler" || es.lastCallMethod != "once" {
+		t.Errorf("scheduler not called: %s %s", es.lastCallFeature, es.lastCallMethod)
+	}
+	params, _ := es.lastCallParams.(map[string]any)
+	if params["key"] != s.ID+".6" {
+		t.Errorf("unexpected scheduler key: %v", params["key"])
+	}
+	if !s.pending {
+		t.Error("waitAgent should set pending")
+	}
+}
+
+func TestAgentTimeout_Default(t *testing.T) {
+	s := makeExecuteSession()
+	if s.agentTimeout() != "9s" {
+		t.Errorf("default agent timeout should be 9s, got %v", s.agentTimeout())
+	}
+}
+
+func TestAgentTimeout_Custom(t *testing.T) {
+	s := makeExecuteSession()
+	s.Ctx["chunk_timeout"] = "30m"
+	if s.agentTimeout() != "30m" {
+		t.Errorf("expected 30m, got %v", s.agentTimeout())
+	}
+}
+
+func TestAgentTimeout_Invalid(t *testing.T) {
+	s := makeExecuteSession()
+	s.Ctx["chunk_timeout"] = "notaduration"
+	if s.agentTimeout() != "notaduration" {
+		t.Errorf("invalid duration string should be returned as-is, got %v", s.agentTimeout())
+	}
+}

@@ -70,6 +70,19 @@ func handleEventbusCommand(msg *dipper.Message) []RoutedMessage {
 					Subject: dipper.EventbusReturn,
 					Labels:  newLabels,
 				})
+			} else if agentSessionID := msg.Labels["agent_session_id"]; agentSessionID != "" {
+				eventbus := operator.getDriverRuntime(dipper.ChannelEventbus)
+				eventbus.SendMessage(&dipper.Message{
+					Channel: dipper.ChannelEventbus,
+					Subject: dipper.EventbusAgentContinue,
+					Labels: map[string]string{
+						"agent_session_id": agentSessionID,
+						"turn_id":          msg.Labels["turn_id"],
+						"tool_call_id":     msg.Labels["tool_call_id"],
+						"status":           "failure",
+						"reason":           fmt.Sprintf("%v", r),
+					},
+				})
 			}
 			panic(r)
 		}
@@ -168,11 +181,14 @@ func operatorRoute(msg *dipper.Message) (ret []RoutedMessage) {
 	dipper.Logger.Infof("[operator] routing message %s.%s", msg.Channel, msg.Subject)
 	defer dipper.SafeExitOnError("[operator] continue on processing messages")
 	switch {
-	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusCommand:
+	case msg.Channel == dipper.ChannelEventbus && (msg.Subject == dipper.EventbusCommand || msg.Subject == dipper.EventbusAgentCommand):
 		ret = handleEventbusCommand(msg)
 	case msg.Channel == dipper.ChannelEventbus && msg.Subject == dipper.EventbusReturnInterrupted:
 		retryInterruptedSession(msg)
-	case msg.Channel == dipper.ChannelEventbus && (msg.Subject == dipper.EventbusReturn || msg.Subject == dipper.EventbusMessage):
+	case msg.Channel == dipper.ChannelEventbus &&
+		(msg.Subject == dipper.EventbusReturn ||
+			msg.Subject == dipper.EventbusMessage ||
+			msg.Subject == dipper.EventbusAgentContinue):
 		ret = []RoutedMessage{
 			{
 				driverRuntime: operator.getDriverRuntime(dipper.ChannelEventbus),
@@ -192,11 +208,11 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 	if len(f.Driver) == 0 {
 		childSystem, ok := operator.config.DataSet.Systems[f.Target.System]
 		if !ok {
-			dipper.Logger.Panicf("[operator] system not defined %s", f.Target.System)
+			panic(fmt.Errorf("%w: system not defined %s", ErrOperatorError, f.Target.System))
 		}
 		childFunction, ok := childSystem.Functions[f.Target.Function]
 		if !ok {
-			dipper.Logger.Panicf("[operator] function not defined %s.%s", f.Target.System, f.Target.Function)
+			panic(fmt.Errorf("%w: function not defined %s.%s", ErrOperatorError, f.Target.System, f.Target.Function))
 		}
 		driver, rawaction, params, sysData = collapseFunction(&childSystem, &childFunction)
 
@@ -211,7 +227,7 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 		driver = f.Driver
 		rawaction = f.RawAction
 		if len(f.Target.System) > 0 {
-			dipper.Logger.Panicf("[operator] function cannot have both driver and target %s.%s %s", f.Target.System, f.Target.Function, driver)
+			panic(fmt.Errorf("%w: function cannot have both driver and target %s.%s %s", ErrOperatorError, f.Target.System, f.Target.Function, driver))
 		}
 	}
 
@@ -222,7 +238,7 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 		}
 		err := mergo.Merge(&sysData, currentSysDataCopy, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
-			dipper.Logger.Panicf("[operator] unable to merge parameters %+v", err)
+			panic(fmt.Errorf("[operator] unable to merge parameters: %w", err))
 		}
 	}
 	if f.Parameters != nil {
@@ -232,7 +248,7 @@ func collapseFunction(s *config.System, f *config.Function) (string, string, map
 		}
 		err := mergo.Merge(&params, currentParamCopy, mergo.WithOverride, mergo.WithAppendSlice)
 		if err != nil {
-			dipper.Logger.Panicf("[operator] unable to merge parameters %+v", err)
+			panic(fmt.Errorf("[operator] unable to merge parameters: %w", err))
 		}
 	}
 
@@ -243,11 +259,21 @@ func retryInterruptedSession(msg *dipper.Message) {
 	drainingFuncs.Add(1)
 	daemon.Go(func() {
 		defer drainingFuncs.Done()
-		if engine.drainingGroup != nil {
-			engine.drainingGroup.Wait()
+		resumeSubject := dipper.EventbusCommand
+		if msg.Labels["dipper_call_subject"] == dipper.EventbusAgentCommand {
+			resumeSubject = dipper.EventbusAgentCommand
 		}
-		msg.Subject = dipper.EventbusCommand
+		delete(msg.Labels, "dipper_call_subject")
+		msg.Subject = resumeSubject
 		msg.Labels["interrupted"] = "true"
-		engine.getDriverRuntime(dipper.ChannelEventbus).SendMessage(msg)
+		if operator.drainingGroup != nil {
+			// all drivers should be in draining mode before the message
+			// is sent to the queue. The redisqueue driver will still
+			// write to the queue but won't read from the queue. This
+			// is to avoid the retried message gets picked up by the
+			// redisqueue driver again.
+			operator.drainingGroup.Wait()
+		}
+		operator.getDriverRuntime(dipper.ChannelEventbus).SendMessage(msg)
 	})
 }

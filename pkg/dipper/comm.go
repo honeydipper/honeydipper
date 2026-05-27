@@ -27,6 +27,9 @@ const (
 	EventbusCommand           = "command"
 	EventbusReturn            = "return"
 	EventbusReturnInterrupted = "return/interrupted"
+	EventbusRPCInterrupted    = "rpc/interrupted"
+	EventbusAgentCommand      = "agent_command"
+	EventbusAgentContinue     = "agent_continue"
 )
 
 // CommLocks : comm channels are protected with locks.

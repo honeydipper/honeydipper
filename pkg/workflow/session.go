@@ -86,6 +86,8 @@ type Session struct {
 	OrigMsg *dipper.Message
 	// OrigChild is the original child session before hook execution.
 	OrigChild *Session
+	// OriginLabels is a copy of the labels from the initial trigger message.
+	OriginLabels map[string]string
 
 	// CurrentHook is the current hook that is being executed.
 	CurrentHook string
@@ -345,6 +347,8 @@ func (w *Session) checkIsNoop() bool {
 	case w.Workflow.Wait != "":
 	case w.Workflow.Switch != "":
 	case w.Workflow.Resume != "":
+	case w.Workflow.CallAgent != "":
+	case w.Workflow.WaitAgent != "":
 	default:
 		ret = true
 	}

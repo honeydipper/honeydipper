@@ -18,6 +18,8 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+const AgentSessionInitiationTTL = time.Second * 10
+
 // execute takes actions for a single iteration in a single loop round.
 // It handles different workflow types including parallel iterations, nested workflows,
 // function calls, driver calls, steps, threads and switch cases.
@@ -47,6 +49,18 @@ func (w *Session) execute() {
 		w.setPerforming("calling function: " + w.Workflow.CallFunction)
 		w.Action++
 		w.callShorthandFunction(w.Workflow.CallFunction)
+		w.pending = true
+	case w.Workflow.CallAgent != "":
+		// Handle agent calls.
+		w.setPerforming("calling agent: " + w.Workflow.CallAgent)
+		w.Action++
+		w.callAgent()
+		w.pending = true
+	case w.Workflow.WaitAgent != "":
+		// Handle waiting for agent response.
+		w.setPerforming("waiting for agent response: " + w.Workflow.WaitAgent)
+		w.Action++
+		w.waitAgent()
 		w.pending = true
 	case w.Workflow.SendEvent != nil:
 		w.setPerforming("sending eventbus:message")
@@ -151,12 +165,46 @@ func (w *Session) triggerResume() {
 	}
 }
 
+// registerSchedulerDue registers a due message with the scheduler under the given key.
+// It stamps the session ID and current cursor into dueMsg labels before registering.
+func (w *Session) registerSchedulerDue(key string, duration time.Duration, dueMsg map[string]any) {
+	if dueMsg == nil {
+		dueMsg = map[string]any{}
+	}
+	if _, ok := dueMsg["labels"].(map[string]any); !ok {
+		dueMsg["labels"] = map[string]any{}
+	}
+	dueMsg["labels"].(map[string]any)["sessionID"] = w.ID
+	dueMsg["labels"].(map[string]any)["cursor"] = w.CurrentMsg.Labels["cursor"]
+	due := time.Now().Add(duration).UnixMicro()
+	dipper.Must(w.store.Call("scheduler", "once", map[string]any{
+		"due":         strconv.FormatInt(due, 10),
+		"type":        "session",
+		"key":         key,
+		"due_message": dueMsg,
+	}))
+}
+
+// agentTimeout returns the configured agent stream chunk timeout duration in string, defaulting to 9 seconds.
+func (w *Session) agentTimeout() string {
+	if v, _ := dipper.GetMapDataStr(w.Ctx, "chunk_timeout"); v != "" {
+		return v
+	}
+
+	return "9s"
+}
+
 // enterWait sets the session state to waiting and increments the cursor.
 func (w *Session) enterWait() {
 	w.incCursor()
 	duration := dipper.Must(time.ParseDuration(w.Workflow.Wait)).(time.Duration)
-	due := time.Now().Add(duration).UnixMicro()
 	w.setPerforming("waiting")
+
+	w.waitPeriod(duration)
+}
+
+// waitPeriod sets the session state to waiting for the specified duration.
+func (w *Session) waitPeriod(duration time.Duration) {
 	key := w.ID + "." + w.CurrentMsg.Labels["cursor"]
 	if k, ok := w.Ctx["resume_key"]; ok && k != nil && k.(string) != "" {
 		key = k.(string)
@@ -167,17 +215,7 @@ func (w *Session) enterWait() {
 			dueMsg = m
 		}
 	}
-	if _, ok := dueMsg["labels"].(map[string]any); !ok {
-		dueMsg["labels"] = map[string]any{}
-	}
-	dueMsg["labels"].(map[string]any)["sessionID"] = w.ID
-	dueMsg["labels"].(map[string]any)["cursor"] = w.CurrentMsg.Labels["cursor"]
-	dipper.Must(w.store.Call("scheduler", "once", map[string]any{
-		"due":         strconv.FormatInt(due, 10),
-		"type":        "session",
-		"key":         key,
-		"due_message": dueMsg,
-	}))
+	w.registerSchedulerDue(key, duration, dueMsg)
 	w.pending = true
 }
 
@@ -224,23 +262,23 @@ func (w *Session) callDriver(f string) {
 	}
 	driverName, rawActionName := interpolatedNames[0], interpolatedNames[1]
 
-	var locals map[string]interface{}
-	if w.Workflow.Local != nil {
+	var params map[string]interface{}
+	if w.Workflow.Parameters != nil {
 		envData := w.buildEnvData()
-		if layers, ok := w.Workflow.Local.([]any); ok {
+		if layers, ok := w.Workflow.Parameters.([]any); ok {
 			for _, layer := range layers {
 				delta := dipper.Interpolate("execute", layer, envData).(map[string]any)
-				locals = dipper.MergeMap(locals, delta)
+				params = dipper.MergeMap(params, delta)
 			}
 		} else {
-			locals = dipper.Interpolate("execute", w.Workflow.Local, envData).(map[string]interface{})
+			params = dipper.Interpolate("execute", w.Workflow.Parameters, envData).(map[string]interface{})
 		}
 	}
 
 	w.callFunction(&config.Function{
 		Driver:     driverName,
 		RawAction:  rawActionName,
-		Parameters: locals,
+		Parameters: params,
 	})
 }
 
@@ -259,6 +297,101 @@ func (w *Session) callShorthandFunction(f string) {
 			Function: funcName,
 		},
 	})
+}
+
+// callAgent sends an agent_start message to invoke an AI agent and waits for the response.
+// The agent name is taken from the workflow's CallAgent field (interpolated). The `with` block
+// provides the payload (must include `text`). Optional labels such as `convo_id`,
+// `agent_session_type`, and `agent_session_ttl` are read from the session context.
+func (w *Session) callAgent() {
+	w.setPerforming("calling agent: " + w.Workflow.CallAgent)
+
+	labels := map[string]string{}
+	for k, v := range w.CurrentMsg.Labels {
+		labels[k] = v
+	}
+	delete(labels, "status")
+	delete(labels, "reason")
+	delete(labels, "performing")
+
+	w.incCursor()
+	labels["agent_name"] = w.Workflow.CallAgent
+	labels["resume_key"] = w.ID + "." + w.CurrentMsg.Labels["cursor"]
+	if resumeKey, _ := dipper.GetMapDataStr(w.Ctx, "resume_key"); resumeKey != "" {
+		labels["resume_key"] = resumeKey
+	}
+	if w.EventID != "" {
+		labels["eventID"] = w.EventID
+	}
+
+	user, _ := dipper.GetMapDataStr(w.Ctx, "user")
+	sessionType, _ := dipper.GetMapDataStr(w.Ctx, "type")
+	convoID, _ := dipper.GetMapDataStr(w.Ctx, "convo_id")
+	timeout, _ := dipper.GetMapDataStr(w.Ctx, "turn_timeout")
+	ttl, _ := dipper.GetMapDataStr(w.Ctx, "turn_ttl")
+
+	w.store.SendMessage(&dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "agent_start",
+		Labels:  labels,
+		Payload: map[string]interface{}{
+			"text":     dipper.MustGetMapDataStr(w.Ctx, "text"),
+			"user":     user,
+			"type":     sessionType,
+			"convo_id": convoID,
+			"timeout":  timeout,
+			"ttl":      ttl,
+		},
+	})
+
+	w.waitPeriod(AgentSessionInitiationTTL)
+}
+
+func (w *Session) waitAgent() {
+	w.setPerforming("waiting for agent response")
+
+	labels := map[string]string{}
+	for k, v := range w.CurrentMsg.Labels {
+		labels[k] = v
+	}
+	delete(labels, "status")
+	delete(labels, "reason")
+	delete(labels, "performing")
+
+	w.incCursor()
+	labels["agent_session_id"] = w.Workflow.WaitAgent
+	labels["resume_key"] = w.ID + "." + w.CurrentMsg.Labels["cursor"]
+	labels["timeout"] = w.agentTimeout()
+	if resumeKey, _ := dipper.GetMapDataStr(w.Ctx, "resume_key"); resumeKey != "" {
+		labels["resume_key"] = resumeKey
+	}
+	if w.EventID != "" {
+		labels["eventID"] = w.EventID
+	}
+
+	w.store.SendMessage(&dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "agent_poll",
+		Labels:  labels,
+	})
+	duration := dipper.Must(time.ParseDuration(w.agentTimeout())).(time.Duration)
+	if _, ok := w.Ctx["timeout_message"]; !ok {
+		labels := map[string]string{}
+		for k, v := range w.CurrentMsg.Labels {
+			labels[k] = v
+		}
+		labels["agent_session_id"] = w.Workflow.WaitAgent
+		labels["status"] = "failure"
+		labels["reason"] = "poll timeout (engine) after " + w.agentTimeout()
+
+		if w.EventID != "" {
+			labels["eventID"] = w.EventID
+		}
+		w.Ctx["timeout_message"] = map[string]any{
+			"labels": labels,
+		}
+	}
+	w.waitPeriod(duration)
 }
 
 // sendEventbusMessage emits an eventbus:message for engine rule processing.
