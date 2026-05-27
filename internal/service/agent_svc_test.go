@@ -55,6 +55,7 @@ func (m *mockAgentStore) PollInference(_ *dipper.Message)     { m.record("poll")
 func (m *mockAgentStore) StartAgentCall(_ *dipper.Message)    { m.record("agent_call") }
 func (m *mockAgentStore) StartMCPCall(_ *dipper.Message)      { m.record("mcp_call") }
 func (m *mockAgentStore) CancelConvo(_ *dipper.Message)       { m.record("cancel_convo") }
+func (m *mockAgentStore) StartTurn(_, _, _ string)            { m.record("start_turn") }
 func (m *mockAgentStore) Stop()                               {}
 func (m *mockAgentStore) Wait()                               {}
 

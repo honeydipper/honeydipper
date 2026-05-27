@@ -7,6 +7,7 @@
 package service
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ func setupAgentAPIs() {
 	agentSvc.APIs["convoList"] = handleConvoList
 	agentSvc.APIs["convoHistory"] = handleConvoHistory
 	agentSvc.APIs["convoCancel"] = handleConvoCancelAPI
+	agentSvc.APIs["convoTurn"] = handleConvoTurnAPI
 }
 
 // handleConvoList returns a stream_hvals snapshot of recent convo_stream_ blocks.
@@ -70,6 +72,27 @@ func handleConvoCancelAPI(resp *api.Response) {
 	agentStore.CancelConvo(&dipper.Message{
 		Payload: map[string]any{"convo_id": convoID},
 	})
+
+	resp.Return([]byte(`{"ok":true}`))
+}
+
+// handleConvoTurnAPI starts a new chat turn on an existing conversation from the UI.
+// Expects convoID path param plus text (and optional user) in the request body.
+// The turn runs asynchronously; the API returns immediately with {"ok":true}.
+func handleConvoTurnAPI(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	convoID := dipper.MustGetMapDataStr(resp.Request.Payload, "convoID")
+
+	// POST body arrives as a JSON string under payload["body"].
+	var body struct {
+		Text string `json:"text"`
+		User string `json:"user"`
+	}
+	if bodyStr, ok := dipper.GetMapDataStr(resp.Request.Payload, "body"); ok && bodyStr != "" {
+		_ = json.Unmarshal([]byte(bodyStr), &body)
+	}
+
+	agentStore.StartTurn(convoID, body.Text, body.User)
 
 	resp.Return([]byte(`{"ok":true}`))
 }
