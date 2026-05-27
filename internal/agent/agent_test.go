@@ -157,6 +157,7 @@ func (m *mockStore) PollInference(msg *dipper.Message)     {}
 func (m *mockStore) StartAgentCall(msg *dipper.Message)    {}
 func (m *mockStore) StartMCPCall(msg *dipper.Message)      {}
 func (m *mockStore) CancelConvo(msg *dipper.Message)       {}
+func (m *mockStore) StartTurn(convoID, text, user string)  {}
 
 func (m *mockStore) GetAgent(name string) *config.Agent {
 	a := m.cfg.DataSet.Agents[name]

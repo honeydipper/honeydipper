@@ -22,6 +22,9 @@ type AgentStore interface {
 	StartAgentCall(msg *dipper.Message)
 	StartMCPCall(msg *dipper.Message)
 	CancelConvo(msg *dipper.Message)
+	// StartTurn fires a new chat turn on an existing conversation without a
+	// return path back to a workflow. It is used by the UI-initiated turn API.
+	StartTurn(convoID, text, user string)
 
 	GetAgent(name string) *config.Agent
 	GetSystem(name string) *config.System
@@ -184,6 +187,54 @@ func (p *PersistentAgentStore) Wait() {
 // Call Wait to block until all in-flight sessions have drained.
 func (p *PersistentAgentStore) Stop() {
 	p.stopped.Store(true)
+}
+
+// StartTurn starts a new chat turn on an existing conversation without a workflow
+// return path. The agent name is inferred from the most recent session recorded in
+// the ConvoState. The turn runs asynchronously; errors are logged, not propagated.
+func (p *PersistentAgentStore) StartTurn(convoID, text, user string) {
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		defer dipper.SafeExitOnError("[agent] error in StartTurn")
+
+		// Resolve the agent name from the most recent session in the ConvoState.
+		cs := &ConvoState{}
+		cs.load(convoID, p)
+		if len(cs.Sessions) == 0 {
+			p.Errorf("[agent] StartTurn: no sessions found for convo %s", convoID)
+
+			return
+		}
+		agentName := cs.Sessions[len(cs.Sessions)-1].AgentName
+		if agentName == "" {
+			p.Errorf("[agent] StartTurn: cannot determine agent name for convo %s", convoID)
+
+			return
+		}
+
+		msg := &dipper.Message{
+			Labels: map[string]string{
+				"agent_name": agentName,
+			},
+			Payload: map[string]interface{}{
+				"text":     text,
+				"user":     user,
+				"convo_id": convoID,
+			},
+		}
+
+		p.Infof("[agent] StartTurn convo=%s agent=%s", convoID, agentName)
+		s := &AgentSession{}
+		s.setup(msg, p, true)
+		defer s.persist(true)
+		defer dipper.SafeExitOnError("[agent] error running StartTurn for convo "+convoID, func(r interface{}) {
+			if s.ErrorReason == "" {
+				s.ErrorReason = fmt.Sprintf("%v", r)
+			}
+		})
+		s.run()
+	}()
 }
 
 // NewAgentStore creates an AgentStore backed by the provided StoreHelper.
