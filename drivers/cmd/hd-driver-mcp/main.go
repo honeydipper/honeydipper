@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -220,8 +221,31 @@ func callTool(msg *dipper.Message) {
 
 	var sb strings.Builder
 	for _, c := range result.Content {
-		if tc, ok := c.(*mcp.TextContent); ok {
-			sb.WriteString(tc.Text)
+		switch v := c.(type) {
+		case *mcp.TextContent:
+			sb.WriteString(v.Text)
+		case *mcp.EmbeddedResource:
+			if v.Resource != nil {
+				if v.Resource.Text != "" {
+					sb.WriteString(v.Resource.Text)
+				} else if len(v.Resource.Blob) > 0 {
+					// Binary blob: emit as base64 so the agent can see it.
+					sb.WriteString("[blob:" + v.Resource.MIMEType + ";base64,")
+					sb.WriteString(base64.StdEncoding.EncodeToString(v.Resource.Blob))
+					sb.WriteString("]")
+				}
+			}
+		case *mcp.ResourceLink:
+			// A link to a resource: surface the URI and description as text.
+			sb.WriteString(v.URI)
+			if v.Description != "" {
+				sb.WriteString(" ")
+				sb.WriteString(v.Description)
+			}
+		case *mcp.ImageContent:
+			fmt.Fprintf(&sb, "[image:%s;base64,<binary>]", v.MIMEType)
+		case *mcp.AudioContent:
+			fmt.Fprintf(&sb, "[audio:%s;base64,<binary>]", v.MIMEType)
 		}
 	}
 
