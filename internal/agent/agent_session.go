@@ -122,23 +122,24 @@ func (s *AgentSession) syncConvoStateStatus() {
 	}
 }
 
-// checkCancelled returns true when the conversation's ConvoState (or the shared
-// unified ConvoState) has been marked cancelled.
-// It is a non-locking read that accepts eventual consistency.
+// checkCancelled returns true when this session has been marked as cancelled
+// in its own ConvoState or in the shared unified ConvoState.
+// Cancellation is checked per-session so that only the active turn is aborted;
+// future turns (new sessions) start fresh with an active status and are unaffected.
 func (s *AgentSession) checkCancelled() bool {
-	if s.ConvoID == "" {
+	if s.ConvoID == "" || s.ID == "" {
 		return false
 	}
 	cs := &ConvoState{}
 	cs.load(s.ConvoID, s.store)
-	if cs.Cancelled {
+	if cs.isSessionCancelled(s.ID) {
 		return true
 	}
 	if s.UnifiedConvoID != "" && s.UnifiedConvoID != s.ConvoID {
 		ucs := &ConvoState{}
 		ucs.load(s.UnifiedConvoID, s.store)
 
-		return ucs.Cancelled
+		return ucs.isSessionCancelled(s.ID)
 	}
 
 	return false

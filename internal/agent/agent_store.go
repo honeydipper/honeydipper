@@ -343,7 +343,6 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 
 	cancelOne := func(id string) {
 		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
-			cs.Cancelled = true
 			for i := range cs.Sessions {
 				if cs.Sessions[i].Status == ConvoSessionStatusActive {
 					cs.Sessions[i].Status = ConvoSessionStatusCancelled
