@@ -8,6 +8,7 @@ package dipper
 
 import (
 	"encoding/base64"
+	"fmt"
 	"strings"
 )
 
@@ -18,15 +19,24 @@ func DecryptString(rpc RPCCaller, key, str string) (string, bool) {
 	switch {
 	case strings.HasPrefix(str, "ENC["):
 		Logger.Debugf("[%s] decrypting %s", rpc.GetName(), key)
-		parts := strings.SplitN(str[4:len(str)-1], ",", 2)
+		closingIdx := strings.Index(str, "]")
+		pattern := "%s"
+		if closingIdx < len(str)-1 && str[closingIdx+1] == ':' {
+			pattern = str[closingIdx+2:]
+		}
+		parts := strings.SplitN(str[4:closingIdx], ",", 2)
 		encDriver := parts[0]
 		if encDriver == "deferred" {
 			p := parts[1]
 			if parts[1][0] == '?' {
 				p = parts[1][1:]
 			}
+			result := "ENC[" + p + "]"
+			if pattern != "%s" {
+				result += ":" + pattern
+			}
 
-			return "ENC[" + p + "]", true
+			return result, true
 		}
 		decoded, err := base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
@@ -37,13 +47,23 @@ func DecryptString(rpc RPCCaller, key, str string) (string, bool) {
 			Must(e)
 		}
 
-		return string(decrypted), true
+		return fmt.Sprintf(pattern, string(decrypted)), true
 	case strings.HasPrefix(str, "LOOKUP["):
 		Logger.Debugf("[%s] looking up %s", rpc.GetName(), key)
-		parts := strings.SplitN(str[7:len(str)-1], ",", 2)
+		closingIdx := strings.Index(str, "]")
+		pattern := "%s"
+		if closingIdx < len(str)-1 && str[closingIdx+1] == ':' {
+			pattern = str[closingIdx+2:]
+		}
+		parts := strings.SplitN(str[7:closingIdx], ",", 2)
 		lookupDriver := parts[0]
 		if lookupDriver == "deferred" {
-			return "LOOKUP[" + parts[1] + "]", true
+			result := "LOOKUP[" + parts[1] + "]"
+			if pattern != "%s" {
+				result += ":" + pattern
+			}
+
+			return result, true
 		}
 		p := parts[1]
 		if parts[1][0] == '?' {
@@ -55,7 +75,7 @@ func DecryptString(rpc RPCCaller, key, str string) (string, bool) {
 			Must(e)
 		}
 
-		return string(lookupValue), true
+		return fmt.Sprintf(pattern, string(lookupValue)), true
 	}
 
 	return "", false

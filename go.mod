@@ -27,6 +27,7 @@ require (
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/modelcontextprotocol/go-sdk v0.2.0
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/qiangmzsx/string-adapter/v2 v2.2.0
 	github.com/stretchr/testify v1.11.1
@@ -187,6 +188,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.einride.tech/aip v0.79.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.39.0 // indirect

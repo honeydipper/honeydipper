@@ -25,6 +25,7 @@ const (
 	SubjectAgentbusRPCInterrupted = "rpc_interrupted"
 	SubjectEventbusAgentPoll      = "agent_poll"
 	SubjectEventbusAgentCall      = "agent_call"
+	SubjectEventbusMCPCall        = "mcp_call"
 	SubjectEventbusConvoCancel    = "convo_cancel"
 )
 
@@ -54,6 +55,7 @@ func StartAgent(cfg *config.Config) {
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentRecover, handleAgentRecover)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentPoll, handleAgentPoll)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusAgentCall, handleAgentCall)
+	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusMCPCall, handleMCPCall)
 	agentSvc.addResponder(dipper.ChannelEventbus+":"+SubjectEventbusConvoCancel, handleConvoCancel)
 
 	// Build the store before start() so the package-level var is set
@@ -75,6 +77,11 @@ func AgentFeatures(c *config.DataSet) map[string]interface{} {
 	for _, ag := range c.Agents {
 		if ag.Driver != "" {
 			dynamicData["driver:"+ag.Driver] = nil
+		}
+		for _, t := range ag.Tools {
+			if t.Type == "mcp" {
+				dynamicData["driver:mcp"] = nil
+			}
 		}
 	}
 
@@ -189,6 +196,27 @@ func handleAgentCall(_ *driver.Runtime, msg *dipper.Message) {
 	<-agentSvc.Ready()
 	msg = dipper.DeserializePayload(msg)
 	go agentStore.StartAgentCall(msg)
+}
+
+// handleMCPCall handles an eventbus:mcp_call dispatched by an agent session
+// when a model invokes a remote MCP server tool.
+func handleMCPCall(_ *driver.Runtime, msg *dipper.Message) {
+	defer dipper.SafeExitOnError("[agent] error in handleMCPCall", func(r error) {
+		agentStore.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusAgentContinue,
+			Labels: map[string]string{
+				"agent_session_id": msg.Labels["agent_session_id"],
+				"turn_id":          msg.Labels["turn_id"],
+				"tool_call_id":     msg.Labels["tool_call_id"],
+				"status":           "failure",
+				"reason":           r.Error(),
+			},
+		})
+	})
+	<-agentSvc.Ready()
+	msg = dipper.DeserializePayload(msg)
+	go agentStore.StartMCPCall(msg)
 }
 
 func handleAgentPoll(_ *driver.Runtime, msg *dipper.Message) {

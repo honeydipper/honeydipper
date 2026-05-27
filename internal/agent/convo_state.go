@@ -113,6 +113,20 @@ func (cs *ConvoState) updateSessionStatus(sessionID, status string) {
 	}
 }
 
+// isSessionCancelled returns true when the session with the given ID has been
+// marked as cancelled inside this ConvoState's session list.
+// It is used by checkCancelled to detect turn-level cancellation without
+// polluting future turns via the whole-conversation Cancelled flag.
+func (cs *ConvoState) isSessionCancelled(sessionID string) bool {
+	for _, sr := range cs.Sessions {
+		if sr.SessionID == sessionID {
+			return sr.Status == ConvoSessionStatusCancelled
+		}
+	}
+
+	return false
+}
+
 // lockedConvoStateUpdate acquires the distributed lock for convoID, loads the
 // latest state, calls fn with the mutable *ConvoState, persists the result,
 // and then releases the lock.  It is a no-op when convoID is empty.
