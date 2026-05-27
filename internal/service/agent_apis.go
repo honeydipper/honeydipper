@@ -18,6 +18,7 @@ import (
 func setupAgentAPIs() {
 	agentSvc.APIs["convoList"] = handleConvoList
 	agentSvc.APIs["convoHistory"] = handleConvoHistory
+	agentSvc.APIs["convoCancel"] = handleConvoCancelAPI
 }
 
 // handleConvoList returns a stream_hvals snapshot of recent convo_stream_ blocks.
@@ -57,4 +58,18 @@ func handleConvoHistory(resp *api.Response) {
 	})).([]byte)
 
 	resp.Return(data)
+}
+
+// handleConvoCancelAPI marks a conversation as cancelled by convo_id.
+// Expects convoID path param in the payload. Active sessions belonging to the
+// conversation will detect the flag on their next poll cycle and abort.
+func handleConvoCancelAPI(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	convoID := dipper.MustGetMapDataStr(resp.Request.Payload, "convoID")
+
+	agentStore.CancelConvo(&dipper.Message{
+		Payload: map[string]any{"convo_id": convoID},
+	})
+
+	resp.Return([]byte(`{"ok":true}`))
 }

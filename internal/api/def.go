@@ -54,6 +54,9 @@ func agentDefs() map[string]map[string]Def {
 		"convos/:convoID/history": {
 			http.MethodGet: {Object: "convo", Name: "convoHistory", ReqType: TypeFirst, Service: "agent"},
 		},
+		"convos/:convoID/cancel": {
+			http.MethodPost: {Object: "convo", Name: "convoCancel", ReqType: TypeFirst, Service: "agent"},
+		},
 	}
 }
 
