@@ -45,6 +45,7 @@ type ConvoSessionRef struct {
 type ConvoState struct {
 	ConvoID        string            `json:"convo_id"`
 	UnifiedConvoID string            `json:"unified_convo_id,omitempty"`
+	FirstTurn      string            `json:"first_turn,omitempty"`
 	Sessions       []ConvoSessionRef `json:"sessions"`
 	Cancelled      bool              `json:"cancelled"`
 	TTL            string            `json:"ttl"`

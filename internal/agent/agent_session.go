@@ -222,11 +222,18 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 	// Register this session in the shared conversation state so that it can be
 	// queried for display and subject to controls such as cancellation.
 	agentName := msg.Labels["agent_name"]
+	firstTurn, _ := dipper.GetMapDataStr(msg.Payload, "text")
+	if len(firstTurn) > 200 {
+		firstTurn = firstTurn[:200]
+	}
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		if cs.TTL == "" {
 			cs.TTL = ConvoStreamTTL
 		}
 		cs.UnifiedConvoID = s.UnifiedConvoID
+		if cs.FirstTurn == "" && s.Type == AgentSessionTypeChatTurn && firstTurn != "" {
+			cs.FirstTurn = firstTurn
+		}
 		cs.registerSession(s.ID, agentName, s.Type)
 	})
 	// Also register in the unified convo state when it spans multiple convo IDs
@@ -835,9 +842,10 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 	}
 
 	result := map[string]interface{}{
-		"status": msg.Labels["status"],
-		"reason": msg.Labels["reason"],
-		"data":   data,
+		"status":    msg.Labels["status"],
+		"reason":    msg.Labels["reason"],
+		"data":      data,
+		"func_name": c.FuncName,
 	}
 
 	s.ToolResults = append(s.ToolResults, result)

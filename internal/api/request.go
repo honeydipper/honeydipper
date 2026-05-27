@@ -70,6 +70,9 @@ func (a *Request) Dispatch() {
 		if user := a.getPrincipalUser(); user != "" {
 			labels["user"] = user
 		}
+		if provider := a.getPrincipalProvider(); provider != "" {
+			labels["user_provider"] = provider
+		}
 	}
 
 	dipper.Must(a.store.caller.Call("api-broadcast", "send", map[string]interface{}{
@@ -127,6 +130,20 @@ func (a *Request) getPrincipalUser() string {
 	}
 
 	return strings.TrimSpace(principal.Subject)
+}
+
+func (a *Request) getPrincipalProvider() string {
+	p, ok := a.ctx.Get("principal")
+	if !ok {
+		return ""
+	}
+
+	principal, ok := p.(Principal)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(principal.Provider)
 }
 
 func (a *Request) dispatchLocal() {

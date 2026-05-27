@@ -150,14 +150,15 @@ func (m *mockStore) CallRawNoWait(feature, method string, params []byte, rpcID s
 
 func (m *mockStore) GetName() string { return "mock-store" }
 
-func (m *mockStore) StartInference(msg *dipper.Message)    {}
-func (m *mockStore) ContinueInference(msg *dipper.Message) {}
-func (m *mockStore) ReceiveInference(msg *dipper.Message)  {}
-func (m *mockStore) PollInference(msg *dipper.Message)     {}
-func (m *mockStore) StartAgentCall(msg *dipper.Message)    {}
-func (m *mockStore) StartMCPCall(msg *dipper.Message)      {}
-func (m *mockStore) CancelConvo(msg *dipper.Message)       {}
-func (m *mockStore) StartTurn(convoID, text, user string)  {}
+func (m *mockStore) StartInference(msg *dipper.Message)                {}
+func (m *mockStore) ContinueInference(msg *dipper.Message)             {}
+func (m *mockStore) ReceiveInference(msg *dipper.Message)              {}
+func (m *mockStore) PollInference(msg *dipper.Message)                 {}
+func (m *mockStore) StartAgentCall(msg *dipper.Message)                {}
+func (m *mockStore) StartMCPCall(msg *dipper.Message)                  {}
+func (m *mockStore) CancelConvo(msg *dipper.Message)                   {}
+func (m *mockStore) StartTurn(convoID, text, user string)              {}
+func (m *mockStore) StartNewConvo(agentName, text, user string) string { return "" }
 
 func (m *mockStore) GetAgent(name string) *config.Agent {
 	a := m.cfg.DataSet.Agents[name]

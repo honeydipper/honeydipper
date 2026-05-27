@@ -8,6 +8,7 @@ package service
 
 import (
 	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,23 @@ func setupAgentAPIs() {
 	agentSvc.APIs["convoHistory"] = handleConvoHistory
 	agentSvc.APIs["convoCancel"] = handleConvoCancelAPI
 	agentSvc.APIs["convoTurn"] = handleConvoTurnAPI
+	agentSvc.APIs["convoNew"] = handleConvoNewAPI
+	agentSvc.APIs["agentList"] = handleAgentListAPI
+}
+
+// buildUserTag combines the authenticated user name and provider into a tag like "user@provider".
+// If either is empty the other is returned as-is; if both are empty the empty string is returned.
+func buildUserTag(user, provider string) string {
+	user = strings.TrimSpace(user)
+	provider = strings.TrimSpace(provider)
+	switch {
+	case user != "" && provider != "":
+		return user + "@" + provider
+	case user != "":
+		return user
+	default:
+		return provider
+	}
 }
 
 // handleConvoList returns a stream_hvals snapshot of recent convo_stream_ blocks.
@@ -86,13 +104,49 @@ func handleConvoTurnAPI(resp *api.Response) {
 	// POST body arrives as a JSON string under payload["body"].
 	var body struct {
 		Text string `json:"text"`
-		User string `json:"user"`
 	}
 	if bodyStr, ok := dipper.GetMapDataStr(resp.Request.Payload, "body"); ok && bodyStr != "" {
 		_ = json.Unmarshal([]byte(bodyStr), &body)
 	}
 
-	agentStore.StartTurn(convoID, body.Text, body.User)
+	user := buildUserTag(resp.Request.Labels["user"], resp.Request.Labels["user_provider"])
+	agentStore.StartTurn(convoID, body.Text, user)
 
 	resp.Return([]byte(`{"ok":true}`))
+}
+
+// handleConvoNewAPI starts a brand-new conversation from the UI without an
+// existing convo ID. The agent name, user message text, and optional user are
+// supplied in the request body. The generated convo_id is returned synchronously
+// so the UI can navigate directly to the new conversation.
+func handleConvoNewAPI(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+
+	var body struct {
+		Agent string `json:"agent"`
+		Text  string `json:"text"`
+	}
+	if bodyStr, ok := dipper.GetMapDataStr(resp.Request.Payload, "body"); ok && bodyStr != "" {
+		_ = json.Unmarshal([]byte(bodyStr), &body)
+	}
+
+	user := buildUserTag(resp.Request.Labels["user"], resp.Request.Labels["user_provider"])
+	convoID := agentStore.StartNewConvo(body.Agent, body.Text, user)
+
+	data := dipper.Must(json.Marshal(map[string]string{"convo_id": convoID})).([]byte)
+	resp.Return(data)
+}
+
+// handleAgentListAPI returns a sorted JSON array of agent names from the current
+// configuration. The UI uses this to populate the agent-selection dropdown.
+func handleAgentListAPI(resp *api.Response) {
+	agents := agentStore.GetConfig().DataSet.Agents
+	names := make([]string, 0, len(agents))
+	for name := range agents {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	data := dipper.Must(json.Marshal(names)).([]byte)
+	resp.Return(data)
 }
