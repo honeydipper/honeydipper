@@ -600,6 +600,41 @@ func (s *AgentSession) notifyParent(agentMsg AgentMessage) {
 	})
 }
 
+// coerceToolCallParams fixes parameter values where the declared type is "object"
+// or "array" but the LLM sent them as a JSON-encoded string. Only parameters with
+// a clear type mismatch are coerced; everything else is left unchanged.
+func (s *AgentSession) coerceToolCallParams(toolCalls []AgentToolCall) {
+	tools := s.BuildTools()
+	for i := range toolCalls {
+		tool, ok := tools[toolCalls[i].FuncName]
+		if !ok {
+			continue
+		}
+		for pname, pval := range toolCalls[i].Params {
+			pdef, ok := tool.Params[pname]
+			if !ok {
+				continue
+			}
+			def, ok := pdef.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			ptype, _ := def["type"].(string)
+			if ptype != "object" && ptype != "array" {
+				continue
+			}
+			strVal, ok := pval.(string)
+			if !ok {
+				continue
+			}
+			var parsed interface{}
+			if err := json.Unmarshal([]byte(strVal), &parsed); err == nil {
+				toolCalls[i].Params[pname] = parsed //nolint:gosec // i is always a valid index from range
+			}
+		}
+	}
+}
+
 // processAgentResponse decodes the model's response message and hands it to processAgentMessage.
 func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 	// Honour a cancellation that arrived while the model was running.
@@ -612,6 +647,7 @@ func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 	m := dipper.MustGetMapData(msg.Payload, "message").(map[string]interface{})
 	var agentMsg AgentMessage
 	dipper.Must(mapstructure.Decode(m, &agentMsg))
+	s.coerceToolCallParams(agentMsg.ToolCalls)
 	if log := s.log(); log != nil {
 		log.Debugf("[agent] session [%s] response received role=%s thinking=%v tool_calls=%d",
 			s.ID, agentMsg.Role, agentMsg.IsThinking, len(agentMsg.ToolCalls))

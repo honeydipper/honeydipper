@@ -759,6 +759,114 @@ func TestBuildTools_Mixed(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// AgentSession.coerceToolCallParams tests
+// ---------------------------------------------------------------------------
+
+func makeSystemWithTypedParams() config.System {
+	return config.System{
+		Functions: map[string]config.Function{
+			"fn1": {
+				Driver:    "d",
+				RawAction: "action",
+				Meta: map[string]interface{}{
+					"description": "fn with typed params",
+					"inputs": []interface{}{
+						map[string]interface{}{"name": "str_param", "type": "string", "description": "a string"},
+						map[string]interface{}{"name": "obj_param", "type": "object", "description": "an object"},
+						map[string]interface{}{"name": "arr_param", "type": "array", "description": "an array"},
+					},
+				},
+			},
+		},
+	}
+}
+
+func makeSessionWithTypedSystem(t *testing.T) *AgentSession {
+	t.Helper()
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["s1"] = makeSystemWithTypedParams()
+	agentA := config.Agent{
+		Name:  "a",
+		Tools: []config.AgentToolDef{{Type: "system", Name: "s1"}},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	return &AgentSession{store: store, Agent: &agentA}
+}
+
+func TestCoerceToolCallParams_OnlyCoercesTypeMismatch(t *testing.T) {
+	s := makeSessionWithTypedSystem(t)
+
+	toolCalls := []AgentToolCall{
+		{
+			FuncName: "sys_s1__fn1",
+			Params: map[string]interface{}{
+				"str_param": `{"this": "should stay a string"}`,
+				"obj_param": `{"key": "value"}`,
+				"arr_param": `["a", "b"]`,
+			},
+		},
+	}
+
+	s.coerceToolCallParams(toolCalls)
+
+	params := toolCalls[0].Params
+	// string-typed param must NOT be coerced even though it looks like JSON
+	assert.Equal(t, `{"this": "should stay a string"}`, params["str_param"])
+	// object-typed param sent as JSON string must be parsed
+	assert.Equal(t, map[string]interface{}{"key": "value"}, params["obj_param"])
+	// array-typed param sent as JSON string must be parsed
+	assert.Equal(t, []interface{}{"a", "b"}, params["arr_param"])
+}
+
+func TestCoerceToolCallParams_InvalidJSONUnchanged(t *testing.T) {
+	s := makeSessionWithTypedSystem(t)
+
+	toolCalls := []AgentToolCall{
+		{
+			FuncName: "sys_s1__fn1",
+			Params:   map[string]interface{}{"obj_param": `{not valid json`},
+		},
+	}
+
+	s.coerceToolCallParams(toolCalls)
+
+	assert.Equal(t, `{not valid json`, toolCalls[0].Params["obj_param"])
+}
+
+func TestCoerceToolCallParams_AlreadyParsedUnchanged(t *testing.T) {
+	s := makeSessionWithTypedSystem(t)
+
+	already := map[string]interface{}{"already": "parsed"}
+	toolCalls := []AgentToolCall{
+		{
+			FuncName: "sys_s1__fn1",
+			Params:   map[string]interface{}{"obj_param": already},
+		},
+	}
+
+	s.coerceToolCallParams(toolCalls)
+
+	assert.Equal(t, already, toolCalls[0].Params["obj_param"])
+}
+
+func TestCoerceToolCallParams_UnknownToolSkipped(t *testing.T) {
+	s := makeSessionWithTypedSystem(t)
+
+	toolCalls := []AgentToolCall{
+		{
+			FuncName: "sys_unknown__fn",
+			Params:   map[string]interface{}{"obj_param": `{"key": "val"}`},
+		},
+	}
+
+	s.coerceToolCallParams(toolCalls)
+
+	// Unknown tool — param left as-is
+	assert.Equal(t, `{"key": "val"}`, toolCalls[0].Params["obj_param"])
+}
+
+// ---------------------------------------------------------------------------
 // AgentSession.processAgentMessage tests
 // ---------------------------------------------------------------------------
 
@@ -900,6 +1008,60 @@ func TestProcessAgentMessage_NonAgentRole_Reruns(t *testing.T) {
 
 	// Non-agent role (not thinking, no tool calls) should trigger s.run().
 	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+}
+
+// ---------------------------------------------------------------------------
+// AgentSession.processAgentResponse tests
+// ---------------------------------------------------------------------------
+
+func TestProcessAgentResponse_CoercesObjectArrayParams(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["s1"] = makeSystemWithTypedParams()
+	agentA := config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Tools:  []config.AgentToolDef{{Type: "system", Name: "s1"}},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+	s := &AgentSession{
+		store: store,
+		Agent: &agentA,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels:  map[string]string{},
+			Payload: map[string]interface{}{"text": "input"},
+		},
+	}
+
+	// str_param is declared as "string" — must remain a string even though it looks like JSON.
+	// obj_param is declared as "object" — must be parsed from its JSON string.
+	// arr_param is declared as "array" — must be parsed from its JSON string.
+	msg := &dipper.Message{
+		Labels: map[string]string{"status": "success"},
+		Payload: map[string]interface{}{
+			"message": map[string]interface{}{
+				"Role": RoleAgent,
+				"ToolCalls": []interface{}{
+					map[string]interface{}{
+						"FuncName": "sys_s1__fn1",
+						"Params": map[string]interface{}{
+							"str_param": `{"should": "stay string"}`,
+							"obj_param": `{"key": "value"}`,
+							"arr_param": `["x", "y"]`,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	s.processAgentResponse(msg)
+
+	require.Len(t, s.ToolCalls, 1)
+	params := s.ToolCalls[0].Params
+	assert.Equal(t, `{"should": "stay string"}`, params["str_param"], "string-typed param must not be coerced")
+	assert.Equal(t, map[string]interface{}{"key": "value"}, params["obj_param"], "object-typed param should be parsed")
+	assert.Equal(t, []interface{}{"x", "y"}, params["arr_param"], "array-typed param should be parsed")
 }
 
 // ---------------------------------------------------------------------------
