@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -148,13 +149,13 @@ func (cs *ConvoState) isSessionCancelled(sessionID string) bool {
 //
 // The archived key follows the pattern: convo_history:<ConvoID>_g<N>
 // This allows the UI to discover archived generations by convention.
-func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) {
+func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) { //nolint:unused
 	// Read the current conversation history.
 	ret, err := store.Call("cache", "lrange", map[string]interface{}{
 		"key": ConvoHistoryKeyPrefix + cs.ConvoID,
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("archiveConvo: %w", err)
 	}
 
 	// Increment generation before building the key so the first
@@ -168,7 +169,8 @@ func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) {
 		if err := json.Unmarshal(ret, &messages); err != nil {
 			// Roll back the generation increment on parse failure.
 			cs.Generation--
-			return "", err
+
+			return "", fmt.Errorf("archiveConvo: %w", err)
 		}
 
 		convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
