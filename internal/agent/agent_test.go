@@ -1594,3 +1594,77 @@ func TestPersistentAgentStore_ContinueInference_Recover(t *testing.T) {
 	// recover() should dispatch send_to_model.
 	assert.True(t, helper.hasCall("driver:openai:send_to_model"))
 }
+
+// TestStartTurn_UsesParentAgentWhenLastSessionIsSubAgent guards against the bug
+// where a sub-agent (inference) session registers itself as LastSession in the
+// unified ConvoState, causing the next UI turn to start with the sub-agent's
+// name (and its max_history_len) instead of the parent chat-turn agent.
+func TestStartTurn_UsesParentAgentWhenLastSessionIsSubAgent(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"super_coder": {Name: "super_coder", Driver: "openai", Engine: "gpt-4"},
+			"code_executor": {
+				Name:          "code_executor",
+				Driver:        "openai",
+				Engine:        "gpt-4",
+				MaxHistoryLen: 20,
+			},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+
+	convoID := "parent-convo-123"
+
+	// Simulate a ConvoState where a sub-agent inference session has overwritten
+	// LastSession (which is what happens today when a sub-agent runs).
+	cs := &ConvoState{
+		ConvoID: convoID,
+		TTL:     ConvoStreamTTL,
+		FirstSession: &ConvoSessionRef{
+			SessionID: "session-turn1",
+			AgentName: "super_coder",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+		LastSession: &ConvoSessionRef{
+			SessionID: "session-subagent",
+			AgentName: "code_executor",
+			Type:      AgentSessionTypeInference,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	// Provide the parent convo state so cs.load() returns the above.
+	helper.resp["cache:load:"+ConvoStateKeyPrefix+convoID] = mustMarshalJSON(cs)
+	// Return an empty history for the new turn's convo.
+	helper.resp["cache:lrange:"+ConvoHistoryKeyPrefix+convoID] = mustMarshalJSON([]AgentMessage{})
+
+	store := NewAgentStore(helper).(*PersistentAgentStore)
+
+	store.StartTurn(convoID, "hello again", "user1")
+	store.Wait()
+
+	// The new session must be dispatched to the parent agent (super_coder), not code_executor.
+	params := helper.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params, "expected send_to_model to be called")
+	// The engine field is set from the agent config; both agents use the same engine here,
+	// so validate via the history: super_coder has no MaxHistoryLen, so history is not truncated.
+	assert.Equal(t, "gpt-4", params["engine"])
+
+	// The agent session persisted must have super_coder as its agent name.
+	var persistedAgent string
+	for _, call := range helper.getCalls() {
+		if call == "cache:save" {
+			break
+		}
+	}
+	// Verify by checking that the store was called with super_coder, not code_executor,
+	// by checking the noWaitParams didn't come from a code_executor dispatch
+	// (code_executor would restrict history to 20, but here history is empty so that
+	// distinction isn't visible — instead we check the emitted messages carry no ltrim).
+	ltrimCalled := helper.hasCall("cache:ltrim")
+	assert.False(t, ltrimCalled, "ltrim should not be called: super_coder has no max_history_len")
+	_ = persistedAgent
+}

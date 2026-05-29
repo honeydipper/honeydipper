@@ -51,6 +51,8 @@ type AgentSession struct {
 	PendingOffset    int
 	ErrorReason      string
 	TotalTokens      int
+	InputTokens      int
+	OutputTokens     int
 	ParentSessionID  string
 	ParentTurnID     string
 	ParentToolCallID string
@@ -113,11 +115,11 @@ func (s *AgentSession) syncConvoStateStatus() {
 	}
 
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-		cs.updateSessionStatus(s.ID, status)
+		cs.updateSessionStatus(s.ID, status, s.InputTokens, s.OutputTokens)
 	})
 	if s.UnifiedConvoID != "" && s.UnifiedConvoID != s.ConvoID {
 		lockedConvoStateUpdate(s.UnifiedConvoID, s.store, func(cs *ConvoState) {
-			cs.updateSessionStatus(s.ID, status)
+			cs.updateSessionStatus(s.ID, status, s.InputTokens, s.OutputTokens)
 		})
 	}
 }
@@ -680,6 +682,8 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		agentMsg.Content = s.PendingContent + agentMsg.Content
 		s.PendingContent = ""
 		s.TotalTokens += agentMsg.InputTokens + agentMsg.OutputTokens
+		s.InputTokens += agentMsg.InputTokens
+		s.OutputTokens += agentMsg.OutputTokens
 		s.appendConvoHistory(*agentMsg)
 		if s.ParentSessionID != "" {
 			s.notifyParent(*agentMsg)

@@ -201,15 +201,21 @@ func (p *PersistentAgentStore) StartTurn(convoID, text, user string) {
 		defer p.wg.Done()
 		defer dipper.SafeExitOnError("[agent] error in StartTurn")
 
-		// Resolve the agent name from the most recent session in the ConvoState.
+		// Resolve the agent name from the ConvoState.
+		// Sub-agent (inference) sessions register themselves into the unified
+		// ConvoState and can overwrite LastSession with a sub-agent name.
+		// To guard against starting a new turn with the wrong agent, prefer
+		// the last ChatTurn session; fall back to FirstSession when LastSession
+		// is an inference session.
 		cs := &ConvoState{}
 		cs.load(convoID, p)
-		if len(cs.Sessions) == 0 {
-			p.Errorf("[agent] StartTurn: no sessions found for convo %s", convoID)
-
-			return
+		agentName := ""
+		switch {
+		case cs.LastSession != nil && cs.LastSession.Type != AgentSessionTypeInference:
+			agentName = cs.LastSession.AgentName
+		case cs.FirstSession != nil:
+			agentName = cs.FirstSession.AgentName
 		}
-		agentName := cs.Sessions[len(cs.Sessions)-1].AgentName
 		if agentName == "" {
 			p.Errorf("[agent] StartTurn: cannot determine agent name for convo %s", convoID)
 
@@ -420,10 +426,11 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 
 	cancelOne := func(id string) {
 		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
-			for i := range cs.Sessions {
-				if cs.Sessions[i].Status == ConvoSessionStatusActive {
-					cs.Sessions[i].Status = ConvoSessionStatusCancelled
-					cs.Sessions[i].UpdatedAt = time.Now()
+			now := time.Now()
+			for _, sr := range []*ConvoSessionRef{cs.FirstSession, cs.LastSession} {
+				if sr != nil && sr.Status == ConvoSessionStatusActive {
+					sr.Status = ConvoSessionStatusCancelled
+					sr.UpdatedAt = now
 				}
 			}
 		})

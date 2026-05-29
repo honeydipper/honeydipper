@@ -31,24 +31,27 @@ const (
 
 // ConvoSessionRef is a compact record of an agent session that belongs to a conversation.
 type ConvoSessionRef struct {
-	SessionID string    `json:"session_id"`
-	AgentName string    `json:"agent_name"`
-	Type      string    `json:"type"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	SessionID    string    `json:"session_id"`
+	AgentName    string    `json:"agent_name"`
+	Type         string    `json:"type"`
+	Status       string    `json:"status"`
+	InputTokens  int       `json:"input_tokens,omitempty"`
+	OutputTokens int       `json:"output_tokens,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // ConvoState is the persisted, queryable view of a conversation.
-// It tracks every agent session started in the conversation and exposes a
-// Cancelled flag that active sessions poll to self-terminate.
+// It tracks the first and last agent session started in the conversation and
+// exposes a Cancelled flag that active sessions poll to self-terminate.
 type ConvoState struct {
-	ConvoID        string            `json:"convo_id"`
-	UnifiedConvoID string            `json:"unified_convo_id,omitempty"`
-	FirstTurn      string            `json:"first_turn,omitempty"`
-	Sessions       []ConvoSessionRef `json:"sessions"`
-	Cancelled      bool              `json:"cancelled"`
-	TTL            string            `json:"ttl"`
+	ConvoID        string           `json:"convo_id"`
+	UnifiedConvoID string           `json:"unified_convo_id,omitempty"`
+	FirstTurn      string           `json:"first_turn,omitempty"`
+	FirstSession   *ConvoSessionRef `json:"first_session,omitempty"`
+	LastSession    *ConvoSessionRef `json:"last_session,omitempty"`
+	Cancelled      bool             `json:"cancelled"`
+	TTL            string           `json:"ttl"`
 }
 
 // load reads and deserialises the ConvoState for convoID from the cache.
@@ -87,42 +90,54 @@ func (cs *ConvoState) persist(store AgentStore) {
 	}))
 }
 
-// registerSession appends a new active-session entry to the in-memory list.
+// registerSession records the new active session as the LastSession, and sets
+// FirstSession when this is the first session in the conversation.
 // The caller is responsible for persisting the state afterwards.
 func (cs *ConvoState) registerSession(sessionID, agentName, sessionType string) {
 	now := time.Now()
-	cs.Sessions = append(cs.Sessions, ConvoSessionRef{
+	sr := &ConvoSessionRef{
 		SessionID: sessionID,
 		AgentName: agentName,
 		Type:      sessionType,
 		Status:    ConvoSessionStatusActive,
 		CreatedAt: now,
 		UpdatedAt: now,
-	})
+	}
+	if cs.FirstSession == nil {
+		cs.FirstSession = sr
+	}
+	cs.LastSession = sr
 }
 
-// updateSessionStatus finds the entry for sessionID, sets its status and
-// updated timestamp in-memory.  The caller is responsible for persisting.
-func (cs *ConvoState) updateSessionStatus(sessionID, status string) {
-	for i := range cs.Sessions {
-		if cs.Sessions[i].SessionID == sessionID {
-			cs.Sessions[i].Status = status
-			cs.Sessions[i].UpdatedAt = time.Now()
-
-			return
-		}
+// updateSessionStatus sets the status, token counts, and updated timestamp
+// for the matching session in FirstSession or LastSession.
+// The caller is responsible for persisting.
+func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens, outputTokens int) {
+	now := time.Now()
+	if cs.FirstSession != nil && cs.FirstSession.SessionID == sessionID {
+		cs.FirstSession.Status = status
+		cs.FirstSession.InputTokens = inputTokens
+		cs.FirstSession.OutputTokens = outputTokens
+		cs.FirstSession.UpdatedAt = now
+	}
+	if cs.LastSession != nil && cs.LastSession.SessionID == sessionID {
+		cs.LastSession.Status = status
+		cs.LastSession.InputTokens = inputTokens
+		cs.LastSession.OutputTokens = outputTokens
+		cs.LastSession.UpdatedAt = now
 	}
 }
 
 // isSessionCancelled returns true when the session with the given ID has been
-// marked as cancelled inside this ConvoState's session list.
+// marked as cancelled in FirstSession or LastSession.
 // It is used by checkCancelled to detect turn-level cancellation without
 // polluting future turns via the whole-conversation Cancelled flag.
 func (cs *ConvoState) isSessionCancelled(sessionID string) bool {
-	for _, sr := range cs.Sessions {
-		if sr.SessionID == sessionID {
-			return sr.Status == ConvoSessionStatusCancelled
-		}
+	if cs.FirstSession != nil && cs.FirstSession.SessionID == sessionID {
+		return cs.FirstSession.Status == ConvoSessionStatusCancelled
+	}
+	if cs.LastSession != nil && cs.LastSession.SessionID == sessionID {
+		return cs.LastSession.Status == ConvoSessionStatusCancelled
 	}
 
 	return false
