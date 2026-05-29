@@ -6,6 +6,10 @@
 
 package config
 
+import (
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
+)
+
 // Event is the runtime data representation of an event.
 type Event struct {
 	System  string
@@ -171,6 +175,7 @@ type Agent struct {
 	ShouldEmitThoughts bool   `json:"should_emit_thoughts" mapstructure:"should_emit_thoughts"`
 	ShouldStream       bool   `json:"should_stream" mapstructure:"should_stream"`
 	MaxHistoryLen      int    `json:"max_history_len" mapstructure:"max_history_len"`
+	CompactionPolicy   *agentpkg.CompactionPolicy `json:"compaction_policy" mapstructure:"compaction_policy"`
 	Tools              []AgentToolDef
 	ModelData          map[string]interface{} `json:"model_data" mapstructure:"model_data"`
 	Description        string
