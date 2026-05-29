@@ -79,7 +79,7 @@ type DataSet struct {
 - **Function**: `{Driver, RawAction, Parameters, Target (Action{System,Function}), Export, ExportOnSuccess/Failure}`
 - **System**: `{Data, Triggers map, Functions map (can be nested: "subsys.func"), Extends []string}`
 - **Workflow**: Rich step definition with conditions (`If/IfAny/Unless/UnlessAll/Match/UnlessMatch`), iteration (`Iterate/IterateParallel`), branching (`Switch/Cases/Default`), error handling (`OnError/OnFailure`), caching (`CacheKey/CacheTTL`), exports, sub-workflows, agent calls
-- **Agent**: `{Driver, Engine, SystemPrompt, InferencePrompt, ShouldEmitThoughts, ShouldStream, MaxHistoryLen, ModelData, Tools}`
+- **Agent**: `{Driver, Engine, SystemPrompt, InferencePrompt, ShouldEmitThoughts, ShouldStream, MaxHistoryLen, CompactionPolicy, Tools, ModelData}`
 - **RepoInfo**: `{Repo (URL/path), Branch, Path, InitFile, KeyFile (SSH), TokenSource (github), Username/PassEnv}`
 
 ### 4.3 Config Lifecycle (5 Stages)
@@ -240,6 +240,9 @@ User/Workflow ──► Agent Service ──► AgentSession ──► AI Driver
 - **Message**: `{Role, User, IsThinking, ToolCalls, ToolResult, Content, IsComplete, InputTokens, OutputTokens}`
 - **Tool**: `{Name, Description, Params (JSON Schema)}`
 - **ToolCall**: `{FuncName, Params}`
+- **CompactionPolicy**: `{Strategy, Threshold, ThresholdType, PreserveRecent, SummarizationAgent, SummarizationPrompt}` — controls when and how conversation history is compacted (summarized) to stay within token/history limits
+
+- **CompactionStrategy**: currently only `"summarize"` — uses an LLM agent to condense older messages while preserving recent ones verbatim
 - **State**: `{HistoryLen, TotalTokens, ConvoID}` — reported at end of turn
 
 ---
