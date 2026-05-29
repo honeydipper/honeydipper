@@ -56,3 +56,48 @@ type State struct {
 	TotalTokens int    `json:"total_tokens" mapstructure:"total_tokens"`
 	ConvoID     string `json:"convo_id" mapstructure:"convo_id"`
 }
+
+// CompactionStrategy defines how conversation history should be compacted
+// when it exceeds the configured threshold.
+type CompactionStrategy string
+
+const (
+	// CompactionStrategySummarize uses an LLM summarization agent to compress
+	// older conversation history into a concise summary, preserving the most
+	// recent messages verbatim.
+	CompactionStrategySummarize CompactionStrategy = "summarize"
+)
+
+// CompactionPolicy configures the automatic compaction behavior for an agent's
+// conversation history. Compaction is triggered lazily before sending history
+// to the model when the threshold is exceeded.
+type CompactionPolicy struct {
+	// Strategy selects the compaction method. Currently only "summarize" is supported.
+	Strategy CompactionStrategy `json:"strategy" mapstructure:"strategy"`
+
+	// Threshold is the value at which compaction triggers, interpreted according
+	// to ThresholdType. When the current value equals or exceeds Threshold,
+	// compaction runs before the next model invocation.
+	Threshold int `json:"threshold" mapstructure:"threshold"`
+
+	// ThresholdType specifies what metric Threshold refers to.
+	// Supported values:
+	//   - "history_len":   number of messages in the conversation history
+	//   - "total_tokens":  cumulative input + output tokens across the session
+	ThresholdType string `json:"threshold_type" mapstructure:"threshold_type"`
+
+	// PreserveRecent is the number of most recent conversation messages that
+	// should always be kept verbatim after compaction. The rest is summarized.
+	PreserveRecent int `json:"preserve_recent" mapstructure:"preserve_recent"`
+
+	// SummarizationAgent references the name of another Agent (defined in the
+	// same config) whose driver/model will be used to produce the summary.
+	// The referenced agent should be configured with a concise, fast model
+	// suitable for summarization tasks.
+	SummarizationAgent string `json:"summarization_agent" mapstructure:"summarization_agent"`
+
+	// SummarizationPrompt is an optional template used for the summarization
+	// request. If empty, a sensible default is used.
+	// The template receives the conversation history as formatted text.
+	SummarizationPrompt string `json:"summarization_prompt" mapstructure:"summarization_prompt"`
+}
