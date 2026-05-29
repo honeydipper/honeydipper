@@ -1074,7 +1074,7 @@ func TestNextToolCall_SystemDispatch(t *testing.T) {
 
 	s := &AgentSession{
 		store:       store,
-		Agent:       &config.Agent{Driver: "openai"},
+		Agent:       &config.Agent{Name: "test-agent", Driver: "openai"},
 		ID:          "tc-session",
 		CurrentCall: 0,
 		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
@@ -1089,6 +1089,7 @@ func TestNextToolCall_SystemDispatch(t *testing.T) {
 	require.Len(t, emitted, 1)
 	assert.Equal(t, "agent_command", emitted[0].Subject)
 	assert.Equal(t, s.ID, emitted[0].Labels["agent_session_id"])
+	assert.Equal(t, "test-agent", emitted[0].Labels["agent_name"])
 }
 
 func TestNextToolCall_WorkflowDispatch(t *testing.T) {

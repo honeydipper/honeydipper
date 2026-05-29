@@ -736,6 +736,7 @@ func (s *AgentSession) nextToolCall() {
 				"turn_id":          strconv.Itoa(len(s.history)),
 				"tool_call_id":     strconv.Itoa(s.CurrentCall),
 				"unified_convo_id": unifiedConvoID, // for unified history access in workflows
+				"agent_name":       s.Agent.Name,
 			},
 			Payload: map[string]interface{}{
 				"ctx": c.Params,
@@ -771,6 +772,7 @@ func (s *AgentSession) nextToolCall() {
 						"turn_id":          strconv.Itoa(len(s.history)),
 						"tool_call_id":     strconv.Itoa(s.CurrentCall),
 						"unified_convo_id": unifiedConvoID, // for unified history access in workflows
+						"agent_name":       s.Agent.Name,
 					},
 				},
 			},
@@ -789,6 +791,7 @@ func (s *AgentSession) nextToolCall() {
 				"sub_agent_name":   subAgentName,
 				"convo_id":         s.ConvoID,
 				"unified_convo_id": unifiedConvoID, // for unified history access in sub-agents
+				"agent_name":       s.Agent.Name,
 			},
 			Payload: map[string]interface{}{
 				"input": input,
@@ -814,6 +817,7 @@ func (s *AgentSession) nextToolCall() {
 				"turn_id":          strconv.Itoa(len(s.history)),
 				"tool_call_id":     strconv.Itoa(s.CurrentCall),
 				"unified_convo_id": unifiedConvoID,
+				"agent_name":       s.Agent.Name,
 			},
 			Payload: map[string]interface{}{
 				"server": mcpServer,
