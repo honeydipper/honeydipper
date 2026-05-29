@@ -170,11 +170,11 @@ type Agent struct {
 	Name               string
 	Driver             string
 	Engine             string
-	SystemPrompt       string `json:"system_prompt" mapstructure:"system_prompt"`
-	InferencePrompt    string `json:"inference_prompt" mapstructure:"inference_prompt"`
-	ShouldEmitThoughts bool   `json:"should_emit_thoughts" mapstructure:"should_emit_thoughts"`
-	ShouldStream       bool   `json:"should_stream" mapstructure:"should_stream"`
-	MaxHistoryLen      int    `json:"max_history_len" mapstructure:"max_history_len"`
+	SystemPrompt       string                     `json:"system_prompt" mapstructure:"system_prompt"`
+	InferencePrompt    string                     `json:"inference_prompt" mapstructure:"inference_prompt"`
+	ShouldEmitThoughts bool                       `json:"should_emit_thoughts" mapstructure:"should_emit_thoughts"`
+	ShouldStream       bool                       `json:"should_stream" mapstructure:"should_stream"`
+	MaxHistoryLen      int                        `json:"max_history_len" mapstructure:"max_history_len"`
 	CompactionPolicy   *agentpkg.CompactionPolicy `json:"compaction_policy" mapstructure:"compaction_policy"`
 	Tools              []AgentToolDef
 	ModelData          map[string]interface{} `json:"model_data" mapstructure:"model_data"`
