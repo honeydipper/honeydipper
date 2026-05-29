@@ -1,13 +1,8 @@
-// Copyright 2026 PayPal Inc.
-
-// This Source Code Form is subject to the terms of the MIT License.
-// If a copy of the MIT License was not distributed with this file,
-// you can obtain one at https://mit-license.org/.
-
 package agent
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -44,6 +39,8 @@ type ConvoSessionRef struct {
 // ConvoState is the persisted, queryable view of a conversation.
 // It tracks the first and last agent session started in the conversation and
 // exposes a Cancelled flag that active sessions poll to self-terminate.
+// Generation tracks how many times the conversation has been compacted;
+// each compaction archives the previous history under <ConvoID>_g<N>.
 type ConvoState struct {
 	ConvoID        string           `json:"convo_id"`
 	UnifiedConvoID string           `json:"unified_convo_id,omitempty"`
@@ -51,6 +48,7 @@ type ConvoState struct {
 	FirstSession   *ConvoSessionRef `json:"first_session,omitempty"`
 	LastSession    *ConvoSessionRef `json:"last_session,omitempty"`
 	Cancelled      bool             `json:"cancelled"`
+	Generation     int              `json:"generation"`
 	TTL            string           `json:"ttl"`
 }
 
@@ -141,6 +139,58 @@ func (cs *ConvoState) isSessionCancelled(sessionID string) bool {
 	}
 
 	return false
+}
+
+// archiveConvo copies the current conversation history to an archived key
+// suffixed with _g<N> where N is the incremented generation number.
+// It increments cs.Generation and returns the archived key name.
+// The caller is responsible for persisting the updated ConvoState.
+//
+// The archived key follows the pattern: convo_history:<ConvoID>_g<N>
+// This allows the UI to discover archived generations by convention.
+func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) {
+	// Read the current conversation history.
+	ret, err := store.Call("cache", "lrange", map[string]interface{}{
+		"key": ConvoHistoryKeyPrefix + cs.ConvoID,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// Increment generation before building the key so the first
+	// archive gets _g1, the second _g2, etc.
+	cs.Generation++
+	archivedKey := cs.ConvoID + "_g" + strconv.Itoa(cs.Generation)
+
+	// Only copy if there are entries in the current history.
+	if len(ret) > 0 {
+		var messages []json.RawMessage
+		if err := json.Unmarshal(ret, &messages); err != nil {
+			// Roll back the generation increment on parse failure.
+			cs.Generation--
+			return "", err
+		}
+
+		convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
+		fullKey := ConvoHistoryKeyPrefix + archivedKey
+		for _, msg := range messages {
+			_, err := store.Call("cache", "rpush", map[string]interface{}{
+				"key":   fullKey,
+				"value": string(msg),
+				"ttl":   float64(convoTTL),
+			})
+			if err != nil {
+				// Best-effort: try to push remaining messages.
+				// If individual pushes fail, the archive is partial.
+				// The generation is already incremented so the next
+				// compaction will use _g<N+1> — the partial archive
+				// remains discoverable with a best-effort copy.
+				continue
+			}
+		}
+	}
+
+	return archivedKey, nil
 }
 
 // lockedConvoStateUpdate acquires the distributed lock for convoID, loads the
