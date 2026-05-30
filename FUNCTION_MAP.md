@@ -13,6 +13,7 @@ This document provides a structured overview of the functions available in the H
   - [User and Team Management](#user-and-team-management)
   - [Copilot Integration](#copilot-integration)
   - [Secret Scanning](#secret-scanning)
+  - [Internal Functions](#internal-functions)
 - [Function Interactions](#function-interactions)
 
 ---
@@ -266,6 +267,54 @@ This document provides a structured overview of the functions available in the H
 
 ---
 
+### Internal Functions
+
+#### `mcp__internal__execute_bash_command`
+- **Purpose**: Execute a bash command on the local machine.
+- **Use Case**: Use this to run shell commands, scripts, or perform local operations.
+
+#### `mcp__internal__read_file`
+- **Purpose**: Read the contents of a file on the local machine.
+- **Use Case**: Use this to fetch the contents of a local file.
+
+#### `mcp__internal__write_file`
+- **Purpose**: Write content to a file on the local machine.
+- **Use Case**: Use this to create or update a local file.
+
+#### `mcp__internal__append_to_file`
+- **Purpose**: Append content to an existing file on the local machine.
+- **Use Case**: Use this to add content to the end of a local file.
+
+#### `mcp__internal__delete_file`
+- **Purpose**: Delete a file from the local machine.
+- **Use Case**: Use this to remove a local file.
+
+#### `mcp__internal__list_files`
+- **Purpose**: List files in a directory on the local machine.
+- **Use Case**: Use this to fetch a list of files in a local directory.
+
+#### `mcp__internal__create_directory`
+- **Purpose**: Create a directory on the local machine.
+- **Use Case**: Use this to create a new local directory.
+
+#### `mcp__internal__delete_directory`
+- **Purpose**: Delete a directory from the local machine.
+- **Use Case**: Use this to remove a local directory.
+
+#### `mcp__internal__execute_python_code`
+- **Purpose**: Execute Python code on the local machine.
+- **Use Case**: Use this to run Python scripts or perform Python-based operations.
+
+#### `mcp__internal__install_python_package`
+- **Purpose**: Install a Python package on the local machine.
+- **Use Case**: Use this to install Python dependencies or libraries.
+
+#### `mcp__internal__http_request`
+- **Purpose**: Make an HTTP request to a specified URL.
+- **Use Case**: Use this to interact with web APIs or fetch data from the internet.
+
+---
+
 ## Function Interactions
 
 ### Creating and Managing Issues
@@ -294,6 +343,19 @@ This document provides a structured overview of the functions available in the H
 1. **Request Copilot Review**: Use `mcp__github__request_copilot_review` to request a Copilot review for a pull request.
 2. **Assign Copilot to Issue**: Use `mcp__github__assign_copilot_to_issue` to assign Copilot to an issue.
 3. **Check Job Status**: Use `mcp__github__get_copilot_job_status` to check the status of a Copilot job.
+
+### Internal Functions
+1. **Execute Bash Command**: Use `mcp__internal__execute_bash_command` to run shell commands.
+2. **Read File**: Use `mcp__internal__read_file` to fetch the contents of a local file.
+3. **Write File**: Use `mcp__internal__write_file` to create or update a local file.
+4. **Append to File**: Use `mcp__internal__append_to_file` to add content to a local file.
+5. **Delete File**: Use `mcp__internal__delete_file` to remove a local file.
+6. **List Files**: Use `mcp__internal__list_files` to fetch a list of files in a directory.
+7. **Create Directory**: Use `mcp__internal__create_directory` to create a local directory.
+8. **Delete Directory**: Use `mcp__internal__delete_directory` to remove a local directory.
+9. **Execute Python Code**: Use `mcp__internal__execute_python_code` to run Python scripts.
+10. **Install Python Package**: Use `mcp__internal__install_python_package` to install Python dependencies.
+11. **HTTP Request**: Use `mcp__internal__http_request` to interact with web APIs.
 
 ---
 
