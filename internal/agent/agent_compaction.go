@@ -94,6 +94,34 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 		tailStart = 0
 	}
 	tail := s.history[tailStart:toolIndex]
+	if tail[len(tail)-1].Role == RoleTool {
+		// The recent message is a ToolResult, we need to make sure the matching ToolCall
+		// is preserved as well.
+		presevedToolCall := false
+		for i := len(tail) - 2; i >= 0; i-- {
+			if tail[i].Role == RoleTool {
+				presevedToolCall = true
+
+				break
+			}
+		}
+		if !presevedToolCall {
+			// Look for the matching ToolCall.
+			for i := tailStart - 1; i >= 0; i-- {
+				if s.history[i].Role == RoleAgent {
+					// Prepend the matching ToolCall to the preserved tail.
+					oldTail := tail
+					tail = make([]AgentMessage, len(oldTail)+1)
+					tail[0] = s.history[i+1]
+					for i, m := range oldTail {
+						tail[i+1] = m
+					}
+
+					break
+				}
+			}
+		}
+	}
 
 	// Persist only the summary as a system message. The active system prompt
 	// is intentionally NOT persisted and will be prepended in sendToDriver.
@@ -114,8 +142,10 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 		})
 	}
 
-	// Update in-memory history and persist session state.
+	// Update in-memory history
 	s.history = newHistory
+	s.TotalTokens = 0 // reset total tokens since we're starting fresh with the summary as context
+
 	s.persist(false)
 
 	// After successful compaction, resume the conversation by sending the

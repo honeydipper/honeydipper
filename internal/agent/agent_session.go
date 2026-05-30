@@ -944,8 +944,6 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 	} else {
 		// Delegate compaction-specific handling to the compaction helper.
 		if s.handleCompactionResult(c, s.ToolResults) {
-			s.ToolResults = nil
-
 			return
 		}
 
