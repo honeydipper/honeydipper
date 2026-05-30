@@ -149,7 +149,7 @@ func (cs *ConvoState) isSessionCancelled(sessionID string) bool {
 //
 // The archived key follows the pattern: convo_history:<ConvoID>_g<N>
 // This allows the UI to discover archived generations by convention.
-func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) { //nolint:unused
+func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) {
 	// Read the current conversation history.
 	ret, err := store.Call("cache", "lrange", map[string]interface{}{
 		"key": ConvoHistoryKeyPrefix + cs.ConvoID,

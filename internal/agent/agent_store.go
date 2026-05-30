@@ -300,6 +300,12 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 	p.Infof("[agent] StartAgentCall sub_agent=%s parent=%s", msg.Labels["sub_agent_name"], msg.Labels["agent_session_id"])
 
 	// Build a synthetic start message for the sub-agent session.
+	forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
+	convoID := ""
+	oneShot, _ := dipper.GetMapDataBool(msg.Payload, "one_shot")
+	if oneShot {
+		convoID = fmt.Sprintf("%s-%s", msg.Labels["convo_id"], msg.Labels["sub_agent_name"])
+	}
 	subMsg := &dipper.Message{
 		Labels: map[string]string{
 			"agent_name":       msg.Labels["sub_agent_name"],
@@ -308,8 +314,9 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 		Payload: map[string]interface{}{
 			"text":             dipper.MustGetMapDataStr(msg.Payload, "input"),
 			"type":             agentpkg.SessionTypeInference,
-			"convo_id":         fmt.Sprintf("%s-%s", msg.Labels["convo_id"], msg.Labels["sub_agent_name"]),
+			"convo_id":         convoID,
 			"unified_convo_id": msg.Labels["unified_convo_id"],
+			"forget_history":   forgetHistory,
 		},
 	}
 

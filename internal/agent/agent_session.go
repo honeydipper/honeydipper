@@ -236,6 +236,13 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		if cs.FirstTurn == "" && s.Type == AgentSessionTypeChatTurn && firstTurn != "" {
 			cs.FirstTurn = firstTurn
 		}
+		forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
+		if forgetHistory {
+			dipper.Must(cs.archiveConvo(store))
+			dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
+				"key": ConvoHistoryKeyPrefix + s.ConvoID,
+			}))
+		}
 		cs.registerSession(s.ID, agentName, s.Type)
 	})
 	// Also register in the unified convo state when it spans multiple convo IDs
@@ -483,6 +490,20 @@ func (s *AgentSession) addAgentTool(tools map[string]AgentTool, toolDef config.A
 				"name":        "input",
 				"type":        "string",
 				"description": "The input text to send to the agent",
+			},
+			"forget_history": map[string]interface{}{
+				"name": "forget_history",
+				"type": "boolean",
+				"description": "Whether to forget the agent's previous conversation history, " +
+					"if you have used non one-shot mode previously.",
+			},
+			"one_shot": map[string]interface{}{
+				"name": "one_shot",
+				"type": "boolean",
+				"description": "Whether to run the agent in one-shot mode, forgetting " +
+					"this call afterwards. Always use one-shot mode to save tokens unless you are " +
+					"expecting follow-up questions, or you are planning to send multiple " +
+					"related calls that may benefit from shared context.",
 			},
 		},
 	}
@@ -784,6 +805,8 @@ func (s *AgentSession) nextToolCall() {
 	case strings.HasPrefix(c.FuncName, "ag__"):
 		subAgentName := c.FuncName[len("ag__"):]
 		input := c.Params["input"]
+		oneShot, _ := dipper.GetMapDataBool(c.Params, "one_shot")
+		forgetHistory, _ := dipper.GetMapDataBool(c.Params, "forget_history")
 
 		s.store.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
@@ -798,7 +821,9 @@ func (s *AgentSession) nextToolCall() {
 				"agent_name":       s.Agent.Name,
 			},
 			Payload: map[string]interface{}{
-				"input": input,
+				"input":          input,
+				"one_shot":       oneShot,
+				"forget_history": forgetHistory,
 			},
 		})
 	case strings.HasPrefix(c.FuncName, "mcp__"):
