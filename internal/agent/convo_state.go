@@ -50,6 +50,7 @@ type ConvoState struct {
 	LastSession    *ConvoSessionRef `json:"last_session,omitempty"`
 	Cancelled      bool             `json:"cancelled"`
 	Generation     int              `json:"generation"`
+	ArchivedConvos []string         `json:"archived_convos,omitempty"`
 	TTL            string           `json:"ttl"`
 }
 
@@ -191,6 +192,12 @@ func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) {
 			}
 		}
 	}
+
+	// Record the archived generation in the ConvoState so callers can expose
+	// the list of archived generations to clients. The caller is responsible
+	// for persisting the ConvoState (lockedConvoStateUpdate will persist
+	// after the fn returns when used).
+	cs.ArchivedConvos = append(cs.ArchivedConvos, archivedKey)
 
 	return archivedKey, nil
 }

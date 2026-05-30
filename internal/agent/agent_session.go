@@ -279,6 +279,13 @@ func (s *AgentSession) loadConvoHistory() {
 // appendConvoHistory appends a message to the in-memory history and the cache.
 // If the agent has MaxHistoryLen set, older entries beyond that limit are trimmed.
 func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
+	// Track cumulative token usage for the session when messages include
+	// token counts. This ensures `TotalTokens` reflects actual usage even
+	// when drivers don't update tokens in the model-complete path.
+	if msg.InputTokens > 0 || msg.OutputTokens > 0 {
+		s.TotalTokens += msg.InputTokens + msg.OutputTokens
+	}
+
 	s.history = append(s.history, msg)
 
 	if s.ConvoID != "" {
@@ -333,6 +340,19 @@ func (s *AgentSession) sendToDriver() {
 	systemPrompt := s.Agent.SystemPrompt
 	if s.Type == AgentSessionTypeInference && len(s.Agent.InferencePrompt) > 0 {
 		systemPrompt = s.Agent.InferencePrompt
+	}
+
+	// Run compaction if the agent's policy indicates it's due. If compaction
+	// dispatched a summarizer sub-agent, quit the send so the session waits
+	// for the compaction result delivered via agent_continue.
+	if s.shouldCompact() {
+		if s.compactHistory() {
+			if log := s.log(); log != nil {
+				log.Infof("[agent] session [%s] compaction dispatched; waiting for summarizer", s.ID)
+			}
+
+			return
+		}
 	}
 
 	// Prepend the system prompt ephemerally; filter any legacy persisted system
@@ -702,7 +722,6 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	if agentMsg.Role == RoleAgent && agentMsg.IsComplete {
 		agentMsg.Content = s.PendingContent + agentMsg.Content
 		s.PendingContent = ""
-		s.TotalTokens += agentMsg.InputTokens + agentMsg.OutputTokens
 		s.InputTokens += agentMsg.InputTokens
 		s.OutputTokens += agentMsg.OutputTokens
 		s.appendConvoHistory(*agentMsg)
@@ -923,6 +942,13 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 	if s.CurrentCall < len(s.ToolCalls) {
 		s.nextToolCall()
 	} else {
+		// Delegate compaction-specific handling to the compaction helper.
+		if s.handleCompactionResult(c, s.ToolResults) {
+			s.ToolResults = nil
+
+			return
+		}
+
 		agentMsg := AgentMessage{
 			Role:       RoleToolResult,
 			ToolResult: s.ToolResults,
