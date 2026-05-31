@@ -50,6 +50,7 @@ type AgentSession struct {
 	PendingContent   string
 	PendingOffset    int
 	ErrorReason      string
+	PrevContextSize  int
 	TotalTokens      int
 	InputTokens      int
 	OutputTokens     int
@@ -131,7 +132,7 @@ func (s *AgentSession) syncConvoStateStatus() {
 				s.ID, s.ConvoID, status, lastIsComplete, s.ErrorReason, fs, ls)
 		}
 
-		cs.updateSessionStatus(s.ID, status, s.InputTokens, s.OutputTokens)
+		cs.updateSessionStatus(s.ID, status, s.InputTokens, s.OutputTokens, s.TotalTokens)
 	})
 }
 
@@ -256,6 +257,9 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 				}))
 			}
 		}
+		if cs.LastSession != nil {
+			s.PrevContextSize = cs.LastSession.InputTokens + cs.LastSession.OutputTokens
+		}
 		cs.registerSession(s.ID, agentName, s.Type, true)
 	})
 	// Also register in the unified convo state when it spans multiple convo IDs
@@ -285,27 +289,12 @@ func (s *AgentSession) loadConvoHistory() {
 
 	var history []AgentMessage
 	dipper.Must(json.Unmarshal(ret, &history))
-	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Role == RoleAgent {
-			s.TotalTokens += history[i].InputTokens + history[i].OutputTokens
-
-			break
-		}
-	}
-
 	s.history = history
 }
 
 // appendConvoHistory appends a message to the in-memory history and the cache.
 // If the agent has MaxHistoryLen set, older entries beyond that limit are trimmed.
 func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
-	// Track cumulative token usage for the session when messages include
-	// token counts. This ensures `TotalTokens` reflects actual usage even
-	// when drivers don't update tokens in the model-complete path.
-	if msg.InputTokens > 0 || msg.OutputTokens > 0 {
-		s.TotalTokens += msg.InputTokens + msg.OutputTokens
-	}
-
 	s.history = append(s.history, msg)
 
 	if s.ConvoID != "" {
@@ -389,6 +378,8 @@ func (s *AgentSession) sendToDriver() {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
 			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
 	}
+	s.InputTokens = 0
+	s.OutputTokens = 0
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":        s.Agent.Engine,
 		"history":       history,
@@ -730,6 +721,10 @@ func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
 	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
+	s.InputTokens += agentMsg.InputTokens
+	s.OutputTokens += agentMsg.OutputTokens
+	s.TotalTokens += agentMsg.InputTokens + agentMsg.OutputTokens
+
 	if agentMsg.Role == RoleAgent && !agentMsg.IsComplete && !agentMsg.IsThinking && len(agentMsg.ToolCalls) == 0 {
 		s.PendingContent += agentMsg.Content
 
@@ -742,8 +737,6 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	if agentMsg.Role == RoleAgent && agentMsg.IsComplete {
 		agentMsg.Content = s.PendingContent + agentMsg.Content
 		s.PendingContent = ""
-		s.InputTokens += agentMsg.InputTokens
-		s.OutputTokens += agentMsg.OutputTokens
 		s.appendConvoHistory(*agentMsg)
 		if s.ParentSessionID != "" {
 			s.notifyParent(*agentMsg)
@@ -763,6 +756,7 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	}
 
 	if agentMsg.Role != RoleAgent {
+		s.persist(false)
 		s.sendToDriver()
 	}
 }
