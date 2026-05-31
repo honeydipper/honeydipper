@@ -236,12 +236,14 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		if cs.FirstTurn == "" && s.Type == AgentSessionTypeChatTurn && firstTurn != "" {
 			cs.FirstTurn = firstTurn
 		}
-		forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
-		if forgetHistory {
-			dipper.Must(cs.archiveConvo(store))
-			dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
-				"key": ConvoHistoryKeyPrefix + s.ConvoID,
-			}))
+		if len(s.history) > 0 {
+			forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
+			if forgetHistory {
+				dipper.Must(cs.archiveConvo(store))
+				dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
+					"key": ConvoHistoryKeyPrefix + s.ConvoID,
+				}))
+			}
 		}
 		cs.registerSession(s.ID, agentName, s.Type)
 	})
@@ -272,6 +274,13 @@ func (s *AgentSession) loadConvoHistory() {
 
 	var history []AgentMessage
 	dipper.Must(json.Unmarshal(ret, &history))
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == RoleAgent {
+			s.TotalTokens += history[i].InputTokens + history[i].OutputTokens
+
+			break
+		}
+	}
 
 	s.history = history
 }
@@ -769,111 +778,130 @@ func (s *AgentSession) nextToolCall() {
 
 	switch {
 	case strings.HasPrefix(c.FuncName, "sys_"):
-		sysName := c.FuncName[len("sys_"):strings.LastIndex(c.FuncName, "__")]
-		fName := c.FuncName[strings.LastIndex(c.FuncName, "__")+2:]
-
-		s.store.EmitMessage(dipper.Message{
-			Channel: "eventbus",
-			Subject: "agent_command",
-			Labels: map[string]string{
-				"agent_session_id": s.ID,
-				"turn_id":          strconv.Itoa(len(s.history)),
-				"tool_call_id":     strconv.Itoa(s.CurrentCall),
-				"unified_convo_id": unifiedConvoID, // for unified history access in workflows
-				"agent_name":       s.Agent.Name,
-			},
-			Payload: map[string]interface{}{
-				"ctx": c.Params,
-				"function": map[string]interface{}{
-					"target": map[string]interface{}{
-						"system":   sysName,
-						"function": fName,
-					},
-				},
-			},
-		})
+		s.handleSysToolCall(c, unifiedConvoID)
 	case strings.HasPrefix(c.FuncName, "wf__"):
-		wfName := c.FuncName[len("wf__"):]
-
-		s.store.EmitMessage(dipper.Message{
-			Channel: "eventbus",
-			Subject: "agent_workflow",
-			Payload: map[string]interface{}{
-				"data": c.Params,
-				"do": map[string]interface{}{
-					"call_workflow": wfName,
-					"context":       "_agent_tool_call",
-					"with": map[string]interface{}{
-						"agent_session_id": s.ID,
-						"turn_id":          strconv.Itoa(len(s.history)),
-						"convo_id":         s.ConvoID,
-						"unified_convo_id": unifiedConvoID, // for unified history access in workflows
-					},
-				},
-				"message": map[string]interface{}{
-					"labels": map[string]string{
-						"agent_session_id": s.ID,
-						"turn_id":          strconv.Itoa(len(s.history)),
-						"tool_call_id":     strconv.Itoa(s.CurrentCall),
-						"unified_convo_id": unifiedConvoID, // for unified history access in workflows
-						"agent_name":       s.Agent.Name,
-					},
-				},
-			},
-		})
+		s.handleWorkflowToolCall(c, unifiedConvoID)
 	case strings.HasPrefix(c.FuncName, "ag__"):
-		subAgentName := c.FuncName[len("ag__"):]
-		input := c.Params["input"]
-		oneShot, _ := dipper.GetMapDataBool(c.Params, "one_shot")
-		forgetHistory, _ := dipper.GetMapDataBool(c.Params, "forget_history")
-
-		s.store.EmitMessage(dipper.Message{
-			Channel: dipper.ChannelEventbus,
-			Subject: "agent_call",
-			Labels: map[string]string{
-				"agent_session_id": s.ID,
-				"turn_id":          strconv.Itoa(len(s.history)),
-				"tool_call_id":     strconv.Itoa(s.CurrentCall),
-				"sub_agent_name":   subAgentName,
-				"convo_id":         s.ConvoID,
-				"unified_convo_id": unifiedConvoID, // for unified history access in sub-agents
-				"agent_name":       s.Agent.Name,
-			},
-			Payload: map[string]interface{}{
-				"input":          input,
-				"one_shot":       oneShot,
-				"forget_history": forgetHistory,
-			},
-		})
+		s.handleAgentToolCall(c, unifiedConvoID)
 	case strings.HasPrefix(c.FuncName, "mcp__"):
-		// Strip the "mcp__" prefix then split on the first "__" to get server and tool.
-		rest := c.FuncName[len("mcp__"):]
-		sep := strings.Index(rest, "__")
-		var mcpServer, mcpTool string
-		if sep >= 0 {
-			mcpServer = rest[:sep]
-			mcpTool = rest[sep+2:]
-		} else {
-			mcpServer = rest
-		}
-
-		s.store.EmitMessage(dipper.Message{
-			Channel: dipper.ChannelEventbus,
-			Subject: "mcp_call",
-			Labels: map[string]string{
-				"agent_session_id": s.ID,
-				"turn_id":          strconv.Itoa(len(s.history)),
-				"tool_call_id":     strconv.Itoa(s.CurrentCall),
-				"unified_convo_id": unifiedConvoID,
-				"agent_name":       s.Agent.Name,
-			},
-			Payload: map[string]interface{}{
-				"server": mcpServer,
-				"tool":   mcpTool,
-				"args":   c.Params,
-			},
-		})
+		s.handleMCPToolCall(c, unifiedConvoID)
 	}
+}
+
+func (s *AgentSession) handleSysToolCall(c AgentToolCall, unifiedConvoID string) {
+	sysName := c.FuncName[len("sys_"):strings.LastIndex(c.FuncName, "__")]
+	fName := c.FuncName[strings.LastIndex(c.FuncName, "__")+2:]
+
+	s.store.EmitMessage(dipper.Message{
+		Channel: "eventbus",
+		Subject: "agent_command",
+		Labels: map[string]string{
+			"agent_session_id": s.ID,
+			"turn_id":          strconv.Itoa(len(s.history)),
+			"tool_call_id":     strconv.Itoa(s.CurrentCall),
+			"unified_convo_id": unifiedConvoID,
+			"agent_name":       s.Agent.Name,
+		},
+		Payload: map[string]interface{}{
+			"ctx": c.Params,
+			"function": map[string]interface{}{
+				"target": map[string]interface{}{
+					"system":   sysName,
+					"function": fName,
+				},
+			},
+		},
+	})
+}
+
+func (s *AgentSession) handleWorkflowToolCall(c AgentToolCall, unifiedConvoID string) {
+	wfName := c.FuncName[len("wf__"):]
+
+	s.store.EmitMessage(dipper.Message{
+		Channel: "eventbus",
+		Subject: "agent_workflow",
+		Payload: map[string]interface{}{
+			"data": c.Params,
+			"do": map[string]interface{}{
+				"call_workflow": wfName,
+				"context":       "_agent_tool_call",
+				"with": map[string]interface{}{
+					"agent_session_id": s.ID,
+					"turn_id":          strconv.Itoa(len(s.history)),
+					"convo_id":         s.ConvoID,
+					"unified_convo_id": unifiedConvoID,
+				},
+			},
+			"message": map[string]interface{}{
+				"labels": map[string]string{
+					"agent_session_id": s.ID,
+					"turn_id":          strconv.Itoa(len(s.history)),
+					"tool_call_id":     strconv.Itoa(s.CurrentCall),
+					"unified_convo_id": unifiedConvoID,
+					"agent_name":       s.Agent.Name,
+				},
+			},
+		},
+	})
+}
+
+func (s *AgentSession) handleAgentToolCall(c AgentToolCall, unifiedConvoID string) {
+	subAgentName := c.FuncName[len("ag__"):]
+	input := c.Params["input"]
+	oneShot, _ := dipper.GetMapDataBool(c.Params, "one_shot")
+	forgetHistory, _ := dipper.GetMapDataBool(c.Params, "forget_history")
+	m := dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "agent_call",
+		Labels: map[string]string{
+			"agent_session_id": s.ID,
+			"turn_id":          strconv.Itoa(len(s.history)),
+			"tool_call_id":     strconv.Itoa(s.CurrentCall),
+			"sub_agent_name":   subAgentName,
+			"convo_id":         s.ConvoID,
+			"unified_convo_id": unifiedConvoID,
+			"agent_name":       s.Agent.Name,
+		},
+		Payload: map[string]interface{}{
+			"input":          input,
+			"one_shot":       oneShot,
+			"forget_history": forgetHistory,
+		},
+	}
+	if compactID, ok := dipper.GetMapDataStr(c.Params, "compaction_id"); ok && compactID != "" {
+		m.Payload.(map[string]interface{})["compaction_id"] = compactID
+	}
+
+	s.store.EmitMessage(m)
+}
+
+func (s *AgentSession) handleMCPToolCall(c AgentToolCall, unifiedConvoID string) {
+	rest := c.FuncName[len("mcp__"):]
+	sep := strings.Index(rest, "__")
+	var mcpServer, mcpTool string
+	if sep >= 0 {
+		mcpServer = rest[:sep]
+		mcpTool = rest[sep+2:]
+	} else {
+		mcpServer = rest
+	}
+
+	s.store.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "mcp_call",
+		Labels: map[string]string{
+			"agent_session_id": s.ID,
+			"turn_id":          strconv.Itoa(len(s.history)),
+			"tool_call_id":     strconv.Itoa(s.CurrentCall),
+			"unified_convo_id": unifiedConvoID,
+			"agent_name":       s.Agent.Name,
+		},
+		Payload: map[string]interface{}{
+			"server": mcpServer,
+			"tool":   mcpTool,
+			"args":   c.Params,
+		},
+	})
 }
 
 // processToolResult collects the result of a completed tool call and either advances to the

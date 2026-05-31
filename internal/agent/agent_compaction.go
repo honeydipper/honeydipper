@@ -3,16 +3,26 @@ package agent
 import (
 	"encoding/json"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+)
+
+const (
+	DefaultCompactionPreserve = 10
+	DefaultCompactionPrompt   = "Summarize the following conversation history, preserving key decisions, " +
+		"context, and any critical information that will be needed to continue the conversation. " +
+		"Be concise but thorough. Explanin what is happening currently at the end."
 )
 
 // shouldCompact returns true when the agent's compaction policy is configured
 // and the configured threshold has been reached.
 func (s *AgentSession) shouldCompact() bool {
 	if s.Agent == nil || s.Agent.CompactionPolicy == nil {
+		return false
+	}
+	if len(s.history) == 0 || s.history[len(s.history)-1].Role != RoleUser {
+		// only trigger compaction on user messages.
 		return false
 	}
 	switch s.Agent.CompactionPolicy.ThresholdType {
@@ -34,8 +44,8 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 	}
 
 	// Only handle tool-calls that were marked for compaction.
-	pv, ok := c.Params["compaction"]
-	if !ok || !dipper.IsTruthy(pv) {
+	compactID, ok := c.Params["compaction_id"]
+	if !ok || compactID == "" {
 		return false
 	}
 
@@ -62,7 +72,7 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 	}
 
 	// Determine preserve window from params.
-	preserve := 5
+	preserve := DefaultCompactionPreserve
 	if pv2, ok := c.Params["preserve"]; ok {
 		switch v := pv2.(type) {
 		case int:
@@ -78,11 +88,6 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 		}
 	}
 
-	// Archive the old history under a generation key and persist the ConvoState.
-	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-		_, _ = cs.archiveConvo(s.store)
-	})
-
 	// Build the new history: summary as a system message, then the preserved tail messages.
 	total := len(s.history)
 	if total == 0 {
@@ -94,40 +99,11 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 		tailStart = 0
 	}
 	tail := s.history[tailStart:toolIndex]
-	if tail[len(tail)-1].Role == RoleTool {
-		// The recent message is a ToolResult, we need to make sure the matching ToolCall
-		// is preserved as well.
-		presevedToolCall := false
-		for i := len(tail) - 2; i >= 0; i-- {
-			if tail[i].Role == RoleTool {
-				presevedToolCall = true
-
-				break
-			}
-		}
-		if !presevedToolCall {
-			// Look for the matching ToolCall.
-			for i := tailStart - 1; i >= 0; i-- {
-				if s.history[i].Role == RoleAgent {
-					// Prepend the matching ToolCall to the preserved tail.
-					oldTail := tail
-					tail = make([]AgentMessage, len(oldTail)+1)
-					tail[0] = s.history[i+1]
-					for i, m := range oldTail {
-						tail[i+1] = m
-					}
-
-					break
-				}
-			}
-		}
-	}
 
 	// Persist only the summary as a system message. The active system prompt
 	// is intentionally NOT persisted and will be prepended in sendToDriver.
-	const marker = "[hd_compaction_summary]\n"
 	newHistory := make([]AgentMessage, 0, 1+len(tail))
-	newHistory = append(newHistory, AgentMessage{Role: RoleSystem, Content: marker + summaryText})
+	newHistory = append(newHistory, AgentMessage{Role: RoleSystem, Content: "Here is a summary of the conversation so far:\n" + summaryText})
 	newHistory = append(newHistory, tail...)
 
 	// Replace persisted convo history in Redis with the new compacted history.
@@ -145,6 +121,8 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 	// Update in-memory history
 	s.history = newHistory
 	s.TotalTokens = 0 // reset total tokens since we're starting fresh with the summary as context
+	s.CurrentCall = 0
+	s.ToolResults = nil
 
 	s.persist(false)
 
@@ -171,7 +149,7 @@ func (s *AgentSession) compactHistory() bool {
 
 	preserve := cp.PreserveRecent
 	if preserve == 0 {
-		preserve = 5
+		preserve = DefaultCompactionPreserve
 	}
 
 	// Nothing to compact if history is shorter than the preserve window.
@@ -179,32 +157,10 @@ func (s *AgentSession) compactHistory() bool {
 		return false
 	}
 
-	// Split history into the portion to summarize and the tail to keep.
-	toSummarize := s.history[:len(s.history)-preserve]
-
 	// Build the summarization prompt.
-	defaultPrompt := "Summarize the following conversation history, preserving key decisions, " +
-		"context, and any critical information that will be needed to continue the conversation. " +
-		"Be concise but thorough."
 	prompt := cp.SummarizationPrompt
 	if prompt == "" {
-		prompt = defaultPrompt
-	}
-
-	var b strings.Builder
-	b.WriteString(prompt)
-	b.WriteString("\n\nConversation history to summarize:\n\n")
-	for i, m := range toSummarize {
-		role := m.Role
-		if role == "" {
-			role = "message"
-		}
-		b.WriteString(strconv.Itoa(i + 1))
-		b.WriteString(". [")
-		b.WriteString(role)
-		b.WriteString("] ")
-		b.WriteString(m.Content)
-		b.WriteString("\n")
+		prompt = DefaultCompactionPrompt
 	}
 
 	// Resolve the summarization agent config.
@@ -224,6 +180,14 @@ func (s *AgentSession) compactHistory() bool {
 		return false
 	}
 
+	var compactID string
+	// Archive the current conversation and capture the archived key.
+	// archiveConvo returns an archived key like "<ConvoID>_g<N>" which the
+	// summarization sub-agent will load when started with `compaction_id`.
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		compactID = dipper.Must(cs.archiveConvo(s.store)).(string)
+	})
+
 	// Invoke the summarization agent as a sub-agent tool call so the
 	// result is delivered via eventbus:agent_continue and handled through
 	// the normal tool-call result path. Mark the call with a "compaction"
@@ -231,17 +195,15 @@ func (s *AgentSession) compactHistory() bool {
 	toolCall := AgentToolCall{
 		FuncName: "ag__" + summAgent.Name,
 		Params: map[string]interface{}{
-			"input":          b.String(),
-			"one_shot":       true,
-			"forget_history": false,
-			"compaction":     true,
-			"preserve":       preserve,
+			"input":         prompt,
+			"compaction_id": compactID,
+			"preserve":      preserve,
 		},
 	}
 
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] running compaction via agent=%s engine=%s history_len=%d preserve=%d",
-			s.ID, summAgent.Name, summAgent.Engine, len(toSummarize), preserve)
+			s.ID, summAgent.Name, summAgent.Engine, len(s.history), preserve)
 	}
 
 	// Append a tool-call entry to the conversation history and dispatch it

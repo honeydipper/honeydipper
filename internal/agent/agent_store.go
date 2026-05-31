@@ -303,8 +303,12 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 	forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
 	convoID := ""
 	oneShot, _ := dipper.GetMapDataBool(msg.Payload, "one_shot")
-	if oneShot {
+	if !oneShot {
 		convoID = fmt.Sprintf("%s-%s", msg.Labels["convo_id"], msg.Labels["sub_agent_name"])
+	}
+	compactID, _ := dipper.GetMapDataStr(msg.Payload, "compaction_id")
+	if compactID != "" {
+		convoID = compactID
 	}
 	subMsg := &dipper.Message{
 		Labels: map[string]string{

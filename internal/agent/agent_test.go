@@ -114,7 +114,7 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 		return v, nil
 	}
 
-	return []byte("1"), nil
+	return []byte("[]"), nil
 }
 
 func (m *mockStore) CallNoWait(feature, method string, params interface{}, labelsKV ...string) error {
