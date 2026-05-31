@@ -48,6 +48,7 @@ type ConvoState struct {
 	FirstTurn      string           `json:"first_turn,omitempty"`
 	FirstSession   *ConvoSessionRef `json:"first_session,omitempty"`
 	LastSession    *ConvoSessionRef `json:"last_session,omitempty"`
+	ActiveSession  *ConvoSessionRef `json:"active_session,omitempty"`
 	Cancelled      bool             `json:"cancelled"`
 	Generation     int              `json:"generation"`
 	ArchivedConvos []string         `json:"archived_convos,omitempty"`
@@ -90,10 +91,11 @@ func (cs *ConvoState) persist(store AgentStore) {
 	}))
 }
 
-// registerSession records the new active session as the LastSession, and sets
-// FirstSession when this is the first session in the conversation.
+// registerSession records the new active session and optionally updates
+// LastSession. When registering child or unified sessions set updateLast
+// to false so UI-visible LastSession isn't overwritten by internal workers.
 // The caller is responsible for persisting the state afterwards.
-func (cs *ConvoState) registerSession(sessionID, agentName, sessionType string) {
+func (cs *ConvoState) registerSession(sessionID, agentName, sessionType string, updateLast bool) {
 	now := time.Now()
 	sr := &ConvoSessionRef{
 		SessionID: sessionID,
@@ -106,7 +108,13 @@ func (cs *ConvoState) registerSession(sessionID, agentName, sessionType string) 
 	if cs.FirstSession == nil {
 		cs.FirstSession = sr
 	}
-	cs.LastSession = sr
+	if updateLast {
+		cs.LastSession = sr
+	}
+	// Track the currently active session separately so control operations
+	// (cancel) can target the active worker without affecting UI-visible
+	// First/Last session semantics.
+	cs.ActiveSession = sr
 }
 
 // updateSessionStatus sets the status, token counts, and updated timestamp
@@ -126,6 +134,12 @@ func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens,
 		cs.LastSession.OutputTokens = outputTokens
 		cs.LastSession.UpdatedAt = now
 	}
+	if cs.ActiveSession != nil && cs.ActiveSession.SessionID == sessionID {
+		cs.ActiveSession.Status = status
+		cs.ActiveSession.InputTokens = inputTokens
+		cs.ActiveSession.OutputTokens = outputTokens
+		cs.ActiveSession.UpdatedAt = now
+	}
 }
 
 // isSessionCancelled returns true when the session with the given ID has been
@@ -138,6 +152,9 @@ func (cs *ConvoState) isSessionCancelled(sessionID string) bool {
 	}
 	if cs.LastSession != nil && cs.LastSession.SessionID == sessionID {
 		return cs.LastSession.Status == ConvoSessionStatusCancelled
+	}
+	if cs.ActiveSession != nil && cs.ActiveSession.SessionID == sessionID {
+		return cs.ActiveSession.Status == ConvoSessionStatusCancelled
 	}
 
 	return false

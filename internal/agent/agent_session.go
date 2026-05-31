@@ -115,13 +115,24 @@ func (s *AgentSession) syncConvoStateStatus() {
 	}
 
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		if log := s.log(); log != nil {
+			lastIsComplete := false
+			if len(s.history) > 0 {
+				lastIsComplete = s.history[len(s.history)-1].IsComplete
+			}
+			fs, ls := "<nil>", "<nil>"
+			if cs.FirstSession != nil {
+				fs = cs.FirstSession.SessionID
+			}
+			if cs.LastSession != nil {
+				ls = cs.LastSession.SessionID
+			}
+			log.Debugf("[agent] session [%s] syncConvoStateStatus convo=%s status=%s lastIsComplete=%v error=%q firstSession=%s lastSession=%s",
+				s.ID, s.ConvoID, status, lastIsComplete, s.ErrorReason, fs, ls)
+		}
+
 		cs.updateSessionStatus(s.ID, status, s.InputTokens, s.OutputTokens)
 	})
-	if s.UnifiedConvoID != "" && s.UnifiedConvoID != s.ConvoID {
-		lockedConvoStateUpdate(s.UnifiedConvoID, s.store, func(cs *ConvoState) {
-			cs.updateSessionStatus(s.ID, status, s.InputTokens, s.OutputTokens)
-		})
-	}
 }
 
 // checkCancelled returns true when this session has been marked as cancelled
@@ -245,7 +256,7 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 				}))
 			}
 		}
-		cs.registerSession(s.ID, agentName, s.Type)
+		cs.registerSession(s.ID, agentName, s.Type, true)
 	})
 	// Also register in the unified convo state when it spans multiple convo IDs
 	// (i.e. sub-agent sessions whose convo_id differs from unified_convo_id).
@@ -257,7 +268,7 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 			if cs.UnifiedConvoID == "" {
 				cs.UnifiedConvoID = s.UnifiedConvoID
 			}
-			cs.registerSession(s.ID, agentName, s.Type)
+			cs.registerSession(s.ID, agentName, s.Type, false)
 		})
 	}
 }
@@ -953,6 +964,9 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 
 	case strings.HasPrefix(c.FuncName, "ag__"):
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
+		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+			cs.ActiveSession = cs.LastSession
+		})
 	case strings.HasPrefix(c.FuncName, "mcp__"):
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
 	}
