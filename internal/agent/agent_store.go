@@ -438,7 +438,7 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 	cancelOne := func(id string) {
 		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
 			now := time.Now()
-			for _, sr := range []*ConvoSessionRef{cs.FirstSession, cs.LastSession} {
+			for _, sr := range []*ConvoSessionRef{cs.FirstSession, cs.LastSession, cs.ActiveSession} {
 				if sr != nil && sr.Status == ConvoSessionStatusActive {
 					sr.Status = ConvoSessionStatusCancelled
 					sr.UpdatedAt = now

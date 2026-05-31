@@ -102,6 +102,15 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 	if p, ok := params.(map[string]interface{}); ok {
 		if k, ok2 := p["key"].(string); ok2 {
 			full := base + ":" + k
+			// If this is a cache save, record the saved value so subsequent
+			// cache:load calls return the persisted state for tests.
+			if base == "cache:save" {
+				if val, okv := p["value"].(string); okv {
+					m.mu.Lock()
+					m.resp["cache:load:"+k] = []byte(val)
+					m.mu.Unlock()
+				}
+			}
 			if v, ok3 := m.resp[full]; ok3 {
 				m.record(base)
 
@@ -401,6 +410,77 @@ func TestSetup_ChatTurn_ExistingConvo(t *testing.T) {
 	require.Len(t, s.history, 3)
 	assert.Equal(t, RoleAgent, s.history[2].Role)
 	assert.True(t, store.hasCall("cache:lrange"))
+}
+
+func TestParentChildConvoStateBehavior(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	// Create parent session
+	parentMsg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "a",
+		},
+		Payload: map[string]interface{}{
+			"type": AgentSessionTypeChatTurn,
+		},
+	}
+
+	parent := &AgentSession{}
+	parent.setup(parentMsg, store, false)
+
+	// Load parent convo state
+	pcs := &ConvoState{}
+	pcs.load(parent.ConvoID, store)
+	require.NotNil(t, pcs.FirstSession)
+	require.NotNil(t, pcs.LastSession)
+	assert.Equal(t, parent.ID, pcs.LastSession.SessionID)
+
+	// Create child session (new convo) that belongs to the unified parent convo
+	childMsg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name":       "a",
+			"unified_convo_id": parent.ConvoID,
+		},
+		Payload: map[string]interface{}{
+			"type": AgentSessionTypeInference,
+		},
+	}
+
+	child := &AgentSession{}
+	child.setup(childMsg, store, false)
+
+	// Child convo state should have LastSession == ActiveSession == child
+	ccs := &ConvoState{}
+	ccs.load(child.ConvoID, store)
+	require.NotNil(t, ccs.LastSession)
+	require.NotNil(t, ccs.ActiveSession)
+	assert.Equal(t, child.ID, ccs.LastSession.SessionID)
+	assert.Equal(t, child.ID, ccs.ActiveSession.SessionID)
+
+	// Parent convo state should remain pointing at parent session
+	pcs2 := &ConvoState{}
+	pcs2.load(parent.ConvoID, store)
+	assert.Equal(t, parent.ID, pcs2.LastSession.SessionID)
+
+	// Simulate child completion and sync status
+	child.history = append(child.history, AgentMessage{Role: RoleAgent, IsComplete: true, Content: "done"})
+	child.InputTokens = 1
+	child.OutputTokens = 2
+	child.syncConvoStateStatus()
+
+	// Child convo state: LastSession should be complete and ActiveSession updated
+	ccs2 := &ConvoState{}
+	ccs2.load(child.ConvoID, store)
+	require.NotNil(t, ccs2.LastSession)
+	assert.Equal(t, ConvoSessionStatusComplete, ccs2.LastSession.Status)
+	require.NotNil(t, ccs2.ActiveSession)
+	assert.Equal(t, ConvoSessionStatusComplete, ccs2.ActiveSession.Status)
+
+	// Parent convo still unchanged (will only update when parent processes agent_continue)
+	pcs3 := &ConvoState{}
+	pcs3.load(parent.ConvoID, store)
+	assert.Equal(t, parent.ID, pcs3.LastSession.SessionID)
 }
 
 // ---------------------------------------------------------------------------
