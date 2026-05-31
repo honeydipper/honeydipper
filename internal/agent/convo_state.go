@@ -50,9 +50,12 @@ type ConvoState struct {
 	LastSession    *ConvoSessionRef `json:"last_session,omitempty"`
 	ActiveSession  *ConvoSessionRef `json:"active_session,omitempty"`
 	Cancelled      bool             `json:"cancelled"`
-	Generation     int              `json:"generation"`
-	ArchivedConvos []string         `json:"archived_convos,omitempty"`
-	TTL            string           `json:"ttl"`
+	// TotalTokens accumulates the sum of input+output tokens for
+	// completed/failed sessions that belonged to this conversation.
+	TotalTokens    int      `json:"total_tokens,omitempty"`
+	Generation     int      `json:"generation"`
+	ArchivedConvos []string `json:"archived_convos,omitempty"`
+	TTL            string   `json:"ttl"`
 }
 
 // load reads and deserialises the ConvoState for convoID from the cache.
@@ -120,26 +123,36 @@ func (cs *ConvoState) registerSession(sessionID, agentName, sessionType string, 
 // updateSessionStatus sets the status, token counts, and updated timestamp
 // for the matching session in FirstSession or LastSession.
 // The caller is responsible for persisting.
-func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens, outputTokens int) {
+func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens, outputTokens int, totalTokens int) {
 	now := time.Now()
-	if cs.FirstSession != nil && cs.FirstSession.SessionID == sessionID {
-		cs.FirstSession.Status = status
-		cs.FirstSession.InputTokens = inputTokens
-		cs.FirstSession.OutputTokens = outputTokens
-		cs.FirstSession.UpdatedAt = now
+	// Avoid double-adding when multiple refs point to the same session
+	// (First/Last/Active). Track which session IDs we've already accounted
+	// for in this update call.
+	accounted := false
+
+	updateRef := func(ref *ConvoSessionRef) {
+		if ref == nil || ref.SessionID != sessionID {
+			return
+		}
+		ref.InputTokens = inputTokens
+		ref.OutputTokens = outputTokens
+		ref.UpdatedAt = now
+
+		if ref.Status != ConvoSessionStatusComplete && ref.Status != ConvoSessionStatusFailed {
+			if status == ConvoSessionStatusComplete || status == ConvoSessionStatusFailed {
+				if !accounted {
+					cs.TotalTokens += totalTokens
+					accounted = true
+				}
+			}
+		}
+
+		ref.Status = status
 	}
-	if cs.LastSession != nil && cs.LastSession.SessionID == sessionID {
-		cs.LastSession.Status = status
-		cs.LastSession.InputTokens = inputTokens
-		cs.LastSession.OutputTokens = outputTokens
-		cs.LastSession.UpdatedAt = now
-	}
-	if cs.ActiveSession != nil && cs.ActiveSession.SessionID == sessionID {
-		cs.ActiveSession.Status = status
-		cs.ActiveSession.InputTokens = inputTokens
-		cs.ActiveSession.OutputTokens = outputTokens
-		cs.ActiveSession.UpdatedAt = now
-	}
+
+	updateRef(cs.FirstSession)
+	updateRef(cs.LastSession)
+	updateRef(cs.ActiveSession)
 }
 
 // isSessionCancelled returns true when the session with the given ID has been

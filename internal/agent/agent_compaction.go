@@ -29,7 +29,7 @@ func (s *AgentSession) shouldCompact() bool {
 	case "history_len":
 		return len(s.history) >= s.Agent.CompactionPolicy.Threshold
 	case "total_tokens":
-		return s.TotalTokens >= s.Agent.CompactionPolicy.Threshold
+		return s.PrevContextSize >= s.Agent.CompactionPolicy.Threshold
 	}
 
 	return false
@@ -120,7 +120,7 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 
 	// Update in-memory history
 	s.history = newHistory
-	s.TotalTokens = 0 // reset total tokens since we're starting fresh with the summary as context
+	s.PrevContextSize = 0 // reset previous context size since we're starting fresh with the summary as context
 	s.CurrentCall = 0
 	s.ToolResults = nil
 
