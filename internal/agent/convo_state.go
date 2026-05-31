@@ -50,6 +50,7 @@ type ConvoState struct {
 	LastSession    *ConvoSessionRef `json:"last_session,omitempty"`
 	Cancelled      bool             `json:"cancelled"`
 	Generation     int              `json:"generation"`
+	ArchivedConvos []string         `json:"archived_convos,omitempty"`
 	TTL            string           `json:"ttl"`
 }
 
@@ -149,7 +150,7 @@ func (cs *ConvoState) isSessionCancelled(sessionID string) bool {
 //
 // The archived key follows the pattern: convo_history:<ConvoID>_g<N>
 // This allows the UI to discover archived generations by convention.
-func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) { //nolint:unused
+func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) {
 	// Read the current conversation history.
 	ret, err := store.Call("cache", "lrange", map[string]interface{}{
 		"key": ConvoHistoryKeyPrefix + cs.ConvoID,
@@ -191,6 +192,12 @@ func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) { //nolint:
 			}
 		}
 	}
+
+	// Record the archived generation in the ConvoState so callers can expose
+	// the list of archived generations to clients. The caller is responsible
+	// for persisting the ConvoState (lockedConvoStateUpdate will persist
+	// after the fn returns when used).
+	cs.ArchivedConvos = append(cs.ArchivedConvos, archivedKey)
 
 	return archivedKey, nil
 }

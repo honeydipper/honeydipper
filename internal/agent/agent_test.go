@@ -12,10 +12,12 @@ package agent
 import (
 	"encoding/json"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/op/go-logging"
 	"github.com/stretchr/testify/assert"
@@ -112,7 +114,7 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 		return v, nil
 	}
 
-	return []byte("1"), nil
+	return []byte("[]"), nil
 }
 
 func (m *mockStore) CallNoWait(feature, method string, params interface{}, labelsKV ...string) error {
@@ -756,6 +758,114 @@ func TestBuildTools_Mixed(t *testing.T) {
 	assert.Contains(t, tools, "sys_s1__fn1")
 	assert.Contains(t, tools, "sys_s2__fn2")
 	assert.Contains(t, tools, "wf__wf1")
+}
+
+// ---------------------------------------------------------------------------
+// Compaction tests
+// ---------------------------------------------------------------------------
+
+func TestCompactHistory_EmitsAgentCall(t *testing.T) {
+	store := newMockStore(nil)
+	// summarizer agent
+	store.cfg.DataSet.Agents["summ"] = config.Agent{Name: "summ", Driver: "openai", Engine: "gpt-4"}
+
+	agentA := config.Agent{
+		Name: "bot",
+		CompactionPolicy: &agentpkg.CompactionPolicy{
+			Strategy:           agentpkg.CompactionStrategySummarize,
+			Threshold:          3,
+			ThresholdType:      "history_len",
+			PreserveRecent:     1,
+			SummarizationAgent: "summ",
+		},
+	}
+	s := &AgentSession{store: store, Agent: &agentA, ID: "s1", ConvoID: "convo-1"}
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"convo_id": s.ConvoID}}
+	// build history longer than preserve
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "m1"},
+		{Role: RoleUser, Content: "m2"},
+		{Role: RoleUser, Content: "m3"},
+	}
+
+	ok := s.compactHistory()
+	require.True(t, ok)
+
+	// A tool-call entry should be appended to history
+	require.GreaterOrEqual(t, len(s.history), 1)
+	last := s.history[len(s.history)-1]
+	require.NotNil(t, last.ToolCalls)
+	require.Len(t, last.ToolCalls, 1)
+	assert.Equal(t, "ag__summ", last.ToolCalls[0].FuncName)
+
+	// The store should have emitted an agent_call for the sub-agent
+	emitted := store.getEmitted()
+	require.GreaterOrEqual(t, len(emitted), 1)
+	found := false
+	for _, m := range emitted {
+		if m.Subject == "agent_call" {
+			if v, ok := m.Labels["sub_agent_name"]; ok && v == "summ" {
+				found = true
+
+				break
+			}
+		}
+	}
+	assert.True(t, found, "expected agent_call emitted for summarization agent")
+}
+
+func TestHandleCompactionResult_ReplacesHistory(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["summ"] = config.Agent{Name: "summ", Driver: "openai", Engine: "gpt-4"}
+
+	agentA := config.Agent{
+		Name: "bot",
+		CompactionPolicy: &agentpkg.CompactionPolicy{
+			Strategy:           agentpkg.CompactionStrategySummarize,
+			Threshold:          3,
+			ThresholdType:      "history_len",
+			PreserveRecent:     2,
+			SummarizationAgent: "summ",
+		},
+	}
+
+	s := &AgentSession{store: store, Agent: &agentA, ID: "s2", ConvoID: "convo-2"}
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"convo_id": s.ConvoID}}
+	// initial history: three messages then compaction tool-call will be appended
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "old1"},
+		{Role: RoleUser, Content: "old2"},
+		{Role: RoleUser, Content: "old3"},
+	}
+
+	ok := s.compactHistory()
+	require.True(t, ok)
+
+	// simulate sub-agent returning the summary via agent_continue payload
+	turnID := strconv.Itoa(len(s.history))
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"turn_id":      turnID,
+			"tool_call_id": "0",
+			"status":       "success",
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{"output": "COMPACTED SUMMARY"},
+		},
+	}
+
+	s.processToolResult(msg)
+
+	// After compaction, history should start with a system summary entry
+	require.GreaterOrEqual(t, len(s.history), 1)
+	assert.Equal(t, RoleSystem, s.history[0].Role)
+	// persisted summary stored by handleCompactionResult includes marker
+	// but in-memory history is set to the persisted messages; check content contains "COMPACTED SUMMARY"
+	assert.Contains(t, s.history[0].Content, "COMPACTED SUMMARY")
+
+	// Ensure cache replace was attempted
+	assert.True(t, store.hasCall("cache:del"))
+	assert.True(t, store.hasCall("cache:rpush"))
 }
 
 // ---------------------------------------------------------------------------
