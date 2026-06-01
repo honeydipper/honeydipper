@@ -10,9 +10,9 @@ import (
 
 const (
 	DefaultCompactionPreserve = 10
-	DefaultCompactionPrompt   = "Summarize the following conversation history, preserving key decisions, " +
+	DefaultCompactionPrompt   = "Summarize the above conversation history, preserving key decisions, " +
 		"context, and any critical information that will be needed to continue the conversation. " +
-		"Be concise but thorough. Explanin what is happening currently at the end."
+		"Be concise but thorough. Explain what is happening currently at the end."
 )
 
 // shouldCompact returns true when the agent's compaction policy is configured
