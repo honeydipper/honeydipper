@@ -31,6 +31,7 @@ type ConvoSessionRef struct {
 	AgentName    string    `json:"agent_name"`
 	Type         string    `json:"type"`
 	Status       string    `json:"status"`
+	ErrorReason  string    `json:"error_reason,omitempty"`
 	InputTokens  int       `json:"input_tokens,omitempty"`
 	OutputTokens int       `json:"output_tokens,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -120,10 +121,10 @@ func (cs *ConvoState) registerSession(sessionID, agentName, sessionType string, 
 	cs.ActiveSession = sr
 }
 
-// updateSessionStatus sets the status, token counts, and updated timestamp
+// updateSessionStatus sets the status, token counts, error reason, and updated timestamp
 // for the matching session in FirstSession or LastSession.
 // The caller is responsible for persisting.
-func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens, outputTokens int, totalTokens int) {
+func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens, outputTokens int, totalTokens int, errorReason string) {
 	now := time.Now()
 	// Avoid double-adding when multiple refs point to the same session
 	// (First/Last/Active). Track which session IDs we've already accounted
@@ -136,6 +137,7 @@ func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens,
 		}
 		ref.InputTokens = inputTokens
 		ref.OutputTokens = outputTokens
+		ref.ErrorReason = errorReason
 		ref.UpdatedAt = now
 
 		if ref.Status != ConvoSessionStatusComplete && ref.Status != ConvoSessionStatusFailed {
@@ -177,7 +179,7 @@ func (cs *ConvoState) isSessionCancelled(sessionID string) bool {
 // suffixed with _g<N> where N is the incremented generation number.
 // It increments cs.Generation and returns the archived key name.
 // The caller is responsible for persisting the updated ConvoState.
-//
+// 
 // The archived key follows the pattern: convo_history:<ConvoID>_g<N>
 // This allows the UI to discover archived generations by convention.
 func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) {
