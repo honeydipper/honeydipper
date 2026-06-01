@@ -376,6 +376,10 @@ func readLogLines(stream io.Reader) []string {
 		ret = append(ret, scanner.Text())
 	}
 
+	if e := scanner.Err(); e != nil {
+		log.Warningf("[%s] error streaming logs: %+v", driver.Service, e)
+	}
+
 	return ret
 }
 

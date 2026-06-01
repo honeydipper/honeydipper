@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	batchv1client "k8s.io/client-go/kubernetes/typed/batch/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -78,10 +79,13 @@ func main() {
 	driver.Commands["waitForJob|interruptible"] = waitForJob
 	driver.DefaultTimeout["waitForJob"] = "30m"
 	driver.Commands["getJobLog"] = getJobLog
+	driver.Commands["waitForJobPods|interruptible"] = waitForJobPods
+	driver.DefaultTimeout["waitForJobPods"] = "5m"
 	driver.RPCHandlers["get_pod_log_tail"] = getPodLogTail
 	driver.Commands["deleteJob"] = deleteJob
 	driver.Commands["createPVC"] = createPVC
 	driver.Commands["deletePVC"] = deletePVC
+	driver.Commands["exec"] = exec
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
@@ -642,6 +646,8 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 		}
 	case "static":
 		kubeConfig = getStaticKubeConfig(source.(map[string]interface{}))
+	case "user":
+		kubeConfig = getUserKubeConfig(source.(map[string]interface{}))
 	default:
 		log.Panicf("[%s] unsupported kubernetes source type: %s", driver.Service, stype)
 	}
@@ -655,6 +661,20 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 	}
 
 	return k8client
+}
+
+func getUserKubeConfig(cfg map[string]interface{}) *rest.Config {
+	kubeconfigPath, ok := dipper.GetMapDataStr(cfg, "kubeconfig_path")
+	if !ok {
+		kubeconfigPath = path.Join(os.Getenv("HOME"), ".kube", "config")
+	}
+
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		log.Panicf("[%s] unable to load kubeconfig from path %s: %+v", driver.Service, kubeconfigPath, err)
+	}
+
+	return kubeConfig
 }
 
 func getGKEConfig(cfg map[string]interface{}) *rest.Config {
