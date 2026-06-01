@@ -526,15 +526,13 @@ func (s *AgentSession) addAgentTool(tools map[string]AgentTool, toolDef config.A
 				"name": "forget_history",
 				"type": "boolean",
 				"description": "Whether to forget the agent's previous conversation history, " +
-					"if you have used non one-shot mode previously.",
+					"if you have been using sticky conversation(one_shot: false).",
 			},
 			"one_shot": map[string]interface{}{
 				"name": "one_shot",
 				"type": "boolean",
 				"description": "Whether to run the agent in one-shot mode, forgetting " +
-					"this call afterwards. Always use one-shot mode to save tokens unless you are " +
-					"expecting follow-up questions, or you are planning to send multiple " +
-					"related calls that may benefit from shared context.",
+					"this call afterwards.",
 			},
 		},
 	}
