@@ -341,6 +341,7 @@ func (w *Session) callAgent() {
 			"convo_id": convoID,
 			"timeout":  timeout,
 			"ttl":      ttl,
+			"data":     w.Ctx["agent_data"],
 		},
 	})
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
@@ -56,6 +57,8 @@ type ConvoState struct {
 	Generation     int      `json:"generation"`
 	ArchivedConvos []string `json:"archived_convos,omitempty"`
 	TTL            string   `json:"ttl"`
+
+	Agent *config.Agent `json:"agent,omitempty"`
 }
 
 // load reads and deserialises the ConvoState for convoID from the cache.

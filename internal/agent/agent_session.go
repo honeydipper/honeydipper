@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -194,6 +195,16 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 		s.initNewSession(id, msg, store)
 	}
 
+	// Ensure Agent is set. For restored sessions, load from ConvoState.
+	if s.Agent == nil {
+		cs := &ConvoState{}
+		cs.load(s.ConvoID, store)
+		s.Agent = cs.Agent
+		if s.Agent == nil {
+			panic(fmt.Sprintf("agent config not found for session %s: ConvoState.Agent=nil", s.ID))
+		}
+	}
+
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] created type=%s agent=%s", s.ID, s.Type, msg.Labels["agent_name"])
 	}
@@ -209,17 +220,18 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		s.Type = agentpkg.SessionTypeChatTurn
 	}
 
-	s.Agent = s.store.GetAgent(msg.Labels["agent_name"])
 	s.TTL = AgentSessionDefaultTTL
 	if ttl, ok := dipper.GetMapDataStr(msg.Payload, "ttl"); ok && ttl != "" {
 		s.TTL = ttl
 	}
 
+	newConvo := false
 	if convoID, ok := dipper.GetMapDataStr(msg.Payload, "convo_id"); ok && convoID != "" {
 		s.ConvoID = convoID
 		s.loadConvoHistory()
 	} else {
 		s.ConvoID = dipper.NewUUID()
+		newConvo = true
 	}
 
 	// Capture the unified conversation ID; fall back to the session's own convo ID.
@@ -260,6 +272,12 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		if cs.LastSession != nil {
 			s.PrevContextSize = cs.LastSession.InputTokens + cs.LastSession.OutputTokens
 		}
+
+		if newConvo {
+			data, _ := dipper.GetMapData(msg.Payload, "data")
+			cs.Agent = interpolateAgentConfig(s.store, msg.Labels["agent_name"], data)
+		}
+		s.Agent = cs.Agent
 		cs.registerSession(s.ID, agentName, s.Type, true)
 	})
 	// Also register in the unified convo state when it spans multiple convo IDs
@@ -275,6 +293,39 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 			cs.registerSession(s.ID, agentName, s.Type, false)
 		})
 	}
+}
+
+// interpolateAgentConfig applies template interpolation to the agent's config fields using the current session data.
+func interpolateAgentConfig(store AgentStore, agentName string, data any) *config.Agent {
+	agent := *store.GetAgent(agentName)
+	envData := map[string]any{
+		"agent_name": agent.Name,
+		"agent_data": data,
+		"model_data": agent.ModelData,
+	}
+	agent.ModelData = dipper.Interpolate("agent_model_data", agent.ModelData, envData).(map[string]interface{})
+	envData["model_data"] = agent.ModelData
+
+	agent.SystemPrompt = dipper.InterpolateStr("agent_system_prompt", agent.SystemPrompt, envData)
+	agent.InferencePrompt = dipper.InterpolateStr("agent_inference_prompt", agent.InferencePrompt, envData)
+	agent.Driver = dipper.InterpolateStr("agent_driver", agent.Driver, envData)
+	agent.Engine = dipper.InterpolateStr("agent_engine", agent.Engine, envData)
+	tools := make([]config.AgentToolDef, len(agent.Tools))
+	for i, tool := range agent.Tools {
+		nt := tool
+		nt.Name = dipper.InterpolateStr("agent_tool_name", tool.Name, envData)
+		nt.Type = dipper.InterpolateStr("agent_tool_type", tool.Type, envData)
+		tools[i] = nt
+	}
+	agent.Tools = tools
+	if agent.CompactionPolicy != nil {
+		cp := *agent.CompactionPolicy
+		cp.SummarizationAgent = dipper.InterpolateStr("agent_compaction_summarization_agent", cp.SummarizationAgent, envData)
+		cp.SummarizationPrompt = dipper.InterpolateStr("agent_compaction_summarization_prompt", cp.SummarizationPrompt, envData)
+		agent.CompactionPolicy = &cp
+	}
+
+	return &agent
 }
 
 // loadConvoHistory fetches the multi-turn conversation history from the cache.
