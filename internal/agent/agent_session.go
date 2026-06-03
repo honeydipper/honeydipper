@@ -373,7 +373,7 @@ func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
 
 // run appends the current user message and dispatches the conversation to the AI driver.
 func (s *AgentSession) run() {
-	if s.loadPreContext() {
+	if s.loadPreContextAndSkills() {
 		return
 	}
 	text := dipper.MustGetMapDataStr(s.CurrentMsg.Payload, "text")

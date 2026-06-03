@@ -495,7 +495,7 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 			return
 		}
 
-		if s.handlePreContextResult(c, s.ToolResults) {
+		if s.handlePreContextAndSkillsResult(c, s.ToolResults) {
 			return
 		}
 

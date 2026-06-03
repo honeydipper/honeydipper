@@ -179,6 +179,7 @@ type Agent struct {
 	Tools              []AgentToolDef
 	ModelData          map[string]interface{} `json:"model_data" mapstructure:"model_data"`
 	PreContext         []string               `json:"pre_context" mapstructure:"pre_context"`
+	SkillsPaths        []string               `json:"skills" mapstructure:"skills"`
 	FileTool           string                 `json:"file_tool" mapstructure:"file_tool"`
 	Description        string
 	Meta               interface{}

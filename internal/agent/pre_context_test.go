@@ -32,9 +32,9 @@ func TestLoadPreContext_HistoryNotEmpty(t *testing.T) {
 		store: store,
 	}
 
-	result := session.loadPreContext()
+	result := session.loadPreContextAndSkills()
 
-	assert.False(t, result, "loadPreContext should return false when history is not empty")
+	assert.False(t, result, "loadPreContextAndSkills should return false when history is not empty")
 	assert.Empty(t, session.ToolCalls, "no tool calls should be created")
 }
 
@@ -49,9 +49,9 @@ func TestLoadPreContext_NoFileTool(t *testing.T) {
 		store:   store,
 	}
 
-	result := session.loadPreContext()
+	result := session.loadPreContextAndSkills()
 
-	assert.False(t, result, "loadPreContext should return false when FileTool is empty")
+	assert.False(t, result, "loadPreContextAndSkills should return false when FileTool is empty")
 	assert.Empty(t, session.ToolCalls, "no tool calls should be created")
 }
 
@@ -66,13 +66,13 @@ func TestLoadPreContext_NoPreContext(t *testing.T) {
 		store:   store,
 	}
 
-	result := session.loadPreContext()
+	result := session.loadPreContextAndSkills()
 
-	assert.False(t, result, "loadPreContext should return false when PreContext is empty")
+	assert.False(t, result, "loadPreContextAndSkills should return false when PreContext is empty")
 	assert.Empty(t, session.ToolCalls, "no tool calls should be created")
 }
 
-// TestLoadPreContext_WithEmptyStringsInPreContext tests that loadPreContext
+// TestLoadPreContext_WithEmptyStringsInPreContext tests that loadPreContextAndSkills
 // filters out empty strings from PreContext.
 func TestLoadPreContext_WithEmptyStringsInPreContext(t *testing.T) {
 	store := newMockStore(nil)
@@ -83,13 +83,13 @@ func TestLoadPreContext_WithEmptyStringsInPreContext(t *testing.T) {
 		store:   store,
 	}
 
-	result := session.loadPreContext()
+	result := session.loadPreContextAndSkills()
 
-	assert.False(t, result, "loadPreContext should return false when all PreContext entries are empty")
+	assert.False(t, result, "loadPreContextAndSkills should return false when all PreContext entries are empty")
 	assert.Empty(t, session.ToolCalls, "no tool calls should be created")
 }
 
-// TestLoadPreContext_Success tests that loadPreContext correctly creates
+// TestLoadPreContext_Success tests that loadPreContextAndSkills correctly creates
 // a tool call when conditions are met.
 func TestLoadPreContext_Success(t *testing.T) {
 	store := newMockStore(nil)
@@ -106,9 +106,9 @@ func TestLoadPreContext_Success(t *testing.T) {
 		store: store,
 	}
 
-	result := session.loadPreContext()
+	result := session.loadPreContextAndSkills()
 
-	assert.True(t, result, "loadPreContext should return true when valid config is provided")
+	assert.True(t, result, "loadPreContextAndSkills should return true when valid config is provided")
 	require.Len(t, session.ToolCalls, 1, "exactly one tool call should be created")
 
 	toolCall := session.ToolCalls[0]
@@ -121,7 +121,7 @@ func TestLoadPreContext_Success(t *testing.T) {
 	assert.Len(t, session.ToolCalls, 1)
 }
 
-// TestLoadPreContext_MixedEmptyAndNonEmptyPreContext tests that loadPreContext
+// TestLoadPreContext_MixedEmptyAndNonEmptyPreContext tests that loadPreContextAndSkills
 // correctly filters empty strings and processes valid entries.
 func TestLoadPreContext_MixedEmptyAndNonEmptyPreContext(t *testing.T) {
 	store := newMockStore(nil)
@@ -140,9 +140,9 @@ func TestLoadPreContext_MixedEmptyAndNonEmptyPreContext(t *testing.T) {
 		store: store,
 	}
 
-	result := session.loadPreContext()
+	result := session.loadPreContextAndSkills()
 
-	assert.True(t, result, "loadPreContext should return true when at least one non-empty PreContext entry exists")
+	assert.True(t, result, "loadPreContextAndSkills should return true when at least one non-empty PreContext entry exists")
 	require.Len(t, session.ToolCalls, 1)
 
 	toolCall := session.ToolCalls[0]
@@ -168,15 +168,15 @@ func TestHandlePreContextResult_NotPreContext(t *testing.T) {
 	}
 	results := []map[string]interface{}{}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
-	assert.False(t, result, "handlePreContextResult should return false when pre_context is false")
+	assert.False(t, result, "handlePreContextAndSkillsResult should return false when pre_context is false")
 	assert.Empty(t, session.history, "history should not be modified")
 }
 
-// TestHandlePreContextResult_MissingPreContextParam tests that handlePreContextResult
+// TestHandlePreContextAndSkillsResult_MissingPreContextParam tests that handlePreContextAndSkillsResult
 // returns false when pre_context param is missing.
-func TestHandlePreContextResult_MissingPreContextParam(t *testing.T) {
+func TestHandlePreContextAndSkillsResult_MissingPreContextParam(t *testing.T) {
 	store := newMockStore(nil)
 	session := &AgentSession{
 		ID:    "test-session-8",
@@ -190,15 +190,15 @@ func TestHandlePreContextResult_MissingPreContextParam(t *testing.T) {
 	}
 	results := []map[string]interface{}{}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
-	assert.False(t, result, "handlePreContextResult should return false when pre_context param is missing")
+	assert.False(t, result, "handlePreContextAndSkillsResult should return false when pre_context param is missing")
 	assert.Empty(t, session.history, "history should not be modified")
 }
 
-// TestHandlePreContextResult_EmptyResults tests that handlePreContextResult
+// TestHandlePreContextAndSkillsResult_EmptyResults tests that handlePreContextAndSkillsResult
 // handles empty results gracefully.
-func TestHandlePreContextResult_EmptyResults(t *testing.T) {
+func TestHandlePreContextAndSkillsResult_EmptyResults(t *testing.T) {
 	store := newMockStore(nil)
 	session := &AgentSession{
 		ID:    "test-session-9",
@@ -222,17 +222,17 @@ func TestHandlePreContextResult_EmptyResults(t *testing.T) {
 	}
 	results := []map[string]interface{}{}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
-	assert.True(t, result, "handlePreContextResult should return true for pre_context results")
+	assert.True(t, result, "handlePreContextAndSkillsResult should return true for pre_context results")
 	// After handling pre-context result with no content, run() is called which adds user message
 	assert.Len(t, session.history, 1, "only user message should be added when pre-context result is empty")
 	assert.Equal(t, RoleUser, session.history[0].Role)
 }
 
-// TestHandlePreContextResult_MissingFileContent tests that handlePreContextResult
+// TestHandlePreContextAndSkillsResult_MissingFileContent tests that handlePreContextAndSkillsResult
 // handles missing file_content gracefully.
-func TestHandlePreContextResult_MissingFileContent(t *testing.T) {
+func TestHandlePreContextAndSkillsResult_MissingFileContent(t *testing.T) {
 	store := newMockStore(nil)
 	session := &AgentSession{
 		ID:    "test-session-10",
@@ -258,21 +258,24 @@ func TestHandlePreContextResult_MissingFileContent(t *testing.T) {
 		{"other_field": "value"},
 	}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
-	assert.True(t, result, "handlePreContextResult should return true for pre_context results")
+	assert.True(t, result, "handlePreContextAndSkillsResult should return true for pre_context results")
 	// run() is called which adds user message
 	assert.Len(t, session.history, 1)
 	assert.Equal(t, RoleUser, session.history[0].Role)
 }
 
-// TestHandlePreContextResult_WithFileContent tests that handlePreContextResult
+// TestHandlePreContextAndSkillsResult_WithFileContent tests that handlePreContextAndSkillsResult
 // correctly processes file content and adds it to history.
-func TestHandlePreContextResult_WithFileContent(t *testing.T) {
+func TestHandlePreContextAndSkillsResult_WithFileContent(t *testing.T) {
 	store := newMockStore(nil)
 	session := &AgentSession{
-		ID:    "test-session-11",
-		Agent: &config.Agent{SystemPrompt: "You are helpful"},
+		ID: "test-session-11",
+		Agent: &config.Agent{
+			SystemPrompt: "You are helpful",
+			PreContext:   []string{"file1.md", "file2.md"},
+		},
 		CurrentMsg: &dipper.Message{
 			Labels: map[string]string{
 				"unified_convo_id": "convo-1",
@@ -302,9 +305,9 @@ func TestHandlePreContextResult_WithFileContent(t *testing.T) {
 		},
 	}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
-	assert.True(t, result, "handlePreContextResult should return true")
+	assert.True(t, result, "handlePreContextAndSkillsResult should return true")
 	assert.Greater(t, len(session.history), 0, "history should be empty")
 
 	// Find the pre-context message in system message.
@@ -314,13 +317,13 @@ func TestHandlePreContextResult_WithFileContent(t *testing.T) {
 	assert.Empty(t, session.ToolResults, "ToolResults should be reset to empty")
 }
 
-// TestHandlePreContextResult_SingleFile tests that handlePreContextResult
+// TestHandlePreContextAndSkillsResult_SingleFile tests that handlePreContextAndSkillsResult
 // correctly handles a single file.
-func TestHandlePreContextResult_SingleFile(t *testing.T) {
+func TestHandlePreContextAndSkillsResult_SingleFile(t *testing.T) {
 	store := newMockStore(nil)
 	session := &AgentSession{
 		ID:    "test-session-12",
-		Agent: &config.Agent{SystemPrompt: "You are helpful"},
+		Agent: &config.Agent{SystemPrompt: "You are helpful", PreContext: []string{"README.md"}},
 		CurrentMsg: &dipper.Message{
 			Labels: map[string]string{
 				"unified_convo_id": "convo-1",
@@ -349,18 +352,18 @@ func TestHandlePreContextResult_SingleFile(t *testing.T) {
 		},
 	}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
 	assert.True(t, result)
-	assert.Greater(t, len(session.history), 0)
+	assert.Equal(t, 1, len(session.history), "should send the message to driver")
 
 	assert.Contains(t, session.Agent.SystemPrompt, PreContextHeader)
 	assert.Contains(t, session.Agent.SystemPrompt, "# Project README")
 }
 
-// TestHandlePreContextResult_ResetSessionState tests that handlePreContextResult
+// TestHandlePreContextAndSkillsResult_ResetSessionState tests that handlePreContextAndSkillsResult
 // correctly resets session state after handling pre-context.
-func TestHandlePreContextResult_ResetSessionState(t *testing.T) {
+func TestHandlePreContextAndSkillsResult_ResetSessionState(t *testing.T) {
 	store := newMockStore(nil)
 	session := &AgentSession{
 		ID:          "test-session-13",
@@ -393,7 +396,7 @@ func TestHandlePreContextResult_ResetSessionState(t *testing.T) {
 		},
 	}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
 	assert.True(t, result)
 	assert.Equal(t, 0, session.CurrentCall, "CurrentCall should be reset to 0")
@@ -401,13 +404,13 @@ func TestHandlePreContextResult_ResetSessionState(t *testing.T) {
 	assert.Nil(t, session.ToolResults, "ToolResults should be reset to nil")
 }
 
-// TestHandlePreContextResult_PreContextHeaderPresent tests that the pre-context
+// TestHandlePreContextAndSkillsResult_PreContextHeaderPresent tests that the pre-context
 // message always includes the expected header.
-func TestHandlePreContextResult_PreContextHeaderPresent(t *testing.T) {
+func TestHandlePreContextAndSkillsResult_PreContextHeaderPresent(t *testing.T) {
 	store := newMockStore(nil)
 	session := &AgentSession{
 		ID:    "test-session-14",
-		Agent: &config.Agent{SystemPrompt: "You are helpful"},
+		Agent: &config.Agent{SystemPrompt: "You are helpful", PreContext: []string{"doc.md"}},
 		CurrentMsg: &dipper.Message{
 			Labels: map[string]string{
 				"unified_convo_id": "convo-1",
@@ -435,7 +438,7 @@ func TestHandlePreContextResult_PreContextHeaderPresent(t *testing.T) {
 		},
 	}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
 	assert.True(t, result)
 	assert.Greater(t, len(session.history), 0)
@@ -444,9 +447,9 @@ func TestHandlePreContextResult_PreContextHeaderPresent(t *testing.T) {
 	assert.True(t, strings.HasSuffix(strings.TrimSuffix(session.Agent.SystemPrompt, "Some documentation\n\n"), PreContextHeader))
 }
 
-// TestHandlePreContextResult_FileContentNotMap tests that handlePreContextResult
+// TestHandlePreContextAndSkillsResult_FileContentNotMap tests that handlePreContextAndSkillsResult
 // gracefully handles when file_content is not a map.
-func TestHandlePreContextResult_FileContentNotMap(t *testing.T) {
+func TestHandlePreContextAndSkillsResult_FileContentNotMap(t *testing.T) {
 	store := newMockStore(nil)
 	session := &AgentSession{
 		ID:    "test-session-15",
@@ -474,7 +477,7 @@ func TestHandlePreContextResult_FileContentNotMap(t *testing.T) {
 		},
 	}
 
-	result := session.handlePreContextResult(toolCall, results)
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
 
 	assert.True(t, result, "handlePreContextResult should return true for pre_context results")
 	// run() is called which adds user message
@@ -502,10 +505,10 @@ func TestPreContextWorkflow(t *testing.T) {
 	}
 
 	// Step 1: Load pre-context
-	loadResult := session.loadPreContext()
+	loadResult := session.loadPreContextAndSkills()
 	assert.True(t, loadResult)
 	require.Len(t, session.ToolCalls, 1)
-	assert.Len(t, session.history, 0, "history should not be modified by loadPreContext")
+	assert.Len(t, session.history, 0, "history should not be modified by loadPreContextAndSkills")
 
 	// Step 2: Handle pre-context result
 	toolCall := session.ToolCalls[0]
@@ -520,9 +523,273 @@ func TestPreContextWorkflow(t *testing.T) {
 		},
 	}
 
-	handleResult := session.handlePreContextResult(toolCall, results)
+	handleResult := session.handlePreContextAndSkillsResult(toolCall, results)
 	assert.True(t, handleResult)
 
 	assert.Contains(t, session.Agent.SystemPrompt, "# Setup Instructions")
 	assert.Contains(t, session.Agent.SystemPrompt, "# User Guide")
+}
+
+// TestLoadPreContextAndSkills_WithSkills tests that loadPreContextAndSkills
+// correctly loads both PreContext and SkillsPaths.
+func TestLoadPreContextAndSkills_WithSkills(t *testing.T) {
+	store := newMockStore(nil)
+	session := &AgentSession{
+		ID: "test-session-skills",
+		Agent: &config.Agent{
+			FileTool:    "wf__read_files",
+			PreContext:  []string{"README.md"},
+			SkillsPaths: []string{"skills/skill1/SKILL.md", "skills/skill2/SKILL.md"},
+		},
+		history: []AgentMessage{},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"unified_convo_id": "convo-1",
+			},
+			Payload: map[string]interface{}{
+				"text": "hello",
+			},
+		},
+		store: store,
+	}
+
+	result := session.loadPreContextAndSkills()
+
+	assert.True(t, result, "loadPreContextAndSkills should return true when skills and precontext are configured")
+	require.Len(t, session.ToolCalls, 1, "exactly one tool call should be created")
+
+	toolCall := session.ToolCalls[0]
+	assert.Equal(t, "wf__read_files", toolCall.FuncName)
+
+	// Verify that both precontext and skills are included in file_specs
+	fileSpecs := toolCall.Params["file_specs"].([]string)
+	assert.Len(t, fileSpecs, 3, "should load 1 precontext file and 2 skill files")
+	assert.Contains(t, fileSpecs, "README.md")
+	assert.Contains(t, fileSpecs, "skills/skill1/SKILL.md")
+	assert.Contains(t, fileSpecs, "skills/skill2/SKILL.md")
+	assert.True(t, toolCall.Params["pre_context"].(bool), "pre_context param should be true")
+}
+
+// TestLoadPreContextAndSkills_DuplicateFiles tests that loadPreContextAndSkills
+// deduplicates files when both PreContext and SkillsPaths contain the same file.
+func TestLoadPreContextAndSkills_DuplicateFiles(t *testing.T) {
+	store := newMockStore(nil)
+	session := &AgentSession{
+		ID: "test-session-dup",
+		Agent: &config.Agent{
+			FileTool:    "wf__read_files",
+			PreContext:  []string{"docs/guide.md", "docs/setup.md"},
+			SkillsPaths: []string{"docs/guide.md", "docs/skill1/SKILL.md"},
+		},
+		history: []AgentMessage{},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"unified_convo_id": "convo-1",
+			},
+			Payload: map[string]interface{}{
+				"text": "hello",
+			},
+		},
+		store: store,
+	}
+
+	result := session.loadPreContextAndSkills()
+
+	assert.True(t, result)
+	require.Len(t, session.ToolCalls, 1)
+
+	toolCall := session.ToolCalls[0]
+	fileSpecs := toolCall.Params["file_specs"].([]string)
+
+	// Should only have 3 files (no duplicates):
+	// docs/guide.md, docs/setup.md, docs/skill1/SKILL.md
+	assert.Len(t, fileSpecs, 3, "duplicates should be removed")
+	assert.Contains(t, fileSpecs, "docs/guide.md")
+	assert.Contains(t, fileSpecs, "docs/setup.md")
+	assert.Contains(t, fileSpecs, "docs/skill1/SKILL.md")
+}
+
+// TestHandlePreContextAndSkillsResult_WithSkillsAndPreContext tests that
+// handlePreContextAndSkillsResult correctly processes both precontext and skill files.
+func TestHandlePreContextAndSkillsResult_WithSkillsAndPreContext(t *testing.T) {
+	store := newMockStore(nil)
+	session := &AgentSession{
+		ID: "test-session-combined",
+		Agent: &config.Agent{
+			SystemPrompt: "You are a helpful assistant",
+			PreContext:   []string{"README.md"},
+		},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"unified_convo_id": "convo-1",
+			},
+			Payload: map[string]interface{}{
+				"text": "hello world",
+			},
+		},
+		store: store,
+	}
+
+	toolCall := AgentToolCall{
+		FuncName: "read_files",
+		Params: map[string]interface{}{
+			"pre_context": true,
+		},
+	}
+
+	// Construct results with precontext file and skill files with YAML frontmatter
+	results := []map[string]interface{}{
+		{
+			"status": "success",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{
+						"file_spec":    "README.md",
+						"file_content": "# Project README\n\nThis is the main project documentation.",
+					},
+					map[string]interface{}{
+						"file_spec": "skills/debug/SKILL.md",
+						"file_content": `---
+name: debug-tool
+description: Helps debug and troubleshoot issues
+---
+# Debug Tool Skill
+
+Use this skill to analyze logs and debug issues.`,
+					},
+					map[string]interface{}{
+						"file_spec": "skills/analyze/SKILL.md",
+						"file_content": `---
+name: analyze-code
+description: Analyzes code and provides insights
+---
+# Code Analysis Skill
+
+Use this skill to understand code structure and complexity.`,
+					},
+				},
+			},
+		},
+	}
+
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
+
+	assert.True(t, result)
+	assert.Greater(t, len(session.history), 0, "history should be populated")
+
+	// Verify precontext was added to SystemPrompt
+	assert.Contains(t, session.Agent.SystemPrompt, "# Project README")
+	assert.Contains(t, session.Agent.SystemPrompt, PreContextHeader)
+
+	// Verify skills were added to SystemPrompt
+	assert.Contains(t, session.Agent.SystemPrompt, SkillsHeader)
+	assert.Contains(t, session.Agent.SystemPrompt, "debug-tool")
+	assert.Contains(t, session.Agent.SystemPrompt, "Helps debug and troubleshoot issues")
+	assert.Contains(t, session.Agent.SystemPrompt, "analyze-code")
+	assert.Contains(t, session.Agent.SystemPrompt, "Analyzes code and provides insights")
+
+	// Verify session state was reset
+	assert.Empty(t, session.ToolCalls, "ToolCalls should be reset")
+	assert.Empty(t, session.ToolResults, "ToolResults should be reset")
+	assert.Equal(t, 0, session.CurrentCall, "CurrentCall should be reset")
+}
+
+// TestHandlePreContextAndSkillsResult_InferencePromptUpdated tests that both
+// SystemPrompt and InferencePrompt are updated with precontext and skills.
+func TestHandlePreContextAndSkillsResult_InferencePromptUpdated(t *testing.T) {
+	store := newMockStore(nil)
+	session := &AgentSession{
+		ID: "test-session-inference",
+		Agent: &config.Agent{
+			SystemPrompt:    "System: You are helpful",
+			InferencePrompt: "Inference: Continue the conversation",
+			PreContext:      []string{"guidelines.md"},
+		},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"unified_convo_id": "convo-2",
+			},
+			Payload: map[string]interface{}{
+				"text": "test message",
+			},
+		},
+		store: store,
+	}
+
+	toolCall := AgentToolCall{
+		FuncName: "read_files",
+		Params: map[string]interface{}{
+			"pre_context": true,
+		},
+	}
+
+	results := []map[string]interface{}{
+		{
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{
+						"file_spec":    "guidelines.md",
+						"file_content": "Important guidelines",
+					},
+					map[string]interface{}{
+						"file_spec": "skills/helper/SKILL.md",
+						"file_content": `---
+name: helper-skill
+description: Provides helpful assistance
+---
+Helper skill content`,
+					},
+				},
+			},
+		},
+	}
+
+	result := session.handlePreContextAndSkillsResult(toolCall, results)
+
+	assert.True(t, result)
+
+	// Verify both prompts were updated
+	assert.Contains(t, session.Agent.SystemPrompt, "Important guidelines")
+	assert.Contains(t, session.Agent.SystemPrompt, "helper-skill")
+	assert.Contains(t, session.Agent.InferencePrompt, "Important guidelines")
+	assert.Contains(t, session.Agent.InferencePrompt, "helper-skill")
+}
+
+// TestPreContextAndSkillsWorkflow_Complete tests the complete workflow of
+// loading and handling both precontext and skills.
+func TestPreContextAndSkillsWorkflow_Complete(t *testing.T) {
+	store := newMockStore(nil)
+	session := &AgentSession{
+		ID: "test-session-complete-workflow",
+		Agent: &config.Agent{
+			FileTool:        "wf__read_files",
+			SystemPrompt:    "You are a helpful assistant",
+			InferencePrompt: "Continue conversation",
+			PreContext:      []string{"setup.md", "config.md"},
+			SkillsPaths:     []string{"tools/search/SKILL.md", "tools/analyze/SKILL.md"},
+		},
+		history: []AgentMessage{},
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"unified_convo_id": "convo-3",
+			},
+			Payload: map[string]interface{}{
+				"text": "help me analyze this code",
+			},
+		},
+		store: store,
+	}
+
+	// Step 1: Load precontext and skills
+	loadResult := session.loadPreContextAndSkills()
+	assert.True(t, loadResult)
+	require.Len(t, session.ToolCalls, 1)
+
+	// Verify all files are included
+	fileSpecs := session.ToolCalls[0].Params["file_specs"].([]string)
+	assert.Len(t, fileSpecs, 4, "should have 2 precontext + 2 skills")
+	assert.Contains(t, fileSpecs, "setup.md")
+	assert.Contains(t, fileSpecs, "config.md")
+	assert.Contains(t, fileSpecs, "tools/search/SKILL.md")
+	assert.Contains(t, fileSpecs, "tools/analyze/SKILL.md")
 }
