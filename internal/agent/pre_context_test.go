@@ -113,7 +113,7 @@ func TestLoadPreContext_Success(t *testing.T) {
 
 	toolCall := session.ToolCalls[0]
 	assert.Equal(t, "wf__read_files", toolCall.FuncName)
-	assert.Equal(t, []string{"file1.md", "file2.md"}, toolCall.Params["files"])
+	assert.Equal(t, []string{"file1.md", "file2.md"}, toolCall.Params["file_specs"])
 	assert.True(t, toolCall.Params["pre_context"].(bool), "pre_context param should be true")
 
 	// Check history was NOT updated
@@ -147,7 +147,7 @@ func TestLoadPreContext_MixedEmptyAndNonEmptyPreContext(t *testing.T) {
 
 	toolCall := session.ToolCalls[0]
 	assert.Equal(t, "wf__read_files", toolCall.FuncName)
-	assert.Equal(t, []string{"file1.md", "file2.md"}, toolCall.Params["files"])
+	assert.Equal(t, []string{"file1.md", "file2.md"}, toolCall.Params["file_specs"])
 }
 
 // TestHandlePreContextResult_NotPreContext tests that handlePreContextResult
@@ -294,9 +294,9 @@ func TestHandlePreContextResult_WithFileContent(t *testing.T) {
 		{
 			"status": "success",
 			"data": map[string]interface{}{
-				"file_content": map[string]interface{}{
-					"file1.md": "# File 1 Content\nThis is the content of file 1.",
-					"file2.md": "# File 2 Content\nThis is the content of file 2.",
+				"files": []interface{}{
+					map[string]interface{}{"file_spec": "file1.md", "file_content": "# File 1 Content\nThis is the content of file 1."},
+					map[string]interface{}{"file_spec": "file2.md", "file_content": "# File 2 Content\nThis is the content of file 2."},
 				},
 			},
 		},
@@ -342,8 +342,8 @@ func TestHandlePreContextResult_SingleFile(t *testing.T) {
 		{
 			"status": "success",
 			"data": map[string]interface{}{
-				"file_content": map[string]interface{}{
-					"README.md": "# Project README\n\nThis is a test project.",
+				"files": []interface{}{
+					map[string]interface{}{"file_spec": "README.md", "file_content": "# Project README\n\nThis is a test project."},
 				},
 			},
 		},
@@ -428,8 +428,8 @@ func TestHandlePreContextResult_PreContextHeaderPresent(t *testing.T) {
 	results := []map[string]interface{}{
 		{
 			"data": map[string]interface{}{
-				"file_content": map[string]interface{}{
-					"doc.md": "Some documentation",
+				"files": []interface{}{
+					map[string]interface{}{"file_spec": "doc.md", "file_content": "Some documentation"},
 				},
 			},
 		},
@@ -512,9 +512,9 @@ func TestPreContextWorkflow(t *testing.T) {
 	results := []map[string]interface{}{
 		{
 			"data": map[string]interface{}{
-				"file_content": map[string]interface{}{
-					"setup.md": "# Setup Instructions\nFollow these steps...",
-					"guide.md": "# User Guide\nHow to use...",
+				"files": []interface{}{
+					map[string]interface{}{"file_spec": "setup.md", "file_content": "# Setup Instructions\nFollow these steps..."},
+					map[string]interface{}{"file_spec": "guide.md", "file_content": "# User Guide\nHow to use..."},
 				},
 			},
 		},

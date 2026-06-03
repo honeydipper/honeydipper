@@ -27,7 +27,7 @@ func (s *AgentSession) loadPreContext() bool {
 	toolCall := AgentToolCall{
 		FuncName: s.Agent.FileTool,
 		Params: map[string]interface{}{
-			"files":       preContext,
+			"file_specs":  preContext,
 			"pre_context": true,
 		},
 	}
@@ -58,13 +58,17 @@ func (s *AgentSession) handlePreContextResult(c AgentToolCall, results []map[str
 	} else {
 		log := s.log()
 		buf := bytes.Buffer{}
-		if content, ok := dipper.GetMapData(results, "0.data.file_content"); ok {
-			if contentMap, isMap := content.(map[string]interface{}); isMap {
-				for k, v := range contentMap {
+		if content, ok := dipper.GetMapData(results, "0.data.files"); ok {
+			if contentList, isList := content.([]interface{}); isList {
+				for i, v := range contentList {
+					fname, _ := dipper.GetMapDataStr(v, "file_spec")
+					content, _ := dipper.GetMapDataStr(v, "file_content")
 					if log != nil {
-						log.Infof("[agent] session [%s] loaded pre-context file=%s content_len=%d", s.ID, k, len(v.(string)))
+						log.Infof("[agent] session [%s] loaded pre-context file=%d file_name=%s content_len=%d", s.ID, i, fname, len(content))
 					}
-					dipper.Must(buf.WriteString(v.(string) + "\n\n"))
+					if content != "" {
+						dipper.Must(buf.WriteString(content + "\n\n"))
+					}
 				}
 			}
 		}
