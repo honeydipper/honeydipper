@@ -279,6 +279,7 @@ func TestSetup_NewSession(t *testing.T) {
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeInference,
+			"text": "hello",
 		},
 	}
 
@@ -299,7 +300,7 @@ func TestSetup_DefaultsToChatTurnType(t *testing.T) {
 
 	msg := &dipper.Message{
 		Labels:  map[string]string{"agent_name": "a"},
-		Payload: map[string]interface{}{},
+		Payload: map[string]interface{}{"text": "hello"},
 	}
 
 	s := &AgentSession{}
@@ -317,7 +318,8 @@ func TestSetup_CustomTTL(t *testing.T) {
 			"agent_name": "a",
 		},
 		Payload: map[string]interface{}{
-			"ttl": "7200",
+			"ttl":  "7200",
+			"text": "hello",
 		},
 	}
 
@@ -329,6 +331,8 @@ func TestSetup_CustomTTL(t *testing.T) {
 
 func TestSetup_RestoreFromCache(t *testing.T) {
 	store := newMockStore(nil)
+	agent := config.Agent{Name: "test-agent", Driver: "openai", Engine: "gpt-4"}
+	store.cfg.DataSet.Agents["test-agent"] = agent
 
 	existing := &AgentSession{
 		ID:      "session-abc",
@@ -337,6 +341,14 @@ func TestSetup_RestoreFromCache(t *testing.T) {
 		TTL:     "1800",
 	}
 	store.resp["cache:load:"+AgentKeyPrefix+"session-abc"] = mustMarshalJSON(existing)
+
+	// Pre-create ConvoState with Agent for the conversation
+	cs := &ConvoState{
+		ConvoID: "convo-abc",
+		Agent:   &agent,
+	}
+	store.resp["cache:load:"+ConvoStateKeyPrefix+"convo-abc"] = mustMarshalJSON(cs)
+
 	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-abc"] = mustMarshalJSON([]AgentMessage{
 		{Role: RoleSystem, Content: "system prompt"},
 		{Role: RoleUser, Content: "hello"},
@@ -357,6 +369,9 @@ func TestSetup_RestoreFromCache(t *testing.T) {
 	require.Len(t, s.history, 2)
 	assert.Equal(t, RoleSystem, s.history[0].Role)
 	assert.True(t, store.hasCall("cache:load"))
+	// Agent should be loaded from ConvoState
+	require.NotNil(t, s.Agent)
+	assert.Equal(t, "test-agent", s.Agent.Name)
 }
 
 func TestSetup_ChatTurn_NewConvo(t *testing.T) {
@@ -369,6 +384,7 @@ func TestSetup_ChatTurn_NewConvo(t *testing.T) {
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeChatTurn,
+			"text": "hello",
 			// no convo_id
 		},
 	}
@@ -384,7 +400,15 @@ func TestSetup_ChatTurn_NewConvo(t *testing.T) {
 
 func TestSetup_ChatTurn_ExistingConvo(t *testing.T) {
 	store := newMockStore(nil)
-	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+	agent := config.Agent{Name: "a"}
+	store.cfg.DataSet.Agents["a"] = agent
+
+	// Pre-create ConvoState with Agent
+	cs := &ConvoState{
+		ConvoID: "convo-1",
+		Agent:   &agent,
+	}
+	store.resp["cache:load:"+ConvoStateKeyPrefix+"convo-1"] = mustMarshalJSON(cs)
 
 	history := []AgentMessage{
 		{Role: RoleSystem, Content: "sys"},
@@ -423,6 +447,7 @@ func TestParentChildConvoStateBehavior(t *testing.T) {
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeChatTurn,
+			"text": "hello",
 		},
 	}
 
@@ -444,6 +469,7 @@ func TestParentChildConvoStateBehavior(t *testing.T) {
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeInference,
+			"text": "hello",
 		},
 	}
 
@@ -627,7 +653,7 @@ func TestRecover(t *testing.T) {
 	s := &AgentSession{
 		store:      store,
 		CurrentMsg: &dipper.Message{Labels: map[string]string{"timeout": "9s"}},
-		Agent:      &config.Agent{Name: "a", Driver: "openai", Engine: "gpt-4"},
+		Agent:      &config.Agent{Name: "a", Driver: "openai", Engine: "gpt-4", SystemPrompt: "agent sys"},
 		ID:         "recover-id",
 		history: []AgentMessage{
 			{Role: RoleSystem, Content: "sys"},
@@ -645,9 +671,10 @@ func TestRecover(t *testing.T) {
 	params := store.getNoWaitParams("driver:openai:send_to_model")
 	require.NotNil(t, params)
 	driverHistory := params["history"].([]AgentMessage)
-	require.Len(t, driverHistory, 2)
+	require.Len(t, driverHistory, 3)
 	assert.Equal(t, RoleSystem, driverHistory[0].Role)
-	assert.Equal(t, RoleUser, driverHistory[1].Role)
+	assert.Equal(t, RoleSystem, driverHistory[1].Role)
+	assert.Equal(t, RoleUser, driverHistory[2].Role)
 }
 
 // ---------------------------------------------------------------------------
@@ -1805,12 +1832,14 @@ func TestStartTurn_UsesParentAgentWhenLastSessionIsSubAgent(t *testing.T) {
 	}}
 
 	convoID := "parent-convo-123"
+	superCoder := cfg.DataSet.Agents["super_coder"]
 
 	// Simulate a ConvoState where a sub-agent inference session has overwritten
 	// LastSession (which is what happens today when a sub-agent runs).
 	cs := &ConvoState{
 		ConvoID: convoID,
 		TTL:     ConvoStreamTTL,
+		Agent:   &superCoder,
 		FirstSession: &ConvoSessionRef{
 			SessionID: "session-turn1",
 			AgentName: "super_coder",
@@ -1857,4 +1886,292 @@ func TestStartTurn_UsesParentAgentWhenLastSessionIsSubAgent(t *testing.T) {
 	ltrimCalled := helper.hasCall("cache:ltrim")
 	assert.False(t, ltrimCalled, "ltrim should not be called: super_coder has no max_history_len")
 	_ = persistedAgent
+}
+
+// ---------------------------------------------------------------------------
+// interpolateAgentConfig tests
+// ---------------------------------------------------------------------------
+
+func TestInterpolateAgentConfig_Basic(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:         "myagent",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "You are helpful.",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+	})
+
+	assert.NotNil(t, agent)
+	assert.Equal(t, "myagent", agent.Name)
+	assert.Equal(t, "openai", agent.Driver)
+	assert.Equal(t, "gpt-4", agent.Engine)
+	assert.Equal(t, "You are helpful.", agent.SystemPrompt)
+}
+
+func TestInterpolateAgentConfig_InterpolatesSystemPrompt(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:         "myagent",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "You are helping {{.agent_data.user}} with {{.agent_data.task}}",
+	}
+
+	payload := map[string]interface{}{
+		"text": "hello",
+		"data": map[string]interface{}{
+			"user": "alice",
+			"task": "debugging",
+		},
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", payload)
+
+	assert.Equal(t, "You are helping alice with debugging", agent.SystemPrompt)
+}
+
+func TestInterpolateAgentConfig_InterpolatesInferencePrompt(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:            "myagent",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		InferencePrompt: "Analyze {{.agent_data.code}}",
+	}
+
+	payload := map[string]interface{}{
+		"text": "hello",
+		"data": map[string]interface{}{
+			"code": "func main() {}",
+		},
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", payload)
+
+	assert.Equal(t, "Analyze func main() {}", agent.InferencePrompt)
+}
+
+func TestInterpolateAgentConfig_InterpolatesModelData(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:   "myagent",
+		Driver: "openai",
+		Engine: "gpt-4",
+		ModelData: map[string]interface{}{
+			"temperature": 0.7,
+			"context":     "user={{.agent_data.user}}",
+		},
+	}
+
+	payload := map[string]interface{}{
+		"text": "hello",
+		"data": map[string]interface{}{
+			"user": "bob",
+		},
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", payload)
+
+	assert.Equal(t, "user=bob", agent.ModelData["context"])
+	assert.Equal(t, float64(0.7), agent.ModelData["temperature"])
+}
+
+func TestInterpolateAgentConfig_InterpolatesEngine(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:   "myagent",
+		Driver: "openai",
+		Engine: "$agent_data.model",
+	}
+
+	data := map[string]interface{}{
+		"model": "gpt-4-turbo",
+	}
+
+	payload := map[string]interface{}{
+		"text": "hello",
+		"data": data,
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", payload)
+
+	assert.Equal(t, "gpt-4-turbo", agent.Engine)
+}
+
+func TestInterpolateAgentConfig_InterpolatesTools(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Workflows["mywf"] = makeWorkflow("mywf", "desc")
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:   "myagent",
+		Driver: "openai",
+		Engine: "gpt-4",
+		Tools: []config.AgentToolDef{
+			{Type: "workflow", Name: "$agent_data.wf_name"},
+		},
+	}
+
+	data := map[string]interface{}{
+		"wf_name": "mywf",
+	}
+
+	payload := map[string]interface{}{
+		"data": data,
+		"text": "hello",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", payload)
+
+	require.Len(t, agent.Tools, 1)
+	assert.Equal(t, "mywf", agent.Tools[0].Name)
+}
+
+// ---------------------------------------------------------------------------
+// ConvoState Agent persistence tests
+// ---------------------------------------------------------------------------
+
+func TestConvoState_AgentSerialization(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:         "myagent",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "You are helpful.",
+		ModelData: map[string]interface{}{
+			"temperature": 0.7,
+		},
+	}
+
+	// Create a ConvoState with an Agent
+	cs := &ConvoState{
+		ConvoID: "test-convo",
+		Agent:   interpolateAgentConfig(store, "myagent", map[string]interface{}{"text": "hello"}),
+	}
+
+	// Persist it
+	cs.persist(store)
+	assert.True(t, store.hasCall("cache:save"))
+
+	// Load it back
+	cs2 := &ConvoState{}
+	cs2.load("test-convo", store)
+
+	// Agent should be loaded and intact
+	require.NotNil(t, cs2.Agent)
+	assert.Equal(t, "myagent", cs2.Agent.Name)
+	assert.Equal(t, "openai", cs2.Agent.Driver)
+	assert.Equal(t, "gpt-4", cs2.Agent.Engine)
+	assert.Equal(t, "You are helpful.", cs2.Agent.SystemPrompt)
+	assert.Equal(t, float64(0.7), cs2.Agent.ModelData["temperature"])
+}
+
+func TestSetup_NewConvo_StoresInterpolatedAgent(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:         "myagent",
+		Driver:       "openai",
+		Engine:       "$agent_data.model",
+		SystemPrompt: "Help with {{.agent_data.task}}",
+	}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "myagent",
+		},
+		Payload: map[string]interface{}{
+			"text": "hello",
+			"type": AgentSessionTypeChatTurn,
+			"data": map[string]interface{}{
+				"model": "gpt-4-turbo",
+				"task":  "coding",
+			},
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store, false)
+
+	// Session agent should be interpolated
+	assert.Equal(t, "gpt-4-turbo", s.Agent.Engine)
+	assert.Equal(t, "Help with coding", s.Agent.SystemPrompt)
+
+	// ConvoState should contain the interpolated agent
+	cs := &ConvoState{}
+	cs.load(s.ConvoID, store)
+	require.NotNil(t, cs.Agent)
+	assert.Equal(t, "gpt-4-turbo", cs.Agent.Engine)
+	assert.Equal(t, "Help with coding", cs.Agent.SystemPrompt)
+}
+
+func TestSetup_ExistingConvo_LoadsAgentFromConvoState(t *testing.T) {
+	store := newMockStore(nil)
+
+	// Pre-create a ConvoState with an interpolated agent
+	originalAgent := config.Agent{
+		Name:         "myagent",
+		Driver:       "openai",
+		Engine:       "gpt-4-turbo",
+		SystemPrompt: "Help with coding",
+	}
+
+	cs := &ConvoState{
+		ConvoID: "convo-123",
+		Agent:   &originalAgent,
+	}
+	store.resp["cache:load:"+ConvoStateKeyPrefix+"convo-123"] = mustMarshalJSON(cs)
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-123"] = mustMarshalJSON([]AgentMessage{
+		{Role: RoleUser, Content: "hello"},
+	})
+
+	// Create a new session pointing to the existing convo
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "myagent",
+		},
+		Payload: map[string]interface{}{
+			"type":     AgentSessionTypeChatTurn,
+			"convo_id": "convo-123",
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store, false)
+
+	// Session should have loaded agent from ConvoState
+	require.NotNil(t, s.Agent)
+	assert.Equal(t, "gpt-4-turbo", s.Agent.Engine)
+	assert.Equal(t, "Help with coding", s.Agent.SystemPrompt)
+}
+
+func TestSetup_PanicsIfAgentMissing(t *testing.T) {
+	store := newMockStore(nil)
+
+	// Create a ConvoState with nil Agent (simulating cache from before Agent field was added)
+	cs := &ConvoState{
+		ConvoID: "convo-456",
+		Agent:   nil,
+	}
+	store.resp["cache:load:"+ConvoStateKeyPrefix+"convo-456"] = mustMarshalJSON(cs)
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-456"] = mustMarshalJSON([]AgentMessage{
+		{Role: RoleUser, Content: "hello"},
+	})
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "myagent",
+		},
+		Payload: map[string]interface{}{
+			"convo_id": "convo-456",
+		},
+	}
+
+	s := &AgentSession{}
+
+	// Should panic because Agent is nil for an existing conversation
+	assert.Panics(t, func() {
+		s.setup(msg, store, false)
+	})
 }

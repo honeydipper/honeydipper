@@ -178,6 +178,8 @@ type Agent struct {
 	CompactionPolicy   *agentpkg.CompactionPolicy `json:"compaction_policy" mapstructure:"compaction_policy"`
 	Tools              []AgentToolDef
 	ModelData          map[string]interface{} `json:"model_data" mapstructure:"model_data"`
+	PreContext         []string               `json:"pre_context" mapstructure:"pre_context"`
+	FileTool           string                 `json:"file_tool" mapstructure:"file_tool"`
 	Description        string
 	Meta               interface{}
 }

@@ -96,7 +96,6 @@ require (
 
 require (
 	cloud.google.com/go/aiplatform v1.117.0
-	cloud.google.com/go/auth v0.18.2
 	cloud.google.com/go/compute/metadata v0.9.0
 	cloud.google.com/go/logging v1.13.2
 	cloud.google.com/go/pubsub/v2 v2.4.0
@@ -115,11 +114,11 @@ require (
 	github.com/russellhaering/gosaml2 v0.11.0
 	github.com/russellhaering/goxmldsig v1.6.0
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546
-	google.golang.org/genai v1.1.0
 )
 
 require (
 	cel.dev/expr v0.25.1 // indirect
+	cloud.google.com/go/auth v0.18.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/iam v1.5.3 // indirect
 	cloud.google.com/go/longrunning v0.8.0 // indirect
