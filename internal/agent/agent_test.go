@@ -279,6 +279,7 @@ func TestSetup_NewSession(t *testing.T) {
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeInference,
+			"text": "hello",
 		},
 	}
 
@@ -299,7 +300,7 @@ func TestSetup_DefaultsToChatTurnType(t *testing.T) {
 
 	msg := &dipper.Message{
 		Labels:  map[string]string{"agent_name": "a"},
-		Payload: map[string]interface{}{},
+		Payload: map[string]interface{}{"text": "hello"},
 	}
 
 	s := &AgentSession{}
@@ -317,7 +318,8 @@ func TestSetup_CustomTTL(t *testing.T) {
 			"agent_name": "a",
 		},
 		Payload: map[string]interface{}{
-			"ttl": "7200",
+			"ttl":  "7200",
+			"text": "hello",
 		},
 	}
 
@@ -382,6 +384,7 @@ func TestSetup_ChatTurn_NewConvo(t *testing.T) {
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeChatTurn,
+			"text": "hello",
 			// no convo_id
 		},
 	}
@@ -444,6 +447,7 @@ func TestParentChildConvoStateBehavior(t *testing.T) {
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeChatTurn,
+			"text": "hello",
 		},
 	}
 
@@ -465,6 +469,7 @@ func TestParentChildConvoStateBehavior(t *testing.T) {
 		},
 		Payload: map[string]interface{}{
 			"type": AgentSessionTypeInference,
+			"text": "hello",
 		},
 	}
 
@@ -648,7 +653,7 @@ func TestRecover(t *testing.T) {
 	s := &AgentSession{
 		store:      store,
 		CurrentMsg: &dipper.Message{Labels: map[string]string{"timeout": "9s"}},
-		Agent:      &config.Agent{Name: "a", Driver: "openai", Engine: "gpt-4"},
+		Agent:      &config.Agent{Name: "a", Driver: "openai", Engine: "gpt-4", SystemPrompt: "agent sys"},
 		ID:         "recover-id",
 		history: []AgentMessage{
 			{Role: RoleSystem, Content: "sys"},
@@ -666,9 +671,10 @@ func TestRecover(t *testing.T) {
 	params := store.getNoWaitParams("driver:openai:send_to_model")
 	require.NotNil(t, params)
 	driverHistory := params["history"].([]AgentMessage)
-	require.Len(t, driverHistory, 2)
+	require.Len(t, driverHistory, 3)
 	assert.Equal(t, RoleSystem, driverHistory[0].Role)
-	assert.Equal(t, RoleUser, driverHistory[1].Role)
+	assert.Equal(t, RoleSystem, driverHistory[1].Role)
+	assert.Equal(t, RoleUser, driverHistory[2].Role)
 }
 
 // ---------------------------------------------------------------------------
@@ -1895,7 +1901,9 @@ func TestInterpolateAgentConfig_Basic(t *testing.T) {
 		SystemPrompt: "You are helpful.",
 	}
 
-	agent := interpolateAgentConfig(store, "myagent", nil)
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+	})
 
 	assert.NotNil(t, agent)
 	assert.Equal(t, "myagent", agent.Name)
@@ -1913,12 +1921,15 @@ func TestInterpolateAgentConfig_InterpolatesSystemPrompt(t *testing.T) {
 		SystemPrompt: "You are helping {{.agent_data.user}} with {{.agent_data.task}}",
 	}
 
-	data := map[string]interface{}{
-		"user": "alice",
-		"task": "debugging",
+	payload := map[string]interface{}{
+		"text": "hello",
+		"data": map[string]interface{}{
+			"user": "alice",
+			"task": "debugging",
+		},
 	}
 
-	agent := interpolateAgentConfig(store, "myagent", data)
+	agent := interpolateAgentConfig(store, "myagent", payload)
 
 	assert.Equal(t, "You are helping alice with debugging", agent.SystemPrompt)
 }
@@ -1932,11 +1943,14 @@ func TestInterpolateAgentConfig_InterpolatesInferencePrompt(t *testing.T) {
 		InferencePrompt: "Analyze {{.agent_data.code}}",
 	}
 
-	data := map[string]interface{}{
-		"code": "func main() {}",
+	payload := map[string]interface{}{
+		"text": "hello",
+		"data": map[string]interface{}{
+			"code": "func main() {}",
+		},
 	}
 
-	agent := interpolateAgentConfig(store, "myagent", data)
+	agent := interpolateAgentConfig(store, "myagent", payload)
 
 	assert.Equal(t, "Analyze func main() {}", agent.InferencePrompt)
 }
@@ -1953,11 +1967,14 @@ func TestInterpolateAgentConfig_InterpolatesModelData(t *testing.T) {
 		},
 	}
 
-	data := map[string]interface{}{
-		"user": "bob",
+	payload := map[string]interface{}{
+		"text": "hello",
+		"data": map[string]interface{}{
+			"user": "bob",
+		},
 	}
 
-	agent := interpolateAgentConfig(store, "myagent", data)
+	agent := interpolateAgentConfig(store, "myagent", payload)
 
 	assert.Equal(t, "user=bob", agent.ModelData["context"])
 	assert.Equal(t, float64(0.7), agent.ModelData["temperature"])
@@ -1975,7 +1992,12 @@ func TestInterpolateAgentConfig_InterpolatesEngine(t *testing.T) {
 		"model": "gpt-4-turbo",
 	}
 
-	agent := interpolateAgentConfig(store, "myagent", data)
+	payload := map[string]interface{}{
+		"text": "hello",
+		"data": data,
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", payload)
 
 	assert.Equal(t, "gpt-4-turbo", agent.Engine)
 }
@@ -1996,7 +2018,12 @@ func TestInterpolateAgentConfig_InterpolatesTools(t *testing.T) {
 		"wf_name": "mywf",
 	}
 
-	agent := interpolateAgentConfig(store, "myagent", data)
+	payload := map[string]interface{}{
+		"data": data,
+		"text": "hello",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", payload)
 
 	require.Len(t, agent.Tools, 1)
 	assert.Equal(t, "mywf", agent.Tools[0].Name)
@@ -2021,7 +2048,7 @@ func TestConvoState_AgentSerialization(t *testing.T) {
 	// Create a ConvoState with an Agent
 	cs := &ConvoState{
 		ConvoID: "test-convo",
-		Agent:   interpolateAgentConfig(store, "myagent", nil),
+		Agent:   interpolateAgentConfig(store, "myagent", map[string]interface{}{"text": "hello"}),
 	}
 
 	// Persist it
@@ -2055,6 +2082,7 @@ func TestSetup_NewConvo_StoresInterpolatedAgent(t *testing.T) {
 			"agent_name": "myagent",
 		},
 		Payload: map[string]interface{}{
+			"text": "hello",
 			"type": AgentSessionTypeChatTurn,
 			"data": map[string]interface{}{
 				"model": "gpt-4-turbo",
@@ -2127,7 +2155,9 @@ func TestSetup_PanicsIfAgentMissing(t *testing.T) {
 		Agent:   nil,
 	}
 	store.resp["cache:load:"+ConvoStateKeyPrefix+"convo-456"] = mustMarshalJSON(cs)
-	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-456"] = mustMarshalJSON([]AgentMessage{})
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+"convo-456"] = mustMarshalJSON([]AgentMessage{
+		{Role: RoleUser, Content: "hello"},
+	})
 
 	msg := &dipper.Message{
 		Labels: map[string]string{
