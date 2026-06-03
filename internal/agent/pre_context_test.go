@@ -10,14 +10,134 @@
 package agent
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/op/go-logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// FakeStore implements the minimal AgentStore/ RPCCaller behaviour needed for tests.
+type FakeStore struct {
+	cache   map[string][]byte
+	lastMsg dipper.Message
+}
+
+func NewFakeStore() *FakeStore {
+	return &FakeStore{cache: map[string][]byte{}}
+}
+
+func (f *FakeStore) Call(feature, method string, params interface{}, labelsKV ...string) ([]byte, error) {
+	switch feature {
+	case "locker":
+		return nil, nil
+	case "cache":
+		p := params.(map[string]interface{})
+		switch method {
+		case "load":
+			key := p["key"].(string)
+			if v, ok := f.cache[key]; ok {
+				return v, nil
+			}
+
+			return nil, fmt.Errorf("not found")
+		case "save":
+			key := p["key"].(string)
+			// value is stored as string
+			val := p["value"].(string)
+			f.cache[key] = []byte(val)
+
+			return nil, nil
+		case "stream_hset":
+			return nil, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (f *FakeStore) CallNoWait(feature, method string, params interface{}, labelsKV ...string) error {
+	_, _ = f.Call(feature, method, params, labelsKV...)
+
+	return nil
+}
+
+func (f *FakeStore) CallRaw(feature, method string, params []byte, labelsKV ...string) ([]byte, error) {
+	return f.Call(feature, method, dipper.DeserializeContent(params), labelsKV...)
+}
+
+func (f *FakeStore) CallRawNoWait(feature, method string, params []byte, rpcID string, labelsKV ...string) error {
+	_, _ = f.CallRaw(feature, method, params, labelsKV...)
+
+	return nil
+}
+
+func (f *FakeStore) CallWithMessage(msg *dipper.Message) ([]byte, error) { return nil, nil }
+func (f *FakeStore) CallWithMessageNoWait(msg *dipper.Message) error     { return nil }
+func (f *FakeStore) GetName() string                                     { return "fake" }
+
+// AgentStore minimal methods.
+func (f *FakeStore) StartInference(msg *dipper.Message)    {}
+func (f *FakeStore) PollInference(msg *dipper.Message)     {}
+func (f *FakeStore) ContinueInference(msg *dipper.Message) {}
+func (f *FakeStore) ReceiveInference(msg *dipper.Message)  {}
+func (f *FakeStore) StartAgentCall(msg *dipper.Message)    {}
+func (f *FakeStore) StartMCPCall(msg *dipper.Message)      {}
+func (f *FakeStore) CancelConvo(msg *dipper.Message)       {}
+func (f *FakeStore) StartTurn(convoID, text, user string)  {}
+func (f *FakeStore) StartNewConvo(agentName, text, user string) string {
+	return ""
+}
+func (f *FakeStore) GetAgent(name string) *config.Agent       { return &config.Agent{} }
+func (f *FakeStore) GetSystem(name string) *config.System     { return &config.System{} }
+func (f *FakeStore) GetWorkflow(name string) *config.Workflow { return &config.Workflow{} }
+func (f *FakeStore) EmitMessage(msg dipper.Message)           { f.lastMsg = msg }
+func (f *FakeStore) GetConfig() *config.Config                { return &config.Config{} }
+func (f *FakeStore) Stop()                                    {}
+func (f *FakeStore) Wait()                                    {}
+func (f *FakeStore) GetLogger() *logging.Logger               { return nil }
+
+func TestHandleLoadSkillToolCall_Success(t *testing.T) {
+	convoID := "conv-test"
+	skillName := "my_skill"
+	skillPath := "path/to/SKILL.md"
+
+	// Prepare a ConvoState with the skill mapping and store it in fake cache.
+	cs := &ConvoState{ConvoID: convoID, Skills: map[string]string{skillName: skillPath}}
+	b := dipper.SerializeContent(cs)
+
+	fs := NewFakeStore()
+	fs.cache[ConvoStateKeyPrefix+convoID] = b
+
+	s := &AgentSession{
+		ConvoID: convoID,
+		store:   fs,
+		Agent:   &config.Agent{FileTool: "wf__read_file", Name: "a"},
+	}
+
+	c := AgentToolCall{FuncName: "hd_load_skill", Params: map[string]interface{}{"skill_name": skillName}}
+
+	s.handleLoadSkillToolCall(c, "")
+
+	if fs.lastMsg.Subject != "agent_workflow" {
+		t.Fatalf("expected agent_workflow message, got: %v", fs.lastMsg.Subject)
+	}
+
+	data, ok := fs.lastMsg.Payload.(map[string]interface{})["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload data missing or wrong type: %#v", fs.lastMsg.Payload)
+	}
+
+	// file_specs may be []string or []interface{} depending on how it was passed.
+	fspecs := fmt.Sprintf("%v", data["file_specs"])
+	if fspecs == "" || !strings.Contains(fspecs, skillPath) {
+		t.Fatalf("expected file_specs to include %s, got %s", skillPath, fspecs)
+	}
+}
 
 // TestLoadPreContext_HistoryNotEmpty tests that loadPreContext returns false
 // when history is not empty.
@@ -35,23 +155,6 @@ func TestLoadPreContext_HistoryNotEmpty(t *testing.T) {
 	result := session.loadPreContextAndSkills()
 
 	assert.False(t, result, "loadPreContextAndSkills should return false when history is not empty")
-	assert.Empty(t, session.ToolCalls, "no tool calls should be created")
-}
-
-// TestLoadPreContext_NoFileTool tests that loadPreContext returns false
-// when FileTool is not configured.
-func TestLoadPreContext_NoFileTool(t *testing.T) {
-	store := newMockStore(nil)
-	session := &AgentSession{
-		ID:      "test-session-2",
-		Agent:   &config.Agent{FileTool: "", PreContext: []string{"file1.md"}},
-		history: []AgentMessage{},
-		store:   store,
-	}
-
-	result := session.loadPreContextAndSkills()
-
-	assert.False(t, result, "loadPreContextAndSkills should return false when FileTool is empty")
 	assert.Empty(t, session.ToolCalls, "no tool calls should be created")
 }
 

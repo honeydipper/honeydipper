@@ -15,7 +15,7 @@ const (
 )
 
 func (s *AgentSession) loadPreContextAndSkills() bool {
-	if len(s.history) > 0 || len(s.Agent.FileTool) == 0 || (len(s.Agent.SkillsPaths) == 0 && len(s.Agent.PreContext) == 0) {
+	if len(s.history) > 0 || (len(s.Agent.SkillsPaths) == 0 && len(s.Agent.PreContext) == 0) {
 		return false
 	}
 
@@ -163,7 +163,7 @@ func (s *AgentSession) handlePreContextAndSkillsResult(c AgentToolCall, results 
 
 func (s *AgentSession) resumeWithSkills(skillMap map[string]string) {
 	s.Agent.PreContext = nil // prevent retrying on next session run
-	s.Agent.FileTool = ""
+	s.Agent.SkillsPaths = nil
 	s.CurrentCall = 0
 	s.ToolCalls = nil
 	s.ToolResults = nil
@@ -176,4 +176,44 @@ func (s *AgentSession) resumeWithSkills(skillMap map[string]string) {
 	})
 
 	s.run()
+}
+
+func (s *AgentSession) handleLoadSkillToolCall(c AgentToolCall, unifiedConvoID string) {
+	skillName, _ := dipper.GetMapDataStr(c.Params, "skill_name")
+	if skillName == "" {
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] hd_load_skill call missing skill_name param", s.ID)
+		}
+
+		return
+	}
+
+	var skillMap map[string]string
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		skillMap = cs.Skills
+	})
+	if skillMap == nil {
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] hd_load_skill call but no skills found in convo state", s.ID)
+		}
+
+		return
+	}
+
+	skillPath := skillMap[skillName]
+	if skillPath == "" {
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] hd_load_skill call with skill_name=%s but no matching skill path found", s.ID, skillName)
+		}
+
+		return
+	}
+
+	toolCall := AgentToolCall{
+		FuncName: s.Agent.FileTool,
+		Params: map[string]interface{}{
+			"file_specs": []string{skillPath},
+		},
+	}
+	s.handleWorkflowToolCall(toolCall, unifiedConvoID)
 }
