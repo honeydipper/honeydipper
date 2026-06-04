@@ -58,7 +58,8 @@ type ConvoState struct {
 	ArchivedConvos []string `json:"archived_convos,omitempty"`
 	TTL            string   `json:"ttl"`
 
-	Agent *config.Agent `json:"agent,omitempty"`
+	Agent  *config.Agent     `json:"agent,omitempty"`
+	Skills map[string]string `json:"skills,omitempty"`
 }
 
 // load reads and deserialises the ConvoState for convoID from the cache.

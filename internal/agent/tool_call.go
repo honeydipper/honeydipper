@@ -30,6 +30,20 @@ func (s *AgentSession) BuildTools() map[string]AgentTool {
 		}
 	}
 
+	if strings.Contains(s.Agent.SystemPrompt, SkillsHeader) {
+		tools["hd_load_skill"] = AgentTool{
+			Name:        "hd_load_skill",
+			Description: "Load a skill's content into the agent session.",
+			Params: map[string]interface{}{
+				"skill_name": map[string]interface{}{
+					"name":        "skill_name",
+					"type":        "string",
+					"description": "The name of the skill to load, e.g. file_ops/read_file.",
+				},
+			},
+		}
+	}
+
 	return tools
 }
 
@@ -300,6 +314,8 @@ func (s *AgentSession) nextToolCall() {
 		s.handleAgentToolCall(c, unifiedConvoID)
 	case strings.HasPrefix(c.FuncName, "mcp__"):
 		s.handleMCPToolCall(c, unifiedConvoID)
+	case c.FuncName == "hd_load_skill":
+		s.handleLoadSkillToolCall(c, unifiedConvoID)
 	default:
 		panic(fmt.Errorf("%w unknown tool call prefix: %s", ErrToolCall, c.FuncName))
 	}
@@ -465,7 +481,7 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 			"labels": msg.Labels,
 		}, s.store.GetConfig())
 
-	case strings.HasPrefix(c.FuncName, "wf__"):
+	case strings.HasPrefix(c.FuncName, "wf__") || c.FuncName == "hd_load_skill":
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
 
 	case strings.HasPrefix(c.FuncName, "ag__"):
@@ -495,7 +511,7 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 			return
 		}
 
-		if s.handlePreContextResult(c, s.ToolResults) {
+		if s.handlePreContextAndSkillsResult(c, s.ToolResults) {
 			return
 		}
 
