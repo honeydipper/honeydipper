@@ -32,8 +32,10 @@ type ConvoSessionRef struct {
 	AgentName    string    `json:"agent_name"`
 	Type         string    `json:"type"`
 	Status       string    `json:"status"`
+	ErrorReason  string    `json:"error_reason,omitempty"`
 	InputTokens  int       `json:"input_tokens,omitempty"`
 	OutputTokens int       `json:"output_tokens,omitempty"`
+	TotalTokens  int       `json:"total_tokens,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -127,24 +129,25 @@ func (cs *ConvoState) registerSession(sessionID, agentName, sessionType string, 
 // updateSessionStatus sets the status, token counts, and updated timestamp
 // for the matching session in FirstSession or LastSession.
 // The caller is responsible for persisting.
-func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens, outputTokens int, totalTokens int) {
+func (cs *ConvoState) updateSessionStatus(sessionID, status string, reason string, inputTokens, outputTokens int, totalTokens int) {
 	now := time.Now()
 	// Avoid double-adding when multiple refs point to the same session
 	// (First/Last/Active). Track which session IDs we've already accounted
 	// for in this update call.
 	accounted := false
 
-	updateRef := func(ref *ConvoSessionRef) {
+	updateRef := func(ref *ConvoSessionRef, updateActive bool) {
 		if ref == nil || ref.SessionID != sessionID {
 			return
 		}
 		ref.InputTokens = inputTokens
 		ref.OutputTokens = outputTokens
+		ref.TotalTokens = totalTokens
 		ref.UpdatedAt = now
 
 		if ref.Status != ConvoSessionStatusComplete && ref.Status != ConvoSessionStatusFailed {
 			if status == ConvoSessionStatusComplete || status == ConvoSessionStatusFailed {
-				if !accounted {
+				if !accounted && !updateActive {
 					cs.TotalTokens += totalTokens
 					accounted = true
 				}
@@ -152,11 +155,12 @@ func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens,
 		}
 
 		ref.Status = status
+		ref.ErrorReason = reason
 	}
 
-	updateRef(cs.FirstSession)
-	updateRef(cs.LastSession)
-	updateRef(cs.ActiveSession)
+	updateRef(cs.FirstSession, false)
+	updateRef(cs.LastSession, false)
+	updateRef(cs.ActiveSession, true)
 }
 
 // isSessionCancelled returns true when the session with the given ID has been
