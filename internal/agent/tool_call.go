@@ -221,31 +221,13 @@ func (s *AgentSession) addMCPTool(tools map[string]AgentTool, toolDef config.Age
 			continue
 		}
 
-		params := map[string]interface{}{}
 		schema, _ := def["input_schema"].(map[string]interface{})
 		props, _ := schema["properties"].(map[string]interface{})
-		for pname, pval := range props {
-			prop, ok := pval.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			ptype, _ := prop["type"].(string)
-			if ptype == "" {
-				ptype = "string"
-			}
-			pdesc, _ := prop["description"].(string)
-			params[pname] = map[string]interface{}{
-				"name":        pname,
-				"type":        ptype,
-				"description": pdesc,
-			}
-		}
 
 		tools[fname] = AgentTool{
 			Name:        fname,
 			Description: desc,
-			Params:      params,
+			Params:      props,
 		}
 	}
 }
