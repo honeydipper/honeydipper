@@ -36,6 +36,7 @@ type ConvoSessionRef struct {
 	OutputTokens int       `json:"output_tokens,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	ErrorReason  string    `json:"error_reason,omitempty"`
 }
 
 // ConvoState is the persisted, queryable view of a conversation.
@@ -140,6 +141,7 @@ func (cs *ConvoState) updateSessionStatus(sessionID, status string, inputTokens,
 		}
 		ref.InputTokens = inputTokens
 		ref.OutputTokens = outputTokens
+		ref.ErrorReason = ""
 		ref.UpdatedAt = now
 
 		if ref.Status != ConvoSessionStatusComplete && ref.Status != ConvoSessionStatusFailed {

@@ -132,6 +132,7 @@ func (s *AgentSession) syncConvoStateStatus() {
 				s.ID, s.ConvoID, status, lastIsComplete, s.ErrorReason, fs, ls)
 		}
 
+		cs.ErrorReason = s.ErrorReason
 		cs.updateSessionStatus(s.ID, status, s.InputTokens, s.OutputTokens, s.TotalTokens)
 	})
 }
