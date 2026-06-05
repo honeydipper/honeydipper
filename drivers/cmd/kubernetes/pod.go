@@ -9,8 +9,12 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	batchv1 "k8s.io/api/batch/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -19,7 +23,9 @@ import (
 // getPodInfoForJob retrieves pod information for a given job without blocking.
 // Returns pod names and pod IPs if pods are currently running. If pods haven't been created yet,
 // returns empty slices. This is useful for immediately getting pod names after job creation.
-func getPodInfoForJob(ctx context.Context, k8client *kubernetes.Clientset, namespace, jobName string) ([]string, []string) {
+func getPodInfoForJob(ctx context.Context, k8client *kubernetes.Clientset, namespace, jobName string,
+	targetPhase string,
+) ([]map[string]string, bool) {
 	podClient := k8client.CoreV1().Pods(namespace)
 	listOpts := metav1.ListOptions{
 		LabelSelector: "job-name==" + jobName,
@@ -29,18 +35,65 @@ func getPodInfoForJob(ctx context.Context, k8client *kubernetes.Clientset, names
 	if err != nil {
 		log.Debugf("[%s] unable to list pods for job %s: %v", driver.Service, jobName, err)
 
-		return []string{}, []string{}
+		return []map[string]string{}, false
 	}
 
-	var podNames, podIPs []string
-	for _, pod := range pods.Items {
-		podNames = append(podNames, pod.Name)
-		if pod.Status.PodIP != "" {
-			podIPs = append(podIPs, pod.Status.PodIP)
+	reached := targetPhase != "running"
+
+	info := make([]map[string]string, len(pods.Items))
+	for i, pod := range pods.Items {
+		info[i] = map[string]string{
+			"name":  pod.Name,
+			"ip":    pod.Status.PodIP,
+			"phase": string(pod.Status.Phase),
+		}
+		if targetPhase == "running" && pod.Status.Phase == v1.PodRunning {
+			reached = true
+		} else if targetPhase == "done" && pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodFailed {
+			reached = false
 		}
 	}
 
-	return podNames, podIPs
+	return info, reached
+}
+
+func checkJobReachedPhase(ctx context.Context, k8client *kubernetes.Clientset, job *batchv1.Job, targetPhase string, m *dipper.Message) bool {
+	// check job is in terminal state or not.
+	terminal := false
+	for _, c := range job.Status.Conditions {
+		if (c.Type == batchv1.JobComplete || c.Type == batchv1.JobFailed || c.Type == batchv1.JobFailureTarget) &&
+			c.Status == v1.ConditionTrue {
+			terminal = true
+
+			break
+		}
+	}
+
+	// Check if job and pods already reached the designed phase.
+	podInfo, reached := getPodInfoForJob(ctx, k8client, job.Namespace, job.Name, targetPhase)
+	if targetPhase == "done" && !terminal {
+		// pods complete does not mean job is complete,
+		// ignore pod status until job is in terminal state.
+		reached = false
+	}
+	if targetPhase == "running" && terminal {
+		// job will never reach running phase any more. Quit now.
+		reached = true
+	}
+	if len(podInfo) > 0 && reached || (len(podInfo) == 0 && terminal) {
+		m.Reply <- dipper.Message{
+			Labels: map[string]string{
+				"status": "success",
+			},
+			Payload: map[string]interface{}{
+				"pod_info": podInfo,
+			},
+		}
+
+		return true
+	}
+
+	return false
 }
 
 // waitForJobPods watches a job until pods are created and returns their names.
@@ -52,6 +105,8 @@ func waitForJobPods(m *dipper.Message) {
 	if !ok {
 		nameSpace = DefaultNamespace
 	}
+	targetPhase, _ := dipper.GetMapDataStr(m.Payload, "target_phase")
+	targetPhase = strings.ToLower(targetPhase)
 
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
 	k8client := prepareKubeConfig(m)
@@ -68,27 +123,28 @@ func waitForJobPods(m *dipper.Message) {
 	for {
 		func() {
 			joblist, err := jobclient.List(ctx, watchOption)
-			if err != nil || len(joblist.Items) == 0 {
-				log.Panicf("[%s] job not found [%s]: %+v", driver.Service, jobName, err)
+			if err != nil {
+				log.Panicf("[%s] failed to get job info [%s]: %+v", driver.Service, jobName, err)
 			}
-			watchOption.ResourceVersion = joblist.ResourceVersion
 
-			// Check if pods are already created
-			podNames, podIPs := getPodInfoForJob(ctx, k8client, nameSpace, jobName)
-			if len(podNames) > 0 {
-				m.Reply <- dipper.Message{
-					Labels: map[string]string{
-						"status": "success",
-					},
-					Payload: map[string]interface{}{
-						"pod_names": podNames,
-						"pod_ips":   podIPs,
-					},
+			if len(joblist.Items) == 0 {
+				select {
+				case <-ctx.Done():
+				case <-time.After(time.Second):
+					// Job might not be created yet, retry after a delay.
 				}
 
 				return
 			}
+			job := joblist.Items[0]
 
+			if checkJobReachedPhase(ctx, k8client, &job, targetPhase, m) {
+				cancel()
+
+				return
+			}
+
+			watchOption.ResourceVersion = joblist.ResourceVersion
 			jobstatus, err := jobclient.Watch(ctx, watchOption)
 			if err != nil {
 				log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
@@ -100,32 +156,24 @@ func waitForJobPods(m *dipper.Message) {
 					return
 				}
 
-				if evt.Type == watch.Error {
+				if evt.Type == watch.Error || evt.Type == watch.Deleted {
 					e := evt.Object.(*metav1.Status)
 					if e.Code != http.StatusGone {
-						log.Panicf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
+						log.Panicf("[%s] deleted or error from watching job [%s]: %+v", driver.Service, jobName, evt.Object)
 					}
+					cancel()
 
 					return
 				}
 
 				log.Debugf("[%s] receiving event when watching for job [%s]", driver.Service, jobName)
 
-				// Check if pods are created yet
-				podNames, podIPs := getPodInfoForJob(ctx, k8client, nameSpace, jobName)
-				if len(podNames) > 0 {
-					m.Reply <- dipper.Message{
-						Labels: map[string]string{
-							"status": "success",
-						},
-						Payload: map[string]interface{}{
-							"pod_names": podNames,
-							"pod_ips":   podIPs,
-						},
-					}
-					cancel()
+				if job, ok := evt.Object.(*batchv1.Job); ok {
+					if checkJobReachedPhase(ctx, k8client, job, targetPhase, m) {
+						cancel()
 
-					return
+						return
+					}
 				}
 			}
 		}()
