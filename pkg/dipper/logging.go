@@ -10,21 +10,34 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/op/go-logging"
 	"golang.org/x/term"
 )
 
 // Logger provides methods to log to the configured logger backend.
-var (
-	Logger      *logging.Logger
-	logBackends []logging.Backend
-)
+// Deprecated: Use GetLogger to get a logger for a specific module.
+var Logger *logging.Logger
 
 // LoggingWriter is the writer used for sending logs.
 var LoggingWriter io.Writer
 
-func initLogBackend(level logging.Level, logFile *os.File) logging.Backend {
+// moduleLoggers stores loggers for different modules, ensuring uniqueness by module name
+var (
+	moduleLoggers   = make(map[string]*logging.Logger)
+	moduleLoggersMu sync.RWMutex
+)
+
+// backendInitialized tracks whether the global backend has been initialized
+var (
+	backendInitialized bool
+	backendMu         sync.Mutex
+	logFileOut        *os.File
+	logFileErr        *os.File
+)
+
+func createLogBackend(level logging.Level, logFile *os.File) logging.Backend {
 	backend := logging.NewLogBackend(logFile, "", 0)
 
 	formatStr := `%{time:15:04:05.000} %{module}.%{shortfunc} ▶ %{level:.4s} %{id:03x} %{message}`
@@ -40,33 +53,96 @@ func initLogBackend(level logging.Level, logFile *os.File) logging.Backend {
 	return backendLeveled
 }
 
-// GetLogger : getting a logger for the module.
+// GetLogger returns a logger for the specified module.
+// The logger is unique by module name - calling with the same module name
+// will return the same logger instance. Different modules can have different
+// log prefixes even if they are in the same process.
+//
+// The backend is initialized on the first call. Subsequent calls with different
+// log files will not re-initialize the backend. The verbosity parameter is
+// only used on the first call or when the module's logger is first created.
+//
+// Returns the logger for the specified module.
 func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.Logger {
+	// Fast path: check if we already have a logger for this module (read lock)
+	moduleLoggersMu.RLock()
+	if logger, ok := moduleLoggers[module]; ok {
+		moduleLoggersMu.RUnlock()
+		// Always update global Logger for backward compatibility
+		Logger = logger
+		return logger
+	}
+	moduleLoggersMu.RUnlock()
+
+	// Need to create a new logger for this module
+	moduleLoggersMu.Lock()
+	defer moduleLoggersMu.Unlock()
+
+	// Double-check after acquiring write lock (another goroutine may have created it)
+	if logger, ok := moduleLoggers[module]; ok {
+		// Always update global Logger for backward compatibility
+		Logger = logger
+		return logger
+	}
+
+	// Check for debug mode - allow per-module debug override via DEBUG env var
 	if debug, ok := os.LookupEnv("DEBUG"); ok {
 		if debug == "*" || strings.Contains(","+debug+",", ","+module+",") {
 			verbosity = "DEBUG"
 		}
 	}
-	errLog := os.Stderr
-	if len(logFiles) > 1 {
-		errLog = logFiles[1]
-	}
-	logBackends = []logging.Backend{initLogBackend(logging.WARNING, errLog)}
-	level, err := logging.LogLevel(verbosity)
-	if err != nil {
-		panic(err)
-	}
 
-	log := os.Stdout
-	if len(logFiles) > 0 {
-		log = logFiles[0]
-	}
-	LoggingWriter = log
-	if level > logging.WARNING {
-		logBackends = append(logBackends, initLogBackend(level, log))
-	}
-	logging.SetBackend(logBackends...)
-	Logger = logging.MustGetLogger(module)
+	// Initialize the backend only once
+	backendMu.Lock()
+	if !backendInitialized {
+		errLog := os.Stderr
+		if len(logFiles) > 1 {
+			errLog = logFiles[1]
+		}
+		log := os.Stdout
+		if len(logFiles) > 0 {
+			log = logFiles[0]
+		}
 
-	return Logger
+		// Store the log files for potential future use
+		logFileOut = log
+		logFileErr = errLog
+
+		level, err := logging.LogLevel(verbosity)
+		if err != nil {
+			panic(err)
+		}
+
+		// Create backends - always include error log backend with WARNING level
+		logBackends := []logging.Backend{createLogBackend(logging.WARNING, errLog)}
+
+		// Add log backend with specified level if higher than WARNING
+		if level > logging.WARNING {
+			logBackends = append(logBackends, createLogBackend(level, log))
+		}
+
+		// Set the global backend (affects all loggers)
+		LoggingWriter = log
+		logging.SetBackend(logBackends...)
+
+		backendInitialized = true
+	}
+	backendMu.Unlock()
+
+	// Get or create logger for this module
+	logger := logging.MustGetLogger(module)
+	moduleLoggers[module] = logger
+
+	// Always update the global Logger for backward compatibility
+	Logger = logger
+
+	return logger
+}
+
+// GetLogFiles returns the current log files being used by the backend.
+// This is useful for testing or for modules that need to know the log destination.
+func GetLogFiles() (*os.File, *os.File) {
+	backendMu.Lock()
+	defer backendMu.Unlock()
+	return logFileOut, logFileErr
 }
