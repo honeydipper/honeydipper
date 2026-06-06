@@ -17,27 +17,29 @@ import (
 )
 
 // Logger provides methods to log to the configured logger backend.
+//
 // Deprecated: Use GetLogger to get a logger for a specific module.
 var Logger *logging.Logger
 
 // LoggingWriter is the writer used for sending logs.
 var LoggingWriter io.Writer
 
-// moduleLoggers stores loggers for different modules, ensuring uniqueness by module name
+// moduleLoggers stores loggers for different modules, ensuring uniqueness by module name.
 var (
 	moduleLoggers   = make(map[string]*logging.Logger)
 	moduleLoggersMu sync.RWMutex
 )
 
-// backendInitialized tracks whether the global backend has been initialized
+// backendInitialized tracks whether the global backend has been initialized.
 var (
 	backendInitialized bool
-	backendMu         sync.Mutex
-	logFileOut        *os.File
-	logFileErr        *os.File
+	backendMu          sync.Mutex
+	logFileOut         *os.File
+	logFileErr         *os.File
+	logBackend         logging.Backend
 )
 
-func createLogBackend(level logging.Level, logFile *os.File) logging.Backend {
+func createLogBackend(level logging.Level, logFile *os.File, module string) logging.Backend {
 	backend := logging.NewLogBackend(logFile, "", 0)
 
 	formatStr := `%{time:15:04:05.000} %{module}.%{shortfunc} ▶ %{level:.4s} %{id:03x} %{message}`
@@ -48,7 +50,7 @@ func createLogBackend(level logging.Level, logFile *os.File) logging.Backend {
 
 	backendFormatter := logging.NewBackendFormatter(backend, format)
 	backendLeveled := logging.AddModuleLevel(backendFormatter)
-	backendLeveled.SetLevel(level, "")
+	backendLeveled.SetLevel(level, module)
 
 	return backendLeveled
 }
@@ -70,6 +72,7 @@ func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.L
 		moduleLoggersMu.RUnlock()
 		// Always update global Logger for backward compatibility
 		Logger = logger
+
 		return logger
 	}
 	moduleLoggersMu.RUnlock()
@@ -82,6 +85,7 @@ func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.L
 	if logger, ok := moduleLoggers[module]; ok {
 		// Always update global Logger for backward compatibility
 		Logger = logger
+
 		return logger
 	}
 
@@ -108,22 +112,20 @@ func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.L
 		logFileOut = log
 		logFileErr = errLog
 
-		level, err := logging.LogLevel(verbosity)
-		if err != nil {
-			panic(err)
+		// Determine default level based on DEBUG env var
+		defaultLevel := logging.INFO
+		if debug, ok := os.LookupEnv("DEBUG"); ok && debug == "*" {
+			defaultLevel = logging.DEBUG
 		}
 
 		// Create backends - always include error log backend with WARNING level
-		logBackends := []logging.Backend{createLogBackend(logging.WARNING, errLog)}
-
-		// Add log backend with specified level if higher than WARNING
-		if level > logging.WARNING {
-			logBackends = append(logBackends, createLogBackend(level, log))
-		}
+		// Using empty string for module applies to all modules
+		errBackend := createLogBackend(logging.WARNING, errLog, "")
+		logBackend = createLogBackend(defaultLevel, log, "")
 
 		// Set the global backend (affects all loggers)
 		LoggingWriter = log
-		logging.SetBackend(logBackends...)
+		logging.SetBackend(errBackend, logBackend)
 
 		backendInitialized = true
 	}
@@ -131,6 +133,19 @@ func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.L
 
 	// Get or create logger for this module
 	logger := logging.MustGetLogger(module)
+
+	// Set the level for this specific module using SetLevel
+	level, err := logging.LogLevel(verbosity)
+	if err != nil {
+		panic(err)
+	}
+
+	// Get the backend and set the level for this specific module
+	// We need to access the backend's SetLevel method for the specific module
+	if lb, ok := logBackend.(interface{ SetLevel(logging.Level, string) }); ok {
+		lb.SetLevel(level, module)
+	}
+
 	moduleLoggers[module] = logger
 
 	// Always update the global Logger for backward compatibility
@@ -144,5 +159,6 @@ func GetLogger(module string, verbosity string, logFiles ...*os.File) *logging.L
 func GetLogFiles() (*os.File, *os.File) {
 	backendMu.Lock()
 	defer backendMu.Unlock()
+
 	return logFileOut, logFileErr
 }

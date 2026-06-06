@@ -177,8 +177,8 @@ func TestGetLogger_BackendInitializedOnce(t *testing.T) {
 	assert.NotNil(t, Logger)
 }
 
-// resetLoggingState resets the global logging state for testing
-// This is needed because the logging package uses global state
+// resetLoggingState resets the global logging state for testing.
+// This is needed because the logging package uses global state.
 func resetLoggingState() {
 	moduleLoggersMu.Lock()
 	defer moduleLoggersMu.Unlock()
@@ -191,4 +191,5 @@ func resetLoggingState() {
 	LoggingWriter = nil
 	logFileOut = nil
 	logFileErr = nil
+	logBackend = nil
 }
