@@ -1114,8 +1114,11 @@ func TestProcessAgentMessage_ToolCalls(t *testing.T) {
 	s := newSessionForMsgProcessing(t, store)
 	s.Agent.Tools = []config.AgentToolDef{{Type: "system", Name: "s1"}}
 
+	// Tool calls only arrive on complete messages (new protocol: incomplete messages
+	// never carry tool calls).
 	agentMsg := &AgentMessage{
-		Role: RoleAgent,
+		Role:       RoleAgent,
+		IsComplete: true,
 		ToolCalls: []AgentToolCall{
 			{FuncName: "sys_s1__fn1", Params: map[string]interface{}{"param1": "val"}},
 		},
@@ -1166,14 +1169,15 @@ func TestProcessAgentMessage_StreamingComplete(t *testing.T) {
 	store := newMockStore(nil)
 	s := newSessionForMsgProcessing(t, store)
 
-	// Simulate two chunks followed by a final IsComplete=true message.
+	// Simulate two chunks followed by a final IsComplete=true message that
+	// carries the full content (new protocol: last message is not a delta).
 	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk1"})
 	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk2"})
-	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "", IsComplete: true})
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk1Chunk2", IsComplete: true})
 
 	// PendingContent should be cleared after the complete message.
 	assert.Empty(t, s.PendingContent)
-	// History should contain exactly one entry with all content merged.
+	// History should contain exactly one entry with the full content from the final message.
 	require.Len(t, s.history, 1)
 	assert.Equal(t, "Chunk1Chunk2", s.history[0].Content)
 	assert.True(t, s.history[0].IsComplete)
@@ -1257,7 +1261,8 @@ func TestProcessAgentResponse_CoercesObjectArrayParams(t *testing.T) {
 		Labels: map[string]string{"status": "success"},
 		Payload: map[string]interface{}{
 			"message": map[string]interface{}{
-				"Role": RoleAgent,
+				"Role":        RoleAgent,
+				"is_complete": true,
 				"ToolCalls": []interface{}{
 					map[string]interface{}{
 						"FuncName": "sys_s1__fn1",
