@@ -30,6 +30,7 @@ type Message struct {
 	ToolCalls    []ToolCall               // non-empty when the model requests tool invocations.
 	ToolResult   []map[string]interface{} // non-empty for tool-result messages; Content will be empty.
 	Content      string                   `json:"content" mapstructure:"content"`
+	Thoughts     string                   `json:"thoughts" mapstructure:"thoughts"` // optional field for model reasoning text
 	IsComplete   bool                     `json:"is_complete" mapstructure:"is_complete"`
 	InputTokens  int                      `json:"input_tokens" mapstructure:"input_tokens"`
 	OutputTokens int                      `json:"output_tokens" mapstructure:"output_tokens"`

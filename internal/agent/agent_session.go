@@ -34,29 +34,31 @@ const (
 
 // AgentSession holds the runtime state of a single agent inference or chat-turn session.
 type AgentSession struct {
-	ID               string
-	ConvoID          string
-	UnifiedConvoID   string
-	Agent            *config.Agent
-	history          []AgentMessage
-	CurrentMsg       *dipper.Message
-	Type             string
-	TTL              string
-	CurrentCall      int
-	ToolCalls        []AgentToolCall
-	ToolResults      []map[string]interface{}
-	LastPoll         int
-	LastPollTime     time.Time
-	PendingContent   string
-	PendingOffset    int
-	ErrorReason      string
-	PrevContextSize  int
-	TotalTokens      int
-	InputTokens      int
-	OutputTokens     int
-	ParentSessionID  string
-	ParentTurnID     string
-	ParentToolCallID string
+	ID                    string
+	ConvoID               string
+	UnifiedConvoID        string
+	Agent                 *config.Agent
+	history               []AgentMessage
+	CurrentMsg            *dipper.Message
+	Type                  string
+	TTL                   string
+	CurrentCall           int
+	ToolCalls             []AgentToolCall
+	ToolResults           []map[string]interface{}
+	LastPoll              int
+	LastPollTime          time.Time
+	PendingContent        string
+	PendingThoughts       string
+	NewPendingContent     bool
+	PendingThoughtsOffset int
+	ErrorReason           string
+	PrevContextSize       int
+	TotalTokens           int
+	InputTokens           int
+	OutputTokens          int
+	ParentSessionID       string
+	ParentTurnID          string
+	ParentToolCallID      string
 
 	store AgentStore
 }
@@ -109,7 +111,8 @@ func (s *AgentSession) syncConvoStateStatus() {
 	switch {
 	case s.ErrorReason != "":
 		status = ConvoSessionStatusFailed
-	case len(s.history) > 0 && s.history[len(s.history)-1].IsComplete:
+	case len(s.history) > 0 && s.history[len(s.history)-1].IsComplete &&
+		len(s.history[len(s.history)-1].ToolCalls) == 0:
 		status = ConvoSessionStatusComplete
 	default:
 		return // not yet terminal
@@ -314,6 +317,7 @@ func interpolateAgentConfig(store AgentStore, agentName string, payload any) *co
 	agent.Engine = dipper.InterpolateStr("agent_engine", agent.Engine, envData)
 	agent.PreContext = dipper.Interpolate("agent_pre_context", agent.PreContext, envData).([]string)
 	agent.FileTool = dipper.InterpolateStr("agent_file_tool", agent.FileTool, envData)
+	agent.AgentSettings = dipper.Interpolate("agent_", agent.AgentSettings, envData)
 	tools := make([]config.AgentToolDef, len(agent.Tools))
 	for i, tool := range agent.Tools {
 		nt := tool
@@ -435,12 +439,13 @@ func (s *AgentSession) sendToDriver() {
 	s.InputTokens = 0
 	s.OutputTokens = 0
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
-		"engine":        s.Agent.Engine,
-		"history":       history,
-		"tools":         tools,
-		"type":          s.Type,
-		"model_data":    s.Agent.ModelData,
-		"should_stream": s.Agent.ShouldStream,
+		"engine":         s.Agent.Engine,
+		"history":        history,
+		"tools":          tools,
+		"type":           s.Type,
+		"model_data":     s.Agent.ModelData,
+		"should_stream":  s.Agent.ShouldStream,
+		"agent_settings": s.Agent.AgentSettings,
 	}, "agent_session_id", s.ID, "timeout", timeout))
 }
 
@@ -519,28 +524,29 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	s.OutputTokens += agentMsg.OutputTokens
 	s.TotalTokens += agentMsg.InputTokens + agentMsg.OutputTokens
 
-	if agentMsg.Role == RoleAgent && !agentMsg.IsComplete && !agentMsg.IsThinking && len(agentMsg.ToolCalls) == 0 {
+	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
+	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
+	if agentMsg.Role == RoleAgent && !agentMsg.IsComplete {
 		s.PendingContent += agentMsg.Content
+		s.PendingThoughts += agentMsg.Thoughts
+
+		s.NewPendingContent = s.NewPendingContent || len(agentMsg.Content) > 0
+		s.NewPendingContent = s.NewPendingContent || s.Agent.ShouldEmitThoughts && len(agentMsg.Thoughts) > 0
 
 		return
 	}
 
-	// Final agent message: merge PendingContent into a single history entry.
-	// PendingOffset is intentionally NOT reset here so that emitPollResponse
-	// does not re-send content that was already streamed to the engine.
-	if agentMsg.Role == RoleAgent && agentMsg.IsComplete {
-		agentMsg.Content = s.PendingContent + agentMsg.Content
-		s.PendingContent = ""
-		s.appendConvoHistory(*agentMsg)
-		if s.ParentSessionID != "" {
-			s.notifyParent(*agentMsg)
-		}
-
-		return
-	}
-
-	// Everything else: thinking tokens, tool calls, non-agent messages.
 	s.appendConvoHistory(*agentMsg)
+
+	// Final agent message: the complete message added to the
+	// history, reset the pending content and thoughts.
+	if agentMsg.Role == RoleAgent {
+		s.PendingContent = ""
+		s.PendingThoughts = ""
+		s.NewPendingContent = false
+	}
+
+	// Everything else: tool calls, non-agent messages.
 	if len(agentMsg.ToolCalls) > 0 {
 		s.CurrentCall = 0
 		s.ToolCalls = agentMsg.ToolCalls
@@ -552,6 +558,12 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	if agentMsg.Role != RoleAgent {
 		s.persist(false)
 		s.sendToDriver()
+
+		return
+	}
+
+	if s.ParentSessionID != "" {
+		s.notifyParent(*agentMsg)
 	}
 }
 
@@ -561,11 +573,6 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 		log = dipper.GetLogger("agent", "INFO")
 	}
 
-	if s.LastPoll == len(s.history) {
-		if s.LastPoll > 0 && s.history[s.LastPoll-1].IsComplete {
-			log.Panicf("[agent] session [%s] poll after completion", s.ID)
-		}
-	}
 	log.Infof("[agent] session [%s] poll received lastpoll=%d resume_key %s", s.ID, s.LastPoll, msg.Labels["resume_key"])
 
 	timeout := AgentSessionDefaultPollTimeout
@@ -575,9 +582,9 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	for {
-		noNewContent := s.LastPoll == len(s.history) && len(s.PendingContent) <= s.PendingOffset
 		rateLimited := !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
-		for (noNewContent && s.ErrorReason == "") || rateLimited {
+
+		for (!s.NewPendingContent && s.LastPoll == len(s.history) && s.ErrorReason == "") || rateLimited {
 			select {
 			case <-ctx.Done():
 				log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
@@ -604,8 +611,6 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 
 				break
 			}
-
-			noNewContent = s.LastPoll == len(s.history) && len(s.PendingContent) <= s.PendingOffset
 			rateLimited = !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
 		}
 
@@ -616,77 +621,72 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 }
 
 func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
-	// Build the full content available since LastPoll:
-	// PendingContent (not-yet-committed streaming chunks) plus any agent entries
-	// that have already been committed to history.
-	fullContent := s.PendingContent
-	for i := s.LastPoll; i < len(s.history); i++ {
-		am := s.history[i]
+	fullMessages := []map[string]string{}
+	for ; s.LastPoll < len(s.history); s.LastPoll++ {
+		am := s.history[s.LastPoll]
 		if am.Role != RoleAgent {
 			continue
 		}
-
-		if am.IsThinking && !s.Agent.ShouldStream {
+		if am.IsThinking && !s.Agent.ShouldEmitThoughts {
 			continue
 		}
-
-		fullContent += am.Content
+		currentMessage := map[string]string{
+			"content":     am.Content,
+			"is_thinking": strconv.FormatBool(am.IsThinking),
+		}
+		if s.Agent.ShouldEmitThoughts && len(am.Thoughts) > 0 {
+			currentMessage["thoughts"] = am.Thoughts
+		}
+		if len(currentMessage["content"]) > 0 || len(currentMessage["thoughts"]) > 0 {
+			fullMessages = append(fullMessages, currentMessage)
+		}
 	}
 
-	// PendingOffset tracks how much of fullContent has already been sent to
-	// the engine in previous poll responses.
-	newContent := ""
-	if len(fullContent) > s.PendingOffset {
-		newContent = fullContent[s.PendingOffset:]
-	}
-
-	labels := msg.Labels
-	am := AgentMessage{
-		Role:    RoleAgent,
-		Content: newContent,
-	}
-
-	if h := len(s.history); h > 0 {
-		am.IsComplete = s.history[h-1].IsComplete
-	}
-
-	if s.ErrorReason != "" {
-		am.IsComplete = true
-		labels["status"] = "error"
-		labels["reason"] = s.ErrorReason
-	} else {
-		labels["status"] = "ok"
-	}
-
-	s.LastPoll = len(s.history)
-	if newContent == "" && s.ErrorReason == "" && !am.IsComplete {
-		s.persist(false)
-
-		return false
-	}
-
-	s.PendingOffset += len(newContent)
-	if am.IsComplete || s.ErrorReason != "" {
-		// Final poll response: reset tracking state.
-		s.PendingOffset = 0
-		s.PendingContent = ""
-	}
-
-	labels["last_poll"] = strconv.Itoa(s.LastPoll)
-	s.store.EmitMessage(dipper.Message{
+	ret := dipper.Message{
 		Channel: dipper.ChannelEventbus,
 		Subject: "agent_response",
-		Labels:  labels,
 		Payload: map[string]interface{}{
-			"message": am,
+			"full_messages": fullMessages,
 			"state": AgentState{
 				HistoryLen:  len(s.history),
 				TotalTokens: s.TotalTokens,
 				ConvoID:     s.ConvoID,
 			},
 		},
-	})
+	}
+
+	last := s.history[len(s.history)-1]
+	live := !last.IsComplete || last.Role != RoleAgent || len(last.ToolCalls) > 0
+	live = live && len(s.ErrorReason) == 0
+
+	if live && s.NewPendingContent {
+		liveMessage := map[string]string{
+			"content": s.PendingContent,
+		}
+		if s.Agent.ShouldEmitThoughts && len(s.PendingThoughts) > 0 {
+			liveMessage["thoughts"] = s.PendingThoughts
+		}
+		ret.Payload.(map[string]interface{})["live_message"] = liveMessage
+	}
+
+	labels := msg.Labels
+	labels["last_poll"] = strconv.Itoa(s.LastPoll)
+	if s.ErrorReason != "" {
+		labels["status"] = "error"
+		labels["reason"] = s.ErrorReason
+	} else {
+		labels["status"] = "success"
+	}
+
+	if labels["status"] == "success" &&
+		len(fullMessages) == 0 &&
+		!s.NewPendingContent {
+		return false
+	}
+
 	s.LastPollTime = time.Now()
+	s.NewPendingContent = false
+	s.store.EmitMessage(ret)
 
 	return true
 }
