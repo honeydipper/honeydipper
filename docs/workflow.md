@@ -129,7 +129,7 @@ These can not be combined with each other or with any of the simple actions.
 When using `steps` or `threads`, you can control the behaviour of the workflow upon `failure` or `error` status through fields `on_failure` or `on_error`.  The allowed values are `continue` and `exit`. By default, `on_failure` is set to `continue` while `on_error` is set to `exit`. When using `threads`, `exit` means that when one thread returns error, the workflow returns without waiting for other threads to return.
 
 ### Caching
-Workflows can cache their results to avoid redundant execution. When a workflow is defined with a `cache_key` and the key is found in the cache, the cached data will be loaded and exported directly without executing the defined work. This is useful for workflows that are expensive or time-consuming.
+Workflows can cache their results to avoid redundant execution. When a workflow is defined with a `cache_key` and the key is found in the cache, the cached data will be loaded directly without executing the defined work. This is useful for workflows that are expensive or time-consuming.
 
 To enable caching for a workflow:
 
@@ -137,9 +137,9 @@ To enable caching for a workflow:
  - `cache_ttl`: an optional duration string specifying how long the cache entry should live. Defaults to 24 hours.
  - `force-cache-refresh`: set this context variable to `true` to bypass the cache and force execution, refreshing the cache with new results.
 
-When a cached workflow executes successfully, its exported data is automatically saved to the cache. The cached data is exported to the workflow context with the key `cache-data*` (the `*` suffix marks it as cache data).
+**Important**: Only data stored in the `cache-data` context variable will be cached. When a cached workflow executes successfully, the data in `cache-data` is saved to the cache. When loading from cache, the data is exported to the workflow context with the key `cache-data*` (the `*` suffix marks it as cache data).
 
-Example of a workflow with caching:
+To cache data from your workflow, you need to explicitly place it in `cache-data`:
 
 ```yaml
 ---
@@ -150,10 +150,11 @@ workflows:
     steps:
       - call_function: kubernetes.get_deployment_status
       - export:
-          deployment_status: $ctx.status
+          cache-data:
+            deployment_status: $ctx.status
 ```
 
-In this example, if the same `cache_key` is requested again within the TTL period, the workflow will return the cached `deployment_status` without executing the `kubernetes.get_deployment_status` function.
+In this example, the `deployment_status` is placed inside `cache-data`, so it will be cached. When the same `cache_key` is requested again within the TTL period, the workflow will return the cached data without executing the `kubernetes.get_deployment_status` function.
 
 To force a cache refresh:
 
@@ -166,6 +167,17 @@ workflows:
     call_workflow: expensive_operation
 ```
 
+You can also check if a workflow result came from cache by checking the `from_cache` label:
+
+```yaml
+---
+workflows:
+  check_cache_status:
+    if_match:
+      from_cache: "true"
+    steps:
+      - call_workflow: notify_cached_result
+```
 ### Iterations
 Any of the actions can be combined with an `iterate` or `iterate_parallel` field to be executed multiple times with different values from a list. The current element of the list will be stored in a local contextual data item named `current`. Optionally, you can also customize the name of contextual data item using `iterate_as`. The elements of the lists to be iterated don't have to be simple strings, it can be a map or other complex data structures.
 
