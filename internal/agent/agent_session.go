@@ -23,7 +23,7 @@ const (
 	MCPToolsCachePrefix            = "mcp_tools:"
 	AgentSessionDefaultTTL         = "72h"
 	AgentSessionDefaultTimeout     = "1h"
-	MCPToolsCacheDefaultTTL        = "1h"
+	MCPToolsCacheDefaultTTL        = "6h"
 	AgentSessionDefaultPollTimeout = time.Second * 9
 	MinPollInterval                = time.Second * 2
 
@@ -557,7 +557,7 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		return
 	}
 
-	if agentMsg.Role != RoleAgent {
+	if agentMsg.Role != RoleAgent || !agentMsg.IsComplete {
 		s.persist(false)
 		s.sendToDriver()
 
