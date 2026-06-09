@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -178,26 +179,112 @@ func (s *AgentSession) addAgentTool(tools map[string]AgentTool, toolDef config.A
 // addMCPTool registers all tools exposed by a named remote MCP server as callable tools.
 // It calls the MCP driver's list_tools RPC synchronously and creates one AgentTool per
 // remote tool, named mcp__<serverName>__<toolName>.
+// addMCPTool registers all tools exposed by a named remote MCP server as callable tools.
+// It calls the MCP driver's list_tools RPC synchronously and creates one AgentTool per
+// remote tool, named mcp__<serverName>__<toolName>.
+// Results are cached to avoid slow chat turns on repeated calls.
 func (s *AgentSession) addMCPTool(tools map[string]AgentTool, toolDef config.AgentToolDef) {
 	prefix := "mcp__" + toolDef.Name + "__"
+	cacheKey := MCPToolsCachePrefix + toolDef.Name
 
+	// Try to load from cache first
+	raw, err := s.tryCacheMCPTools(cacheKey)
+	if err != nil {
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] failed to load cached tools for MCP server %q: %v",
+				s.ID, toolDef.Name, err)
+		}
+		// Fall through to fetch from MCP driver
+		raw, err = s.fetchMCPTools(toolDef.Name, cacheKey)
+		if err != nil {
+			return
+		}
+	}
+
+	s.processMCPToolList(tools, toolDef.Name, prefix, raw)
+}
+
+// tryCacheMCPTools attempts to load cached MCP tool list from cache.
+// Returns the raw bytes if found, or an error if not cached or on cache error.
+// getMCPToolsCacheTTL returns the configured TTL for MCP tools cache.
+// It reads the TTL from agent service config (daemon.services.agent.tools_cache_ttl) and falls back to the default if not configured.
+func (s *AgentSession) getMCPToolsCacheTTL() string {
+	cfg := s.store.GetConfig()
+	if cfg == nil || cfg.DataSet == nil {
+		return MCPToolsCacheDefaultTTL
+	}
+
+	serviceCfg, _ := dipper.GetMapData(cfg.DataSet.Drivers, "daemon.services.agent")
+	ttlStr, ok := dipper.GetMapDataStr(serviceCfg, "tools_cache_ttl")
+	if !ok || ttlStr == "" {
+		return MCPToolsCacheDefaultTTL
+	}
+
+	// Validate the TTL is a valid duration
+	if _, err := time.ParseDuration(ttlStr); err != nil {
+		if log := s.log(); log != nil {
+			log.Warningf(
+				"[agent] session [%s] invalid tools_cache_ttl duration %q, using default %s",
+				s.ID, ttlStr, MCPToolsCacheDefaultTTL,
+			)
+		}
+
+		return MCPToolsCacheDefaultTTL
+	}
+
+	return ttlStr
+}
+
+func (s *AgentSession) tryCacheMCPTools(cacheKey string) ([]byte, error) {
+	raw, err := s.store.Call("cache", "load", map[string]interface{}{
+		"key": cacheKey,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to load cached MCP tools: %w", err)
+	}
+
+	return raw, nil
+}
+
+// fetchMCPTools calls the MCP driver to list tools and caches the result.
+// Returns the raw bytes from the MCP driver response.
+func (s *AgentSession) fetchMCPTools(serverName string, cacheKey string) ([]byte, error) {
 	raw, err := s.store.Call("driver:mcp", "list_tools", map[string]interface{}{
-		"server": toolDef.Name,
+		"server": serverName,
 	})
 	if err != nil {
 		if log := s.log(); log != nil {
 			log.Errorf("[agent] session [%s] failed to list tools for MCP server %q: %v",
-				s.ID, toolDef.Name, err)
+				s.ID, serverName, err)
 		}
 
-		return
+		return nil, fmt.Errorf("failed to fetch MCP tools from driver: %w", err)
 	}
 
+	// Cache the result for future use (TTL: 1 hour)
+	// Use a goroutine to avoid blocking the tool call
+	go func() {
+		if _, err := s.store.Call("cache", "save", map[string]interface{}{
+			"key":   cacheKey,
+			"value": string(raw),
+			"ttl":   s.getMCPToolsCacheTTL(),
+		}); err != nil {
+			if log := s.log(); log != nil {
+				log.Warningf("[agent] failed to cache tools for MCP server %q: %v", serverName, err)
+			}
+		}
+	}()
+
+	return raw, nil
+}
+
+// processMCPToolList processes the raw tool list response and registers tools.
+func (s *AgentSession) processMCPToolList(tools map[string]AgentTool, serverName, prefix string, raw []byte) {
 	var payload map[string]interface{}
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		if log := s.log(); log != nil {
 			log.Errorf("[agent] session [%s] failed to decode list_tools response for %q: %v",
-				s.ID, toolDef.Name, err)
+				s.ID, serverName, err)
 		}
 
 		return
@@ -232,8 +319,6 @@ func (s *AgentSession) addMCPTool(tools map[string]AgentTool, toolDef config.Age
 	}
 }
 
-// coerceToolCallParams fixes parameter values where the declared type is "object"
-// or "array" but the LLM sent them as a JSON-encoded string. Only parameters with
 // a clear type mismatch are coerced; everything else is left unchanged.
 func (s *AgentSession) coerceToolCallParams(toolCalls []AgentToolCall) {
 	tools := s.BuildTools()
