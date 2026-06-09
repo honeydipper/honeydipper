@@ -207,24 +207,16 @@ func (s *AgentSession) addMCPTool(tools map[string]AgentTool, toolDef config.Age
 // tryCacheMCPTools attempts to load cached MCP tool list from cache.
 // Returns the raw bytes if found, or an error if not cached or on cache error.
 // getMCPToolsCacheTTL returns the configured TTL for MCP tools cache.
-// It reads the TTL from driver data (path: mcp.tools_cache_ttl) and falls back to the default if not configured.
+// It reads the TTL from agent service config (daemon.services.agent.tools_cache_ttl) and falls back to the default if not configured.
 func (s *AgentSession) getMCPToolsCacheTTL() string {
-	config := s.store.GetConfig()
-	if config == nil || config.DataSet == nil {
+	cfg := s.store.GetConfig()
+	if cfg == nil || cfg.DataSet == nil {
 		return MCPToolsCacheDefaultTTL
 	}
 
-	ttl, ok := config.GetDriverData("mcp.tools_cache_ttl")
-	if !ok {
-		return MCPToolsCacheDefaultTTL
-	}
-
-	ttlStr, ok := ttl.(string)
+	serviceCfg, _ := dipper.GetMapData(cfg.DataSet.Drivers, "daemon.services.agent")
+	ttlStr, ok := dipper.GetMapDataStr(serviceCfg, "tools_cache_ttl")
 	if !ok || ttlStr == "" {
-		if log := s.log(); log != nil {
-			log.Warningf("[agent] session [%s] invalid mcp.tools_cache_ttl value, using default %s", s.ID, MCPToolsCacheDefaultTTL)
-		}
-
 		return MCPToolsCacheDefaultTTL
 	}
 
@@ -232,7 +224,7 @@ func (s *AgentSession) getMCPToolsCacheTTL() string {
 	if _, err := time.ParseDuration(ttlStr); err != nil {
 		if log := s.log(); log != nil {
 			log.Warningf(
-				"[agent] session [%s] invalid mcp.tools_cache_ttl duration %q, using default %s",
+				"[agent] session [%s] invalid tools_cache_ttl duration %q, using default %s",
 				s.ID, ttlStr, MCPToolsCacheDefaultTTL,
 			)
 		}

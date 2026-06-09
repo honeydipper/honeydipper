@@ -58,8 +58,12 @@ func TestGetMCPToolsCacheTTL_CustomTTL(t *testing.T) {
 	store := newMockStore(&config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
-				"mcp": map[string]interface{}{
-					"tools_cache_ttl": "30m",
+				"daemon": map[string]interface{}{
+					"services": map[string]interface{}{
+						"agent": map[string]interface{}{
+							"tools_cache_ttl": "30m",
+						},
+					},
 				},
 			},
 		},
@@ -75,8 +79,12 @@ func TestGetMCPToolsCacheTTL_InvalidType(t *testing.T) {
 	store := newMockStore(&config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
-				"mcp": map[string]interface{}{
-					"tools_cache_ttl": 12345, // invalid type, should be string
+				"daemon": map[string]interface{}{
+					"services": map[string]interface{}{
+						"agent": map[string]interface{}{
+							"tools_cache_ttl": 12345, // invalid type, should be string
+						},
+					},
 				},
 			},
 		},
@@ -92,8 +100,12 @@ func TestGetMCPToolsCacheTTL_InvalidDuration(t *testing.T) {
 	store := newMockStore(&config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
-				"mcp": map[string]interface{}{
-					"tools_cache_ttl": "invalid-duration",
+				"daemon": map[string]interface{}{
+					"services": map[string]interface{}{
+						"agent": map[string]interface{}{
+							"tools_cache_ttl": "invalid-duration",
+						},
+					},
 				},
 			},
 		},
@@ -109,8 +121,12 @@ func TestGetMCPToolsCacheTTL_EmptyString(t *testing.T) {
 	store := newMockStore(&config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
-				"mcp": map[string]interface{}{
-					"tools_cache_ttl": "",
+				"daemon": map[string]interface{}{
+					"services": map[string]interface{}{
+						"agent": map[string]interface{}{
+							"tools_cache_ttl": "",
+						},
+					},
 				},
 			},
 		},
@@ -126,8 +142,12 @@ func TestGetMCPToolsCacheTTL_TwoHours(t *testing.T) {
 	store := newMockStore(&config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
-				"mcp": map[string]interface{}{
-					"tools_cache_ttl": "2h",
+				"daemon": map[string]interface{}{
+					"services": map[string]interface{}{
+						"agent": map[string]interface{}{
+							"tools_cache_ttl": "2h",
+						},
+					},
 				},
 			},
 		},
@@ -143,8 +163,12 @@ func TestGetMCPToolsCacheTTL_30Minutes(t *testing.T) {
 	store := newMockStore(&config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
-				"mcp": map[string]interface{}{
-					"tools_cache_ttl": "30m",
+				"daemon": map[string]interface{}{
+					"services": map[string]interface{}{
+						"agent": map[string]interface{}{
+							"tools_cache_ttl": "30m",
+						},
+					},
 				},
 			},
 		},
@@ -160,8 +184,12 @@ func TestGetMCPToolsCacheTTL_15Seconds(t *testing.T) {
 	store := newMockStore(&config.Config{
 		DataSet: &config.DataSet{
 			Drivers: map[string]interface{}{
-				"mcp": map[string]interface{}{
-					"tools_cache_ttl": "15s",
+				"daemon": map[string]interface{}{
+					"services": map[string]interface{}{
+						"agent": map[string]interface{}{
+							"tools_cache_ttl": "15s",
+						},
+					},
 				},
 			},
 		},
