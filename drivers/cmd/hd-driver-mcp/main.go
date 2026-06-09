@@ -116,16 +116,18 @@ func connectToServer(ctx context.Context, name string, cfg serverConfig) *mcp.Cl
 	var transport mcp.Transport
 	switch cfg.Transport {
 	case "sse":
-		transport = mcp.NewSSEClientTransport(cfg.URL, &mcp.SSEClientTransportOptions{
+		transport = &mcp.SSEClientTransport{
+			Endpoint:   cfg.URL,
 			HTTPClient: httpClient,
-		})
+		}
 	default: // "streamable" or empty
-		transport = mcp.NewStreamableClientTransport(cfg.URL, &mcp.StreamableClientTransportOptions{
+		transport = &mcp.StreamableClientTransport{
+			Endpoint:   cfg.URL,
 			HTTPClient: httpClient,
-		})
+		}
 	}
 
-	session, err := client.Connect(ctx, transport)
+	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
 		dipper.Logger.Panicf("[mcp] failed to connect to server %q: %v", name, err)
 	}
@@ -230,7 +232,9 @@ func callTool(msg *dipper.Message) {
 					sb.WriteString(v.Resource.Text)
 				} else if len(v.Resource.Blob) > 0 {
 					// Binary blob: emit as base64 so the agent can see it.
-					sb.WriteString("[blob:" + v.Resource.MIMEType + ";base64,")
+					sb.WriteString("[blob:")
+					sb.WriteString(v.Resource.MIMEType)
+					sb.WriteString(";base64,")
 					sb.WriteString(base64.StdEncoding.EncodeToString(v.Resource.Blob))
 					sb.WriteString("]")
 				}
