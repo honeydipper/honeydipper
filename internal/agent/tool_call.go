@@ -242,6 +242,9 @@ func (s *AgentSession) tryCacheMCPTools(cacheKey string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load cached MCP tools: %w", err)
 	}
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("%w: no cached MCP tools found", ErrToolCall)
+	}
 
 	return raw, nil
 }
