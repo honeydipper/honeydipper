@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -205,6 +206,43 @@ func (s *AgentSession) addMCPTool(tools map[string]AgentTool, toolDef config.Age
 
 // tryCacheMCPTools attempts to load cached MCP tool list from cache.
 // Returns the raw bytes if found, or an error if not cached or on cache error.
+// getMCPToolsCacheTTL returns the configured TTL for MCP tools cache.
+// It reads the TTL from driver data (path: mcp.tools_cache_ttl) and falls back to the default if not configured.
+func (s *AgentSession) getMCPToolsCacheTTL() string {
+	config := s.store.GetConfig()
+	if config == nil || config.DataSet == nil {
+		return MCPToolsCacheDefaultTTL
+	}
+
+	ttl, ok := config.GetDriverData("mcp.tools_cache_ttl")
+	if !ok {
+		return MCPToolsCacheDefaultTTL
+	}
+
+	ttlStr, ok := ttl.(string)
+	if !ok || ttlStr == "" {
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] invalid mcp.tools_cache_ttl value, using default %s", s.ID, MCPToolsCacheDefaultTTL)
+		}
+
+		return MCPToolsCacheDefaultTTL
+	}
+
+	// Validate the TTL is a valid duration
+	if _, err := time.ParseDuration(ttlStr); err != nil {
+		if log := s.log(); log != nil {
+			log.Warningf(
+				"[agent] session [%s] invalid mcp.tools_cache_ttl duration %q, using default %s",
+				s.ID, ttlStr, MCPToolsCacheDefaultTTL,
+			)
+		}
+
+		return MCPToolsCacheDefaultTTL
+	}
+
+	return ttlStr
+}
+
 func (s *AgentSession) tryCacheMCPTools(cacheKey string) ([]byte, error) {
 	raw, err := s.store.Call("cache", "load", map[string]interface{}{
 		"key": cacheKey,
@@ -237,7 +275,7 @@ func (s *AgentSession) fetchMCPTools(serverName string, cacheKey string) ([]byte
 		if _, err := s.store.Call("cache", "save", map[string]interface{}{
 			"key":   cacheKey,
 			"value": string(raw),
-			"ttl":   "1h",
+			"ttl":   s.getMCPToolsCacheTTL(),
 		}); err != nil {
 			if log := s.log(); log != nil {
 				log.Warningf("[agent] failed to cache tools for MCP server %q: %v", serverName, err)

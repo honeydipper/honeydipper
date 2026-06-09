@@ -23,6 +23,7 @@ const (
 	MCPToolsCachePrefix            = "mcp_tools:"
 	AgentSessionDefaultTTL         = "72h"
 	AgentSessionDefaultTimeout     = "1h"
+	MCPToolsCacheDefaultTTL        = "1h"
 	AgentSessionDefaultPollTimeout = time.Second * 9
 	MinPollInterval                = time.Second * 2
 
