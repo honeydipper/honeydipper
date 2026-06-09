@@ -232,7 +232,9 @@ func callTool(msg *dipper.Message) {
 					sb.WriteString(v.Resource.Text)
 				} else if len(v.Resource.Blob) > 0 {
 					// Binary blob: emit as base64 so the agent can see it.
-					sb.WriteString("[blob:" + v.Resource.MIMEType + ";base64,")
+					sb.WriteString("[blob:")
+					sb.WriteString(v.Resource.MIMEType)
+					sb.WriteString(";base64,")
 					sb.WriteString(base64.StdEncoding.EncodeToString(v.Resource.Blob))
 					sb.WriteString("]")
 				}
