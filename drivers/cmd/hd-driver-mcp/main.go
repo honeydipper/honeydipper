@@ -26,10 +26,16 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+const (
+	// defaultTimeout is the default timeout for MCP server requests.
+	defaultTimeout = 30 * time.Second
 )
 
 // serverConfig holds the configuration for a single remote MCP server.
@@ -37,6 +43,7 @@ type serverConfig struct {
 	URL       string            `mapstructure:"url"`
 	Transport string            `mapstructure:"transport"` // "streamable" (default) or "sse"
 	Headers   map[string]string `mapstructure:"headers"`
+	Timeout   string            `mapstructure:"timeout"` // optional timeout duration string (e.g. "45s")
 }
 
 var driver *dipper.Driver
@@ -69,6 +76,19 @@ func getServerConfig(name string) serverConfig {
 	}
 
 	return cfg
+}
+
+// parseTimeout parses the timeout string from config or returns the default.
+func parseTimeout(cfg serverConfig) time.Duration {
+	if cfg.Timeout != "" {
+		if d, err := time.ParseDuration(cfg.Timeout); err == nil {
+			return d
+		} else {
+			dipper.Logger.Warningf("[mcp] invalid timeout %q for server, using default: %v", cfg.Timeout, err)
+		}
+	}
+
+	return defaultTimeout
 }
 
 // headerRoundTripper injects static HTTP headers into every outbound request.
@@ -146,7 +166,10 @@ func listTools(msg *dipper.Message) {
 	serverName := dipper.MustGetMapDataStr(msg.Payload, "server")
 	cfg := getServerConfig(serverName)
 
-	ctx := context.Background()
+	// Create context with timeout
+	timeout := parseTimeout(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	session := connectToServer(ctx, serverName, cfg)
 	defer func() { _ = session.Close() }()
@@ -206,7 +229,10 @@ func callTool(msg *dipper.Message) {
 		}
 	}
 
-	ctx := context.Background()
+	// Create context with timeout
+	timeout := parseTimeout(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	session := connectToServer(ctx, serverName, cfg)
 	defer func() { _ = session.Close() }()
