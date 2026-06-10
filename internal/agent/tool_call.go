@@ -201,7 +201,7 @@ func (s *AgentSession) addMCPTool(tools map[string]AgentTool, toolDef config.Age
 		}
 	}
 
-	s.processMCPToolList(tools, toolDef.Name, prefix, raw)
+	s.processMCPToolList(tools, toolDef, prefix, raw)
 }
 
 // tryCacheMCPTools attempts to load cached MCP tool list from cache.
@@ -282,15 +282,28 @@ func (s *AgentSession) fetchMCPTools(serverName string, cacheKey string) ([]byte
 }
 
 // processMCPToolList processes the raw tool list response and registers tools.
-func (s *AgentSession) processMCPToolList(tools map[string]AgentTool, serverName, prefix string, raw []byte) {
+// processMCPToolList processes the raw tool list response and registers tools.
+// When toolDef.Only is set, only tools whose names appear in the list are registered.
+// When toolDef.Excludes is set, tools whose names appear in the list are skipped.
+func (s *AgentSession) processMCPToolList(tools map[string]AgentTool, toolDef config.AgentToolDef, prefix string, raw []byte) {
 	var payload map[string]interface{}
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		if log := s.log(); log != nil {
 			log.Errorf("[agent] session [%s] failed to decode list_tools response for %q: %v",
-				s.ID, serverName, err)
+				s.ID, toolDef.Name, err)
 		}
 
 		return
+	}
+
+	// Build lookup sets for efficient filtering.
+	onlySet := make(map[string]struct{}, len(toolDef.Only))
+	for _, n := range toolDef.Only {
+		onlySet[n] = struct{}{}
+	}
+	excludesSet := make(map[string]struct{}, len(toolDef.Excludes))
+	for _, n := range toolDef.Excludes {
+		excludesSet[n] = struct{}{}
 	}
 
 	toolList, _ := payload["tools"].([]interface{})
@@ -303,6 +316,18 @@ func (s *AgentSession) processMCPToolList(tools map[string]AgentTool, serverName
 		name, _ := def["name"].(string)
 		desc, _ := def["description"].(string)
 		if name == "" {
+			continue
+		}
+
+		// Apply Only filter: if specified, skip tools not in the list.
+		if len(onlySet) > 0 {
+			if _, allowed := onlySet[name]; !allowed {
+				continue
+			}
+		}
+
+		// Apply Excludes filter: skip tools in the excludes list.
+		if _, excluded := excludesSet[name]; excluded {
 			continue
 		}
 
