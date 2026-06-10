@@ -161,8 +161,10 @@ func (r RepoInfo) Key() RepoKey {
 
 // AgentToolDef defines if the workflow is a workflow or a system.
 type AgentToolDef struct {
-	Type string
-	Name string
+	Type     string
+	Name     string
+	Only     []string
+	Excludes []string
 }
 
 // Agent is a abstract data structure including AI driver, prompt and tools definitions for an agent session.
