@@ -137,3 +137,24 @@ type DataSet struct {
 	Workflows map[string]Workflow
 	Contexts  map[string]interface{}
 }
+
+// ConvoMemory is the configuration for conversation memory (Redis-based).
+type ConvoMemory struct {
+	Enabled     bool   `json:"enabled" mapstructure:"enabled"`
+	TTL         string `json:"ttl" mapstructure:"ttl"`
+	MaxMemories int    `json:"max_memories" mapstructure:"max_memories"`
+}
+
+// FileMemory is the configuration for file-based memory.
+type FileMemory struct {
+	FileSpec string `json:"file_spec" mapstructure:"file_spec"`
+}
+
+// Agent is the configuration for an AI agent.
+type Agent struct {
+	Name         string       `json:"name" mapstructure:"name"`
+	Description  string       `json:"description" mapstructure:"description"`
+	ConvoMemory  *ConvoMemory `json:"convo_memory" mapstructure:"convo_memory"`
+	AgentMemory  *FileMemory  `json:"agent_memory" mapstructure:"agent_memory"`
+	GlobalMemory *FileMemory  `json:"global_memory" mapstructure:"global_memory"`
+}
