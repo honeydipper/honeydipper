@@ -310,6 +310,14 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 	if compactID != "" {
 		convoID = compactID
 	}
+	sessionType, _ := dipper.GetMapDataStr(msg.Payload, "session_type")
+	if sessionType == "" {
+		sessionType = agentpkg.SessionTypeChatTurn
+	}
+	if sessionType != agentpkg.SessionTypeChatTurn && sessionType != agentpkg.SessionTypeInference {
+		p.Warningf("[agent] StartAgentCall got invalid session_type %s, defaulting to chat_turn", sessionType)
+		sessionType = agentpkg.SessionTypeChatTurn
+	}
 	subMsg := &dipper.Message{
 		Labels: map[string]string{
 			"agent_name":       msg.Labels["sub_agent_name"],
@@ -317,7 +325,7 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 		},
 		Payload: map[string]interface{}{
 			"text":             dipper.MustGetMapDataStr(msg.Payload, "input"),
-			"type":             agentpkg.SessionTypeInference,
+			"type":             sessionType,
 			"convo_id":         convoID,
 			"unified_convo_id": msg.Labels["unified_convo_id"],
 			"forget_history":   forgetHistory,
