@@ -1,7 +1,7 @@
 # Driver Developer's Guide
 
 This document is intended for Honeydipper driver developers. Some programming experience is expected. Theoretically, we can use any
-programming language, even bash, to develop a driver for honeydipper. For now, there is a go library named honeydipper/dipper that makes it
+programming language, even bash, to develop a driver for honeydipper. For now, there is a go library named `github.com/honeydipper/honeydipper/v4/pkg/dipper` that makes it
 easier to do this in golang.
 
 <!-- toc -->
@@ -9,8 +9,11 @@ easier to do this in golang.
 - [Basics](#basics)
 - [By Example](#by-example)
 - [Driver lifecycle and states](#driver-lifecycle-and-states)
+- [Wire Protocol](#wire-protocol)
 - [Messages](#messages)
 - [RPC](#rpc)
+  * [RPC Call Variants](#rpc-call-variants)
+  * [Interruptible Handlers](#interruptible-handlers)
 - [Driver Options](#driver-options)
 - [Collapsed Events](#collapsed-events)
 - [Provide Commands](#provide-commands)
@@ -32,7 +35,7 @@ package main
 
 import (
   "flag"
-  "github.com/honeydipper/honeydipper/pkg/dipper"
+  "github.com/honeydipper/honeydipper/v4/pkg/dipper"
   "os"
   "time"
 )
@@ -68,7 +71,7 @@ Following that, the driver creates a helper object with *dipper.NewDriver*.  The
 functions to be executed at various stage in the life cycle of the driver. A call to the *Run()* method will start the event loop to receive
 communication from the daemon.
 
-There are 4 types of hooks offered by the driver helper objects.
+There are 4 types of hooks offered by the helper objects.
  * Lifecycle events
  * Message handler
  * RPC handler 
@@ -88,29 +91,127 @@ it can be restarted.
 
 ## Driver lifecycle and states
 
-The driver will be in "loaded" state initially. When the *Run()* method is invoked, it will start fetching messages from the daemon. The
-first message is always "command:options" which carries the data and configuration required by the driver to perform its job. The helper
-object has a built-in handler for this and will dump the data into a structure which can later be queried using *driver.GetOption* or
-*driver.GetOptionStr* method.
+The driver transitions through the following states during its lifecycle:
 
-Following the "command:options" is the "command:start" message. The helper object also has a built-in handler for the "command:start"
-message. It will first call the *Start hook* function, if defined, then change the driver state to "alive" then report the state back to
-daemon with *Ping* method. One important thing here is that if the daemon doesn't receive the "alive" state within 10 seconds, it will
-consider the driver failed to start and kill the process by closing the stdin/stdout channels. You can see why the Start hook has to return
-immediately.
+```
+loaded → alive → draining → drained
+                 → stopping → completed
+```
 
-When the daemon loads an updated version of the config, it will use "command:options" and "command:start" again to signal the driver to
-reload. Instead of calling *Start hook*, it will call *Reload hook* for reloading. If *Reload hook* is not defined, it will report to the
-daemon with "cold" state to demand a cold restart.
+### State Descriptions
 
-There is a handler for "command:stop" which calls the *Stop hook* for gracefully shutting down the driver. Although this is not needed most
-of time, assuming the driver is stateless, it does have some uses if the driver uses some resources that cannot be released gracefully by
-exiting.
+| State | Description |
+|---|---|
+| `loaded` | Initial state when the driver binary is known but not yet started |
+| `alive` | The driver is running and actively processing messages. Reached after successful `command:start` |
+| `draining` | The driver is being asked to finish in-flight work before shutting down (e.g., during config reload). The daemon waits for `drained` |
+| `drained` | The driver has finished all in-flight work and acknowledged the drain request. The daemon can now safely stop the driver |
+| `stopping` | The driver is shutting down. Reached after `command:stop` is received |
+| `completed` | The driver process has exited gracefully |
+
+### State Transitions
+
+1. **loaded → alive**: After `command:start` is sent, the `Start` hook runs (if defined). The driver has 10 seconds to report `alive` or it is killed.
+2. **alive → draining**: During a config change where the driver binary stays the same (hot reload), the daemon sends `command:options` with new config. The driver should drain gracefully.
+3. **alive → stopping**: When the daemon decides to stop the driver (cold reload or shutdown), it sends `command:stop`. The `Stop` hook runs if defined.
+4. **draining → drained**: The driver signals it has finished in-flight work.
+5. **draining / stopping → completed**: The driver process exits.
+
+### Configuration Reload States
+
+| Scenario | Behavior |
+|---|---|
+| **Hot reload** (same metadata, driver alive) | Only `command:options` is sent with new options. No state change. |
+| **Cold reload** (different metadata or driver dead) | Old driver is gracefully stopped (`draining → drained → completed`). New driver is started fresh. |
+| **Crash recovery** | Up to 3 retries with 30-second backoff. All services must report `drained` or `completed` before new config is applied. |
+| **Graceful shutdown** | Drain (15s timeout) → Stop (5s timeout) → Process exit |
+
+### Example: Handling State Transitions
+
+```go
+driver.Start = func(msg *dipper.Message) {
+  go func() {
+    // Set up connections, listeners, etc.
+    driver.State = "alive"
+    driver.Ping(msg)
+    
+    // Main event loop
+    for {
+      select {
+      case <-driver.Done():
+        // Clean up resources
+        driver.State = "completed"
+        return
+      }
+    }
+  }()
+}
+
+driver.Reload = func(msg *dipper.Message) {
+  // Reload configuration without full restart
+  loadNewOptions(msg)
+  // No state change required for hot reload
+}
+```
+
+## Wire Protocol
+
+Drivers communicate with the daemon through stdin/stdout using a binary wire protocol. Each message consists of a text header followed by binary labels and payload.
+
+### Message Format
+
+```
+{channel} {subject} {numLabels} {payloadSize}\n
+  label1 {len1}\n{value1}
+  label2 {len2}\n{value2}
+  ...
+  {payload bytes}
+```
+
+### Envelope Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `channel` | String | The message channel (e.g., `eventbus`, `rpc`, `state`, `command`) |
+| `subject` | String | The message subject (e.g., `message`, `call`, `return`, `start`, `stop`) |
+| `numLabels` | Integer | Number of labels attached to this message |
+| `payloadSize` | Integer | Size of the payload in bytes |
+
+### Label Format
+
+Each label is encoded as a label definition line followed by the label value bytes:
+
+```
+{labelName} {labelSize}\n
+{labelValueBytes}
+```
+
+### Raw Message Example
+
+A complete raw message on the wire might look like this (shown in pseudo-format):
+
+```
+eventbus message 2 47\n
+  label1 6\nvalue1
+  status 7\nsuccess
+  {"data": ["line 1", "line 2"]}
+```
+
+### Channels and Subjects
+
+Currently, the protocol uses these channels:
+
+| Channel | Subjects | Usage |
+|---|---|---|
+| `eventbus` | `message`, `command`, `return`, `return_interrupted`, `agent_command`, `agent_continue`, `agent_response`, `agent_workflow` | Engine workflow processing |
+| `rpc` | `call`, `return` | Inter-driver RPC calls |
+| `state` | `cold`, `alive`, `draining`, `drained`, `completed` | Driver lifecycle management |
+| `command` | `options`, `start`, `stop` | Daemon-to-driver commands |
 
 ## Messages
 
 Every message has an envelope, a list of labels and a payload. The envelope is a string ends with a newline, with fields separated by
-space(s). An valid envelope has following fields in the exact order:
+space(s). A valid envelope has following fields in the exact order:
  * Channel
  * Subject
  * Number of labels
@@ -130,7 +231,7 @@ driver.SendMessage(&dipper.Message{
   Labels: map[string]string{
     "label1": "value1",
   },
-  Payload: map[string]interface{}{"data": []string{"line 1", "line 2"},
+  Payload: map[string]interface{}{"data": []string{"line 1", "line 2"}},
   IsRaw: false, # default
 })
 ```
@@ -145,10 +246,24 @@ struct with raw bytes as payload. You can call *dipper.DeserializeContent* which
 the byte array, and you can also use *dipper.DeserializePayload* which accepts a \*dipper.Message and place the
 decoded payload right back into the message.
 
-Currently, we are categorizing the messages into 3 different channels:
- * eventbus: messages that are used by *engine* service for workflow processing, subject could be `message`, `command` or `return`
- * RPC: messages that invoke another driver to run some function, subject could be `call` or `return`
- * state: the local messages between driver and daemon to manage the lifecycle of drivers
+Currently, we are categorizing the messages into 4 different channels:
+ * **eventbus**: messages that are used by *engine* service for workflow processing, subject could be `message`, `command` or `return`
+ * **rpc**: messages that invoke another driver to run some function, subject could be `call` or `return`
+ * **state**: the local messages between driver and daemon to manage the lifecycle of drivers
+ * **command**: messages from daemon to driver for sending options (`options`), starting (`start`), and stopping (`stop`) the driver
+
+### Key Eventbus Subjects
+
+| Subject | Direction | Description |
+|---|---|---|
+| `message` | Driver → Daemon | Incoming event from a driver receiver |
+| `command` | Daemon → Driver | Function execution request (from operator) |
+| `return` | Driver → Daemon | Function execution result |
+| `return_interrupted` | Daemon → Driver | Interrupted function (re-queued by operator) |
+| `agent_command` | Daemon → Driver | Agent tool call execution request |
+| `agent_continue` | Driver → Daemon | Agent response for session |
+| `agent_response` | Driver → Daemon | Agent streaming response |
+| `agent_workflow` | Driver → Daemon | Agent-triggered workflow event |
 
 ## RPC
 
@@ -161,20 +276,25 @@ outsourced to the vendor drivers, such as `gcloud-gke`, through a RPC call `getK
 encrypted content. Honeydipper supports `eyaml` style of encrypted content in configurations, and the cipher text is prefixed with a
 driver name. The decryption driver, `gcloud-kms` as an example, must offer a RPC call `decrypt`.
 
-To make a RPC Call, use `Call` or `CallRaw` method, Both method block for return with 10 seconds timeout. The timeout is not
-tunable at this time. Each of them take three parameters:
- * feature name - an abstract feature name, or a driver name with `driver:` prefix
- * method name - the name of the RPC method
- * parameters - payload of the dipper message constructed for the RPC call, a map or raw bytes
+### RPC Call Variants
 
-For example, calling the `gcloud-kms` driver for decryption
+The driver helper provides several RPC call methods with different behaviors:
+
+| Method | Parameters | Returns | Blocking | Use Case |
+|---|---|---|---|---|
+| `Call(feature, method, params)` | feature, method, map params | Yes | Yes (10s timeout) | Standard synchronous RPC |
+| `CallNoWait(feature, method, params)` | feature, method, map params | No | No | Fire-and-forget notifications |
+| `CallRaw(feature, method, rawBytes)` | feature, method, raw bytes | Yes | Yes (10s timeout) | Raw binary data transfer |
+| `CallRawNoWait(feature, method, rawBytes)` | feature, method, raw bytes | No | No | Raw fire-and-forget |
+| `CallWithMessage(msg)` | Pre-built `*dipper.Message` | Yes | Yes (10s timeout) | Full control over message format |
+
+For example, calling the `gcloud-kms` driver for decryption:
 
 ```go
 decrypted, err := driver.CallRaw("driver:gcloud-kms", "decrypt", encrypted)
 ```
 
-There are also two non-blocking methods in the driver, `CallNoWait` or `CallRawNoWait`, to make RPC calls without waiting for any
-return. For example, making a call to emit a metric to a metrics collecting system, e.g. datadog.
+Non-blocking call to emit a metric:
 
 ```go
 err := driver.CallNoWait("emitter", "counter_increment", map[string]interface{}{
@@ -185,8 +305,16 @@ err := driver.CallNoWait("emitter", "counter_increment", map[string]interface{}{
 })
 ```
 
+Using raw data transfer:
+
+```go
+rawResult, err := driver.CallRaw("driver:image-processor", "compress", imageBytes)
+```
+
+### Offering RPC Methods
+
 To offer a RPC method for the system to call, create the function that accept a single parameter `*dipper.Message`. Add the method
-to `RPCHandlers` map, for example
+to `RPCHandlers` map, for example:
 
 ```go
 driver.RPCHandler["mymethod"] = MyFunc
@@ -210,6 +338,44 @@ func MyFunc(m *dipper.Message) {
   }
 }
 ```
+
+### Interruptible Handlers
+
+RPC handlers can be marked as **interruptible** to support long-running operations that may be cancelled (e.g., when a workflow is
+cancelled or a driver is being drained). When an interruptible handler's context is cancelled instead of completing normally, it sends a
+`return/interrupted` response instead of a normal `return`.
+
+**Use case**: A driver implements a long-running data sync operation via RPC. If the operator service is restarting or the workflow was
+cancelled, the handler can be interrupted gracefully:
+
+```go
+// Mark a handler as interruptible through the interruptible handler map
+driver.RPCHandler["long_running_sync"] = handleSync
+driver.RPCHandler["interruptible:long_running_sync"] = handleSync
+
+func handleSync(m *dipper.Message) {
+  ctx := driver.GetContext() // Get the cancellable context
+  
+  for _, item := range items {
+    select {
+    case <-ctx.Done():
+      // Context cancelled — send interrupted response
+      m.Reply <- dipper.Message{
+        Labels: map[string]string{"error": "interrupted"},
+      }
+      return
+    default:
+      processItem(item)
+    }
+  }
+  
+  m.Reply <- dipper.Message{
+    Payload: map[string]interface{}{"status": "completed"},
+  }
+}
+```
+
+When the operator receives a `return/interrupted` message, it re-queues the command so it can be retried later when the system is healthy.
 
 ## Driver Options
 
