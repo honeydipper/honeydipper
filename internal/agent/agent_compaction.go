@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -86,6 +87,12 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 				preserve = n
 			}
 		}
+	}
+
+	// Append archived conversation marker to summary text for UI navigation.
+	// This allows the UI to provide a direct link to the archived conversation.
+	if compactID != "" {
+		summaryText += fmt.Sprintf("\n<!-- archived_convo: %s -->", compactID)
 	}
 
 	// Build the new history: summary as a system message, then the preserved tail messages.
