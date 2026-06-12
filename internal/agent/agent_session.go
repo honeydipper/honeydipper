@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
@@ -536,6 +537,20 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		s.NewPendingContent = s.NewPendingContent || s.Agent.ShouldEmitThoughts && len(agentMsg.Thoughts) > 0
 
 		return
+	}
+
+	// Populate ConvoID on agent tool calls so the UI can render a
+	// "View Sub-Agent Conversation" link immediately when the tool call
+	// card appears, without waiting for the result.
+	for i, tc := range agentMsg.ToolCalls {
+		if strings.HasPrefix(tc.FuncName, "ag__") {
+			oneShot, _ := dipper.GetMapDataBool(tc.Params, "one_shot")
+			if oneShot {
+				agentMsg.ToolCalls[i].ConvoID = dipper.NewUUID()
+			} else {
+				agentMsg.ToolCalls[i].ConvoID = fmt.Sprintf("%s-%s", s.ConvoID, tc.FuncName[len("ag__"):])
+			}
+		}
 	}
 
 	s.appendConvoHistory(*agentMsg)
