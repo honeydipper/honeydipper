@@ -9,15 +9,14 @@ Honeydipper outsources encryption/decryption tasks to drivers. In order for Hone
 - [How to encrypt your secret](#how-to-encrypt-your-secret)
 - [Using LOOKUP for runtime secret fetching](#using-lookup-for-runtime-secret-fetching)
 - [Secure Exec: Running programs with decrypted secrets](#secure-exec-running-programs-with-decrypted-secrets)
+  - [CLI usage](#cli-usage)
   - [How it works](#how-it-works)
   - [Environment variable format](#environment-variable-format)
-  - [Configuration examples](#configuration-examples)
-  - [Command format](#command-format)
+  - [Bootstrapping Honeydipper](#bootstrapping-honeydipper)
   - [Driver support](#driver-support)
 - [Supported drivers](#supported-drivers)
 
 <!-- tocstop -->
-
 ## Loading the driver
 
 When you include the `honeydipper-config-essentials` repo from your bootstrap repo like below:
@@ -135,107 +134,125 @@ See the [interpolation guide](../interpolation.md) for more information on LOOKU
 
 ## Secure Exec: Running programs with decrypted secrets
 
-Honeydipper includes a `secure-exec` feature that allows secrets drivers to decrypt secrets in environment variables and then launch a target program with the decrypted secrets available in its environment. This is similar to Google Berglas exec functionality.
+Honeydipper's `secure-exec` feature is a **CLI tool** built into each secrets driver binary. It allows you to run any program with decrypted secrets injected into its environment, without ever exposing the plaintext secrets in configuration files, command-line arguments, or process listings. It is similar in concept to Google Berglas exec.
 
-### How it works
+**This is not a daemon service configuration.** The driver binary is invoked directly from the command line or a startup script with `exec` as the first positional argument (the service name). It does not run as a long-lived process.
 
-When a secrets driver (like `gcloud-kms`, `gcloud-secret`, or `hd-driver-vault`) is used with the `secure-exec` feature:
+### CLI usage
 
-1. The driver scans environment variables for values with special prefixes
-2. For each matching variable, it calls the appropriate RPC (`lookup` or `decrypt`) to resolve the secret
-3. The environment variable is updated with the decrypted value
-4. The target program is executed with `syscall.Exec`, replacing the current process with the decrypted environment
-
-This allows programs that expect secrets in environment variables to work seamlessly without modifying their code.
-
-### Environment variable format
-
-The `secure-exec` feature recognizes two prefixes in environment variable values:
-
-- `hd-lookup:<path>` - Look up the secret at `<path>` using the driver's `lookup` RPC
-- `hd-decrypt:<base64_data>` - Decrypt the base64-encoded ciphertext using the driver's `decrypt` RPC
-
-For example:
+The general command format is:
 
 ```bash
-export API_TOKEN="hd-lookup:projects/my-project/secrets/api-token/versions/latest"
-export DB_PASSWORD="hd-decrypt:base64encodedciphertext..."
+driver-binary exec -- /path/to/program [args...]
 ```
 
-### Configuration examples
+- The first positional argument (`exec`) tells the driver to operate in "exec mode" instead of connecting to the daemon.
+- The `--` separator is **required** and separates driver arguments from the target program command.
+- The program path after `--` is resolved relative to `$PATH` if not absolute.
 
-To use `secure-exec`, configure your driver to run as the `exec` service instead of the default `operator` service:
-
-```yaml
-# In your daemon configuration
-drivers:
-  daemon:
-    drivers:
-      gcloud-kms:
-        name: gcloud-kms
-        type: builtin
-        handlerData:
-          shortName: gcloud-kms
-        # Set the service to 'exec' to enable secure-exec mode
-        service: exec
-```
-
-However, typically you wouldn't run the driver as the main daemon service. Instead, you would invoke the driver binary directly with the `exec` service argument:
-
-### Command format
-
-The `secure-exec` driver is invoked with the following command format:
+For example, using the GCP KMS driver:
 
 ```bash
-gcloud-kms exec -- /path/to/target/program [args...]
-```
-
-The `--` separator is required to separate driver arguments from the target program command.
-
-For example, to run a Python script with decrypted secrets:
-
-```bash
-#!/bin/bash
-
-# Set environment variables with encrypted secrets
-export API_TOKEN="hd-lookup:projects/my-project/secrets/api-token/versions/latest"
-export DB_PASSWORD="hd-decrypt:base64encodedciphertext..."
-
-# Run the gcloud-kms driver which will decrypt and exec the target
-exec gcloud-kms exec -- /usr/bin/python3 /path/to/script.py
-```
-
-Using the Vault driver:
-
-```bash
-#!/bin/bash
-
-export DATABASE_URL="hd-lookup:secret/data/myapp/database#url"
-
-exec hd-driver-vault exec -- /path/to/application
+gcloud-kms exec -- /usr/bin/python3 /path/to/script.py
 ```
 
 Using the GCP Secret Manager driver:
 
 ```bash
+gcloud-secret exec -- /path/to/application
+```
+
+Using the Vault driver:
+
+```bash
+hd-driver-vault exec -- /path/to/application
+```
+
+### How it works
+
+When a driver binary is invoked in exec mode:
+
+1. It scans **all environment variables** for values with special prefixes (`hd-lookup:` or `hd-decrypt:`).
+2. For each matching variable, it calls the appropriate RPC (`lookup` or `decrypt`) to resolve the secret using the driver's native API.
+3. The environment variable is **updated in place** with the decrypted value.
+4. The target program is executed with `syscall.Exec`, which **replaces the current process** — the driver process becomes the target process. The target program sees the decrypted secrets as normal environment variables.
+
+Because the driver replaces itself with the target program (via `exec`), there is no intermediate process that holds the decrypted secrets, and no need for cleanup.
+
+### Environment variable format
+
+`secure-exec` recognizes two prefixes in environment variable values:
+
+| Prefix | Driver RPC | Value format |
+|--------|-----------|--------------|
+| `hd-lookup:<path>` | `lookup` | A secret path recognized by the driver (e.g. GCP Secret Manager resource name, Vault key path) |
+| `hd-decrypt:<base64>` | `decrypt` | Base64-encoded ciphertext (e.g. output of `gcloud kms encrypt` piped through `base64`) |
+
+If the driver only implements one of the two RPCs, only the corresponding prefix can be used. For example, `gcloud-kms` only implements `decrypt`, so only `hd-decrypt:` is valid with that driver. Drivers that implement both (none currently) prefer `lookup`.
+
+### Bootstrapping Honeydipper
+
+The primary use case for `secure-exec` is **bootstrapping** — starting Honeydipper itself with decrypted secrets that are required during startup but must not be stored in plaintext.
+
+For example, suppose you need a GitHub token for Honeydipper to clone configuration repositories via `https://token@github.com/...`, and you want to store that token encrypted in your environment. You can write a startup script like this:
+
+```bash
 #!/bin/bash
 
-export AWS_ACCESS_KEY_ID="hd-lookup:projects/my-project/secrets/aws-access-key/versions/latest"
+# Set the GitHub token as a secret reference, not in plaintext.
+# The token is stored in GCP Secret Manager.
+export GITHUB_TOKEN="hd-lookup:projects/my-project/secrets/github-deploy-token/versions/latest"
 
-exec gcloud-secret exec -- /path/to/aws/cli
+# Use gcloud-secret to decrypt the token and exec honeydipper.
+# The honeydipper process will see GITHUB_TOKEN with the real decrypted value.
+exec gcloud-secret exec -- /usr/local/bin/honeydipper
+```
+
+When Honeydipper starts and processes its bootstrap repos, it clones:
+
+```yaml
+repos:
+  - repo: https://github.com/myorg/honeydipper-config.git
+```
+
+Honeydipper automatically uses `$GITHUB_TOKEN` from the environment for HTTPS authentication, so the repo is cloned successfully — but the token was never stored in any file, config, or process argument.
+
+#### Using KMS-encrypted secrets
+
+If your secret is encrypted with GCP KMS instead of stored in Secret Manager, use `gcloud-kms` with the `hd-decrypt:` prefix:
+
+```bash
+#!/bin/bash
+
+# The GitHub token was encrypted with KMS and base64-encoded.
+export GITHUB_TOKEN="hd-decrypt:CiQAc92x...long base64 ciphertext...="
+
+exec gcloud-kms exec -- /usr/local/bin/honeydipper
+```
+
+#### Using Vault secrets
+
+Similarly, with HashiCorp Vault:
+
+```bash
+#!/bin/bash
+
+export GITHUB_TOKEN="hd-lookup:secret/data/honeydipper/github#token"
+
+exec hd-driver-vault exec -- /usr/local/bin/honeydipper
 ```
 
 ### Driver support
 
-The following drivers support the `secure-exec` feature:
+The following drivers are compiled with `secure-exec` support and can be used as CLI tools:
 
-| Driver | Service Name | RPCs | Description |
+| Driver binary | Default service | RPC used | Notes |
 |---|---|---|---|
-| `gcloud-kms` | `kms` | `decrypt` | GCP KMS - decrypts base64-encoded ciphertext |
-| `gcloud-secret` | `google-secret` | `lookup` | GCP Secret Manager - looks up secrets by path |
-| `hd-driver-vault` | `vault` | `lookup` | HashiCorp Vault - looks up secrets by path |
+| `gcloud-kms` | `kms` | `decrypt` | Use with `hd-decrypt:<base64>` — decrypts base64-encoded KMS ciphertext |
+| `gcloud-secret` | `google-secret` | `lookup` | Use with `hd-lookup:<path>` — looks up GCP Secret Manager secrets by resource name |
+| `hd-driver-vault` | `vault` | `lookup` | Use with `hd-lookup:<path>` — looks up Vault secrets by key path |
 
-When a driver has both `lookup` and `decrypt` handlers available, `secure-exec` prefers `lookup` over `decrypt`.
+Any of these binaries can be invoked directly with `exec` as the first argument to use the `secure-exec` feature.
 
 ## Supported drivers
 
