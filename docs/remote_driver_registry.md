@@ -13,6 +13,8 @@
 - [Source Policy Controls](#source-policy-controls)
 - [Signature Verification](#signature-verification)
 - [Registry Manifest Format](#registry-manifest-format)
+- [Cache Directory Structure](#cache-directory-structure)
+- [Package Installation](#package-installation)
 - [Operational Notes](#operational-notes)
 - [Troubleshooting](#troubleshooting)
 - [TODO (Future Plan)](#todo-future-plan)
@@ -29,6 +31,7 @@ This guide explains how to configure:
 2. Remote drivers that resolve from a registry by name.
 3. Policy controls for `registry`, `direct`, and `local` sources.
 4. Signature verification for stronger trust.
+5. Automatic package installation for remote driver dependencies.
 
 ## What Is Implemented
 
@@ -44,6 +47,8 @@ Current behavior:
    - `registry` allowed by default.
    - `direct` denied by default.
    - `local` denied by default.
+8. Automatic package installation for required system packages.
+9. Directory-based mutex with timeout for cache access synchronization.
 
 ## Quick Start
 
@@ -219,12 +224,80 @@ Example:
 }
 ```
 
+## Cache Directory Structure
+
+Remote drivers are stored in a cache directory structure organized by their SHA-256 digest:
+
+```
+<remotePath>/sha256/<sha256-driver-digest>/
+  └── <fileName>
+```
+
+Where:
+- `<remotePath>` is the root cache directory (defaults to `/opt/honeydipper/drivers/cache`)
+- `<sha256-driver-digest>` is the hex-encoded SHA-256 hash of the driver binary
+- `<fileName>` is the name of the driver executable
+
+The remote path can be configured using the `HONEYDIPPER_DRIVERS_CACHE` environment variable.
+
+Example directory structure:
+```
+/opt/honeydipper/drivers/cache/sha256/
+  └── a1b2c3d4e5f6.../
+      └── custom-webhook-linux-amd64
+```
+
+### Directory-Based Mutex
+
+To prevent concurrent downloads of the same driver, Honeydipper uses a directory-based mutex mechanism. A lock is acquired by creating a directory named after the driver's SHA-256 digest. If the directory already exists, the process waits for the lock to be released (with a default timeout of 30 seconds).
+
+If the timeout is exceeded, the acquisition fails with a timeout error.
+
+## Package Installation
+
+Honeydipper can automatically install required system packages before launching a remote driver. This is useful when a remote driver has dependencies on system libraries or tools.
+
+To enable package installation, add a `requiredPackages` section to the driver's `handlerData`:
+
+```yaml
+---
+drivers:
+  daemon:
+    drivers:
+      custom-driver:
+        name: custom-driver
+        type: remote
+        handlerData:
+          registry: github-public
+          requiredPackages:
+            apk:
+              - libssl1.1
+              - curl
+            apt:
+              - libssl1.1
+              - curl
+            dnf:
+              - openssl
+              - curl
+            brew:
+              - openssl
+```
+
+Package managers are auto-detected based on the host OS:
+- `apk`: Alpine Linux
+- `apt`: Debian/Ubuntu
+- `dnf`: Fedora/RHEL
+- `brew`: macOS
+
+If the detected package manager is not listed in `requiredPackages`, the driver will fail to start with an error.
+
 ## Operational Notes
 
 1. Cache root defaults to `/opt/honeydipper/drivers/cache`.
 2. Set `HONEYDIPPER_DRIVERS_CACHE` to change cache location.
 3. Artifacts are keyed by digest and re-verified on reuse.
 4. Daemon resolves registry config and source policy before runtime load.
+5. Directory-based mutex timeout defaults to 30 seconds.
 
 ## Troubleshooting
 
@@ -238,6 +311,10 @@ Common failures:
    - Check `version`, `channel`, and manifest `versions` content.
 4. Signature errors
    - Validate base64 values and signer key/signature match.
+5. `timeout waiting for cache lock`
+   - Check if another process is downloading the same driver. Wait or manually remove the lock directory if the process crashed.
+6. `requiredPackages does not define packages for detected package manager`
+   - Add the detected package manager (`apk`, `apt`, `dnf`, or `brew`) to the `requiredPackages` section.
 
 ## TODO (Future Plan)
 
