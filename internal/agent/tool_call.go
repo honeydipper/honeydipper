@@ -478,6 +478,18 @@ func (s *AgentSession) handleAgentToolCall(c AgentToolCall, unifiedConvoID strin
 	input := c.Params["input"]
 	oneShot, _ := dipper.GetMapDataBool(c.Params, "one_shot")
 	forgetHistory, _ := dipper.GetMapDataBool(c.Params, "forget_history")
+
+	// Generate the sub-agent's convo_id so it can be embedded in the tool call
+	// data that flows through conversation history. The UI uses this to render
+	// a "View Sub-Agent Conversation" link immediately when the tool call card
+	// appears, without waiting for the result.
+	convoID := ""
+	if oneShot {
+		convoID = dipper.NewUUID()
+	} else {
+		convoID = fmt.Sprintf("%s-%s", s.ConvoID, subAgentName)
+	}
+
 	m := dipper.Message{
 		Channel: dipper.ChannelEventbus,
 		Subject: "agent_call",
@@ -494,6 +506,7 @@ func (s *AgentSession) handleAgentToolCall(c AgentToolCall, unifiedConvoID strin
 			"input":          input,
 			"one_shot":       oneShot,
 			"forget_history": forgetHistory,
+			"convo_id":       convoID,
 		},
 	}
 	if compactID, ok := dipper.GetMapDataStr(c.Params, "compaction_id"); ok && compactID != "" {

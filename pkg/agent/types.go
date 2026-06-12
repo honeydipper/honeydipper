@@ -47,6 +47,7 @@ type Tool struct {
 type ToolCall struct {
 	FuncName string
 	Params   map[string]interface{}
+	ConvoID  string // populated for agent tool calls (ag__*) to link to the sub-agent's conversation
 }
 
 // State reports the runtime state of an agent session at the end of a turn.
