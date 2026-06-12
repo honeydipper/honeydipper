@@ -8,12 +8,13 @@ After following this guide, the Honeydipper daemon should not pull from config r
 - [Config webhook in Github repo](#config-webhook-in-github-repo)
 - [Configure a reloading rule](#configure-a-reloading-rule)
 - [Reduce the polling interval](#reduce-the-polling-interval)
+- [Eventbus message types](#eventbus-message-types)
 
 <!-- tocstop -->
 
 ## Github Integration in Honeydipper
 
-Create a yaml file in your config repo to store the settings for github integration, and make sure it is loaded through `includes` in `init.yaml`. See the [github integration reference](https://honeydipper-sphinx.readthedocs.io/en/latest/essentials.html#github) for detail on how to config. 
+Create a yaml file in your config repo to store the settings for github integration, and make sure it is loaded through `includes` in `init.yaml`. See the [github integration reference](https://honeydipper-sphinx.readthedocs.io/en/latest/essentials.html#github) for detail on how to config.
 
 For example:
 
@@ -35,9 +36,11 @@ Go to your config repo in github, click `settings` => `webhooks`, then add a `we
 
 ```
 https://mywebhook.example.com:8443/github/push?token=xxxxxxxx
-``` 
+```
 
 Make sure you select "Pushes" to be sent to the configured webhook.
+
+You can also select "Push" and "Repository" events to trigger reloads on repository creation, deletion, or other repository-level events.
 
 ## Configure a reloading rule
 
@@ -73,3 +76,14 @@ drivers:
   daemon:
     configCheckInterval: "60m"
 ```
+
+When using webhook-based reloads, you can safely increase this interval to reduce unnecessary polling.
+
+## Eventbus message types
+
+When a webhook triggers a reload, the following eventbus messages are involved:
+
+1. `eventbus:message` - The incoming webhook event from the github integration
+2. `broadcast:reload` - The config reload signal broadcast to all services
+
+If you have custom workflows that need to react to config reloads, you can listen for these message types.

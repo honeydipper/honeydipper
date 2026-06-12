@@ -7,6 +7,8 @@ Honeydipper outsources encryption/decryption tasks to drivers. In order for Hone
 - [Loading the driver](#loading-the-driver)
 - [Config the driver](#config-the-driver)
 - [How to encrypt your secret](#how-to-encrypt-your-secret)
+- [Using LOOKUP for runtime secret fetching](#using-lookup-for-runtime-secret-fetching)
+- [Supported drivers](#supported-drivers)
 
 <!-- tocstop -->
 
@@ -85,3 +87,66 @@ systems:
 ```
 
 See the [interpolation guide](../interpolation.md) for more information on eyaml syntax.
+
+## Using LOOKUP for runtime secret fetching
+
+In addition to `ENC[...]` for encrypted values, Honeydipper supports `LOOKUP[...]` syntax for fetching secrets at runtime from secret stores. This is useful when you want to avoid storing encrypted values in your config files and instead fetch them dynamically.
+
+The syntax is:
+
+```yaml
+LOOKUP[driver,path][:printf_pattern]
+```
+
+For example, using the Vault driver:
+
+```yaml
+systems:
+  my_system:
+    data:
+      api_token: LOOKUP[vault,secret/data/myapp/apikey]
+      db_password: LOOKUP[vault,secret/data/myapp/database#password]
+```
+
+Using the GCP Secret Manager driver:
+
+```yaml
+systems:
+  my_system:
+    data:
+      api_token: LOOKUP[gcloud-secret,projects/my-project/secrets/my-api-token/versions/latest]
+```
+
+Using the AWS Secrets Manager driver:
+
+```yaml
+systems:
+  my_system:
+    data:
+      api_token: LOOKUP[aws-secretsmanager,myapp/api_token]
+```
+
+The `LOOKUP` syntax supports an optional `?` prefix on the path to make the lookup optional (swallowing errors if the secret is not found):
+
+```yaml
+systems:
+  my_system:
+    data:
+      optional_setting: LOOKUP[vault,secret/data/myapp/optional?]
+```
+
+See the [interpolation guide](../interpolation.md) for more information on LOOKUP syntax.
+
+## Supported drivers
+
+Honeydipper supports multiple drivers for encryption and secret lookup:
+
+| Driver | Type | Description |
+|---|---|---|
+| `gcloud-kms` | Encryption | Google Cloud KMS for encrypting/decrypting secrets |
+| `gcloud-secret` | Lookup | Google Cloud Secret Manager for runtime secret fetching |
+| `hd-driver-vault` | Lookup | HashiCorp Vault for runtime secret fetching |
+| `aws-secretsmanager` | Lookup | AWS Secrets Manager for runtime secret fetching |
+| `aws-kms` | Encryption | AWS KMS for encrypting/decrypting secrets |
+
+Any driver that implements the `decrypt` or `lookup` RPC can be used with the `ENC` or `LOOKUP` syntax respectively.

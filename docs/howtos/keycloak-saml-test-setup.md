@@ -91,7 +91,7 @@ Then:
 
 Check Keycloak logs:
 ```bash
-podman logs -f 8fe39d5db669527a1649b6f4bf8419709d99ef30670231a0512c3cc79128aa6f
+podman logs -f <container_name_or_id>
 ```
 
 Common issues:
@@ -99,12 +99,13 @@ Common issues:
 - **Entity ID mismatch**: The `entity_id` in config should match the **Client ID** in Keycloak
 - **Metadata URL unreachable**: Keycloak must be accessible at the metadata URL from Honeydipper
 - **SSL certificate validation**: In dev, crewjam/saml validates signatures; ensure IdP metadata is accessible
+- **Name ID format**: Ensure the Name ID format in Keycloak matches what your SP expects (usually `email` or `persistent`)
 
 ## Stop Keycloak
 
 When done testing:
 ```bash
-podman stop 8fe39d5db669527a1649b6f4bf8419709d99ef30670231a0512c3cc79128aa6f
+podman stop <container_name_or_id>
 ```
 
 Or just restart your system—the `--rm` flag will clean it up on stop.

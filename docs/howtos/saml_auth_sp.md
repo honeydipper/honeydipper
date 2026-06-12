@@ -166,3 +166,5 @@ If your IdP sends group values as a list, match with list-aware logic in model e
 3. Keep `allow_idp_initiated` disabled unless your flow explicitly requires IdP-initiated login.
 4. Keep `request_ttl` short (default 10 minutes) to reduce replay window for stale relay states.
 5. Restrict authorization through Casbin policies; successful SAML authentication alone should not grant broad access.
+6. Ensure your IdP metadata URL is accessible and the metadata is up-to-date.
+7. Test your SAML configuration thoroughly in a staging environment before deploying to production.
