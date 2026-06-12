@@ -98,17 +98,7 @@ The syntax is:
 LOOKUP[driver,path][:printf_pattern]
 ```
 
-For example, using the Vault driver:
-
-```yaml
-systems:
-  my_system:
-    data:
-      api_token: LOOKUP[vault,secret/data/myapp/apikey]
-      db_password: LOOKUP[vault,secret/data/myapp/database#password]
-```
-
-Using the GCP Secret Manager driver:
+For example, using the GCP Secret Manager driver:
 
 ```yaml
 systems:
@@ -117,13 +107,13 @@ systems:
       api_token: LOOKUP[gcloud-secret,projects/my-project/secrets/my-api-token/versions/latest]
 ```
 
-Using the AWS Secrets Manager driver:
+Using the Vault driver:
 
 ```yaml
 systems:
   my_system:
     data:
-      api_token: LOOKUP[aws-secretsmanager,myapp/api_token]
+      api_token: LOOKUP[hd-driver-vault,secret/data/myapp/apikey]
 ```
 
 The `LOOKUP` syntax supports an optional `?` prefix on the path to make the lookup optional (swallowing errors if the secret is not found):
@@ -132,7 +122,7 @@ The `LOOKUP` syntax supports an optional `?` prefix on the path to make the look
 systems:
   my_system:
     data:
-      optional_setting: LOOKUP[vault,secret/data/myapp/optional?]
+      optional_setting: LOOKUP[gcloud-secret,projects/my-project/secrets/optional?]
 ```
 
 See the [interpolation guide](../interpolation.md) for more information on LOOKUP syntax.
@@ -143,10 +133,8 @@ Honeydipper supports multiple drivers for encryption and secret lookup:
 
 | Driver | Type | Description |
 |---|---|---|
-| `gcloud-kms` | Encryption | Google Cloud KMS for encrypting/decrypting secrets |
-| `gcloud-secret` | Lookup | Google Cloud Secret Manager for runtime secret fetching |
-| `hd-driver-vault` | Lookup | HashiCorp Vault for runtime secret fetching |
-| `aws-secretsmanager` | Lookup | AWS Secrets Manager for runtime secret fetching |
-| `aws-kms` | Encryption | AWS KMS for encrypting/decrypting secrets |
+| `gcloud-kms` | Decrypt | Google Cloud KMS for decrypting ciphertext (implements `decrypt` RPC) |
+| `gcloud-secret` | Lookup | Google Cloud Secret Manager for runtime secret fetching (implements `lookup` RPC) |
+| `hd-driver-vault` | Lookup | HashiCorp Vault for runtime secret fetching (implements `lookup` RPC) |
 
 Any driver that implements the `decrypt` or `lookup` RPC can be used with the `ENC` or `LOOKUP` syntax respectively.
