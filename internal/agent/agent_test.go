@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -2179,4 +2180,329 @@ func TestSetup_PanicsIfAgentMissing(t *testing.T) {
 	assert.Panics(t, func() {
 		s.setup(msg, store, false)
 	})
+}
+
+// ---------------------------------------------------------------------------
+// forget_history / archive-marker tests
+// ---------------------------------------------------------------------------
+
+func TestSetup_ForgetHistory_InjectsMarker(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:   "myagent",
+		Driver: "openai",
+		Engine: "gpt-4",
+	}
+
+	convoID := "convo-forget-1"
+
+	// Pre-create a ConvoState so the existing-convo path is taken inside
+	// lockedConvoStateUpdate (Generation starts at 0).
+	agent := store.cfg.DataSet.Agents["myagent"]
+	cs := &ConvoState{
+		ConvoID: convoID,
+		TTL:     ConvoStreamTTL,
+		Agent:   &agent,
+		FirstSession: &ConvoSessionRef{
+			SessionID: "prev-session",
+			AgentName: "myagent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+		LastSession: &ConvoSessionRef{
+			SessionID: "prev-session",
+			AgentName: "myagent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+	store.resp["cache:load:"+ConvoStateKeyPrefix+convoID] = mustMarshalJSON(cs)
+
+	// Pre-populate convo history so archiveConvo has something to copy.
+	history := []AgentMessage{
+		{Role: RoleSystem, Content: "system prompt"},
+		{Role: RoleUser, Content: "hello"},
+		{Role: RoleAgent, Content: "hi there"},
+	}
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+convoID] = mustMarshalJSON(history)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "myagent",
+		},
+		Payload: map[string]interface{}{
+			"type":           AgentSessionTypeChatTurn,
+			"convo_id":       convoID,
+			"forget_history": true,
+			"text":           "new turn after forget",
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store, false)
+
+	// After forget_history, the old live history is deleted and a marker
+	// system message is injected containing the archived_convo tag.
+	require.NotEmpty(t, s.history, "history should not be empty after forget_history")
+
+	markerFound := false
+	var markerContent string
+	for _, m := range s.history {
+		if m.Role == RoleSystem {
+			markerContent = m.Content
+			if matchArchivedConvoMarker(markerContent, convoID) {
+				markerFound = true
+
+				break
+			}
+		}
+	}
+
+	assert.True(t, markerFound,
+		"expected a system message with <!-- archived_convo: %s_g<N> -->, got history: %+v",
+		convoID, s.history)
+
+	// cache:rpush should have been called to persist the marker
+	assert.True(t, store.hasCall("cache:rpush"),
+		"expected cache:rpush to be called to persist the marker message")
+
+	// cache:del should have been called to delete the old live history
+	assert.True(t, store.hasCall("cache:del"),
+		"expected cache:del to be called on the old convo history key")
+}
+
+func TestSetup_ForgetHistory_MarkerFormat(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:   "myagent",
+		Driver: "openai",
+		Engine: "gpt-4",
+	}
+
+	convoID := "convo-forget-fmt"
+
+	// ConvoState with Generation=2 so the archive key will be _g3
+	agent := store.cfg.DataSet.Agents["myagent"]
+	cs := &ConvoState{
+		ConvoID:    convoID,
+		Generation: 2,
+		TTL:        ConvoStreamTTL,
+		Agent:      &agent,
+		FirstSession: &ConvoSessionRef{
+			SessionID: "s1",
+			AgentName: "myagent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+		LastSession: &ConvoSessionRef{
+			SessionID: "s1",
+			AgentName: "myagent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+	store.resp["cache:load:"+ConvoStateKeyPrefix+convoID] = mustMarshalJSON(cs)
+
+	history := []AgentMessage{
+		{Role: RoleUser, Content: "msg1"},
+		{Role: RoleAgent, Content: "reply1"},
+	}
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+convoID] = mustMarshalJSON(history)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "myagent",
+		},
+		Payload: map[string]interface{}{
+			"type":           AgentSessionTypeChatTurn,
+			"convo_id":       convoID,
+			"forget_history": true,
+			"text":           "fresh start",
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store, false)
+
+	// Find the marker message
+	var markerContent string
+	for _, m := range s.history {
+		if m.Role == RoleSystem {
+			markerContent = m.Content
+
+			break
+		}
+	}
+
+	// Generation was 2, archiveConvo increments to 3, so archived key is convoID_g3
+	expectedMarker := "<!-- archived_convo: " + convoID + "_g3 -->"
+	assert.Equal(t, expectedMarker, markerContent,
+		"marker should use the generation-suffixed archived key")
+}
+
+func TestSetup_ForgetHistory_MultipleGenerations(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:   "myagent",
+		Driver: "openai",
+		Engine: "gpt-4",
+	}
+
+	convoID := "convo-multi-gen"
+
+	// Pre-create first generation already archived
+	agent := store.cfg.DataSet.Agents["myagent"]
+	cs := &ConvoState{
+		ConvoID:    convoID,
+		Generation: 1,
+		TTL:        ConvoStreamTTL,
+		Agent:      &agent,
+		ArchivedConvos: []string{
+			convoID + "_g1",
+		},
+		FirstSession: &ConvoSessionRef{
+			SessionID: "s-old",
+			AgentName: "myagent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+		LastSession: &ConvoSessionRef{
+			SessionID: "s-old",
+			AgentName: "myagent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+	store.resp["cache:load:"+ConvoStateKeyPrefix+convoID] = mustMarshalJSON(cs)
+
+	// Current live history (generation 1's content, about to be archived as gen 2)
+	history := []AgentMessage{
+		{Role: RoleUser, Content: "after first compaction"},
+		{Role: RoleAgent, Content: "reply"},
+	}
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+convoID] = mustMarshalJSON(history)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "myagent",
+		},
+		Payload: map[string]interface{}{
+			"type":           AgentSessionTypeChatTurn,
+			"convo_id":       convoID,
+			"forget_history": true,
+			"text":           "forget again",
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store, false)
+
+	// The marker should reference generation _g2 (current Generation=1, incremented to 2)
+	var markerContent string
+	for _, m := range s.history {
+		if m.Role == RoleSystem {
+			markerContent = m.Content
+
+			break
+		}
+	}
+
+	expectedMarker := "<!-- archived_convo: " + convoID + "_g2 -->"
+	assert.Equal(t, expectedMarker, markerContent,
+		"on second forget, marker should point to _g2")
+}
+
+func TestSetup_NoForgetHistory_NoMarker(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:   "myagent",
+		Driver: "openai",
+		Engine: "gpt-4",
+	}
+
+	convoID := "convo-no-forget"
+
+	agent := store.cfg.DataSet.Agents["myagent"]
+	cs := &ConvoState{
+		ConvoID: convoID,
+		TTL:     ConvoStreamTTL,
+		Agent:   &agent,
+		FirstSession: &ConvoSessionRef{
+			SessionID: "s1",
+			AgentName: "myagent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+		LastSession: &ConvoSessionRef{
+			SessionID: "s1",
+			AgentName: "myagent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+	store.resp["cache:load:"+ConvoStateKeyPrefix+convoID] = mustMarshalJSON(cs)
+
+	history := []AgentMessage{
+		{Role: RoleUser, Content: "hello"},
+		{Role: RoleAgent, Content: "hi"},
+	}
+	store.resp["cache:lrange:"+ConvoHistoryKeyPrefix+convoID] = mustMarshalJSON(history)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "myagent",
+		},
+		Payload: map[string]interface{}{
+			"type":     AgentSessionTypeChatTurn,
+			"convo_id": convoID,
+			"text":     "normal turn",
+			// forget_history is NOT set
+		},
+	}
+
+	s := &AgentSession{}
+	s.setup(msg, store, false)
+
+	// No marker should be present
+	for _, m := range s.history {
+		if m.Role == RoleSystem && strings.Contains(m.Content, "archived_convo") {
+			t.Fatalf("unexpected archive marker found in history: %s", m.Content)
+		}
+	}
+
+	// cache:del should NOT have been called
+	assert.False(t, store.hasCall("cache:del"),
+		"cache:del should not be called when forget_history is not set")
+
+	// cache:rpush may have been called for normal history appends, but not for marker
+}
+
+// matchArchivedConvoMarker checks that the content contains a valid
+// <!-- archived_convo: <convoID>_g<N> --> marker where N is a positive integer.
+func matchArchivedConvoMarker(content, convoID string) bool {
+	if !strings.Contains(content, "archived_convo:") {
+		return false
+	}
+	// Extract the archived key from the marker pattern
+	start := strings.Index(content, "<!-- archived_convo: ")
+	if start < 0 {
+		return false
+	}
+	key := content[start+len("<!-- archived_convo: "):]
+	end := strings.Index(key, " -->")
+	if end < 0 {
+		return false
+	}
+	key = key[:end]
+	// Key must match <convoID>_g<N>
+	if !strings.HasPrefix(key, convoID+"_g") {
+		return false
+	}
+	nStr := key[len(convoID)+2:]
+	n, err := strconv.Atoi(nStr)
+	if err != nil || n < 1 {
+		return false
+	}
+
+	return true
 }
