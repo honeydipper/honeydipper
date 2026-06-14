@@ -39,7 +39,12 @@ func (s *AgentSession) BuildTools() map[string]AgentTool {
 				"skill_name": map[string]interface{}{
 					"name":        "skill_name",
 					"type":        "string",
-					"description": "The name of the skill to load, e.g. file_ops/read_file.",
+					"description": "The name of the skill to load, e.g. myskill.",
+				},
+				"path": map[string]interface{}{
+					"name":        "path",
+					"type":        "string",
+					"description": "Relative path to the skill file, if omitted, SKILL.md is used, e.g. subdir/read_file.",
 				},
 			},
 		}
