@@ -13,7 +13,7 @@ import (
 const (
 	PreContextHeader = "Read below first to understand the user's request:\n"
 	SkillsHeader     = "The following skills may be useful to accomplish the user's " +
-		"request, you can use hd_load_skill tool to load them when needed:\n"
+		"request, you can use hd_load_skill tool to load them and their dependency files when needed:\n"
 )
 
 var ErrSkillLoadFailed = errors.New("failed to load skill content")
