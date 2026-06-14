@@ -266,9 +266,18 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		if len(s.history) > 0 {
 			forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
 			if forgetHistory {
-				dipper.Must(cs.archiveConvo(store))
+				archivedKey := dipper.Must(cs.archiveConvo(store)).(string)
+				s.history = nil
 				dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
 					"key": ConvoHistoryKeyPrefix + s.ConvoID,
+				}))
+				markerMsg := AgentMessage{Role: RoleSystem, Content: fmt.Sprintf("<!-- archived_convo: %s -->", archivedKey)}
+				s.history = append(s.history, markerMsg)
+				convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
+				dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
+					"key":   ConvoHistoryKeyPrefix + s.ConvoID,
+					"value": string(dipper.SerializeContent(markerMsg)),
+					"ttl":   float64(convoTTL),
 				}))
 			}
 		}
