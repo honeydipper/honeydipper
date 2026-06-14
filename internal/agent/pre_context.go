@@ -2,6 +2,8 @@ package agent
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -13,6 +15,8 @@ const (
 	SkillsHeader     = "The following skills may be useful to accomplish the user's " +
 		"request, you can use hd_load_skill tool to load them when needed:\n"
 )
+
+var ErrSkillLoadFailed = errors.New("failed to load skill content")
 
 func (s *AgentSession) loadPreContextAndSkills() bool {
 	if len(s.history) > 0 || (len(s.Agent.SkillsPaths) == 0 && len(s.Agent.PreContext) == 0) {
@@ -180,12 +184,18 @@ func (s *AgentSession) resumeWithSkills(skillMap map[string]string) {
 
 func (s *AgentSession) handleLoadSkillToolCall(c AgentToolCall, unifiedConvoID string) {
 	skillName, _ := dipper.GetMapDataStr(c.Params, "skill_name")
+	path, _ := dipper.GetMapDataStr(c.Params, "path")
+	if path == "" {
+		path = "/SKILL.md"
+	}
+
+	path = "/" + strings.TrimPrefix(path, "/")
+
 	if skillName == "" {
 		if log := s.log(); log != nil {
 			log.Warningf("[agent] session [%s] hd_load_skill call missing skill_name param", s.ID)
 		}
-
-		return
+		panic(fmt.Errorf("%w: missing skill_name parameter", ErrSkillLoadFailed))
 	}
 
 	var skillMap map[string]string
@@ -196,8 +206,7 @@ func (s *AgentSession) handleLoadSkillToolCall(c AgentToolCall, unifiedConvoID s
 		if log := s.log(); log != nil {
 			log.Warningf("[agent] session [%s] hd_load_skill call but no skills found in convo state", s.ID)
 		}
-
-		return
+		panic(fmt.Errorf("%w: no skills found in convo state", ErrSkillLoadFailed))
 	}
 
 	skillPath := skillMap[skillName]
@@ -205,10 +214,10 @@ func (s *AgentSession) handleLoadSkillToolCall(c AgentToolCall, unifiedConvoID s
 		if log := s.log(); log != nil {
 			log.Warningf("[agent] session [%s] hd_load_skill call with skill_name=%s but no matching skill path found", s.ID, skillName)
 		}
-
-		return
+		panic(fmt.Errorf("%w: skill '%s' not found in convo state", ErrSkillLoadFailed, skillName))
 	}
 
+	skillPath = strings.TrimSuffix(skillPath, "/SKILL.md") + path
 	toolCall := AgentToolCall{
 		FuncName: s.Agent.FileTool,
 		Params: map[string]interface{}{
