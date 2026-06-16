@@ -267,7 +267,7 @@ func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.R
 		s.checkDeleteDriverRuntime(driverRuntime.Feature, nil)
 		if driverRuntime.Feature == FeatureEmitter {
 			// emitter is being replaced
-			delete(daemon.Emitters, s.name)
+			daemon.DeleteEmitter(s.name)
 		}
 		go func(runtime *driver.Runtime) {
 			defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Handler.Meta().Name)
@@ -352,7 +352,7 @@ func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 		if _, ok := featureList[feature]; !ok {
 			if feature == FeatureEmitter {
 				// emitter is removed
-				delete(daemon.Emitters, s.name)
+				daemon.DeleteEmitter(s.name)
 			}
 			s.checkDeleteDriverRuntime(feature, nil)
 			go func(runtime *driver.Runtime) {
@@ -390,7 +390,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 					s.driverRuntimes[feature].State = driver.DriverAlive
 					if feature == FeatureEmitter {
 						// emitter is loaded
-						daemon.Emitters[s.name] = s
+						daemon.SetEmitter(s.name, s)
 					}
 				},
 				DriverReadyTimeout*time.Second,
@@ -431,7 +431,7 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 							s.driverRuntimes[feature].State = driver.DriverAlive
 							if feature == FeatureEmitter {
 								// emitter is loaded
-								daemon.Emitters[s.name] = s
+								daemon.SetEmitter(s.name, s)
 							}
 						},
 						DriverReadyTimeout*time.Second,
@@ -493,7 +493,7 @@ func (s *Service) serviceLoop() {
 				runtime := orderedRuntimes[chosen]
 				msg := value.Interface().(*dipper.Message)
 				if runtime.Feature != FeatureEmitter {
-					if emitter, ok := daemon.Emitters[s.name]; ok {
+					if emitter, ok := daemon.GetEmitter(s.name); ok {
 						emitter.CounterIncr("honey.honeydipper.local.message", []string{
 							"service:" + s.name,
 							"driver:" + runtime.Handler.Meta().Name,
@@ -514,7 +514,7 @@ func (s *Service) serviceLoop() {
 
 			if orderedRuntimes[chosen].Feature == FeatureEmitter {
 				// emitter has crashed
-				delete(daemon.Emitters, s.name)
+				daemon.DeleteEmitter(s.name)
 			}
 			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive && s.drainingGroup == nil {
 				// only reload drivers that used to be in DriveAlive state
@@ -620,7 +620,7 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 	s := Services[d.Service]
 	d.State = driver.DriverFailed
 	driverName := d.Handler.Meta().Name
-	if emitter, ok := daemon.Emitters[s.name]; ok {
+	if emitter, ok := daemon.GetEmitter(s.name); ok {
 		emitter.CounterIncr("honey.honeydipper.driver.recovery_attempt", []string{
 			"service:" + s.name,
 			"driver:" + driverName,
@@ -647,7 +647,7 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 				s.driverRuntimes[d.Feature].State = driver.DriverAlive
 				if d.Feature == FeatureEmitter {
 					// emitter is loaded
-					daemon.Emitters[s.name] = s
+					daemon.SetEmitter(s.name, s)
 				}
 			},
 			DriverReadyTimeout*time.Second,

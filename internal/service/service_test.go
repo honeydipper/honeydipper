@@ -175,7 +175,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 			return nil
 		},
 	}
-	daemon.Emitters["testsvc"] = svc
+	daemon.SetEmitter("testsvc", svc)
 
 	daemon.ShuttingDown = false
 	go func() {
@@ -269,7 +269,7 @@ func TestServiceEmitterCrashing(t *testing.T) {
 			return nil
 		},
 	}
-	daemon.Emitters["testsvc"] = svc
+	daemon.SetEmitter("testsvc", svc)
 
 	daemon.ShuttingDown = false
 	go func() {
@@ -344,7 +344,7 @@ func TestServiceReplaceEmitter(t *testing.T) {
 			return nil
 		},
 	}
-	daemon.Emitters["testsvc"] = svc
+	daemon.SetEmitter("testsvc", svc)
 
 	daemon.ShuttingDown = false
 	go func() {
