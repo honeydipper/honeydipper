@@ -27,8 +27,34 @@ var ShuttingDown bool
 // Children keeps track of the child go routines in the daemon.
 var Children = &sync.WaitGroup{}
 
+// emittersLock protects concurrent access to the Emitters map.
+var emittersLock sync.Mutex
+
 // Emitters contains a group of metrics emitter for sending metrics to external monitoring systems.
 var Emitters = map[string]Emitter{}
+
+// GetEmitter safely retrieves an emitter from the Emitters map.
+func GetEmitter(name string) (Emitter, bool) {
+	emittersLock.Lock()
+	defer emittersLock.Unlock()
+	emitter, ok := Emitters[name]
+
+	return emitter, ok
+}
+
+// SetEmitter safely sets an emitter in the Emitters map.
+func SetEmitter(name string, emitter Emitter) {
+	emittersLock.Lock()
+	defer emittersLock.Unlock()
+	Emitters[name] = emitter
+}
+
+// DeleteEmitter safely deletes an emitter from the Emitters map.
+func DeleteEmitter(name string) {
+	emittersLock.Lock()
+	defer emittersLock.Unlock()
+	delete(Emitters, name)
+}
 
 // OnStart will be called when the daemon starts after config is loaded.
 var OnStart func()

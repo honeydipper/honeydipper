@@ -112,7 +112,7 @@ func (runtime *Runtime) SendOptions() {
 // SendMessage sends a dipper message to the driver child process.
 func (runtime *Runtime) SendMessage(msg *dipper.Message) {
 	if runtime.Feature != "emitter" {
-		if emitter, ok := daemon.Emitters[runtime.Service]; ok {
+		if emitter, ok := daemon.GetEmitter(runtime.Service); ok {
 			emitter.CounterIncr("honey.honeydipper.local.message", []string{
 				"service:" + runtime.Service,
 				"driver:" + runtime.Handler.Meta().Name,
