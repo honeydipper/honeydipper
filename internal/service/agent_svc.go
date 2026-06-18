@@ -7,6 +7,8 @@
 package service
 
 import (
+	"os"
+
 	"github.com/honeydipper/honeydipper/v4/internal/agent"
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/internal/daemon"
@@ -60,7 +62,12 @@ func StartAgent(cfg *config.Config) {
 
 	// Build the store before start() so the package-level var is set
 	// before any goroutine spawned by a responder can reference it.
-	agentStore = agent.NewAgentStore(agentSvc)
+	uiURL := os.Getenv("HD_UI_URL")
+	if uiURL == "" {
+		dipper.Logger.Errorf("agent service starting without HD_UI_URL env var; util__hd_get_convo_url will error")
+	}
+
+	agentStore = agent.NewAgentStore(agentSvc, uiURL)
 	setupAgentAPIs()
 	agentSvc.Drain = func() {
 		agentStore.Stop()

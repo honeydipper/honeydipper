@@ -14,7 +14,9 @@ import (
 	"testing"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ---------------------------------------------------------------------------
@@ -267,7 +269,7 @@ func TestProcessMCPToolList_OnlyFilter(t *testing.T) {
 	s := &AgentSession{store: store, Agent: &agentA, ID: "test-only"}
 	tools := s.BuildTools()
 
-	assert.Len(t, tools, 2)
+	assert.Len(t, tools, 3)
 	assert.Contains(t, tools, "mcp__myserver__alpha")
 	assert.Contains(t, tools, "mcp__myserver__gamma")
 	assert.NotContains(t, tools, "mcp__myserver__beta")
@@ -292,7 +294,7 @@ func TestProcessMCPToolList_ExcludesFilter(t *testing.T) {
 	s := &AgentSession{store: store, Agent: &agentA, ID: "test-excludes"}
 	tools := s.BuildTools()
 
-	assert.Len(t, tools, 2)
+	assert.Len(t, tools, 3)
 	assert.Contains(t, tools, "mcp__myserver__alpha")
 	assert.Contains(t, tools, "mcp__myserver__gamma")
 	assert.NotContains(t, tools, "mcp__myserver__beta")
@@ -319,7 +321,7 @@ func TestProcessMCPToolList_BothOnlyAndExcludes(t *testing.T) {
 	tools := s.BuildTools()
 
 	// Only whitelist is applied first (alpha, beta, gamma), then Excludes removes beta.
-	assert.Len(t, tools, 2)
+	assert.Len(t, tools, 3)
 	assert.Contains(t, tools, "mcp__myserver__alpha")
 	assert.Contains(t, tools, "mcp__myserver__gamma")
 	assert.NotContains(t, tools, "mcp__myserver__beta")
@@ -345,7 +347,7 @@ func TestProcessMCPToolList_NoFilter(t *testing.T) {
 	tools := s.BuildTools()
 
 	// All tools should be present when no filter is specified.
-	assert.Len(t, tools, 2)
+	assert.Len(t, tools, 3)
 	assert.Contains(t, tools, "mcp__myserver__alpha")
 	assert.Contains(t, tools, "mcp__myserver__beta")
 }
@@ -369,7 +371,7 @@ func TestProcessMCPToolList_OnlyNonexistentAllExcluded(t *testing.T) {
 	tools := s.BuildTools()
 
 	// Only lists a tool that doesn't exist — nothing registered.
-	assert.Len(t, tools, 0)
+	assert.Len(t, tools, 1)
 }
 
 func TestProcessMCPToolList_ExcludesAll(t *testing.T) {
@@ -391,7 +393,7 @@ func TestProcessMCPToolList_ExcludesAll(t *testing.T) {
 	tools := s.BuildTools()
 
 	// All tools excluded — nothing registered.
-	assert.Len(t, tools, 0)
+	assert.Len(t, tools, 1)
 }
 
 func TestProcessMCPToolList_MixedToolTypes(t *testing.T) {
@@ -416,7 +418,7 @@ func TestProcessMCPToolList_MixedToolTypes(t *testing.T) {
 	s := &AgentSession{store: store, Agent: &agentA, ID: "test-mixed"}
 	tools := s.BuildTools()
 
-	assert.Len(t, tools, 3)
+	assert.Len(t, tools, 4)
 	assert.Contains(t, tools, "sys_s1__sys_fn")
 	assert.Contains(t, tools, "wf__wf1")
 	assert.Contains(t, tools, "mcp__myserver__mcp_tool_a")
@@ -446,6 +448,201 @@ func TestProcessMCPToolList_CacheHitWithFilter(t *testing.T) {
 	tools := s.BuildTools()
 
 	// Even though the cached data has all tools, the filter is applied on retrieval.
-	assert.Len(t, tools, 1)
+	assert.Len(t, tools, 2)
 	assert.Contains(t, tools, "mcp__myserver__beta")
+}
+
+// ---------------------------------------------------------------------------
+// util__hd_get_convo_url tool tests
+// ---------------------------------------------------------------------------
+
+func TestBuildTools_IncludesUtilGetConvoURL(t *testing.T) {
+	store := newMockStore(nil)
+	agentA := config.Agent{
+		Name:   "a",
+		Driver: "openai",
+		Tools:  []config.AgentToolDef{},
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{store: store, Agent: &agentA, ID: "test-util-tool"}
+	tools := s.BuildTools()
+
+	require.Contains(t, tools, "util__hd_get_convo_url")
+	tool := tools["util__hd_get_convo_url"]
+	assert.Equal(t, "util__hd_get_convo_url", tool.Name)
+	assert.Contains(t, tool.Description, "conversation page URL")
+	assert.Contains(t, tool.Description, "focus page URL")
+	assert.Empty(t, tool.Params)
+}
+
+func TestBuildTools_UtilGetConvoURL_AlwaysPresent(t *testing.T) {
+	// Even with no other tools, util__hd_get_convo_url should be present.
+	store := newMockStore(nil)
+	agentA := config.Agent{
+		Name:   "a",
+		Driver: "openai",
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{store: store, Agent: &agentA, ID: "test-util-always"}
+	tools := s.BuildTools()
+
+	require.Contains(t, tools, "util__hd_get_convo_url")
+	// Only the util tool should be present (no hd_load_skill without SkillsHeader)
+	assert.Len(t, tools, 1)
+}
+
+func TestNextToolCall_UtilGetConvoURLDispatch(t *testing.T) {
+	store := newMockStore(nil)
+	store.uiURL = "https://honeydipper.example.com"
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Name: "test-agent", Driver: "openai"},
+		ID:          "util-dispatch-session",
+		ConvoID:     "convo-123",
+		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
+		ToolCalls: []AgentToolCall{
+			{FuncName: "util__hd_get_convo_url", Params: map[string]interface{}{}},
+		},
+	}
+
+	s.nextToolCall()
+
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_continue", emitted[0].Subject)
+	assert.Equal(t, "success", emitted[0].Labels["status"])
+	assert.Equal(t, s.ID, emitted[0].Labels["agent_session_id"])
+
+	// Verify the payload contains the URLs
+	output, ok := dipper.GetMapData(emitted[0].Payload, "data.output")
+	require.True(t, ok)
+	outputMap := output.(map[string]interface{})
+	assert.Equal(t, "https://honeydipper.example.com/conversations/convo-123", outputMap["convo_url"])
+	assert.Equal(t, "https://honeydipper.example.com/focus/convo-123", outputMap["focus_url"])
+}
+
+func TestNextToolCall_UtilGetConvoURL_TrimTrailingSlash(t *testing.T) {
+	store := newMockStore(nil)
+	store.uiURL = "https://honeydipper.example.com/"
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Name: "test-agent", Driver: "openai"},
+		ID:          "util-slash-session",
+		ConvoID:     "convo-456",
+		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
+		ToolCalls: []AgentToolCall{
+			{FuncName: "util__hd_get_convo_url", Params: map[string]interface{}{}},
+		},
+	}
+
+	s.nextToolCall()
+
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	output, _ := dipper.GetMapData(emitted[0].Payload, "data.output")
+	outputMap := output.(map[string]interface{})
+	assert.Equal(t, "https://honeydipper.example.com/conversations/convo-456", outputMap["convo_url"])
+	assert.Equal(t, "https://honeydipper.example.com/focus/convo-456", outputMap["focus_url"])
+}
+
+func TestNextToolCall_UtilGetConvoURL_MissingUIURL(t *testing.T) {
+	store := newMockStore(nil)
+	// uiURL is empty by default
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Name: "test-agent", Driver: "openai"},
+		ID:          "util-no-url-session",
+		ConvoID:     "convo-789",
+		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
+		ToolCalls: []AgentToolCall{
+			{FuncName: "util__hd_get_convo_url", Params: map[string]interface{}{}},
+		},
+	}
+
+	assert.Panics(t, func() {
+		s.nextToolCall()
+	})
+}
+
+func TestProcessToolResult_UtilToolResult(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["s1"] = makeSystemWithFunc("fn1")
+
+	toolCalls := []AgentToolCall{
+		{FuncName: "util__hd_get_convo_url", Params: map[string]interface{}{}},
+		{FuncName: "sys_s1__fn1", Params: map[string]interface{}{"param1": "v"}},
+	}
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "util-result-session",
+		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
+		ToolCalls:   toolCalls,
+		history: []AgentMessage{
+			{Role: RoleAgent, ToolCalls: toolCalls},
+		},
+	}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"turn_id":      "1",
+			"tool_call_id": "0",
+			"status":       "success",
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{
+				"output": map[string]interface{}{
+					"convo_url": "https://example.com/conversations/c1",
+					"focus_url": "https://example.com/focus/c1",
+				},
+			},
+		},
+	}
+
+	s.processToolResult(msg)
+
+	// The util result should be collected and the next tool dispatched.
+	require.Len(t, s.ToolResults, 1)
+	assert.Equal(t, "success", s.ToolResults[0]["status"])
+	assert.Equal(t, "util__hd_get_convo_url", s.ToolResults[0]["func_name"])
+
+	// Verify the data contains the output map
+	data := s.ToolResults[0]["data"].(map[string]interface{})
+	assert.Equal(t, "https://example.com/conversations/c1", data["convo_url"])
+	assert.Equal(t, "https://example.com/focus/c1", data["focus_url"])
+
+	// CurrentCall should be incremented and next tool dispatched.
+	assert.Equal(t, 1, s.CurrentCall)
+	emitted := store.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "agent_command", emitted[0].Subject)
+}
+
+func TestNextToolCall_UnknownUtilTool_Panics(t *testing.T) {
+	store := newMockStore(nil)
+
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Name: "test-agent", Driver: "openai"},
+		ID:          "util-unknown-session",
+		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
+		ToolCalls: []AgentToolCall{
+			{FuncName: "util__nonexistent_tool", Params: map[string]interface{}{}},
+		},
+	}
+
+	assert.Panics(t, func() {
+		s.nextToolCall()
+	})
 }

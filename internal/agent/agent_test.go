@@ -51,6 +51,7 @@ type mockStore struct {
 	cfg          *config.Config
 	logger       *logging.Logger
 	noWaitParams map[string]map[string]interface{}
+	uiURL        string
 }
 
 func newMockStore(cfg *config.Config) *mockStore {
@@ -203,6 +204,7 @@ func (m *mockStore) Stop() {}
 func (m *mockStore) Wait() {}
 
 func (m *mockStore) GetLogger() *logging.Logger { return m.logger }
+func (m *mockStore) GetUIURL() string           { return m.uiURL }
 
 // ---------------------------------------------------------------------------
 // mockStoreHelper – implements StoreHelper for PersistentAgentStore tests
@@ -779,7 +781,7 @@ func TestBuildTools_DuplicateSystemToolSkipped(t *testing.T) {
 	tools := s.BuildTools()
 
 	// Only one entry despite duplicate tool defs.
-	assert.Len(t, tools, 1)
+	assert.Len(t, tools, 2)
 }
 
 func TestBuildTools_DuplicateWorkflowToolSkipped(t *testing.T) {
@@ -802,7 +804,7 @@ func TestBuildTools_DuplicateWorkflowToolSkipped(t *testing.T) {
 
 	tools := s.BuildTools()
 
-	assert.Len(t, tools, 1)
+	assert.Len(t, tools, 2)
 }
 
 func TestBuildTools_ParamTypeDefaultsToString(t *testing.T) {
@@ -863,7 +865,7 @@ func TestBuildTools_Mixed(t *testing.T) {
 	}
 	tools := s.BuildTools()
 
-	assert.Len(t, tools, 3)
+	assert.Len(t, tools, 4)
 	assert.Contains(t, tools, "sys_s1__fn1")
 	assert.Contains(t, tools, "sys_s2__fn2")
 	assert.Contains(t, tools, "wf__wf1")
@@ -1569,7 +1571,7 @@ func TestNewAgentStore_CreatesValidStore(t *testing.T) {
 		mockStore: *newMockStore(nil),
 	}
 
-	store := NewAgentStore(helper)
+	store := NewAgentStore(helper, "")
 	assert.NotNil(t, store)
 
 	pas, ok := store.(*PersistentAgentStore)
@@ -1581,7 +1583,7 @@ func TestPersistentAgentStore_GetLogger(t *testing.T) {
 	helper := &mockStoreHelper{
 		mockStore: *newMockStore(nil),
 	}
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 	assert.NotNil(t, store.GetLogger())
 	assert.Equal(t, store.Logger, store.GetLogger())
 }
@@ -1595,7 +1597,7 @@ func TestPersistentAgentStore_GetAgent(t *testing.T) {
 		Workflows: map[string]config.Workflow{},
 	}}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	agent := store.GetAgent("bot")
 	assert.Equal(t, "bot", agent.Name)
@@ -1610,7 +1612,7 @@ func TestPersistentAgentStore_GetSystem(t *testing.T) {
 		Workflows: map[string]config.Workflow{},
 	}}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	s := store.GetSystem("s1")
 	require.Contains(t, s.Functions, "fn1")
@@ -1624,7 +1626,7 @@ func TestPersistentAgentStore_GetWorkflow(t *testing.T) {
 		Workflows: map[string]config.Workflow{"wf1": wf},
 	}}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	w := store.GetWorkflow("wf1")
 	assert.Equal(t, "my workflow", w.Description)
@@ -1632,7 +1634,7 @@ func TestPersistentAgentStore_GetWorkflow(t *testing.T) {
 
 func TestPersistentAgentStore_StopAndWait(t *testing.T) {
 	helper := &mockStoreHelper{mockStore: *newMockStore(nil)}
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	// Before Stop, stopped flag is false.
 	assert.False(t, store.stopped.Load())
@@ -1663,7 +1665,7 @@ func TestPersistentAgentStore_StartInference(t *testing.T) {
 		Workflows: map[string]config.Workflow{},
 	}}
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	msg := &dipper.Message{
 		Labels:  map[string]string{"agent_name": "bot"},
@@ -1698,7 +1700,7 @@ func TestPersistentAgentStore_ReceiveInference(t *testing.T) {
 	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
 	helper.resp["cache:load:"+AgentKeyPrefix+"rcv-session"] = mustMarshalJSON(existing)
 
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	agentMsg := AgentMessage{Role: RoleAgent, Content: "response!"}
 	msg := &dipper.Message{
@@ -1753,7 +1755,7 @@ func TestPersistentAgentStore_ContinueInference_ProcessResult(t *testing.T) {
 		{Role: RoleAgent, ToolCalls: toolCalls},
 	})
 
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	msg := &dipper.Message{
 		Subject: "agent_workflow_result",
@@ -1803,7 +1805,7 @@ func TestPersistentAgentStore_ContinueInference_Recover(t *testing.T) {
 		{Role: RoleSystem, Content: "sys"},
 	})
 
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	msg := &dipper.Message{
 		Labels: map[string]string{
@@ -1867,7 +1869,7 @@ func TestStartTurn_UsesParentAgentWhenLastSessionIsSubAgent(t *testing.T) {
 	// Return an empty history for the new turn's convo.
 	helper.resp["cache:lrange:"+ConvoHistoryKeyPrefix+convoID] = mustMarshalJSON([]AgentMessage{})
 
-	store := NewAgentStore(helper).(*PersistentAgentStore)
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
 	store.StartTurn(convoID, "hello again", "user1")
 	store.Wait()

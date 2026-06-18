@@ -66,6 +66,7 @@ func (m *mockAgentStore) GetWorkflow(_ string) *config.Workflow { return &config
 func (m *mockAgentStore) EmitMessage(_ dipper.Message)          {}
 func (m *mockAgentStore) GetConfig() *config.Config             { return &config.Config{} }
 func (m *mockAgentStore) GetLogger() *logging.Logger            { return nil }
+func (m *mockAgentStore) GetUIURL() string                      { return "" }
 func (m *mockAgentStore) GetName() string                       { return "mock-agent-store" }
 
 func (m *mockAgentStore) Call(_, _ string, _ interface{}, _ ...string) ([]byte, error) {

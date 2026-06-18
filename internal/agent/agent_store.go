@@ -34,6 +34,7 @@ type AgentStore interface {
 	GetWorkflow(name string) *config.Workflow
 	EmitMessage(msg dipper.Message)
 	GetConfig() *config.Config
+	GetUIURL() string
 
 	// Stop signals the store to stop accepting new sessions and returns immediately.
 	// Call Wait to block until all in-flight sessions have drained.
@@ -62,11 +63,17 @@ type PersistentAgentStore struct {
 	*logging.Logger
 	wg      sync.WaitGroup
 	stopped atomic.Bool
+	uiURL   string
 }
 
 // GetLogger returns the logger used by the agent store and sessions.
 func (p *PersistentAgentStore) GetLogger() *logging.Logger {
 	return p.Logger
+}
+
+// GetUIURL returns the base URL for the Honeydipper UI.
+func (p *PersistentAgentStore) GetUIURL() string {
+	return p.uiURL
 }
 
 // emitErrorResponse sends an agent_response with status=error back to the workflow
@@ -270,10 +277,11 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user string) {
 }
 
 // NewAgentStore creates an AgentStore backed by the provided StoreHelper.
-func NewAgentStore(helper StoreHelper) AgentStore {
+func NewAgentStore(helper StoreHelper, uiURL string) AgentStore {
 	return &PersistentAgentStore{
 		StoreHelper: helper,
 		Logger:      dipper.GetLogger("agent", "INFO"),
+		uiURL:       uiURL,
 	}
 }
 

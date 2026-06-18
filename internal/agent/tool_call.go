@@ -50,6 +50,13 @@ func (s *AgentSession) BuildTools() map[string]AgentTool {
 		}
 	}
 
+	tools["util__hd_get_convo_url"] = AgentTool{
+		Name: "util__hd_get_convo_url",
+		Description: "Get the conversation page URL and focus page URL for the current conversation. " +
+			"Use this to obtain URLs that can be sent to external systems like PagerDuty, Slack, etc.",
+		Params: map[string]interface{}{},
+	}
+
 	return tools
 }
 
@@ -416,9 +423,47 @@ func (s *AgentSession) nextToolCall() {
 		s.handleMCPToolCall(c, unifiedConvoID)
 	case c.FuncName == "hd_load_skill":
 		s.handleLoadSkillToolCall(c, unifiedConvoID)
+	case strings.HasPrefix(c.FuncName, "util__"):
+		s.handleUtilToolCall(c, unifiedConvoID)
 	default:
 		panic(fmt.Errorf("%w unknown tool call prefix: %s", ErrToolCall, c.FuncName))
 	}
+}
+
+func (s *AgentSession) handleUtilToolCall(c AgentToolCall, unifiedConvoID string) {
+	switch c.FuncName {
+	case "util__hd_get_convo_url":
+		s.handleGetConvoURL(c, unifiedConvoID)
+	default:
+		panic(fmt.Errorf("%w unknown util tool: %s", ErrToolCall, c.FuncName))
+	}
+}
+
+func (s *AgentSession) handleGetConvoURL(_ AgentToolCall, unifiedConvoID string) {
+	convoURL, focusURL, err := s.buildConvoURLs()
+	if err != nil {
+		panic(fmt.Errorf("%w: %w", ErrToolCall, err))
+	}
+
+	s.store.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: dipper.EventbusAgentContinue,
+		Labels: map[string]string{
+			"agent_session_id": s.ID,
+			"turn_id":          strconv.Itoa(len(s.history)),
+			"tool_call_id":     strconv.Itoa(s.CurrentCall),
+			"unified_convo_id": unifiedConvoID,
+			"status":           "success",
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{
+				"output": map[string]interface{}{
+					"convo_url": convoURL,
+					"focus_url": focusURL,
+				},
+			},
+		},
+	})
 }
 
 func (s *AgentSession) handleSysToolCall(c AgentToolCall, unifiedConvoID string) {
@@ -597,6 +642,8 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 			cs.ActiveSession = cs.LastSession
 		})
 	case strings.HasPrefix(c.FuncName, "mcp__"):
+		data, _ = dipper.GetMapData(msg.Payload, "data.output")
+	case strings.HasPrefix(c.FuncName, "util__"):
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
 	}
 
