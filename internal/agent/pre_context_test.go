@@ -101,6 +101,7 @@ func (f *FakeStore) Stop()                                    {}
 func (f *FakeStore) Wait()                                    {}
 func (f *FakeStore) GetLogger() *logging.Logger               { return nil }
 
+func (f *FakeStore) GetUIURL() string { return "" }
 func TestHandleLoadSkillToolCall_Success(t *testing.T) {
 	convoID := "conv-test"
 	skillName := "my_skill"

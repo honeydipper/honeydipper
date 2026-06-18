@@ -86,6 +86,19 @@ func (s *AgentSession) unlock() {
 	}))
 }
 
+// buildConvoURLs constructs the conversation page URL and focus page URL for the
+// current conversation. It returns an error if the UI URL is not configured.
+func (s *AgentSession) buildConvoURLs() (string, string, error) {
+	base := strings.TrimRight(s.store.GetUIURL(), "/")
+	if base == "" {
+		return "", "", fmt.Errorf("%w: HD_UI_URL env var is not set, cannot construct conversation URL", ErrToolCall)
+	}
+	convoURL := fmt.Sprintf("%s/conversations/%s", base, s.ConvoID)
+	focusURL := fmt.Sprintf("%s/focus/%s", base, s.ConvoID)
+
+	return convoURL, focusURL, nil
+}
+
 // persist serialises the session and writes it to the cache.
 // When unlocking is true the session lock is released and, if the session
 // has reached a terminal state, the shared ConvoState is updated too.
