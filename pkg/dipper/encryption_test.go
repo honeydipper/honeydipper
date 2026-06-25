@@ -42,6 +42,28 @@ func wrapDecryptAll(t *testing.T, doc string, expect []MessageReceiver, c *RPCCa
 	return data
 }
 
+func errorReturnReceiver(t *testing.T, c *RPCCallerBase, want Message, reason string) MessageReceiver {
+	t.Helper()
+
+	return &NullReceiver{
+		SendMessageFunc: func(msg *Message) {
+			assert.Equalf(t, want, *msg, "should make expected rpc call")
+			labels := map[string]string{}
+			for key, value := range want.Labels {
+				labels[key] = value
+			}
+			labels["error"] = reason
+
+			c.HandleReturn(&Message{
+				Channel: "rpc",
+				Subject: "return",
+				IsRaw:   true,
+				Labels:  labels,
+			})
+		},
+	}
+}
+
 func TestDecryptAll(t *testing.T) {
 	doc := `
 data:
@@ -93,6 +115,80 @@ data:
 	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
 }
 
+func TestDecryptAllPanicsOnDecryptError(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: ENC[noexist,YWFiYmNjZGQ=]
+`
+
+	c := &RPCCallerBase{}
+
+	expect := []MessageReceiver{
+		errorReturnReceiver(
+			t,
+			c,
+			Message{
+				Channel: "rpc",
+				Subject: "call",
+				IsRaw:   true,
+				Payload: []byte("aabbccdd"),
+				Labels: map[string]string{
+					"caller":  "-",
+					"feature": "driver:noexist",
+					"method":  "decrypt",
+					"rpcID":   "0",
+				},
+			},
+			"failed to decrypt",
+		),
+	}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] failed to decrypt config key data.item2 using driver noexist: rpc error: reason: failed to decrypt",
+		func() {
+			wrapDecryptAll(t, doc, expect, c)
+		},
+		"decrypt errors should fail config processing",
+	)
+}
+
+func TestDecryptAllPanicsOnInvalidEncryptedData(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: ENC[noexist,!!!!]
+`
+
+	c := &RPCCallerBase{}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] encrypted config value for key data.item2 should be base64 encoded: illegal base64 data at input byte 0",
+		func() {
+			wrapDecryptAll(t, doc, nil, c)
+		},
+		"invalid base64 values should fail config processing",
+	)
+}
+
+func TestDecryptAllPanicsOnInvalidEncryptedReference(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: ENC[noexist]
+`
+
+	c := &RPCCallerBase{}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] invalid ENC config value for key data.item2",
+		func() {
+			wrapDecryptAll(t, doc, nil, c)
+		},
+		"malformed encrypted references should fail config processing",
+	)
+}
+
 func TestDecryptAllWithDeferred(t *testing.T) {
 	doc := `
 data:
@@ -114,6 +210,44 @@ data:
 	data := wrapDecryptAll(t, doc, expect, c)
 	assert.Equal(t, "ENC[driver1,YWFiYmNjZGQ=]", MustGetMapDataStr(data, "data.item3.item4"), "item4 should be stripped off one deferred flag")
 	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
+}
+
+func TestDecryptAllPanicsOnLookUpError(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: LOOKUP[kvstore,secret/path]
+`
+
+	c := &RPCCallerBase{}
+
+	expect := []MessageReceiver{
+		errorReturnReceiver(
+			t,
+			c,
+			Message{
+				Channel: "rpc",
+				Subject: "call",
+				IsRaw:   true,
+				Payload: []byte("secret/path"),
+				Labels: map[string]string{
+					"caller":  "-",
+					"feature": "driver:kvstore",
+					"method":  "lookup",
+					"rpcID":   "0",
+				},
+			},
+			"failed to lookup",
+		),
+	}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] failed to resolve LOOKUP using driver kvstore for config key data.item2: rpc error: reason: failed to lookup",
+		func() {
+			wrapDecryptAll(t, doc, expect, c)
+		},
+		"lookup errors should fail config processing",
+	)
 }
 
 func TestDecryptAllWithLookUp(t *testing.T) {

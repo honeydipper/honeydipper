@@ -141,6 +141,25 @@ func TestServiceLoopCatchError(t *testing.T) {
 	daemon.ShuttingDown = false
 }
 
+func TestRecoverReloadPanicHandlesNonErrorPanic(t *testing.T) {
+	if dipper.Logger == nil {
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
+		defer f.Close()
+		dipper.GetLogger("test service", "DEBUG", f, f)
+	}
+
+	svc := &Service{
+		name:    "testsvc",
+		config:  &config.Config{},
+		healthy: true,
+	}
+
+	assert.NotPanics(t, func() {
+		svc.recoverReloadPanic("non-error panic")
+	}, "service reload recovery should handle non-error panic values")
+	assert.False(t, svc.healthy, "service should be unhealthy after reload panic")
+}
+
 func TestServiceRemoveEmitter(t *testing.T) {
 	if dipper.Logger == nil {
 		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)

@@ -8,8 +8,43 @@ package dipper
 
 import (
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"strings"
 )
+
+// ErrConfigProcessing indicates config decryption or lookup processing failed.
+var ErrConfigProcessing = errors.New("config processing failed")
+
+func panicConfigProcessingError(err error) {
+	Logger.Error(err)
+	panic(err)
+}
+
+func splitConfigRef(rpc RPCCaller, key string, refType string, ref string, prefixLen int) []string {
+	if len(ref) <= prefixLen || !strings.HasSuffix(ref, "]") {
+		panicConfigProcessingError(
+			fmt.Errorf(
+				"%w: [%s] invalid %s config value for key %s",
+				ErrConfigProcessing,
+				rpc.GetName(), refType, key,
+			),
+		)
+	}
+
+	parts := strings.SplitN(ref[prefixLen:len(ref)-1], ",", 2)
+	if len(parts) != 2 {
+		panicConfigProcessingError(
+			fmt.Errorf(
+				"%w: [%s] invalid %s config value for key %s",
+				ErrConfigProcessing,
+				rpc.GetName(), refType, key,
+			),
+		)
+	}
+
+	return parts
+}
 
 // GetDecryptFunc returns a function used in recursive decryption.
 func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
@@ -23,26 +58,50 @@ func GetDecryptFunc(rpc RPCCaller) ItemProcessor {
 		switch {
 		case strings.HasPrefix(str, "ENC["):
 			//nolint:gomnd
-			parts := strings.SplitN(str[4:len(str)-1], ",", 2)
+			parts := splitConfigRef(rpc, key, "ENC", str, 4)
 			encDriver := parts[0]
 			if encDriver == "deferred" {
 				return "ENC[" + parts[1] + "]", true
 			}
 			decoded, err := base64.StdEncoding.DecodeString(parts[1])
 			if err != nil {
-				Logger.Panicf("encrypted data should be base64 encoded")
+				panicConfigProcessingError(
+					fmt.Errorf(
+						"%w: [%s] encrypted config value for key %s should be base64 encoded: %w",
+						ErrConfigProcessing,
+						rpc.GetName(), key, err,
+					),
+				)
 			}
-			decrypted, _ := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
+			decrypted, err := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
+			if err != nil {
+				panicConfigProcessingError(
+					fmt.Errorf(
+						"%w: [%s] failed to decrypt config key %s using driver %s: %w",
+						ErrConfigProcessing,
+						rpc.GetName(), key, encDriver, err,
+					),
+				)
+			}
 
 			return string(decrypted), true
 		case strings.HasPrefix(str, "LOOKUP["):
 			//nolint:gomnd
-			parts := strings.SplitN(str[7:len(str)-1], ",", 2)
+			parts := splitConfigRef(rpc, key, "LOOKUP", str, 7)
 			lookupDriver := parts[0]
 			if lookupDriver == "deferred" {
 				return "LOOKUP[" + parts[1] + "]", true
 			}
-			lookupValue, _ := rpc.CallRaw("driver:"+lookupDriver, "lookup", []byte(parts[1]))
+			lookupValue, err := rpc.CallRaw("driver:"+lookupDriver, "lookup", []byte(parts[1]))
+			if err != nil {
+				panicConfigProcessingError(
+					fmt.Errorf(
+						"%w: [%s] failed to resolve LOOKUP using driver %s for config key %s: %w",
+						ErrConfigProcessing,
+						rpc.GetName(), lookupDriver, key, err,
+					),
+				)
+			}
 
 			return string(lookupValue), true
 		}
