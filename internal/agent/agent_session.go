@@ -59,6 +59,7 @@ type AgentSession struct {
 	TotalTokens           int
 	InputTokens           int
 	OutputTokens          int
+	TokenCounter          agentpkg.TokenCounter
 	ParentSessionID       string
 	ParentTurnID          string
 	ParentToolCallID      string
@@ -220,6 +221,11 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 		s.Agent = cs.Agent
 		if s.Agent == nil {
 			panic(fmt.Sprintf("agent config not found for session %s: ConvoState.Agent=nil", s.ID))
+		}
+
+		// Initialize custom token counter if configured
+		if s.Agent != nil && s.Agent.TokenCounter != "" && s.Agent.TokenCounter != "default" {
+			s.TokenCounter = &SimpleTokenCounter{}
 		}
 	}
 
@@ -461,7 +467,13 @@ func (s *AgentSession) sendToDriver() {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
 			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
 	}
-	s.InputTokens = 0
+	// Count input tokens using custom counter if configured
+	if s.TokenCounter != nil {
+		for _, msg := range history {
+			s.InputTokens += s.TokenCounter.CountTokens(msg.Content)
+		}
+	}
+
 	s.OutputTokens = 0
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":         s.Agent.Engine,
@@ -545,9 +557,18 @@ func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
 	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
-	s.InputTokens += agentMsg.InputTokens
-	s.OutputTokens += agentMsg.OutputTokens
-	s.TotalTokens += agentMsg.InputTokens + agentMsg.OutputTokens
+	// Use custom token counter if configured, otherwise use driver-reported values
+	if s.TokenCounter != nil {
+		if agentMsg.Role == RoleAgent {
+			s.OutputTokens += s.TokenCounter.CountTokens(agentMsg.Content)
+		}
+		// Input tokens are counted in sendToDriver(), don't add driver-reported values
+		// to avoid double counting
+	} else {
+		s.InputTokens += agentMsg.InputTokens
+		s.OutputTokens += agentMsg.OutputTokens
+	}
+	s.TotalTokens = s.InputTokens + s.OutputTokens
 
 	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
 	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
