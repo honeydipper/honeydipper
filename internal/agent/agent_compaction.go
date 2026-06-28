@@ -127,13 +127,17 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 
 	// Update in-memory history
 	s.history = newHistory
-	s.PrevContextSize = 0  // reset previous context size since we're starting fresh with the summary as context
-	s.lastCountedIndex = 0 // reset token counting index for incremental counting
+	s.PrevContextSize = 0 // reset previous context size since we're starting fresh with the summary as context
 
-	// Reset ContextTokens in ConvoState since history changed
-	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-		cs.ContextTokens = 0
-	})
+	// Only reset custom token counting state when TokenCounter is active.
+	// When TokenCounter is nil, these fields are not used and don't need reset.
+	if s.TokenCounter != nil {
+		s.lastCountedIndex = 0 // reset token counting index for incremental counting
+		// Reset ContextTokens in ConvoState since history changed
+		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+			cs.ContextTokens = 0
+		})
+	}
 	s.CurrentCall = 0
 	s.ToolResults = nil
 
