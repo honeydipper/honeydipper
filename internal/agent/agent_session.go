@@ -63,6 +63,7 @@ type AgentSession struct {
 	ParentSessionID       string
 	ParentTurnID          string
 	ParentToolCallID      string
+	lastCountedIndex      int // index of last message counted in ConvoState.ContextTokens
 
 	store AgentStore
 }
@@ -210,6 +211,9 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 		s.load(id, store)
 		s.store = store
 		s.loadConvoHistory()
+		// Set lastCountedIndex after loading history so incremental counting
+		// starts from the correct position.
+		s.lastCountedIndex = len(s.history)
 	} else {
 		s.initNewSession(id, msg, store)
 	}
@@ -243,7 +247,7 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 	if s.Type == "" {
 		s.Type = agentpkg.SessionTypeChatTurn
 	}
-
+	s.lastCountedIndex = 0 // initialize token counting index for new session
 	s.TTL = AgentSessionDefaultTTL
 	if ttl, ok := dipper.GetMapDataStr(msg.Payload, "ttl"); ok && ttl != "" {
 		s.TTL = ttl
@@ -431,6 +435,58 @@ func (s *AgentSession) recover() {
 	s.sendToDriver()
 }
 
+// countMessageTokens counts all tokens in a message including content, tool calls, and tool results.
+// It uses the SimpleTokenCounter as the default implementation.
+func (s *AgentSession) countMessageTokens(msg AgentMessage) int {
+	counter := &SimpleTokenCounter{}
+
+	total := 0
+
+	// Count content tokens
+	total += counter.CountTokens(msg.Content)
+
+	// Count thoughts tokens
+	total += counter.CountTokens(msg.Thoughts)
+
+	// Count tool call tokens (function names and parameters)
+	for _, tc := range msg.ToolCalls {
+		total += counter.CountTokens(tc.FuncName)
+		// Convert params to string for counting
+		if tc.Params != nil {
+			paramsStr := fmt.Sprintf("%v", tc.Params)
+			total += counter.CountTokens(paramsStr)
+		}
+	}
+
+	// Count tool result tokens
+	for _, tr := range msg.ToolResult {
+		resultStr := fmt.Sprintf("%v", tr)
+		total += counter.CountTokens(resultStr)
+	}
+
+	return total
+}
+
+// countSystemPromptTokens counts tokens in the system prompt.
+func (s *AgentSession) countSystemPromptTokens() int {
+	counter := &SimpleTokenCounter{}
+
+	systemPrompt := s.Agent.SystemPrompt
+	if s.Type == AgentSessionTypeInference && len(s.Agent.InferencePrompt) > 0 {
+		systemPrompt = s.Agent.InferencePrompt
+	}
+
+	return counter.CountTokens(systemPrompt)
+}
+
+// getConvoContextTokens safely retrieves the current context tokens from ConvoState.
+func (s *AgentSession) getConvoContextTokens() int {
+	cs := &ConvoState{}
+	cs.load(s.ConvoID, s.store)
+
+	return cs.ContextTokens
+}
+
 func (s *AgentSession) sendToDriver() {
 	tools := s.BuildTools()
 	timeout := s.CurrentMsg.Labels["timeout"]
@@ -463,18 +519,30 @@ func (s *AgentSession) sendToDriver() {
 	history = append(history, AgentMessage{Role: RoleSystem, Content: systemPrompt})
 	history = append(history, s.history...)
 
-	if log := s.log(); log != nil {
-		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
-			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
-	}
-	// Count input tokens using custom counter if configured
-	if s.TokenCounter != nil {
-		for _, msg := range history {
-			s.InputTokens += s.TokenCounter.CountTokens(msg.Content)
+	// Incremental token counting: count system prompt on first send, then only
+	// count new messages since last counted index.
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		if s.lastCountedIndex == 0 {
+			// First send: count system prompt + all history messages
+			cs.ContextTokens = s.countSystemPromptTokens()
+			for _, msg := range s.history {
+				cs.ContextTokens += s.countMessageTokens(msg)
+			}
+		} else {
+			// Subsequent sends: only count new messages since last counted index
+			for i := s.lastCountedIndex; i < len(s.history); i++ {
+				cs.ContextTokens += s.countMessageTokens(s.history[i])
+			}
 		}
-	}
+		// Update lastCountedIndex to current history length
+		s.lastCountedIndex = len(s.history)
+	})
 
-	s.OutputTokens = 0
+	if log := s.log(); log != nil {
+		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d context_tokens=%d",
+			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools), s.getConvoContextTokens())
+	}
+	s.InputTokens = 0
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":         s.Agent.Engine,
 		"history":        history,
@@ -570,6 +638,13 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	}
 	s.TotalTokens = s.InputTokens + s.OutputTokens
 
+	// Count output tokens (including tool call arguments) and add to context
+	// for next round trip. This ensures tool calls and their arguments are
+	// included in the context token count.
+	outputTokens := s.countMessageTokens(*agentMsg)
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.ContextTokens += outputTokens
+	})
 	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
 	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
 	if agentMsg.Role == RoleAgent && !agentMsg.IsComplete {
