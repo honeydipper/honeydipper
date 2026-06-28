@@ -8,9 +8,52 @@ package dipper
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+var ErrConfigProcessing = errors.New("config processing failed")
+
+func panicConfigProcessingError(err error) {
+	Logger.Error(err)
+	panic(err)
+}
+
+func splitConfigRef(rpc RPCCaller, key, refType, ref string, prefixLen int) ([]string, string) {
+	closingIdx := strings.Index(ref, "]")
+	if closingIdx < prefixLen {
+		panicConfigProcessingError(
+			fmt.Errorf(
+				"%w: [%s] invalid %s config value for key %s",
+				ErrConfigProcessing,
+				rpc.GetName(),
+				refType,
+				key,
+			),
+		)
+	}
+
+	pattern := "%s"
+	if closingIdx < len(ref)-1 && ref[closingIdx+1] == ':' {
+		pattern = ref[closingIdx+2:]
+	}
+
+	parts := strings.SplitN(ref[prefixLen:closingIdx], ",", 2)
+	if len(parts) != 2 {
+		panicConfigProcessingError(
+			fmt.Errorf(
+				"%w: [%s] invalid %s config value for key %s",
+				ErrConfigProcessing,
+				rpc.GetName(),
+				refType,
+				key,
+			),
+		)
+	}
+
+	return parts, pattern
+}
 
 // DecryptString uses the appropriate driver to decrypt the given string.
 func DecryptString(rpc RPCCaller, key, str string) (string, bool) {
@@ -19,12 +62,7 @@ func DecryptString(rpc RPCCaller, key, str string) (string, bool) {
 	switch {
 	case strings.HasPrefix(str, "ENC["):
 		Logger.Debugf("[%s] decrypting %s", rpc.GetName(), key)
-		closingIdx := strings.Index(str, "]")
-		pattern := "%s"
-		if closingIdx < len(str)-1 && str[closingIdx+1] == ':' {
-			pattern = str[closingIdx+2:]
-		}
-		parts := strings.SplitN(str[4:closingIdx], ",", 2)
+		parts, pattern := splitConfigRef(rpc, key, "ENC", str, 4)
 		encDriver := parts[0]
 		if encDriver == "deferred" {
 			p := parts[1]
@@ -40,22 +78,34 @@ func DecryptString(rpc RPCCaller, key, str string) (string, bool) {
 		}
 		decoded, err := base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
-			Logger.Panicf("encrypted data should be base64 encoded")
+			panicConfigProcessingError(
+				fmt.Errorf(
+					"%w: [%s] encrypted config value for key %s should be base64 encoded: %w",
+					ErrConfigProcessing,
+					rpc.GetName(),
+					key,
+					err,
+				),
+			)
 		}
-		decrypted, e := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
-		if !optional {
-			Must(e)
+		decrypted, err := rpc.CallRaw("driver:"+encDriver, "decrypt", decoded)
+		if err != nil && !optional {
+			panicConfigProcessingError(
+				fmt.Errorf(
+					"%w: [%s] failed to decrypt config key %s using driver %s: %w",
+					ErrConfigProcessing,
+					rpc.GetName(),
+					key,
+					encDriver,
+					err,
+				),
+			)
 		}
 
 		return fmt.Sprintf(pattern, string(decrypted)), true
 	case strings.HasPrefix(str, "LOOKUP["):
 		Logger.Debugf("[%s] looking up %s", rpc.GetName(), key)
-		closingIdx := strings.Index(str, "]")
-		pattern := "%s"
-		if closingIdx < len(str)-1 && str[closingIdx+1] == ':' {
-			pattern = str[closingIdx+2:]
-		}
-		parts := strings.SplitN(str[7:closingIdx], ",", 2)
+		parts, pattern := splitConfigRef(rpc, key, "LOOKUP", str, 7)
 		lookupDriver := parts[0]
 		if lookupDriver == "deferred" {
 			result := "LOOKUP[" + parts[1] + "]"
@@ -70,9 +120,18 @@ func DecryptString(rpc RPCCaller, key, str string) (string, bool) {
 			optional = true
 			p = parts[1][1:]
 		}
-		lookupValue, e := rpc.CallRaw("driver:"+lookupDriver, "lookup", []byte(p))
-		if !optional {
-			Must(e)
+		lookupValue, err := rpc.CallRaw("driver:"+lookupDriver, "lookup", []byte(p))
+		if err != nil && !optional {
+			panicConfigProcessingError(
+				fmt.Errorf(
+					"%w: [%s] failed to resolve LOOKUP using driver %s for config key %s: %w",
+					ErrConfigProcessing,
+					rpc.GetName(),
+					lookupDriver,
+					key,
+					err,
+				),
+			)
 		}
 
 		return fmt.Sprintf(pattern, string(lookupValue)), true

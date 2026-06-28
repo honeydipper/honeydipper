@@ -304,14 +304,7 @@ func (s *Service) start() {
 func (s *Service) Reload() {
 	defer func() {
 		if r := recover(); r != nil {
-			s.healthy = false
-			if errors.Is(r.(error), config.ErrConfigRollback) {
-				dipper.Logger.Errorf("[%s] reverting config initiated outside of the service", s.name)
-
-				return
-			}
-			dipper.Logger.Errorf("[%s] reverting config due to fatal failure %v", s.name, r)
-			s.config.RollBack()
+			s.recoverReloadPanic(r)
 		}
 	}()
 	dipper.Logger.Infof("[%s] reloading service", s.name)
@@ -326,6 +319,17 @@ func (s *Service) Reload() {
 	}
 	s.healthy = true
 	s.removeUnusedFeatures(featureList)
+}
+
+func (s *Service) recoverReloadPanic(r interface{}) {
+	s.healthy = false
+	if err, ok := r.(error); ok && errors.Is(err, config.ErrConfigRollback) {
+		dipper.Logger.Errorf("[%s] reverting config initiated outside of the service", s.name)
+
+		return
+	}
+	dipper.Logger.Errorf("[%s] reverting config due to fatal failure %v", s.name, r)
+	s.config.RollBack()
 }
 
 func (s *Service) getFeatureList() map[string]bool {

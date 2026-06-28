@@ -93,6 +93,95 @@ data:
 	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
 }
 
+func TestDecryptAllPanicsOnDecryptError(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: ENC[noexist,YWFiYmNjZGQ=]
+`
+
+	c := &RPCCallerBase{}
+
+	expect := []MessageReceiver{
+		&NullReceiver{
+			SendMessageFunc: func(msg *Message) {
+				assert.Equalf(t,
+					Message{
+						Channel: "rpc",
+						Subject: "call",
+						IsRaw:   true,
+						Payload: []byte("aabbccdd"),
+						Labels: map[string]string{
+							"caller":  "-",
+							"feature": "driver:noexist",
+							"method":  "decrypt",
+							"rpcID":   "0",
+						},
+					},
+					*msg,
+					"should make call to decrypt item2",
+				)
+				c.HandleReturn(&Message{
+					Channel: "rpc",
+					Subject: "return",
+					IsRaw:   true,
+					Labels: map[string]string{
+						"caller":  "-",
+						"feature": "driver:noexist",
+						"method":  "decrypt",
+						"rpcID":   "0",
+						"error":   "failed to decrypt",
+					},
+				})
+			},
+		},
+	}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] failed to decrypt config key data.item2 using driver noexist: rpc error: reason: failed to decrypt",
+		func() {
+			wrapDecryptAll(t, doc, expect, c)
+		},
+		"decrypt errors should fail config processing",
+	)
+}
+
+func TestDecryptAllPanicsOnInvalidEncryptedData(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: ENC[noexist,!!!!]
+`
+
+	c := &RPCCallerBase{}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] encrypted config value for key data.item2 should be base64 encoded: illegal base64 data at input byte 0",
+		func() {
+			wrapDecryptAll(t, doc, nil, c)
+		},
+		"invalid encrypted data should fail config processing",
+	)
+}
+
+func TestDecryptAllPanicsOnInvalidEncryptedReference(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: ENC[noexist]
+`
+
+	c := &RPCCallerBase{}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] invalid ENC config value for key data.item2",
+		func() {
+			wrapDecryptAll(t, doc, nil, c)
+		},
+		"invalid encrypted references should fail config processing",
+	)
+}
+
 func TestDecryptAllWithDeferred(t *testing.T) {
 	doc := `
 data:
@@ -113,6 +202,126 @@ data:
 
 	data := wrapDecryptAll(t, doc, expect, c)
 	assert.Equal(t, "ENC[driver1,YWFiYmNjZGQ=]", MustGetMapDataStr(data, "data.item3.item4"), "item4 should be stripped off one deferred flag")
+	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
+}
+
+func TestDecryptAllPanicsOnLookUpError(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: LOOKUP[kvstore,secret/path]
+`
+
+	c := &RPCCallerBase{}
+
+	expect := []MessageReceiver{
+		&NullReceiver{
+			SendMessageFunc: func(msg *Message) {
+				assert.Equalf(t,
+					Message{
+						Channel: "rpc",
+						Subject: "call",
+						IsRaw:   true,
+						Payload: []byte("secret/path"),
+						Labels: map[string]string{
+							"caller":  "-",
+							"feature": "driver:kvstore",
+							"method":  "lookup",
+							"rpcID":   "0",
+						},
+					},
+					*msg,
+					"should make call to lookup for item2",
+				)
+				c.HandleReturn(&Message{
+					Channel: "rpc",
+					Subject: "return",
+					IsRaw:   true,
+					Labels: map[string]string{
+						"caller":  "-",
+						"feature": "driver:kvstore",
+						"method":  "lookup",
+						"rpcID":   "0",
+						"error":   "failed to lookup",
+					},
+				})
+			},
+		},
+	}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] failed to resolve LOOKUP using driver kvstore for config key data.item2: rpc error: reason: failed to lookup",
+		func() {
+			wrapDecryptAll(t, doc, expect, c)
+		},
+		"lookup errors should fail config processing",
+	)
+}
+
+func TestDecryptAllPanicsOnInvalidLookUpReference(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: LOOKUP[kvstore]
+`
+
+	c := &RPCCallerBase{}
+
+	assert.PanicsWithError(t,
+		"config processing failed: [mockCaller] invalid LOOKUP config value for key data.item2",
+		func() {
+			wrapDecryptAll(t, doc, nil, c)
+		},
+		"invalid lookup references should fail config processing",
+	)
+}
+
+func TestDecryptAllWithOptionalLookUpErrorAndPattern(t *testing.T) {
+	doc := `
+data:
+  item1: not encrypted
+  item2: "LOOKUP[kvstore,?secret/path]:prefix-%s"
+`
+
+	c := &RPCCallerBase{}
+
+	expect := []MessageReceiver{
+		&NullReceiver{
+			SendMessageFunc: func(msg *Message) {
+				assert.Equalf(t,
+					Message{
+						Channel: "rpc",
+						Subject: "call",
+						IsRaw:   true,
+						Payload: []byte("secret/path"),
+						Labels: map[string]string{
+							"caller":  "-",
+							"feature": "driver:kvstore",
+							"method":  "lookup",
+							"rpcID":   "0",
+						},
+					},
+					*msg,
+					"should make call to lookup for item2",
+				)
+				c.HandleReturn(&Message{
+					Channel: "rpc",
+					Subject: "return",
+					IsRaw:   true,
+					Labels: map[string]string{
+						"caller":  "-",
+						"feature": "driver:kvstore",
+						"method":  "lookup",
+						"rpcID":   "0",
+						"error":   "failed to lookup",
+					},
+				})
+			},
+		},
+	}
+
+	data := wrapDecryptAll(t, doc, expect, c)
+	assert.Equal(t, "prefix-", MustGetMapDataStr(data, "data.item2"), "optional lookup errors should preserve pattern with empty value")
 	assert.Equal(t, "not encrypted", MustGetMapDataStr(data, "data.item1"), "data.item1 should remain unchanged")
 }
 
