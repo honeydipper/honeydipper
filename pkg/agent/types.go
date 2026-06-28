@@ -103,3 +103,11 @@ type CompactionPolicy struct {
 	// The template receives the conversation history as formatted text.
 	SummarizationPrompt string `json:"summarization_prompt" mapstructure:"summarization_prompt"`
 }
+
+// TokenCounter is an interface for counting tokens in text.
+// Implementations can use different strategies such as character-based
+// heuristics, model-specific tokenizers, or API-based counting.
+type TokenCounter interface {
+	// CountTokens returns the estimated number of tokens in the given text.
+	CountTokens(text string) int
+}

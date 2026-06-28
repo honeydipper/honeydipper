@@ -185,6 +185,7 @@ type Agent struct {
 	SkillsPaths        []string               `json:"skills" mapstructure:"skills"`
 	FileTool           string                 `json:"file_tool" mapstructure:"file_tool"`
 	Description        string
+	TokenCounter       string `json:"token_counter" mapstructure:"token_counter"`
 	Meta               interface{}
 }
 
