@@ -228,7 +228,7 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 		}
 
 		// Initialize custom token counter if configured
-		if s.Agent != nil && s.Agent.TokenCounter != "" && s.Agent.TokenCounter != "default" {
+		if s.Agent != nil && s.Agent.TokenCounter == "simple" {
 			s.TokenCounter = &SimpleTokenCounter{}
 		}
 	}
@@ -316,6 +316,10 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 			cs.Agent = interpolateAgentConfig(s.store, msg.Labels["agent_name"], msg.Payload)
 		}
 		s.Agent = cs.Agent
+		// Initialize custom token counter if configured
+		if s.Agent != nil && s.Agent.TokenCounter == "simple" {
+			s.TokenCounter = &SimpleTokenCounter{}
+		}
 		cs.registerSession(s.ID, agentName, s.Type, true)
 	})
 	// Also register in the unified convo state when it spans multiple convo IDs
@@ -529,13 +533,19 @@ func (s *AgentSession) sendToDriver() {
 		if s.lastCountedIndex == 0 {
 			// First send: count system prompt + all history messages
 			cs.ContextTokens = s.countSystemPromptTokens()
-			for _, msg := range s.history {
-				cs.ContextTokens += s.countMessageTokens(msg)
+			for i, msg := range s.history {
+				msgTokens := s.countMessageTokens(msg)
+				cs.ContextTokens += msgTokens
+				// Write token counts back to the message for UI display
+				s.history[i].InputTokens = msgTokens
 			}
 		} else {
 			// Subsequent sends: only count new messages since last counted index
 			for i := s.lastCountedIndex; i < len(s.history); i++ {
-				cs.ContextTokens += s.countMessageTokens(s.history[i])
+				msgTokens := s.countMessageTokens(s.history[i])
+				cs.ContextTokens += msgTokens
+				// Write token counts back to the message for UI display
+				s.history[i].InputTokens = msgTokens
 			}
 		}
 		// Update lastCountedIndex to current history length
@@ -643,6 +653,8 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	s.TotalTokens = s.InputTokens + s.OutputTokens
 
 	// Count output tokens (including tool call arguments) and add to context
+
+	// Count output tokens (including tool call arguments) and add to context
 	// for next round trip. This ensures tool calls and their arguments are
 	// included in the context token count.
 	outputTokens := s.countMessageTokens(*agentMsg)
@@ -650,8 +662,10 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		cs.ContextTokens += outputTokens
 	})
 
-	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
-	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
+	// Write output tokens back to the message for UI display in convo history
+	if s.TokenCounter != nil {
+		agentMsg.OutputTokens = outputTokens
+	}
 	if agentMsg.Role == RoleAgent && !agentMsg.IsComplete {
 		s.PendingContent += agentMsg.Content
 		s.PendingThoughts += agentMsg.Thoughts

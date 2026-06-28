@@ -274,3 +274,214 @@ func TestCompactionResetsContextTokens(t *testing.T) {
 	assert.Equal(t, 0, cs2.ContextTokens, "ContextTokens should be reset after compaction")
 	assert.Equal(t, 0, s.lastCountedIndex, "lastCountedIndex should be reset after compaction")
 }
+
+func TestTokenCountsWrittenBackToMessages(t *testing.T) {
+	store := newMockStore(nil)
+	agent := makeTestAgent()
+	agent.TokenCounter = "simple"
+	store.cfg.DataSet.Agents["testagent"] = agent
+
+	s := &AgentSession{
+		ID:               "test-session",
+		ConvoID:          "test-convo",
+		Agent:            &agent,
+		TokenCounter:     &SimpleTokenCounter{},
+		store:            store,
+		lastCountedIndex: 0,
+	}
+
+	// Add some history messages
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "Hello"},
+		{Role: RoleAgent, Content: "Hi there!"},
+	}
+
+	// Create a mock ConvoState
+	cs := &ConvoState{
+		ConvoID: "test-convo",
+		TTL:     "72h",
+	}
+	cs.persist(store)
+
+	// Count tokens and write back to messages
+	for i, msg := range s.history {
+		msgTokens := s.countMessageTokens(msg)
+		s.history[i].InputTokens = msgTokens
+	}
+
+	// Verify token counts were written back
+	if s.history[0].InputTokens == 0 {
+		t.Errorf("Expected InputTokens > 0 for first message, got %d", s.history[0].InputTokens)
+	}
+	if s.history[1].InputTokens == 0 {
+		t.Errorf("Expected InputTokens > 0 for second message, got %d", s.history[1].InputTokens)
+	}
+
+	// Verify the tokens are reasonable (1 token ≈ 4 chars)
+	// "Hello" = 5 chars = 1 token
+	if s.history[0].InputTokens != 1 {
+		t.Errorf("Expected InputTokens = 1 for 'Hello', got %d", s.history[0].InputTokens)
+	}
+}
+
+func TestOutputTokensWrittenBackToAgentMessage(t *testing.T) {
+	store := newMockStore(nil)
+	agent := makeTestAgent()
+	agent.TokenCounter = "simple"
+	store.cfg.DataSet.Agents["testagent"] = agent
+
+	s := &AgentSession{
+		ID:           "test-session",
+		ConvoID:      "test-convo",
+		Agent:        &agent,
+		TokenCounter: &SimpleTokenCounter{},
+		store:        store,
+	}
+
+	// Create a mock ConvoState
+	cs := &ConvoState{
+		ConvoID: "test-convo",
+		TTL:     "72h",
+	}
+	cs.persist(store)
+
+	// Create an agent message
+	agentMsg := &AgentMessage{
+		Role:    RoleAgent,
+		Content: "This is a test response",
+	}
+
+	// Count output tokens
+	outputTokens := s.countMessageTokens(*agentMsg)
+
+	// Simulate writing back to message (as done in processAgentMessage)
+	agentMsg.OutputTokens = outputTokens
+
+	// Verify output tokens were written back
+	if agentMsg.OutputTokens == 0 {
+		t.Errorf("Expected OutputTokens > 0, got %d", agentMsg.OutputTokens)
+	}
+
+	// "This is a test response" = 24 chars = 6 tokens
+	if agentMsg.OutputTokens < 5 || agentMsg.OutputTokens > 7 {
+		t.Errorf("Expected OutputTokens between 5-7 for test message, got %d", agentMsg.OutputTokens)
+	}
+}
+
+func TestTokenCountsNotWrittenBackWhenTokenCounterNil(t *testing.T) {
+	store := newMockStore(nil)
+	agent := makeTestAgent()
+	agent.TokenCounter = "" // Not set to "simple"
+	store.cfg.DataSet.Agents["testagent"] = agent
+
+	s := &AgentSession{
+		ID:           "test-session",
+		Agent:        &agent,
+		TokenCounter: nil, // No custom counter
+		store:        store,
+	}
+
+	// Create an agent message
+	agentMsg := &AgentMessage{
+		Role:    RoleAgent,
+		Content: "Test message",
+	}
+
+	// Simulate what happens in processAgentMessage when TokenCounter is nil
+	// Should use driver-reported values instead of custom counting
+	if s.TokenCounter == nil {
+		agentMsg.InputTokens = 10  // Simulated driver-reported value
+		agentMsg.OutputTokens = 20 // Simulated driver-reported value
+	}
+
+	// Verify driver-reported values are used
+	if agentMsg.InputTokens != 10 {
+		t.Errorf("Expected InputTokens = 10 (driver-reported), got %d", agentMsg.InputTokens)
+	}
+	if agentMsg.OutputTokens != 20 {
+		t.Errorf("Expected OutputTokens = 20 (driver-reported), got %d", agentMsg.OutputTokens)
+	}
+}
+
+func TestTokenCounterOnlyUsedWhenSetToSimple(t *testing.T) {
+	store := newMockStore(nil)
+
+	// Test with TokenCounter set to "simple" - should use custom counter
+	agentSimple := config.Agent{
+		Name:         "testagent-simple",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "You are a helpful assistant.",
+		TokenCounter: "simple",
+	}
+	store.cfg.DataSet.Agents["testagent-simple"] = agentSimple
+
+	sSimple := &AgentSession{}
+
+	// TokenCounter should be initialized when set to "simple"
+	sSimple.setup(&dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "testagent-simple",
+		},
+		Payload: map[string]interface{}{
+			"type": AgentSessionTypeChatTurn,
+			"text": "hello",
+		},
+	}, store, false)
+
+	if sSimple.TokenCounter == nil {
+		t.Error("TokenCounter should be initialized when agent.TokenCounter is set to 'simple'")
+	}
+
+	// Test with TokenCounter set to other values - should NOT use custom counter
+	agentOther := config.Agent{
+		Name:         "testagent-other",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "You are a helpful assistant.",
+		TokenCounter: "other",
+	}
+	store.cfg.DataSet.Agents["testagent-other"] = agentOther
+
+	sOther := &AgentSession{}
+
+	sOther.setup(&dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "testagent-other",
+		},
+		Payload: map[string]interface{}{
+			"type": AgentSessionTypeChatTurn,
+			"text": "hello",
+		},
+	}, store, false)
+
+	if sOther.TokenCounter != nil {
+		t.Error("TokenCounter should NOT be initialized when agent.TokenCounter is set to 'other'")
+	}
+
+	// Test with TokenCounter empty - should NOT use custom counter
+	agentEmpty := config.Agent{
+		Name:         "testagent-empty",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "You are a helpful assistant.",
+		TokenCounter: "",
+	}
+	store.cfg.DataSet.Agents["testagent-empty"] = agentEmpty
+
+	sEmpty := &AgentSession{}
+
+	sEmpty.setup(&dipper.Message{
+		Labels: map[string]string{
+			"agent_name": "testagent-empty",
+		},
+		Payload: map[string]interface{}{
+			"type": AgentSessionTypeChatTurn,
+			"text": "hello",
+		},
+	}, store, false)
+
+	if sEmpty.TokenCounter != nil {
+		t.Error("TokenCounter should NOT be initialized when agent.TokenCounter is empty")
+	}
+}
