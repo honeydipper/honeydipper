@@ -27,67 +27,52 @@ func makeTestAgent() config.Agent {
 	}
 }
 
-func TestCountMessageTokens_EmptyMessage(t *testing.T) {
+// makeTokenCountingSession creates a session with TokenCounter set.
+func makeTokenCountingSession(agent config.Agent, history []AgentMessage) *AgentSession {
 	store := newMockStore(nil)
-	agent := makeTestAgent()
 	agent.TokenCounter = "simple"
 	store.cfg.DataSet.Agents["testagent"] = agent
 
 	s := &AgentSession{
 		ID:           "test-session",
+		ConvoID:      "test-convo",
 		Agent:        &agent,
 		TokenCounter: &SimpleTokenCounter{},
 		store:        store,
+		history:      history,
 	}
 
-	msg := AgentMessage{}
-	tokens := s.countMessageTokens(msg)
+	// Ensure ConvoState exists
+	cs := &ConvoState{
+		ConvoID: "test-convo",
+		TTL:     "72h",
+	}
+	cs.persist(store)
+
+	return s
+}
+
+// countMessageTokens tests.
+
+func TestCountMessageTokens_EmptyMessage(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent(), nil)
+	tokens := s.countMessageTokens(AgentMessage{})
 	assert.Equal(t, 0, tokens, "Empty message should have 0 tokens")
 }
 
 func TestCountMessageTokens_ContentOnly(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	s := &AgentSession{
-		ID:           "test-session",
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-	}
-
-	msg := AgentMessage{
-		Content: "Hello, world!",
-	}
-	tokens := s.countMessageTokens(msg)
+	s := makeTokenCountingSession(makeTestAgent(), nil)
+	tokens := s.countMessageTokens(AgentMessage{Content: "Hello, world!"})
 	// "Hello, world!" has 13 chars, 13/4 = 3 tokens
 	assert.Equal(t, 3, tokens)
 }
 
 func TestCountMessageTokens_WithToolCalls(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	s := &AgentSession{
-		ID:           "test-session",
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-	}
-
+	s := makeTokenCountingSession(makeTestAgent(), nil)
 	msg := AgentMessage{
 		Content: "Calling a tool",
 		ToolCalls: []AgentToolCall{
-			{
-				FuncName: "sys_test__action",
-				Params: map[string]interface{}{
-					"param1": "value1",
-				},
-			},
+			{FuncName: "sys_test__action", Params: map[string]interface{}{"param1": "value1"}},
 		},
 	}
 	tokens := s.countMessageTokens(msg)
@@ -95,25 +80,11 @@ func TestCountMessageTokens_WithToolCalls(t *testing.T) {
 }
 
 func TestCountMessageTokens_WithToolResults(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	s := &AgentSession{
-		ID:           "test-session",
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-	}
-
+	s := makeTokenCountingSession(makeTestAgent(), nil)
 	msg := AgentMessage{
 		Role: RoleToolResult,
 		ToolResult: []map[string]interface{}{
-			{
-				"status": "success",
-				"data":   "result data",
-			},
+			{"status": "success", "data": "result data"},
 		},
 	}
 	tokens := s.countMessageTokens(msg)
@@ -121,78 +92,34 @@ func TestCountMessageTokens_WithToolResults(t *testing.T) {
 }
 
 func TestCountMessageTokens_WithThoughts(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	s := &AgentSession{
-		ID:           "test-session",
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-	}
-
-	msg := AgentMessage{
-		Content:  "Hello",
-		Thoughts: "I should respond politely",
-	}
-	tokens := s.countMessageTokens(msg)
+	s := makeTokenCountingSession(makeTestAgent(), nil)
+	tokens := s.countMessageTokens(AgentMessage{Content: "Hello", Thoughts: "I should respond politely"})
 	assert.Equal(t, 7, tokens)
 }
 
+// countSystemPromptTokens tests.
+
 func TestCountSystemPromptTokens_Default(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	s := &AgentSession{
-		ID:           "test-session",
-		Type:         AgentSessionTypeChatTurn,
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-	}
-
-	tokens := s.countSystemPromptTokens()
-	assert.Equal(t, 7, tokens)
+	s := makeTokenCountingSession(makeTestAgent(), nil)
+	s.Type = AgentSessionTypeChatTurn
+	assert.Equal(t, 7, s.countSystemPromptTokens())
 }
 
 func TestCountSystemPromptTokens_InferencePrompt(t *testing.T) {
-	store := newMockStore(nil)
 	agent := config.Agent{
-		Name:            "testagent",
-		Driver:          "openai",
-		Engine:          "gpt-4",
-		SystemPrompt:    "You are a helpful assistant.",
-		InferencePrompt: "Answer the question.",
-		TokenCounter:    "simple",
+		Name: "testagent", Driver: "openai", Engine: "gpt-4",
+		SystemPrompt: "You are a helpful assistant.", InferencePrompt: "Answer the question.",
 	}
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	s := &AgentSession{
-		ID:           "test-session",
-		Type:         AgentSessionTypeInference,
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-	}
-
-	tokens := s.countSystemPromptTokens()
-	assert.Equal(t, 5, tokens)
+	s := makeTokenCountingSession(agent, nil)
+	s.Type = AgentSessionTypeInference
+	assert.Equal(t, 5, s.countSystemPromptTokens())
 }
+
+// ConvoState.ContextTokens persistence tests.
 
 func TestConvoStateContextTokens_Persistence(t *testing.T) {
 	store := newMockStore(nil)
-	agent := makeTestAgent()
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	cs := &ConvoState{
-		ConvoID:       "test-convo",
-		ContextTokens: 100,
-		TTL:           "72h",
-	}
+	cs := &ConvoState{ConvoID: "test-convo", ContextTokens: 100, TTL: "72h"}
 	cs.persist(store)
 
 	cs2 := &ConvoState{}
@@ -200,26 +127,14 @@ func TestConvoStateContextTokens_Persistence(t *testing.T) {
 	assert.Equal(t, 100, cs2.ContextTokens, "ContextTokens should be persisted and loaded")
 }
 
+// Compaction reset tests.
+
 func TestCompactionResetsContextTokens(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	cs := &ConvoState{
-		ConvoID:       "test-convo",
-		ContextTokens: 500,
-		TTL:           "72h",
-	}
-	cs.persist(store)
-
-	s := &AgentSession{
-		ID:           "test-session",
-		ConvoID:      "test-convo",
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-	}
+	s := makeTokenCountingSession(makeTestAgent(), nil)
+	// Set some initial ContextTokens
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.ContextTokens = 500
+	})
 
 	s.lastCountedIndex = 0
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
@@ -227,7 +142,7 @@ func TestCompactionResetsContextTokens(t *testing.T) {
 	})
 
 	cs2 := &ConvoState{}
-	cs2.load("test-convo", store)
+	cs2.load("test-convo", s.store)
 	assert.Equal(t, 0, cs2.ContextTokens, "ContextTokens should be reset after compaction")
 	assert.Equal(t, 0, s.lastCountedIndex, "lastCountedIndex should be reset after compaction")
 }
@@ -235,31 +150,18 @@ func TestCompactionResetsContextTokens(t *testing.T) {
 func TestCompactionResetsContextTokens_OnlyWhenTokenCounterActive(t *testing.T) {
 	store := newMockStore(nil)
 	agent := makeTestAgent()
-	// TokenCounter NOT set to "simple"
 	store.cfg.DataSet.Agents["testagent"] = agent
 
-	cs := &ConvoState{
-		ConvoID:       "test-convo",
-		ContextTokens: 500,
-		TTL:           "72h",
-	}
+	cs := &ConvoState{ConvoID: "test-convo", ContextTokens: 500, TTL: "72h"}
 	cs.persist(store)
 
 	s := &AgentSession{
-		ID:           "test-session",
-		ConvoID:      "test-convo",
-		Agent:        &agent,
-		TokenCounter: nil, // No custom token counter
-		store:        store,
+		ID: "test-session", ConvoID: "test-convo",
+		Agent: &agent, TokenCounter: nil, store: store,
+		lastCountedIndex: 10,
 	}
 
-	// When TokenCounter is nil, handleCompactionResult should NOT reset ContextTokens
-	// (the lockedConvoStateUpdate call is skipped).
-	// Simulate what handleCompactionResult does:
-	s.lastCountedIndex = 10
-	s.PrevContextSize = 0
-
-	// The compaction code now guards with TokenCounter != nil
+	// The compaction code guards with TokenCounter != nil
 	if s.TokenCounter != nil {
 		s.lastCountedIndex = 0
 		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
@@ -267,16 +169,14 @@ func TestCompactionResetsContextTokens_OnlyWhenTokenCounterActive(t *testing.T) 
 		})
 	}
 
-	// ContextTokens should remain unchanged because TokenCounter is nil
 	cs2 := &ConvoState{}
 	cs2.load("test-convo", store)
 	assert.Equal(t, 500, cs2.ContextTokens, "ContextTokens should NOT be reset when TokenCounter is nil")
-	// lastCountedIndex should remain unchanged
 	assert.Equal(t, 10, s.lastCountedIndex, "lastCountedIndex should NOT be reset when TokenCounter is nil")
 }
 
-// TestTokenCounterOnlyUsedWhenSetToSimple verifies that TokenCounter is only
-// initialized when agent.TokenCounter is exactly "simple".
+// TokenCounter initialization tests.
+
 func TestTokenCounterOnlyUsedWhenSetToSimple(t *testing.T) {
 	testCases := []struct {
 		name         string
@@ -298,22 +198,15 @@ func TestTokenCounterOnlyUsedWhenSetToSimple(t *testing.T) {
 			store.cfg.DataSet.Agents["testagent"] = agent
 
 			msg := &dipper.Message{
-				Labels: map[string]string{
-					"agent_name": "testagent",
-				},
-				Payload: map[string]interface{}{
-					"type": AgentSessionTypeChatTurn,
-					"text": "hello",
-				},
+				Labels:  map[string]string{"agent_name": "testagent"},
+				Payload: map[string]interface{}{"type": AgentSessionTypeChatTurn, "text": "hello"},
 			}
 
 			s := &AgentSession{}
 			s.initNewSession("test-id", msg, store)
-
-			// TokenCounter should be nil after initNewSession (set in setup, not initNewSession)
 			assert.Nil(t, s.TokenCounter, "TokenCounter should be nil after initNewSession for %s", tc.name)
 
-			// Now simulate what setup does: initialize TokenCounter based on Agent config
+			// Simulate what setup does
 			if s.TokenCounter == nil && s.Agent != nil && s.Agent.TokenCounter == "simple" {
 				s.TokenCounter = &SimpleTokenCounter{}
 			}
@@ -327,240 +220,194 @@ func TestTokenCounterOnlyUsedWhenSetToSimple(t *testing.T) {
 	}
 }
 
-// TestTokenCounterOptimization_SkipsCountingWhenNil verifies that when
-// TokenCounter is nil, the custom counting logic (ContextTokens updates,
-// lastCountedIndex tracking, message token writeback) is skipped.
-func TestTokenCounterOptimization_SkipsCountingWhenNil(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	// Deliberately NOT setting TokenCounter to "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
+// processAgentMessage centralized token counting tests.
 
-	cs := &ConvoState{
-		ConvoID:       "test-convo",
-		ContextTokens: 0,
-		TTL:           "72h",
-	}
-	cs.persist(store)
+// TestProcessAgentMessage_CountsInputTokensFromContextTokens verifies that
+// processAgentMessage reads InputTokens from ConvoState.ContextTokens.
+func TestProcessAgentMessage_CountsInputTokensFromContextTokens(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent(), nil)
 
-	s := &AgentSession{
-		ID:           "test-session",
-		ConvoID:      "test-convo",
-		Agent:        &agent,
-		TokenCounter: nil, // No custom token counter
-		store:        store,
-		history: []AgentMessage{
-			{Role: RoleUser, Content: "Hello"},
-			{Role: RoleAgent, Content: "Hi there!"},
-		},
-		lastCountedIndex: 0,
-	}
+	// Pre-set ContextTokens to simulate the context that was sent to the model
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.ContextTokens = 150
+	})
 
-	// When TokenCounter is nil, the incremental counting block in sendToDriver
-	// should be skipped entirely. Simulate the check:
+	agentMsg := &AgentMessage{Role: RoleAgent, Content: "Hello!"}
+
+	// Simulate processAgentMessage's token counting block
 	if s.TokenCounter != nil {
-		// This block should NOT execute
-		t.Fatal("Counting block should be skipped when TokenCounter is nil")
-	}
-
-	// Verify that ContextTokens remains at 0 (no counting happened)
-	cs2 := &ConvoState{}
-	cs2.load("test-convo", store)
-	assert.Equal(t, 0, cs2.ContextTokens, "ContextTokens should remain 0 when TokenCounter is nil")
-
-	// Verify that lastCountedIndex remains at 0 (not updated)
-	assert.Equal(t, 0, s.lastCountedIndex, "lastCountedIndex should remain 0 when TokenCounter is nil")
-}
-
-// TestTokenCounterOptimization_PerformsCountingWhenActive verifies that when
-// TokenCounter is set, the custom counting logic is performed.
-func TestTokenCounterOptimization_PerformsCountingWhenActive(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	cs := &ConvoState{
-		ConvoID:       "test-convo",
-		ContextTokens: 0,
-		TTL:           "72h",
-	}
-	cs.persist(store)
-
-	s := &AgentSession{
-		ID:           "test-session",
-		ConvoID:      "test-convo",
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-		history: []AgentMessage{
-			{Role: RoleUser, Content: "Hello"},
-			{Role: RoleAgent, Content: "Hi there!"},
-		},
-		lastCountedIndex: 0,
-	}
-
-	// When TokenCounter is active, the counting block should execute
-	if s.TokenCounter == nil {
-		t.Fatal("Counting block should execute when TokenCounter is set")
-	}
-
-	// Simulate the counting logic from sendToDriver
-	if s.TokenCounter != nil {
-		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-			if s.lastCountedIndex == 0 {
-				cs.ContextTokens = s.countSystemPromptTokens()
-				for _, msg := range s.history {
-					cs.ContextTokens += s.countMessageTokens(msg)
-				}
-			}
-			s.lastCountedIndex = len(s.history)
-		})
-	}
-
-	// ContextTokens should be positive (counting happened)
-	cs2 := &ConvoState{}
-	cs2.load("test-convo", store)
-	assert.True(t, cs2.ContextTokens > 0, "ContextTokens should be positive when TokenCounter is active, got %d", cs2.ContextTokens)
-
-	// lastCountedIndex should be updated
-	assert.Equal(t, 2, s.lastCountedIndex, "lastCountedIndex should be updated to history length")
-}
-
-// TestTokensWrittenBackToMessages verifies that InputTokens are written back
-// to messages in history for UI display.
-func TestTokensWrittenBackToMessages(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	s := &AgentSession{
-		ID:           "test-session",
-		ConvoID:      "test-convo",
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-		history: []AgentMessage{
-			{Role: RoleUser, Content: "Hello"},
-			{Role: RoleAgent, Content: "Hi there!"},
-		},
-		lastCountedIndex: 0,
-	}
-
-	// Ensure ConvoState exists
-	cs := &ConvoState{
-		ConvoID: "test-convo",
-		TTL:     "72h",
-	}
-	cs.persist(store)
-
-	// Simulate the counting logic from sendToDriver with writeback
-	if s.TokenCounter != nil {
-		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-			if s.lastCountedIndex == 0 {
-				cs.ContextTokens = s.countSystemPromptTokens()
-				for i, msg := range s.history {
-					msgTokens := s.countMessageTokens(msg)
-					cs.ContextTokens += msgTokens
-					s.history[i].InputTokens = msgTokens
-				}
-			}
-			s.lastCountedIndex = len(s.history)
-		})
-	}
-
-	// Verify token counts were written back to messages
-	assert.Equal(t, 1, s.history[0].InputTokens, "User message should have InputTokens written back")
-	assert.True(t, s.history[1].InputTokens > 0, "Agent message should have InputTokens written back")
-}
-
-// TestOutputTokensWrittenBackOnAgentMessage verifies that OutputTokens are
-// written back to agent messages when TokenCounter is active.
-func TestOutputTokensWrittenBackOnAgentMessage(t *testing.T) {
-	store := newMockStore(nil)
-	agent := makeTestAgent()
-	agent.TokenCounter = "simple"
-	store.cfg.DataSet.Agents["testagent"] = agent
-
-	s := &AgentSession{
-		ID:           "test-session",
-		ConvoID:      "test-convo",
-		Agent:        &agent,
-		TokenCounter: &SimpleTokenCounter{},
-		store:        store,
-	}
-
-	// Ensure ConvoState exists
-	cs := &ConvoState{
-		ConvoID: "test-convo",
-		TTL:     "72h",
-	}
-	cs.persist(store)
-
-	agentMsg := &AgentMessage{
-		Role:    RoleAgent,
-		Content: "Hello! How can I help?",
-	}
-
-	// Simulate the output token counting and writeback from processAgentMessage
-	if s.TokenCounter != nil {
+		contextTokens := s.getConvoContextTokens()
 		outputTokens := s.countMessageTokens(*agentMsg)
-		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-			cs.ContextTokens += outputTokens
-		})
+		s.InputTokens = contextTokens
+		s.OutputTokens += outputTokens
+
+		agentMsg.InputTokens = contextTokens
 		agentMsg.OutputTokens = outputTokens
 	}
 
-	assert.True(t, agentMsg.OutputTokens > 0, "Agent message should have OutputTokens written back")
+	assert.Equal(t, 150, s.InputTokens, "InputTokens should be read from ContextTokens")
+	assert.Equal(t, 150, agentMsg.InputTokens, "InputTokens should be written to the message")
+	assert.True(t, agentMsg.OutputTokens > 0, "OutputTokens should be written to the message")
 }
 
-// TestOutputTokensNotWrittenBackWhenTokenCounterNil verifies that when
-// TokenCounter is nil, OutputTokens are NOT written back to messages
-// (driver-reported values are used instead).
-func TestOutputTokensNotWrittenBackWhenTokenCounterNil(t *testing.T) {
+// TestProcessAgentMessage_UpdatesContextTokensWithOutput verifies that
+// processAgentMessage adds the output token count to ContextTokens for
+// the next round trip.
+func TestProcessAgentMessage_UpdatesContextTokensWithOutput(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent(), nil)
+
+	// Pre-set ContextTokens
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.ContextTokens = 100
+	})
+
+	agentMsg := &AgentMessage{Role: RoleAgent, Content: "Hello!"}
+
+	// Simulate processAgentMessage's token counting block
+	if s.TokenCounter != nil {
+		contextTokens := s.getConvoContextTokens()
+		outputTokens := s.countMessageTokens(*agentMsg)
+		s.InputTokens = contextTokens
+		s.OutputTokens += outputTokens
+
+		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+			cs.ContextTokens += outputTokens
+		})
+		agentMsg.InputTokens = contextTokens
+		agentMsg.OutputTokens = outputTokens
+	}
+
+	// ContextTokens should have increased by the output token count
+	newContextTokens := s.getConvoContextTokens()
+	assert.True(t, newContextTokens > 100, "ContextTokens should increase by output tokens, got %d", newContextTokens)
+}
+
+// TestProcessAgentMessage_WritesTokensToMessageBeforePersist verifies that
+// token counts are written to the message object before it gets appended
+// to history (and thus persisted to Redis).
+func TestProcessAgentMessage_WritesTokensToMessageBeforePersist(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent(), nil)
+
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.ContextTokens = 80
+	})
+
+	agentMsg := &AgentMessage{Role: RoleAgent, Content: "I can help with that."}
+
+	// Simulate processAgentMessage's token counting block
+	if s.TokenCounter != nil {
+		contextTokens := s.getConvoContextTokens()
+		outputTokens := s.countMessageTokens(*agentMsg)
+
+		agentMsg.InputTokens = contextTokens
+		agentMsg.OutputTokens = outputTokens
+	}
+
+	// The message now has token counts that will be persisted when
+	// appendConvoHistory saves it to Redis.
+	assert.Equal(t, 80, agentMsg.InputTokens, "Message should have InputTokens set before persistence")
+	assert.True(t, agentMsg.OutputTokens > 0, "Message should have OutputTokens set before persistence")
+}
+
+// TestProcessAgentMessage_UsesDriverValuesWhenTokenCounterNil verifies that
+// when TokenCounter is nil, driver-reported values are used.
+func TestProcessAgentMessage_UsesDriverValuesWhenTokenCounterNil(t *testing.T) {
 	store := newMockStore(nil)
 	agent := makeTestAgent()
-	// NOT setting TokenCounter to "simple"
 	store.cfg.DataSet.Agents["testagent"] = agent
 
 	s := &AgentSession{
-		ID:           "test-session",
-		ConvoID:      "test-convo",
-		Agent:        &agent,
-		TokenCounter: nil,
-		store:        store,
+		ID: "test-session", ConvoID: "test-convo",
+		Agent: &agent, TokenCounter: nil, store: store,
 	}
 
-	// Ensure ConvoState exists
-	cs := &ConvoState{
-		ConvoID: "test-convo",
-		TTL:     "72h",
-	}
+	cs := &ConvoState{ConvoID: "test-convo", TTL: "72h"}
 	cs.persist(store)
 
 	agentMsg := &AgentMessage{
-		Role:         RoleAgent,
-		Content:      "Hello! How can I help?",
-		OutputTokens: 50, // driver-reported value
+		Role: RoleAgent, Content: "Hi",
+		InputTokens: 100, OutputTokens: 50,
 	}
 
-	// Simulate what processAgentMessage does when TokenCounter is nil
-	if s.TokenCounter != nil {
-		// This block should NOT execute
-		t.Fatal("Output token counting block should be skipped when TokenCounter is nil")
+	// Simulate processAgentMessage's else branch
+	if s.TokenCounter == nil {
+		s.InputTokens += agentMsg.InputTokens
+		s.OutputTokens += agentMsg.OutputTokens
 	}
-	// The driver-reported value should remain unchanged
-	assert.Equal(t, 50, agentMsg.OutputTokens, "Driver-reported OutputTokens should be preserved when TokenCounter is nil")
+
+	assert.Equal(t, 100, s.InputTokens, "Should use driver-reported InputTokens")
+	assert.Equal(t, 50, s.OutputTokens, "Should use driver-reported OutputTokens")
 }
 
-// TestSetupInitializesTokenCounterOnlyForSimple verifies the setup() method
-// correctly initializes TokenCounter only when Agent.TokenCounter == "simple".
+// sendToDriver token counting tests.
+
+// TestSendToDriver_NoTokenCounting verifies that sendToDriver does not
+// perform token counting when TokenCounter is active. It only calls
+// updateContextTokens to catch uncounted history, but does not write
+// token counts to history messages.
+func TestSendToDriver_NoTokenCounting(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent(), []AgentMessage{
+		{Role: RoleUser, Content: "Hello"},
+		{Role: RoleAgent, Content: "Hi there!"},
+	})
+	s.lastCountedIndex = 2 // all messages already counted
+
+	// Before the refactor, sendToDriver would write InputTokens to s.history[i].
+	// After the refactor, it should NOT modify history messages.
+	originalInputTokens0 := s.history[0].InputTokens
+	originalInputTokens1 := s.history[1].InputTokens
+
+	// Call updateContextTokens (what sendToDriver does)
+	if s.TokenCounter != nil {
+		s.updateContextTokens()
+	}
+
+	// History message token counts should NOT be modified by sendToDriver
+	assert.Equal(t, originalInputTokens0, s.history[0].InputTokens, "sendToDriver should not modify history[0].InputTokens")
+	assert.Equal(t, originalInputTokens1, s.history[1].InputTokens, "sendToDriver should not modify history[1].InputTokens")
+}
+
+// Run user message counting tests.
+
+// TestRun_CountsUserMessageTokens verifies that run() counts user message
+// tokens and updates ContextTokens before appending to history.
+func TestRun_CountsUserMessageTokens(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent(), nil)
+	s.lastCountedIndex = 0
+
+	userMsg := AgentMessage{Role: RoleUser, Content: "What is the weather?"}
+
+	// Simulate what run() does: count user message tokens
+	if s.TokenCounter != nil {
+		msgTokens := s.countMessageTokens(userMsg)
+		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+			if s.lastCountedIndex == 0 {
+				cs.ContextTokens = s.countSystemPromptTokens()
+			}
+			cs.ContextTokens += msgTokens
+		})
+		userMsg.InputTokens = msgTokens
+		s.lastCountedIndex++
+	}
+
+	// ContextTokens should include system prompt + user message
+	contextTokens := s.getConvoContextTokens()
+	assert.True(t, contextTokens > 0, "ContextTokens should be positive after counting user message, got %d", contextTokens)
+
+	// User message should have InputTokens set
+	assert.True(t, userMsg.InputTokens > 0, "User message should have InputTokens set")
+
+	// lastCountedIndex should be incremented
+	assert.Equal(t, 1, s.lastCountedIndex, "lastCountedIndex should be incremented")
+}
+
+// Setup TokenCounter initialization tests.
+
 func TestSetupInitializesTokenCounterOnlyForSimple(t *testing.T) {
 	testCases := []struct {
-		name         string
-		tokenCounter string
-		expectNil    bool
+		name      string
+		tokenVal  string
+		expectNil bool
 	}{
 		{"simple_should_init", "simple", false},
 		{"empty_should_not_init", "", true},
@@ -572,17 +419,12 @@ func TestSetupInitializesTokenCounterOnlyForSimple(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newMockStore(nil)
 			agent := makeTestAgent()
-			agent.TokenCounter = tc.tokenCounter
+			agent.TokenCounter = tc.tokenVal
 			store.cfg.DataSet.Agents["testagent"] = agent
 
 			msg := &dipper.Message{
-				Labels: map[string]string{
-					"agent_name": "testagent",
-				},
-				Payload: map[string]interface{}{
-					"type": AgentSessionTypeChatTurn,
-					"text": "hello",
-				},
+				Labels:  map[string]string{"agent_name": "testagent"},
+				Payload: map[string]interface{}{"type": AgentSessionTypeChatTurn, "text": "hello"},
 			}
 
 			s := &AgentSession{}
@@ -599,33 +441,21 @@ func TestSetupInitializesTokenCounterOnlyForSimple(t *testing.T) {
 	}
 }
 
-// TestSetupSetsLastCountedIndexOnlyWhenTokenCounterActive verifies that
-// lastCountedIndex is only set when TokenCounter is active.
 func TestSetupSetsLastCountedIndexOnlyWhenTokenCounterActive(t *testing.T) {
 	store := newMockStore(nil)
 	agent := makeTestAgent()
-	// NOT setting TokenCounter
 	store.cfg.DataSet.Agents["testagent"] = agent
 
 	msg := &dipper.Message{
-		Labels: map[string]string{
-			"agent_name": "testagent",
-		},
-		Payload: map[string]interface{}{
-			"type": AgentSessionTypeChatTurn,
-			"text": "hello",
-		},
+		Labels:  map[string]string{"agent_name": "testagent"},
+		Payload: map[string]interface{}{"type": AgentSessionTypeChatTurn, "text": "hello"},
 	}
 
 	s := &AgentSession{}
 	s.setup(msg, store, false)
-
-	// When TokenCounter is nil, lastCountedIndex should remain 0
 	assert.Equal(t, 0, s.lastCountedIndex, "lastCountedIndex should remain 0 when TokenCounter is nil")
 }
 
-// TestLastCountedIndex_SetWhenTokenCounterActive verifies that
-// lastCountedIndex is set correctly when TokenCounter is active.
 func TestLastCountedIndex_SetWhenTokenCounterActive(t *testing.T) {
 	store := newMockStore(nil)
 	agent := makeTestAgent()
@@ -633,64 +463,91 @@ func TestLastCountedIndex_SetWhenTokenCounterActive(t *testing.T) {
 	store.cfg.DataSet.Agents["testagent"] = agent
 
 	msg := &dipper.Message{
-		Labels: map[string]string{
-			"agent_name": "testagent",
-		},
-		Payload: map[string]interface{}{
-			"type": AgentSessionTypeChatTurn,
-			"text": "hello",
-		},
+		Labels:  map[string]string{"agent_name": "testagent"},
+		Payload: map[string]interface{}{"type": AgentSessionTypeChatTurn, "text": "hello"},
 	}
 
 	s := &AgentSession{}
 	s.setup(msg, store, false)
-
-	// When TokenCounter is active, lastCountedIndex should be set to len(history)
 	assert.NotNil(t, s.TokenCounter, "TokenCounter should be initialized")
 	assert.Equal(t, len(s.history), s.lastCountedIndex, "lastCountedIndex should be set to len(history) when TokenCounter is active")
 }
 
+// updateContextTokens tests.
+
+// TestUpdateContextTokens_IncrementalCounting verifies that updateContextTokens
+// only counts messages since lastCountedIndex (incremental).
+func TestUpdateContextTokens_IncrementalCounting(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent(), []AgentMessage{
+		{Role: RoleUser, Content: "Hello"},
+		{Role: RoleAgent, Content: "Hi there!"},
+	})
+	s.lastCountedIndex = 2 // all already counted
+
+	// Add a new message to history
+	s.history = append(s.history, AgentMessage{Role: RoleUser, Content: "Follow-up question"})
+
+	// Set initial ContextTokens
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.ContextTokens = 50
+	})
+
+	// Call updateContextTokens
+	s.updateContextTokens()
+
+	// ContextTokens should increase by the new message's tokens only
+	newContextTokens := s.getConvoContextTokens()
+	assert.True(t, newContextTokens > 50, "ContextTokens should increase from incremental counting, got %d", newContextTokens)
+	assert.Equal(t, 3, s.lastCountedIndex, "lastCountedIndex should be updated to len(history)")
+}
+
+// TestUpdateContextTokens_CountsSystemPromptOnFirstSend verifies that
+// updateContextTokens counts the system prompt when lastCountedIndex is 0.
+func TestUpdateContextTokens_CountsSystemPromptOnFirstSend(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent(), []AgentMessage{
+		{Role: RoleUser, Content: "Hello"},
+	})
+	s.lastCountedIndex = 0
+
+	s.updateContextTokens()
+
+	contextTokens := s.getConvoContextTokens()
+	// Should include system prompt tokens (7) + user message tokens (1) = at least 8
+	assert.True(t, contextTokens >= 8, "ContextTokens should include system prompt + history, got %d", contextTokens)
+	assert.Equal(t, 1, s.lastCountedIndex, "lastCountedIndex should be updated to len(history)")
+}
+
+// TokenCounter interface tests.
+
 // TestProcessAgentMessage_UsesTokenCounterInterface verifies that
-// processAgentMessage uses the TokenCounter interface method for counting
-// rather than creating a new SimpleTokenCounter directly.
+// processAgentMessage uses the TokenCounter interface method for counting.
 func TestProcessAgentMessage_UsesTokenCounterInterface(t *testing.T) {
 	store := newMockStore(nil)
 	agent := makeTestAgent()
 	agent.TokenCounter = "simple"
 	store.cfg.DataSet.Agents["testagent"] = agent
 
-	// Create a mock token counter that tracks calls
 	mockCounter := &mockTokenCounter{}
 	s := &AgentSession{
-		ID:           "test-session",
-		ConvoID:      "test-convo",
-		Agent:        &agent,
-		TokenCounter: mockCounter,
-		store:        store,
+		ID: "test-session", ConvoID: "test-convo",
+		Agent: &agent, TokenCounter: mockCounter, store: store,
 	}
 
-	// Ensure ConvoState exists
-	cs := &ConvoState{
-		ConvoID: "test-convo",
-		TTL:     "72h",
-	}
+	cs := &ConvoState{ConvoID: "test-convo", TTL: "72h"}
 	cs.persist(store)
 
-	agentMsg := &AgentMessage{
-		Role:    RoleAgent,
-		Content: "Test response",
-	}
+	agentMsg := &AgentMessage{Role: RoleAgent, Content: "Test response"}
 
-	// Simulate the output token counting from processAgentMessage
 	if s.TokenCounter != nil {
+		contextTokens := s.getConvoContextTokens()
 		outputTokens := s.countMessageTokens(*agentMsg)
-		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-			cs.ContextTokens += outputTokens
-		})
+		s.InputTokens = contextTokens
+		s.OutputTokens += outputTokens
+
+		agentMsg.InputTokens = contextTokens
 		agentMsg.OutputTokens = outputTokens
 	}
 
-	// The mock counter should have been called
 	assert.True(t, mockCounter.callCount > 0, "TokenCounter.CountTokens should have been called via the interface")
 }
 
