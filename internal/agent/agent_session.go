@@ -700,6 +700,13 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 
 	s.appendConvoHistory(*agentMsg)
 
+	// Advance lastCountedIndex so updateContextTokens() in sendToDriver()
+	// doesn't re-count this message — its tokens were already added to
+	// ContextTokens directly above via cs.ContextTokens += outputTokens.
+	if s.TokenCounter != nil {
+		s.lastCountedIndex = len(s.history)
+	}
+
 	// Final agent message: the complete message added to the
 	// history, reset the pending content and thoughts.
 	if agentMsg.Role == RoleAgent {
