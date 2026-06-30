@@ -506,7 +506,8 @@ func (s *AgentSession) countSystemPromptTokens() int {
 // and adds them to ConvoState.ContextTokens. It also counts the system prompt
 // on the very first send (lastCountedIndex == 0). This is called from sendToDriver
 // only when TokenCounter is active.
-func (s *AgentSession) updateContextTokens() {
+func (s *AgentSession) updateContextTokens() int {
+	var contextTokens int
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		if s.lastCountedIndex == 0 {
 			// First send: count system prompt
@@ -518,7 +519,10 @@ func (s *AgentSession) updateContextTokens() {
 			cs.ContextTokens += s.countMessageTokens(s.history[i])
 		}
 		s.lastCountedIndex = len(s.history)
+		contextTokens = cs.ContextTokens
 	})
+
+	return contextTokens
 }
 
 // getConvoContextTokens safely retrieves the current context tokens from ConvoState.
@@ -565,15 +569,12 @@ func (s *AgentSession) sendToDriver() {
 	// any history messages that haven't been counted yet (e.g. tool result
 	// messages appended since the last send). This ensures ContextTokens is
 	// accurate for when processAgentMessage uses it to set InputTokens.
+	contextTokens := 0
 	if s.TokenCounter != nil {
-		s.updateContextTokens()
+		contextTokens = s.updateContextTokens()
 	}
 
 	if log := s.log(); log != nil {
-		contextTokens := 0
-		if s.TokenCounter != nil {
-			contextTokens = s.getConvoContextTokens()
-		}
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d context_tokens=%d",
 			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools), contextTokens)
 	}
