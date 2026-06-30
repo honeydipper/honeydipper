@@ -367,38 +367,25 @@ func TestSendToDriver_NoTokenCounting(t *testing.T) {
 	assert.Equal(t, originalInputTokens1, s.history[1].InputTokens, "sendToDriver should not modify history[1].InputTokens")
 }
 
-// Run user message counting tests.
+// Run() token counting tests.
 
-// TestRun_CountsUserMessageTokens verifies that run() counts user message
-// tokens and updates ContextTokens before appending to history.
-func TestRun_CountsUserMessageTokens(t *testing.T) {
+// TestRun_DoesNotCountTokens verifies that run() does NOT count tokens
+// or update ContextTokens. All counting is handled by sendToDriver()
+// via updateContextTokens().
+func TestRun_DoesNotCountTokens(t *testing.T) {
 	s := makeTokenCountingSession(makeTestAgent(), nil)
-	s.lastCountedIndex = 0
+	// lastCountedIndex starts at 0 from setup()
 
-	userMsg := AgentMessage{Role: RoleUser, Content: "What is the weather?"}
+	// run() should NOT count tokens or modify ConvoState
+	// It just creates the user message and appends it to history
 
-	// Simulate what run() does: count user message tokens
-	if s.TokenCounter != nil {
-		msgTokens := s.countMessageTokens(userMsg)
-		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-			if s.lastCountedIndex == 0 {
-				cs.ContextTokens = s.countSystemPromptTokens()
-			}
-			cs.ContextTokens += msgTokens
-		})
-		userMsg.InputTokens = msgTokens
-		s.lastCountedIndex++
-	}
+	// ConvoState.ContextTokens should remain 0 after creating user message
+	ctx := &ConvoState{}
+	ctx.load(s.ConvoID, s.store)
+	assert.Equal(t, 0, ctx.ContextTokens, "ContextTokens should remain 0 before sendToDriver")
 
-	// ContextTokens should include system prompt + user message
-	contextTokens := s.getConvoContextTokens()
-	assert.True(t, contextTokens > 0, "ContextTokens should be positive after counting user message, got %d", contextTokens)
-
-	// User message should have InputTokens set
-	assert.True(t, userMsg.InputTokens > 0, "User message should have InputTokens set")
-
-	// lastCountedIndex should be incremented
-	assert.Equal(t, 1, s.lastCountedIndex, "lastCountedIndex should be incremented")
+	// lastCountedIndex should NOT be modified by run() itself
+	assert.Equal(t, 0, s.lastCountedIndex, "lastCountedIndex should not be changed in run()")
 }
 
 // Setup TokenCounter initialization tests.

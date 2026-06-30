@@ -430,23 +430,6 @@ func (s *AgentSession) run() {
 		Content: text,
 	}
 
-	// When custom token counting is active, count this user message and
-	// update ContextTokens before appending to history. This ensures
-	// ContextTokens is up-to-date when the driver responds via
-	// processAgentMessage, which reads ContextTokens to set InputTokens.
-	if s.TokenCounter != nil {
-		msgTokens := s.countMessageTokens(userMsg)
-		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-			// On the very first send in a conversation, also count the system prompt.
-			if s.lastCountedIndex == 0 {
-				cs.ContextTokens = s.countSystemPromptTokens()
-			}
-			cs.ContextTokens += msgTokens
-		})
-		userMsg.InputTokens = msgTokens
-		s.lastCountedIndex++
-	}
-
 	s.appendConvoHistory(userMsg)
 	s.LastPoll = len(s.history)
 
