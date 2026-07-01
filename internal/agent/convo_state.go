@@ -13,6 +13,12 @@ import (
 // ConvoState cache-key prefix, stream prefix, and session-status values.
 const (
 	ConvoStateKeyPrefix = "convo_state:"
+	// ConvoTurnLockPrefix is the distributed-lock key prefix used to serialise
+	// chat turns on the same conversation. Only one turn may execute at a time
+	// per conversation; subsequent turns block until the current one finishes.
+	// The locker driver polls every 100ms while the key is held, so no
+	// additional busy-wait is needed.
+	ConvoTurnLockPrefix = "convo_turn:"
 	// ConvoStream is the stream_hset prefix used to track convo-state changes.
 	ConvoStream = "convo_stream_"
 	// ConvoStreamTTL is how long each 2-hour stream block is kept in Redis.

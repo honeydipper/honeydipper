@@ -254,6 +254,23 @@ func (p *PersistentAgentStore) StartNewConvo(agentName, text, user string) strin
 // conversation. It must be called from within a goroutine that has already
 // incremented p.wg; it does NOT add/done the WaitGroup itself.
 func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user string) {
+	// Acquire a distributed turn lock so only one turn executes at a time
+	// per conversation. The locker driver already polls every 100ms while
+	// the key is held, so no additional busy-wait is needed here.
+	lockKey := ConvoTurnLockPrefix + convoID
+	dipper.Must(p.Call("locker", "lock", map[string]interface{}{
+		"name":   lockKey,
+		"expire": "1h",
+	}, "timeout", "30m"))
+	// Defer unlock so it runs last (LIFO): after s.persist() and recovery.
+	// The timeout label controls how long the locker driver waits for a
+	// Redis response before giving up.
+	defer func() {
+		dipper.Must(p.Call("locker", "unlock", map[string]interface{}{
+			"name": lockKey,
+		}, "timeout", "30s"))
+	}()
+
 	msg := &dipper.Message{
 		Labels: map[string]string{
 			"agent_name": agentName,
