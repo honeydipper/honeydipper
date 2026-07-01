@@ -318,7 +318,7 @@ func TestAppendConvoHistory_UpdatesContextTokens(t *testing.T) {
 
 	// Append a message
 	msg := AgentMessage{Role: RoleUser, Content: "Hello, world!"}
-	s.appendConvoHistory(msg)
+	s.appendConvoHistory(&msg)
 
 	// ContextTokens should now include the message's tokens
 	cs2 := &ConvoState{}
@@ -342,7 +342,7 @@ func TestAppendConvoHistory_NoUpdateWhenTokenCounterNil(t *testing.T) {
 	cs.persist(store)
 
 	msg := AgentMessage{Role: RoleUser, Content: "Hello"}
-	s.appendConvoHistory(msg)
+	s.appendConvoHistory(&msg)
 
 	cs2 := &ConvoState{}
 	cs2.load("test-convo", store)
@@ -353,10 +353,10 @@ func TestAppendConvoHistory_AccumulatesContextTokens(t *testing.T) {
 	s := makeTokenCountingSession(makeTestAgent())
 
 	msg1 := AgentMessage{Role: RoleUser, Content: "Hello"}
-	s.appendConvoHistory(msg1)
+	s.appendConvoHistory(&msg1)
 
 	msg2 := AgentMessage{Role: RoleAgent, Content: "Hi there!"}
-	s.appendConvoHistory(msg2)
+	s.appendConvoHistory(&msg2)
 
 	cs := &ConvoState{}
 	cs.load(s.ConvoID, s.store)
@@ -372,8 +372,8 @@ func TestSendToDriver_LogsSystemPromptPlusContextTokens(t *testing.T) {
 	// Append messages via appendConvoHistory (which counts tokens)
 	msg1 := AgentMessage{Role: RoleUser, Content: "Hello"}
 	msg2 := AgentMessage{Role: RoleAgent, Content: "Hi there!"}
-	s.appendConvoHistory(msg1)
-	s.appendConvoHistory(msg2)
+	s.appendConvoHistory(&msg1)
+	s.appendConvoHistory(&msg2)
 
 	// Simulate what sendToDriver does for contextTokens
 	contextTokens := 0
@@ -455,8 +455,8 @@ func TestSetupRecalculatesContextTokensFromHistory(t *testing.T) {
 	// Append messages via appendConvoHistory (simulating loaded history)
 	msg1 := AgentMessage{Role: RoleUser, Content: "Hello"}
 	msg2 := AgentMessage{Role: RoleAgent, Content: "Hi there!"}
-	s.appendConvoHistory(msg1)
-	s.appendConvoHistory(msg2)
+	s.appendConvoHistory(&msg1)
+	s.appendConvoHistory(&msg2)
 
 	// Simulate what setup() does: recalculate ContextTokens from history
 	if s.TokenCounter != nil {

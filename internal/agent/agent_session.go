@@ -486,6 +486,15 @@ func (s *AgentSession) countSystemPromptTokens() int {
 	return s.TokenCounter.CountTokens(systemPrompt)
 }
 
+// getConvoContextTokens safely retrieves the current ContextTokens from ConvoState.
+// It should only be called when s.TokenCounter is not nil.
+func (s *AgentSession) getConvoContextTokens() int {
+	cs := &ConvoState{}
+	cs.load(s.ConvoID, s.store)
+
+	return cs.ContextTokens
+}
+
 func (s *AgentSession) sendToDriver() {
 	tools := s.BuildTools()
 	timeout := s.CurrentMsg.Labels["timeout"]

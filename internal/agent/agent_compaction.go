@@ -229,7 +229,7 @@ func (s *AgentSession) compactHistory() bool {
 	// using the existing tool-call mechanism so the summarizer runs as a
 	// sub-agent and returns via eventbus:agent_continue.
 	agentMsg := AgentMessage{Role: RoleAgent, Content: "", ToolCalls: []AgentToolCall{toolCall}}
-	s.appendConvoHistory(agentMsg)
+	s.appendConvoHistory(&agentMsg)
 
 	// Kick off the tool call from this session.
 	s.CurrentCall = 0

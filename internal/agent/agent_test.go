@@ -1503,7 +1503,7 @@ func TestAppendConvoHistory_WithConvoID_CallsRpush(t *testing.T) {
 		ConvoID: "convo-99",
 	}
 
-	s.appendConvoHistory(AgentMessage{Role: RoleUser, Content: "hello"})
+	s.appendConvoHistory(&AgentMessage{Role: RoleUser, Content: "hello"})
 
 	require.Len(t, s.history, 1)
 	assert.True(t, store.hasCall("cache:rpush"))
@@ -1519,7 +1519,7 @@ func TestAppendConvoHistory_WithoutConvoID_NoCacheCall(t *testing.T) {
 		ConvoID: "", // no convo
 	}
 
-	s.appendConvoHistory(AgentMessage{Role: RoleUser, Content: "hello"})
+	s.appendConvoHistory(&AgentMessage{Role: RoleUser, Content: "hello"})
 
 	require.Len(t, s.history, 1)
 	assert.False(t, store.hasCall("cache:rpush"))
