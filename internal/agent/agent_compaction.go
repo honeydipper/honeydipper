@@ -134,7 +134,7 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 	// history entirely, we need to recount all tokens in the new history.
 	if s.TokenCounter != nil {
 		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-			cs.ContextTokens = 0
+			cs.ContextTokens = s.countSystemPromptTokens()
 			for _, msg := range s.history {
 				cs.ContextTokens += s.countMessageTokens(msg)
 			}
