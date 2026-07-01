@@ -59,7 +59,7 @@ type AgentSession struct {
 	TotalTokens           int
 	InputTokens           int
 	OutputTokens          int
-	TokenCounter          agentpkg.TokenCounter
+	TokenCounter          agentpkg.TokenCounter `json:"-"`
 	ParentSessionID       string
 	ParentTurnID          string
 	ParentToolCallID      string
