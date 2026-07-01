@@ -59,6 +59,7 @@ type AgentSession struct {
 	TotalTokens           int
 	InputTokens           int
 	OutputTokens          int
+	TokenCounter          agentpkg.TokenCounter `json:"-"`
 	ParentSessionID       string
 	ParentTurnID          string
 	ParentToolCallID      string
@@ -223,6 +224,13 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 		}
 	}
 
+	// Initialize custom token counter only when explicitly set to "simple".
+	// When TokenCounter is nil, the session uses driver-reported token counts instead
+	// and skips all custom counting logic (ContextTokens).
+	if s.TokenCounter == nil && s.Agent != nil && s.Agent.TokenCounter == "simple" {
+		s.TokenCounter = &SimpleTokenCounter{}
+	}
+
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] created type=%s agent=%s", s.ID, s.Type, msg.Labels["agent_name"])
 	}
@@ -378,8 +386,18 @@ func (s *AgentSession) loadConvoHistory() {
 
 // appendConvoHistory appends a message to the in-memory history and the cache.
 // If the agent has MaxHistoryLen set, older entries beyond that limit are trimmed.
-func (s *AgentSession) appendConvoHistory(msg AgentMessage) {
-	s.history = append(s.history, msg)
+func (s *AgentSession) appendConvoHistory(msg *AgentMessage) {
+	s.history = append(s.history, *msg)
+
+	// Count message tokens and add to ContextTokens when TokenCounter is active.
+	// This ensures ContextTokens = sum of all history message tokens by construction.
+	if s.TokenCounter != nil {
+		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+			msg.InputTokens = cs.ContextTokens
+			msg.OutputTokens = s.countMessageTokens(*msg)
+			cs.ContextTokens += msg.OutputTokens
+		})
+	}
 
 	if s.ConvoID != "" {
 		convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
@@ -407,11 +425,13 @@ func (s *AgentSession) run() {
 	}
 	text := dipper.MustGetMapDataStr(s.CurrentMsg.Payload, "text")
 	user, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "user")
-	s.appendConvoHistory(AgentMessage{
+
+	s.appendConvoHistory(&AgentMessage{
 		Role:    RoleUser,
 		User:    user,
 		Content: text,
 	})
+
 	s.LastPoll = len(s.history)
 
 	s.sendToDriver()
@@ -423,6 +443,56 @@ func (s *AgentSession) recover() {
 	}
 
 	s.sendToDriver()
+}
+
+// countMessageTokens counts all tokens in a message including content, tool calls, and tool results.
+// It uses the session's TokenCounter. This method should only be called when s.TokenCounter is not nil.
+func (s *AgentSession) countMessageTokens(msg AgentMessage) int {
+	total := 0
+
+	// Count content tokens
+	total += s.TokenCounter.CountTokens(msg.Content)
+
+	// Count thoughts tokens
+	total += s.TokenCounter.CountTokens(msg.Thoughts)
+
+	// Count tool call tokens (function names and parameters)
+	for _, tc := range msg.ToolCalls {
+		total += s.TokenCounter.CountTokens(tc.FuncName)
+		// Convert params to string for counting
+		if tc.Params != nil {
+			paramsStr := fmt.Sprintf("%v", tc.Params)
+			total += s.TokenCounter.CountTokens(paramsStr)
+		}
+	}
+
+	// Count tool result tokens
+	for _, tr := range msg.ToolResult {
+		resultStr := fmt.Sprintf("%v", tr)
+		total += s.TokenCounter.CountTokens(resultStr)
+	}
+
+	return total
+}
+
+// countSystemPromptTokens counts tokens in the system prompt.
+// It uses the session's TokenCounter. This method should only be called when s.TokenCounter is not nil.
+func (s *AgentSession) countSystemPromptTokens() int {
+	systemPrompt := s.Agent.SystemPrompt
+	if s.Type == AgentSessionTypeInference && len(s.Agent.InferencePrompt) > 0 {
+		systemPrompt = s.Agent.InferencePrompt
+	}
+
+	return s.TokenCounter.CountTokens(systemPrompt)
+}
+
+// getConvoContextTokens safely retrieves the current ContextTokens from ConvoState.
+// It should only be called when s.TokenCounter is not nil.
+func (s *AgentSession) getConvoContextTokens() int {
+	cs := &ConvoState{}
+	cs.load(s.ConvoID, s.store)
+
+	return cs.ContextTokens
 }
 
 func (s *AgentSession) sendToDriver() {
@@ -462,7 +532,6 @@ func (s *AgentSession) sendToDriver() {
 			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
 	}
 	s.InputTokens = 0
-	s.OutputTokens = 0
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":         s.Agent.Engine,
 		"history":        history,
@@ -543,11 +612,12 @@ func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 // processAgentMessage routes a decoded model message: triggers tool calls, handles thinking
 // tokens, or re-runs the session when the model produces a final user-facing reply.
 func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
-	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
-	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
-	s.InputTokens += agentMsg.InputTokens
-	s.OutputTokens += agentMsg.OutputTokens
-	s.TotalTokens += agentMsg.InputTokens + agentMsg.OutputTokens
+	if s.TokenCounter == nil {
+		// handle streaming chunk, currently expect input/output tokens to be counted and returned.
+		s.InputTokens += agentMsg.InputTokens
+		s.OutputTokens += agentMsg.OutputTokens
+		s.TotalTokens = s.InputTokens + s.OutputTokens
+	}
 
 	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
 	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
@@ -575,7 +645,12 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		}
 	}
 
-	s.appendConvoHistory(*agentMsg)
+	s.appendConvoHistory(agentMsg)
+	if s.TokenCounter != nil {
+		s.InputTokens += agentMsg.InputTokens
+		s.OutputTokens += agentMsg.OutputTokens
+		s.TotalTokens = s.InputTokens + s.OutputTokens
+	}
 
 	// Final agent message: the complete message added to the
 	// history, reset the pending content and thoughts.
