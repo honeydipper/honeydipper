@@ -144,7 +144,7 @@ func (m *mockStore) CallNoWait(feature, method string, params interface{}, label
 	return nil
 }
 
-func (m *mockStore) getNoWaitParams(key string) map[string]interface{} { //nolint:unparam
+func (m *mockStore) getNoWaitParams(key string) map[string]interface{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.noWaitParams == nil {
@@ -164,15 +164,15 @@ func (m *mockStore) CallRawNoWait(feature, method string, params []byte, rpcID s
 
 func (m *mockStore) GetName() string { return "mock-store" }
 
-func (m *mockStore) StartInference(msg *dipper.Message)                {}
-func (m *mockStore) ContinueInference(msg *dipper.Message)             {}
-func (m *mockStore) ReceiveInference(msg *dipper.Message)              {}
-func (m *mockStore) PollInference(msg *dipper.Message)                 {}
-func (m *mockStore) StartAgentCall(msg *dipper.Message)                {}
-func (m *mockStore) StartMCPCall(msg *dipper.Message)                  {}
-func (m *mockStore) CancelConvo(msg *dipper.Message)                   {}
-func (m *mockStore) StartTurn(convoID, text, user string)              {}
-func (m *mockStore) StartNewConvo(agentName, text, user string) string { return "" }
+func (m *mockStore) StartInference(msg *dipper.Message)                                {}
+func (m *mockStore) ContinueInference(msg *dipper.Message)                             {}
+func (m *mockStore) ReceiveInference(msg *dipper.Message)                              {}
+func (m *mockStore) PollInference(msg *dipper.Message)                                 {}
+func (m *mockStore) StartAgentCall(msg *dipper.Message)                                {}
+func (m *mockStore) StartMCPCall(msg *dipper.Message)                                  {}
+func (m *mockStore) CancelConvo(msg *dipper.Message)                                   {}
+func (m *mockStore) StartTurn(convoID, text, user, engine, driver string)              {}
+func (m *mockStore) StartNewConvo(agentName, text, user, engine, driver string) string { return "" }
 
 func (m *mockStore) GetAgent(name string) *config.Agent {
 	a := m.cfg.DataSet.Agents[name]
@@ -1871,7 +1871,7 @@ func TestStartTurn_UsesParentAgentWhenLastSessionIsSubAgent(t *testing.T) {
 
 	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
-	store.StartTurn(convoID, "hello again", "user1")
+	store.StartTurn(convoID, "hello again", "user1", "", "")
 	store.Wait()
 
 	// The new session must be dispatched to the parent agent (super_coder), not code_executor.
@@ -2405,4 +2405,118 @@ func TestSetup_NoForgetHistory_NoMarker(t *testing.T) {
 
 	// No cache:del should be called
 	assert.False(t, store.hasCall("cache:del"), "cache:del should NOT be called without forget_history")
+}
+
+// ---------------------------------------------------------------------------
+// Engine / driver override tests
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Engine / driver override tests
+// ---------------------------------------------------------------------------
+
+func TestAgentOverrideEngineAndDriver_NewConvo(t *testing.T) {
+	cfg := &config.Config{
+		DataSet: &config.DataSet{
+			Agents: map[string]config.Agent{
+				"test_agent": {
+					Name:   "test_agent",
+					Driver: "default_driver",
+					Engine: "default_engine",
+				},
+			},
+			Workflows: map[string]config.Workflow{},
+			Systems:   map[string]config.System{},
+		},
+	}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	store.StartNewConvo("test_agent", "hello", "user1", "gpt-4", "openai-new")
+	store.Wait()
+
+	// The session should have been created with the overridden engine/driver.
+	params := helper.getNoWaitParams("driver:openai-new:send_to_model")
+	require.NotNil(t, params, "expected send_to_model to be called with overridden driver")
+	engine, ok := params["engine"].(string)
+	require.True(t, ok, "engine must be a string")
+	assert.Equal(t, "gpt-4", engine, "engine should be overridden")
+}
+
+func TestAgentOverrideEngineAndDriver_ExistingTurn(t *testing.T) {
+	convoID := dipper.NewUUID()
+	cfg := &config.Config{
+		DataSet: &config.DataSet{
+			Agents: map[string]config.Agent{
+				"test_agent": {
+					Name:   "test_agent",
+					Driver: "default_driver",
+					Engine: "default_engine",
+				},
+			},
+			Workflows: map[string]config.Workflow{},
+			Systems:   map[string]config.System{},
+		},
+	}
+
+	cs := &ConvoState{
+		ConvoID: convoID,
+		TTL:     ConvoStreamTTL,
+		Agent:   &config.Agent{Name: "test_agent", Driver: "default_driver", Engine: "default_engine"},
+		FirstSession: &ConvoSessionRef{
+			SessionID: "session-first",
+			AgentName: "test_agent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+		LastSession: &ConvoSessionRef{
+			SessionID: "session-last",
+			AgentName: "test_agent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	helper.resp["cache:load:"+ConvoStateKeyPrefix+convoID] = mustMarshalJSON(cs)
+	helper.resp["cache:lrange:"+ConvoHistoryKeyPrefix+convoID] = mustMarshalJSON([]AgentMessage{})
+
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	store.StartTurn(convoID, "follow up", "user1", "claude-3", "anthropic")
+	store.Wait()
+
+	params := helper.getNoWaitParams("driver:anthropic:send_to_model")
+	require.NotNil(t, params, "expected send_to_model to be called with overridden driver")
+	engine, ok := params["engine"].(string)
+	require.True(t, ok, "engine must be a string")
+	assert.Equal(t, "claude-3", engine, "engine should be overridden")
+}
+
+func TestAgentOverrideEngineAndDriver_NoOverride(t *testing.T) {
+	cfg := &config.Config{
+		DataSet: &config.DataSet{
+			Agents: map[string]config.Agent{
+				"test_agent": {
+					Name:   "test_agent",
+					Driver: "default_driver",
+					Engine: "default_engine",
+				},
+			},
+			Workflows: map[string]config.Workflow{},
+			Systems:   map[string]config.System{},
+		},
+	}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	store.StartNewConvo("test_agent", "hello", "user1", "", "")
+	store.Wait()
+
+	// No override — should use default_driver from config.
+	params := helper.getNoWaitParams("driver:default_driver:send_to_model")
+	require.NotNil(t, params, "expected send_to_model to be called with default driver")
+	engine, ok := params["engine"].(string)
+	require.True(t, ok, "engine must be a string")
+	assert.Equal(t, "default_engine", engine, "engine should be from agent config")
 }

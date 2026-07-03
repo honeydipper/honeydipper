@@ -81,15 +81,15 @@ func (f *FakeStore) CallWithMessageNoWait(msg *dipper.Message) error     { retur
 func (f *FakeStore) GetName() string                                     { return "fake" }
 
 // AgentStore minimal methods.
-func (f *FakeStore) StartInference(msg *dipper.Message)    {}
-func (f *FakeStore) PollInference(msg *dipper.Message)     {}
-func (f *FakeStore) ContinueInference(msg *dipper.Message) {}
-func (f *FakeStore) ReceiveInference(msg *dipper.Message)  {}
-func (f *FakeStore) StartAgentCall(msg *dipper.Message)    {}
-func (f *FakeStore) StartMCPCall(msg *dipper.Message)      {}
-func (f *FakeStore) CancelConvo(msg *dipper.Message)       {}
-func (f *FakeStore) StartTurn(convoID, text, user string)  {}
-func (f *FakeStore) StartNewConvo(agentName, text, user string) string {
+func (f *FakeStore) StartInference(msg *dipper.Message)                   {}
+func (f *FakeStore) PollInference(msg *dipper.Message)                    {}
+func (f *FakeStore) ContinueInference(msg *dipper.Message)                {}
+func (f *FakeStore) ReceiveInference(msg *dipper.Message)                 {}
+func (f *FakeStore) StartAgentCall(msg *dipper.Message)                   {}
+func (f *FakeStore) StartMCPCall(msg *dipper.Message)                     {}
+func (f *FakeStore) CancelConvo(msg *dipper.Message)                      {}
+func (f *FakeStore) StartTurn(convoID, text, user, engine, driver string) {}
+func (f *FakeStore) StartNewConvo(agentName, text, user, engine, driver string) string {
 	return ""
 }
 func (f *FakeStore) GetAgent(name string) *config.Agent       { return &config.Agent{} }
