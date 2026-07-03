@@ -329,12 +329,16 @@ func (w *Session) callAgent() {
 	convoID, _ := dipper.GetMapDataStr(w.Ctx, "convo_id")
 	timeout, _ := dipper.GetMapDataStr(w.Ctx, "turn_timeout")
 	ttl, _ := dipper.GetMapDataStr(w.Ctx, "turn_ttl")
+	engine, _ := dipper.GetMapDataStr(w.Ctx, "engine")
+	driver, _ := dipper.GetMapDataStr(w.Ctx, "driver")
 
 	w.store.SendMessage(&dipper.Message{
 		Channel: dipper.ChannelEventbus,
 		Subject: "agent_start",
 		Labels:  labels,
 		Payload: map[string]interface{}{
+			"engine":   engine,
+			"driver":   driver,
 			"text":     dipper.MustGetMapDataStr(w.Ctx, "text"),
 			"user":     user,
 			"type":     sessionType,
