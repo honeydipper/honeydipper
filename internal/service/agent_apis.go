@@ -157,7 +157,7 @@ func handleAgentListAPI(resp *api.Response) {
 }
 
 // isAgentDriver checks whether a driver config (from drivers.daemon.drivers.<name>)
-// has "agent_drivers" in its meta.labels.
+// has "agent_driver" in its meta.labels.
 func isAgentDriver(driverConfig interface{}) bool {
 	labels, ok := dipper.GetMapData(driverConfig, "meta.labels")
 	if !ok {
@@ -170,7 +170,7 @@ func isAgentDriver(driverConfig interface{}) bool {
 	}
 
 	for _, l := range labelList {
-		if s, ok := l.(string); ok && s == "agent_drivers" {
+		if s, ok := l.(string); ok && s == "agent_driver" {
 			return true
 		}
 	}
@@ -208,14 +208,14 @@ type engineEntry struct {
 
 // handleAgentListEnginesAPI returns a sorted JSON array of unique {driver, engine}
 // pairs from the driver configuration. It scans drivers.daemon.drivers for any
-// driver whose meta.labels include "agent_drivers", then collects all engine keys
+// driver whose meta.labels include "agent_driver", then collects all engine keys
 // from that driver's engines block. The UI uses this to populate the engine/driver
 // override dropdown.
 func handleAgentListEnginesAPI(resp *api.Response) {
 	seen := map[string]bool{}
 	entries := []engineEntry{}
 
-	// Collect engines from all drivers that have the "agent_drivers" label.
+	// Collect engines from all drivers that have the "agent_driver" label.
 	collectDriverEngines(agentStore.GetConfig().DataSet.Drivers, seen, &entries)
 
 	sort.Slice(entries, func(i, j int) bool {
