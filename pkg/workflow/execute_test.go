@@ -593,6 +593,42 @@ func TestCallAgent_RegistersSchedulerDue(t *testing.T) {
 	}
 }
 
+func TestCallAgent_PassesEngineDriverOverrides(t *testing.T) {
+	s := makeExecuteSession()
+	es := &execTestStore{}
+	s.store = es
+	s.Workflow.CallAgent = "openai"
+	s.Ctx["text"] = "hello"
+	s.Ctx["engine"] = "gpt-4o"
+	s.Ctx["driver"] = "openai"
+	s.CurrentMsg.Labels["cursor"] = "3"
+
+	s.callAgent()
+
+	if len(es.lastSentMessages) != 1 {
+		t.Fatalf("expected 1 message sent, got %d", len(es.lastSentMessages))
+	}
+	msg := es.lastSentMessages[0]
+	if msg.Subject != "agent_start" {
+		t.Errorf("expected agent_start, got %s", msg.Subject)
+	}
+
+	payload, ok := msg.Payload.(map[string]interface{})
+	if !ok {
+		t.Fatal("expected payload to be a map")
+	}
+	if engine, ok := payload["engine"].(string); !ok {
+		t.Errorf("expected engine in payload, got none")
+	} else if engine != "gpt-4o" {
+		t.Errorf("expected engine gpt-4o, got %s", engine)
+	}
+	if driver, ok := payload["driver"].(string); !ok {
+		t.Errorf("expected driver in payload, got none")
+	} else if driver != "openai" {
+		t.Errorf("expected driver openai, got %s", driver)
+	}
+}
+
 func TestWaitAgent_SendsPollAndSchedules(t *testing.T) {
 	s := makeExecuteSession()
 	es := &execTestStore{}
