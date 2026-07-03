@@ -15,7 +15,19 @@ import (
 var ErrToolCall = errors.New("tool call error")
 
 // BuildTools assembles the tool map from the agent's configured system and workflow tools.
+// Results are cached in ConvoState.Tools so repeated calls avoid rebuilding
+// from scratch. The cache is invalidated in resumeWithSkills() when skills
+// are loaded, which may enable the hd_load_skill tool.
 func (s *AgentSession) BuildTools() map[string]AgentTool {
+	// Try cached tools from ConvoState
+	if s.ConvoID != "" {
+		cs := &ConvoState{}
+		cs.load(s.ConvoID, s.store)
+		if cs.Tools != nil {
+			return cs.Tools
+		}
+	}
+
 	tools := map[string]AgentTool{}
 
 	for _, toolDef := range s.Agent.Tools {
@@ -55,6 +67,13 @@ func (s *AgentSession) BuildTools() map[string]AgentTool {
 		Description: "Get the conversation page URL and focus page URL for the current conversation. " +
 			"Use this to obtain URLs that can be sent to external systems like PagerDuty, Slack, etc.",
 		Params: map[string]interface{}{},
+	}
+
+	// Cache tools in ConvoState for future calls
+	if s.ConvoID != "" {
+		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+			cs.Tools = tools
+		})
 	}
 
 	return tools

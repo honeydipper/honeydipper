@@ -174,6 +174,7 @@ func (s *AgentSession) resumeWithSkills(skillMap map[string]string) {
 	s.persist(false)
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		cs.Agent = s.Agent
+		cs.Tools = nil // invalidate tool cache because hd_load_skill may now be needed
 		if len(skillMap) > 0 {
 			cs.Skills = skillMap
 		}
