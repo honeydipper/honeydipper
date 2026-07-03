@@ -156,29 +156,94 @@ func handleAgentListAPI(resp *api.Response) {
 	resp.Return(data)
 }
 
-// handleAgentListEnginesAPI returns a sorted JSON array of unique {driver, engine}
-// pairs from all configured agents. The UI uses this to populate the engine/driver
-// override dropdown. Pairs are deduplicated by "driver:engine" key.
-func handleAgentListEnginesAPI(resp *api.Response) {
-	agents := agentStore.GetConfig().DataSet.Agents
-	type engineEntry struct {
-		Driver string `json:"driver"`
-		Engine string `json:"engine"`
+// isAgentDriver checks whether a driver config (from drivers.daemon.drivers.<name>)
+// has "agent_drivers" in its meta.labels.
+func isAgentDriver(driverConfig interface{}) bool {
+	labels, ok := dipper.GetMapData(driverConfig, "meta.labels")
+	if !ok {
+		return false
 	}
-	seen := map[string]bool{}
-	entries := []engineEntry{}
-	for _, agent := range agents {
-		key := agent.Driver + ":" + agent.Engine
+
+	labelList, ok := labels.([]interface{})
+	if !ok {
+		return false
+	}
+
+	for _, l := range labelList {
+		if s, ok := l.(string); ok && s == "agent_drivers" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// collectEngineEntriesFromDriver extracts unique {driver,engine} pairs from the
+// engines block of a single driver config. Duplicates are filtered via the seen set.
+func collectEngineEntriesFromDriver(driverName string, driverConfig interface{}, seen map[string]bool, entries *[]engineEntry) {
+	engines, ok := dipper.GetMapData(driverConfig, "engines")
+	if !ok {
+		return
+	}
+
+	engineMap, ok := engines.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	for engineName := range engineMap {
+		key := driverName + ":" + engineName
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		entries = append(entries, engineEntry{Driver: agent.Driver, Engine: agent.Engine})
+		*entries = append(*entries, engineEntry{Driver: driverName, Engine: engineName})
 	}
+}
+
+type engineEntry struct {
+	Driver string `json:"driver"`
+	Engine string `json:"engine"`
+}
+
+// handleAgentListEnginesAPI returns a sorted JSON array of unique {driver, engine}
+// pairs from the driver configuration. It scans drivers.daemon.drivers for any
+// driver whose meta.labels include "agent_drivers", then collects all engine keys
+// from that driver's engines block. The UI uses this to populate the engine/driver
+// override dropdown.
+func handleAgentListEnginesAPI(resp *api.Response) {
+	seen := map[string]bool{}
+	entries := []engineEntry{}
+
+	// Collect engines from all drivers that have the "agent_drivers" label.
+	collectDriverEngines(agentStore.GetConfig().DataSet.Drivers, seen, &entries)
+
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Driver+":"+entries[i].Engine < entries[j].Driver+":"+entries[j].Engine
 	})
 
 	data := dipper.Must(json.Marshal(entries)).([]byte)
 	resp.Return(data)
+}
+
+// collectDriverEngines iterates over drivers.daemon.drivers, filtering for
+// agent-driver labelled entries, and populates entries with {driver,engine} pairs.
+func collectDriverEngines(drivers map[string]interface{}, seen map[string]bool, entries *[]engineEntry) {
+	raw, ok := dipper.GetMapData(drivers, "daemon.drivers")
+	if !ok {
+		return
+	}
+
+	driverMap, ok := raw.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	for driverName, driverConfig := range driverMap {
+		if !isAgentDriver(driverConfig) {
+			continue
+		}
+
+		collectEngineEntriesFromDriver(driverName, driverConfig, seen, entries)
+	}
 }
