@@ -228,6 +228,9 @@ func handleAgentListEnginesAPI(resp *api.Response) {
 
 // collectDriverEngines iterates over drivers.daemon.drivers, filtering for
 // agent-driver labelled entries, and populates entries with {driver,engine} pairs.
+// collectDriverEngines iterates over drivers.daemon.drivers, filtering for
+// agent-driver labelled entries, and populates entries with {driver,engine} pairs.
+// It reads engines from the top-level driver config at drivers.<name>.engines.
 func collectDriverEngines(drivers map[string]interface{}, seen map[string]bool, entries *[]engineEntry) {
 	raw, ok := dipper.GetMapData(drivers, "daemon.drivers")
 	if !ok {
@@ -244,6 +247,13 @@ func collectDriverEngines(drivers map[string]interface{}, seen map[string]bool, 
 			continue
 		}
 
-		collectEngineEntriesFromDriver(driverName, driverConfig, seen, entries)
+		// Look up the actual driver config (e.g. drivers.openai) for engines,
+		// not the daemon metadata (drivers.daemon.drivers.openai).
+		actualDriverConfig, ok := drivers[driverName]
+		if !ok {
+			continue
+		}
+
+		collectEngineEntriesFromDriver(driverName, actualDriverConfig, seen, entries)
 	}
 }
