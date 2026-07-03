@@ -24,10 +24,12 @@ type AgentStore interface {
 	CancelConvo(msg *dipper.Message)
 	// StartTurn fires a new chat turn on an existing conversation without a
 	// return path back to a workflow. It is used by the UI-initiated turn API.
-	StartTurn(convoID, text, user string)
+	// engine and driver are optional overrides; empty strings mean "no override".
+	StartTurn(convoID, text, user, engine, driver string)
 	// StartNewConvo starts a brand-new conversation for the named agent and
 	// returns the generated convo_id synchronously. The session runs asynchronously.
-	StartNewConvo(agentName, text, user string) string
+	// engine and driver are optional overrides; empty strings mean "no override".
+	StartNewConvo(agentName, text, user, engine, driver string) string
 
 	GetAgent(name string) *config.Agent
 	GetSystem(name string) *config.System
@@ -202,7 +204,8 @@ func (p *PersistentAgentStore) Stop() {
 // StartTurn starts a new chat turn on an existing conversation without a workflow
 // return path. The agent name is inferred from the most recent session recorded in
 // the ConvoState. The turn runs asynchronously; errors are logged, not propagated.
-func (p *PersistentAgentStore) StartTurn(convoID, text, user string) {
+// engine and driver are optional overrides; empty strings mean "no override".
+func (p *PersistentAgentStore) StartTurn(convoID, text, user, engine, driver string) {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
@@ -230,13 +233,14 @@ func (p *PersistentAgentStore) StartTurn(convoID, text, user string) {
 		}
 
 		p.Infof("[agent] StartTurn convo=%s agent=%s", convoID, agentName)
-		p.runTurn(agentName, convoID, text, user)
+		p.runTurn(agentName, convoID, text, user, engine, driver)
 	}()
 }
 
 // StartNewConvo starts a brand-new conversation for the named agent and returns
 // the generated convo_id synchronously. The session runs asynchronously.
-func (p *PersistentAgentStore) StartNewConvo(agentName, text, user string) string {
+// engine and driver are optional overrides; empty strings mean "no override".
+func (p *PersistentAgentStore) StartNewConvo(agentName, text, user, engine, driver string) string {
 	convoID := dipper.NewUUID()
 	p.wg.Add(1)
 	go func() {
@@ -244,7 +248,7 @@ func (p *PersistentAgentStore) StartNewConvo(agentName, text, user string) strin
 		defer dipper.SafeExitOnError("[agent] error in StartNewConvo")
 
 		p.Infof("[agent] StartNewConvo convo=%s agent=%s", convoID, agentName)
-		p.runTurn(agentName, convoID, text, user)
+		p.runTurn(agentName, convoID, text, user, engine, driver)
 	}()
 
 	return convoID
@@ -253,7 +257,7 @@ func (p *PersistentAgentStore) StartNewConvo(agentName, text, user string) strin
 // runTurn creates and runs a single chat-turn session for the given agent and
 // conversation. It must be called from within a goroutine that has already
 // incremented p.wg; it does NOT add/done the WaitGroup itself.
-func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user string) {
+func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, driver string) {
 	// Acquire a distributed turn lock so only one turn executes at a time
 	// per conversation. The locker driver already polls every 100ms while
 	// the key is held, so no additional busy-wait is needed here.
@@ -271,15 +275,25 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user string) {
 		}, "timeout", "30s"))
 	}()
 
+	payload := map[string]interface{}{
+		"text":     text,
+		"user":     user,
+		"convo_id": convoID,
+	}
+	// Pass optional engine/driver overrides through the message payload
+	// so initNewSession can pick them up.
+	if engine != "" {
+		payload["engine"] = engine
+	}
+	if driver != "" {
+		payload["driver"] = driver
+	}
+
 	msg := &dipper.Message{
 		Labels: map[string]string{
 			"agent_name": agentName,
 		},
-		Payload: map[string]interface{}{
-			"text":     text,
-			"user":     user,
-			"convo_id": convoID,
-		},
+		Payload: payload,
 	}
 
 	s := &AgentSession{}

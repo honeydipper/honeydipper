@@ -24,6 +24,7 @@ func setupAgentAPIs() {
 	agentSvc.APIs["convoTurn"] = handleConvoTurnAPI
 	agentSvc.APIs["convoNew"] = handleConvoNewAPI
 	agentSvc.APIs["agentList"] = handleAgentListAPI
+	agentSvc.APIs["agentEngines"] = handleAgentListEnginesAPI
 }
 
 // buildUserTag combines the authenticated user name and provider into a tag like "user@provider".
@@ -95,22 +96,24 @@ func handleConvoCancelAPI(resp *api.Response) {
 }
 
 // handleConvoTurnAPI starts a new chat turn on an existing conversation from the UI.
-// Expects convoID path param plus text (and optional user) in the request body.
-// The turn runs asynchronously; the API returns immediately with {"ok":true}.
+// Expects convoID path param plus text (and optional user, engine, driver) in the
+// request body. The turn runs asynchronously; the API returns immediately with {"ok":true}.
 func handleConvoTurnAPI(resp *api.Response) {
 	resp.Request = dipper.DeserializePayload(resp.Request)
 	convoID := dipper.MustGetMapDataStr(resp.Request.Payload, "convoID")
 
 	// POST body arrives as a JSON string under payload["body"].
 	var body struct {
-		Text string `json:"text"`
+		Text   string `json:"text"`
+		Engine string `json:"engine"`
+		Driver string `json:"driver"`
 	}
 	if bodyStr, ok := dipper.GetMapDataStr(resp.Request.Payload, "body"); ok && bodyStr != "" {
 		_ = json.Unmarshal([]byte(bodyStr), &body)
 	}
 
 	user := buildUserTag(resp.Request.Labels["user"], resp.Request.Labels["user_provider"])
-	agentStore.StartTurn(convoID, body.Text, user)
+	agentStore.StartTurn(convoID, body.Text, user, body.Engine, body.Driver)
 
 	resp.Return([]byte(`{"ok":true}`))
 }
@@ -123,15 +126,17 @@ func handleConvoNewAPI(resp *api.Response) {
 	resp.Request = dipper.DeserializePayload(resp.Request)
 
 	var body struct {
-		Agent string `json:"agent"`
-		Text  string `json:"text"`
+		Agent  string `json:"agent"`
+		Text   string `json:"text"`
+		Engine string `json:"engine"`
+		Driver string `json:"driver"`
 	}
 	if bodyStr, ok := dipper.GetMapDataStr(resp.Request.Payload, "body"); ok && bodyStr != "" {
 		_ = json.Unmarshal([]byte(bodyStr), &body)
 	}
 
 	user := buildUserTag(resp.Request.Labels["user"], resp.Request.Labels["user_provider"])
-	convoID := agentStore.StartNewConvo(body.Agent, body.Text, user)
+	convoID := agentStore.StartNewConvo(body.Agent, body.Text, user, body.Engine, body.Driver)
 
 	data := dipper.Must(json.Marshal(map[string]string{"convo_id": convoID})).([]byte)
 	resp.Return(data)
@@ -148,5 +153,32 @@ func handleAgentListAPI(resp *api.Response) {
 	sort.Strings(names)
 
 	data := dipper.Must(json.Marshal(names)).([]byte)
+	resp.Return(data)
+}
+
+// handleAgentListEnginesAPI returns a sorted JSON array of unique {driver, engine}
+// pairs from all configured agents. The UI uses this to populate the engine/driver
+// override dropdown. Pairs are deduplicated by "driver:engine" key.
+func handleAgentListEnginesAPI(resp *api.Response) {
+	agents := agentStore.GetConfig().DataSet.Agents
+	type engineEntry struct {
+		Driver string `json:"driver"`
+		Engine string `json:"engine"`
+	}
+	seen := map[string]bool{}
+	entries := []engineEntry{}
+	for _, agent := range agents {
+		key := agent.Driver + ":" + agent.Engine
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		entries = append(entries, engineEntry{Driver: agent.Driver, Engine: agent.Engine})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Driver+":"+entries[i].Engine < entries[j].Driver+":"+entries[j].Engine
+	})
+
+	data := dipper.Must(json.Marshal(entries)).([]byte)
 	resp.Return(data)
 }

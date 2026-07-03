@@ -309,6 +309,14 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		if cs.Agent == nil {
 			cs.Agent = interpolateAgentConfig(s.store, msg.Labels["agent_name"], msg.Payload)
 		}
+		// Apply optional engine/driver overrides from the API request payload.
+		// These override the agent config values when non-empty.
+		if engine, ok := dipper.GetMapDataStr(msg.Payload, "engine"); ok && engine != "" {
+			cs.Agent.Engine = engine
+		}
+		if driver, ok := dipper.GetMapDataStr(msg.Payload, "driver"); ok && driver != "" {
+			cs.Agent.Driver = driver
+		}
 		s.Agent = cs.Agent
 		cs.registerSession(s.ID, agentName, s.Type, true)
 	})
