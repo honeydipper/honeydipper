@@ -8,6 +8,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,8 +18,12 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
+// errConvoNotFound is returned when a conversation is not found.
+var errConvoNotFound = errors.New("conversation not found")
+
 func setupAgentAPIs() {
 	agentSvc.APIs["convoList"] = handleConvoList
+	agentSvc.APIs["convoState"] = handleConvoState
 	agentSvc.APIs["convoHistory"] = handleConvoHistory
 	agentSvc.APIs["convoCancel"] = handleConvoCancelAPI
 	agentSvc.APIs["convoTurn"] = handleConvoTurnAPI
@@ -84,6 +89,26 @@ func handleConvoHistory(resp *api.Response) {
 // handleConvoCancelAPI marks a conversation as cancelled by convo_id.
 // Expects convoID path param in the payload. Active sessions belonging to the
 // conversation will detect the flag on their next poll cycle and abort.
+// handleConvoState returns the full ConvoState for a single conversation.
+// Expects convoID path param in the payload.
+// If the conversation does not exist, a 404 error is returned.
+func handleConvoState(resp *api.Response) {
+	resp.Request = dipper.DeserializePayload(resp.Request)
+	convoID := dipper.MustGetMapDataStr(resp.Request.Payload, "convoID")
+
+	data := dipper.Must(agentStore.Call("cache", "load", map[string]any{
+		"key": agent.ConvoStateKeyPrefix + convoID,
+	})).([]byte)
+
+	if len(data) == 0 {
+		resp.ReturnError(errConvoNotFound)
+
+		return
+	}
+
+	resp.Return(data)
+}
+
 func handleConvoCancelAPI(resp *api.Response) {
 	resp.Request = dipper.DeserializePayload(resp.Request)
 	convoID := dipper.MustGetMapDataStr(resp.Request.Payload, "convoID")
