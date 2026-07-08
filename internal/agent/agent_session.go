@@ -63,6 +63,10 @@ type AgentSession struct {
 	ParentSessionID       string
 	ParentTurnID          string
 	ParentToolCallID      string
+	// TurnLockKey is the distributed lock key for this conversation's turn.
+	// It is set when the turn lock is acquired and cleared when released.
+	// The lock prevents concurrent sessions from modifying the same conversation.
+	TurnLockKey string
 
 	store AgentStore
 }
@@ -85,6 +89,21 @@ func (s *AgentSession) unlock() {
 	dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
 		"name": AgentKeyPrefix + s.ID,
 	}))
+}
+
+// releaseTurnLock releases the distributed turn lock for this session's conversation.
+// It is idempotent: calling it with an empty TurnLockKey is a no-op.
+func (s *AgentSession) releaseTurnLock() {
+	if s.TurnLockKey == "" {
+		return
+	}
+	if log := s.log(); log != nil {
+		log.Debugf("[agent] session [%s] releasing turn lock %q", s.ID, s.TurnLockKey)
+	}
+	dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
+		"name": s.TurnLockKey,
+	}, "timeout", "30s"))
+	s.TurnLockKey = ""
 }
 
 // buildConvoURLs constructs the conversation page URL and focus page URL for the
@@ -123,6 +142,7 @@ func (s *AgentSession) persist(unlocking bool) {
 // syncConvoStateStatus updates the session's status in the shared ConvoState(s) when
 // the session has reached a terminal state (complete or failed).
 // It is called after the session lock has been released to avoid nested locking.
+// When a terminal state is detected, it also releases the distributed turn lock.
 func (s *AgentSession) syncConvoStateStatus() {
 	var status string
 	switch {
@@ -154,6 +174,8 @@ func (s *AgentSession) syncConvoStateStatus() {
 
 		cs.updateSessionStatus(s.ID, status, s.ErrorReason, s.InputTokens, s.OutputTokens, s.TotalTokens)
 	})
+
+	s.releaseTurnLock()
 }
 
 // checkCancelled returns true when this session has been marked as cancelled
