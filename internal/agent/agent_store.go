@@ -117,6 +117,16 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 			"agent_session_id": s.ID,
 		},
 	})
+
+	// Acquire the distributed turn lock after setup so s.ConvoID is populated.
+	// The lock is held for the entire turn lifecycle and released by
+	// syncConvoStateStatus() when the session reaches a terminal state.
+	s.TurnLockKey = ConvoTurnLockPrefix + s.ConvoID
+	dipper.Must(p.Call("locker", "lock", map[string]interface{}{
+		"name":   s.TurnLockKey,
+		"expire": "1h",
+	}, "timeout", "30m"))
+
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error in running inference for %s", resumeKey, func(r interface{}) {
 		if s.ErrorReason == "" {
@@ -258,23 +268,6 @@ func (p *PersistentAgentStore) StartNewConvo(agentName, text, user, engine, driv
 // conversation. It must be called from within a goroutine that has already
 // incremented p.wg; it does NOT add/done the WaitGroup itself.
 func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, driver string) {
-	// Acquire a distributed turn lock so only one turn executes at a time
-	// per conversation. The locker driver already polls every 100ms while
-	// the key is held, so no additional busy-wait is needed here.
-	lockKey := ConvoTurnLockPrefix + convoID
-	dipper.Must(p.Call("locker", "lock", map[string]interface{}{
-		"name":   lockKey,
-		"expire": "1h",
-	}, "timeout", "30m"))
-	// Defer unlock so it runs last (LIFO): after s.persist() and recovery.
-	// The timeout label controls how long the locker driver waits for a
-	// Redis response before giving up.
-	defer func() {
-		dipper.Must(p.Call("locker", "unlock", map[string]interface{}{
-			"name": lockKey,
-		}, "timeout", "30s"))
-	}()
-
 	payload := map[string]interface{}{
 		"text":     text,
 		"user":     user,
@@ -298,6 +291,16 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 
 	s := &AgentSession{}
 	s.setup(msg, p, true)
+
+	// Acquire the distributed turn lock after setup so s.ConvoID is populated.
+	// The lock is held for the entire turn lifecycle and released automatically
+	// by syncConvoStateStatus() when the session reaches a terminal state.
+	s.TurnLockKey = ConvoTurnLockPrefix + s.ConvoID
+	dipper.Must(p.Call("locker", "lock", map[string]interface{}{
+		"name":   s.TurnLockKey,
+		"expire": "1h",
+	}, "timeout", "30m"))
+
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
 		if s.ErrorReason == "" {
