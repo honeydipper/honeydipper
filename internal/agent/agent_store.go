@@ -108,7 +108,20 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	})
 	p.Infof("[agent] StartInference agent=%s", msg.Labels["agent_name"])
 	s := &AgentSession{}
-	s.setup(msg, p, true)
+	defer s.persist(true)
+	defer dipper.SafeExitOnError("[agent] error in running inference for %s", resumeKey, func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = fmt.Sprintf("%v", r)
+		}
+		s.notifyParentFailure(s.ErrorReason)
+	})
+
+	// StartInference always begins a new turn; tool-call results and other
+	// continuations re-enter via ContinueInference, not here. Mint the session id
+	// up front so we can ack it to the caller — which polls on it — before taking
+	// the turn lock, which can block up to 30m waiting on a prior turn. setup()
+	// adopts this pre-set s.ID.
+	s.ID = dipper.NewUUID()
 	p.EmitMessage(dipper.Message{
 		Channel: dipper.ChannelEventbus,
 		Subject: "agent_response",
@@ -118,22 +131,19 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 		},
 	})
 
-	// Acquire the distributed turn lock after setup so s.ConvoID is populated.
-	// The lock is held for the entire turn lifecycle and released by
-	// syncConvoStateStatus() when the session reaches a terminal state.
-	s.TurnLockKey = ConvoTurnLockPrefix + s.ConvoID
-	dipper.Must(p.Call("locker", "lock", map[string]interface{}{
-		"name":   s.TurnLockKey,
-		"expire": "1h",
-	}, "timeout", "30m"))
+	if convoID, _ := dipper.GetMapDataStr(msg.Payload, "convo_id"); convoID != "" {
+		// Existing conversation: lock before setup so setup's history read happens
+		// under the turn lock and can't pick up a stale snapshot from an in-flight
+		// prior turn.
+		s.lockTurn(p, convoID)
+		s.setup(msg, p, true)
+	} else {
+		// Brand-new conversation: no prior turn exists to race with. Let setup
+		// mint the convo id, then lock it.
+		s.setup(msg, p, true)
+		s.lockTurn(p, s.ConvoID)
+	}
 
-	defer s.persist(true)
-	defer dipper.SafeExitOnError("[agent] error in running inference for %s", resumeKey, func(r interface{}) {
-		if s.ErrorReason == "" {
-			s.ErrorReason = fmt.Sprintf("%v", r)
-		}
-		s.notifyParentFailure(s.ErrorReason)
-	})
 	s.run()
 }
 
@@ -290,16 +300,14 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, p, true)
 
-	// Acquire the distributed turn lock after setup so s.ConvoID is populated.
-	// The lock is held for the entire turn lifecycle and released automatically
-	// by syncConvoStateStatus() when the session reaches a terminal state.
-	s.TurnLockKey = ConvoTurnLockPrefix + s.ConvoID
-	dipper.Must(p.Call("locker", "lock", map[string]interface{}{
-		"name":   s.TurnLockKey,
-		"expire": "1h",
-	}, "timeout", "30m"))
+	// Take the turn lock before setup so the history is read under the lock. The
+	// convo id is known here (it is a parameter), so unlike StartInference we do
+	// not need to run setup first to discover it. This avoids starting the turn
+	// from a stale snapshot when a previous turn for the same conversation is
+	// still in flight (its final tool_result not yet persisted).
+	s.lockTurn(p, convoID)
+	s.setup(msg, p, true)
 
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {

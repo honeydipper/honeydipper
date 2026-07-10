@@ -47,6 +47,7 @@ type mockStore struct {
 	mu           sync.Mutex
 	calls        []string
 	resp         map[string][]byte
+	lockTriggers map[string]func() // fired when a locker:lock with the keyed name is acquired
 	emitted      []*dipper.Message
 	cfg          *config.Config
 	logger       *logging.Logger
@@ -103,6 +104,20 @@ func (m *mockStore) getEmitted() []*dipper.Message {
 func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ...string) ([]byte, error) {
 	base := feature + ":" + method
 	if p, ok := params.(map[string]interface{}); ok {
+		// Fire any lock trigger registered for this lock name (locks are keyed by
+		// "name"). Tests use this to mutate cache state at the moment a lock is
+		// acquired (e.g. a prior turn completing and persisting its history the
+		// instant the turn lock is granted).
+		if base == "locker:lock" {
+			if name, okn := p["name"].(string); okn {
+				m.mu.Lock()
+				trigger := m.lockTriggers[name]
+				m.mu.Unlock()
+				if trigger != nil {
+					trigger()
+				}
+			}
+		}
 		if k, ok2 := p["key"].(string); ok2 {
 			full := base + ":" + k
 			// If this is a cache save, record the saved value so subsequent
@@ -1678,6 +1693,126 @@ func TestPersistentAgentStore_StartInference(t *testing.T) {
 	assert.True(t, helper.hasCall("driver:openai:send_to_model"))
 	// session should have been persisted.
 	assert.True(t, helper.hasCall("cache:save"))
+}
+
+// assertNoDanglingToolUse fails if any agent tool_use in history is not
+// immediately followed by a tool_result — the malformed shape that triggers the
+// upstream "tool_use without tool_result" 400.
+func assertNoDanglingToolUse(t *testing.T, history []AgentMessage) {
+	t.Helper()
+	for i, m := range history {
+		if m.Role == RoleAgent && len(m.ToolCalls) > 0 {
+			require.Less(t, i+1, len(history),
+				"trailing tool_use with no following message (stale history was sent)")
+			require.Equal(t, RoleToolResult, history[i+1].Role,
+				"tool_use at %d must be followed by a tool_result, got %q", i, history[i+1].Role)
+		}
+	}
+}
+
+// raceHistories returns the stale snapshot a new turn would read while a prior
+// turn is still in flight (ending in an unanswered tool_use) and the completed
+// history that becomes visible once the prior turn finishes.
+func raceHistories() (stale, complete []AgentMessage) {
+	stale = []AgentMessage{
+		{Role: RoleUser, Content: "prior turn"},
+		{Role: RoleAgent, ToolCalls: []AgentToolCall{{FuncName: "ag__sre_github_agent"}}},
+	}
+	complete = []AgentMessage{
+		{Role: RoleUser, Content: "prior turn"},
+		{Role: RoleAgent, ToolCalls: []AgentToolCall{{FuncName: "ag__sre_github_agent"}}},
+		{Role: RoleToolResult, ToolResult: []map[string]interface{}{{"status": "success"}}},
+		{Role: RoleAgent, Content: "done", IsComplete: true},
+	}
+
+	return stale, complete
+}
+
+// TestPersistentAgentStore_StartInference_NewTurnLocksBeforeReadingHistory
+// covers the common new-turn path: StartInference mints the session id up front
+// (so it can ack before the turn lock) and, because the convo id is in the
+// message, takes the turn lock before setup so history is read once, under the
+// lock. The lock trigger simulates the prior turn completing (and persisting its
+// history) the instant the turn lock is granted; without locking first, the
+// request would carry the dangling tool_use.
+func TestPersistentAgentStore_StartInference_NewTurnLocksBeforeReadingHistory(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+
+	stale, complete := raceHistories()
+	histKey := "cache:lrange:" + ConvoHistoryKeyPrefix + "convo-race"
+	helper.resp[histKey] = mustMarshalJSON(stale)
+	helper.lockTriggers = map[string]func(){
+		ConvoTurnLockPrefix + "convo-race": func() {
+			helper.mu.Lock()
+			helper.resp[histKey] = mustMarshalJSON(complete)
+			helper.mu.Unlock()
+		},
+	}
+
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{"agent_name": "bot"},
+		Payload: map[string]interface{}{
+			"convo_id": "convo-race",
+			"text":     "new turn triggered by the posted comment",
+		},
+	}
+
+	store.StartInference(msg)
+
+	require.True(t, helper.hasCall("driver:openai:send_to_model"))
+	params := helper.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	history, ok := params["history"].([]AgentMessage)
+	require.True(t, ok, "history should be []AgentMessage")
+	assertNoDanglingToolUse(t, history)
+}
+
+// TestPersistentAgentStore_RunTurn_LocksBeforeReadingHistory verifies runTurn
+// takes the turn lock before reading history (it can, because the convo id is a
+// parameter). The lock trigger swaps the stale snapshot for the completed one
+// the moment the turn lock is granted; if the read happened before the lock the
+// request would carry the dangling tool_use.
+func TestPersistentAgentStore_RunTurn_LocksBeforeReadingHistory(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+
+	stale, complete := raceHistories()
+	histKey := "cache:lrange:" + ConvoHistoryKeyPrefix + "convo-run"
+	helper.resp[histKey] = mustMarshalJSON(stale)
+	helper.lockTriggers = map[string]func(){
+		ConvoTurnLockPrefix + "convo-run": func() {
+			helper.mu.Lock()
+			helper.resp[histKey] = mustMarshalJSON(complete)
+			helper.mu.Unlock()
+		},
+	}
+
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	// runTurn does not manage the WaitGroup itself; call it directly.
+	store.runTurn("bot", "convo-run", "new turn", "user", "", "")
+
+	require.True(t, helper.hasCall("driver:openai:send_to_model"))
+	params := helper.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	history, ok := params["history"].([]AgentMessage)
+	require.True(t, ok, "history should be []AgentMessage")
+	assertNoDanglingToolUse(t, history)
 }
 
 func TestPersistentAgentStore_ReceiveInference(t *testing.T) {

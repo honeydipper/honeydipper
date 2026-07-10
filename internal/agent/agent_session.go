@@ -91,6 +91,21 @@ func (s *AgentSession) unlock() {
 	}))
 }
 
+// lockTurn acquires the per-conversation turn lock for convoID and records the
+// key on the session so syncConvoStateStatus/releaseTurnLock can release it when
+// the turn reaches a terminal state. The lock serialises turns within a
+// conversation and is held for the whole turn lifecycle. Take it before reading
+// the conversation history so a turn that waits for an in-flight prior turn
+// resumes from that prior turn's completed history rather than a stale snapshot.
+// store is passed explicitly because this may run before setup() sets s.store.
+func (s *AgentSession) lockTurn(store AgentStore, convoID string) {
+	s.TurnLockKey = ConvoTurnLockPrefix + convoID
+	dipper.Must(store.Call("locker", "lock", map[string]interface{}{
+		"name":   s.TurnLockKey,
+		"expire": "1h",
+	}, "timeout", "30m"))
+}
+
 // releaseTurnLock releases the distributed turn lock for this session's conversation.
 // It is idempotent: calling it with an empty TurnLockKey is a no-op.
 func (s *AgentSession) releaseTurnLock() {
@@ -216,8 +231,16 @@ func (s *AgentSession) load(id string, store AgentStore) {
 // setup initialises a new session or restores an existing one from cache.
 // Returns the conversation ID.
 func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool) {
-	id, ok := msg.Labels["agent_session_id"]
-	if !ok || id == "" {
+	// A non-empty agent_session_id label means "restore this session". Otherwise
+	// adopt a session id the caller minted before setup (StartInference does this
+	// so it can ack the id and take the turn lock before reading history), and
+	// fall back to generating one.
+	labelID := msg.Labels["agent_session_id"]
+	id := labelID
+	if id == "" {
+		id = s.ID
+	}
+	if id == "" {
 		id = dipper.NewUUID()
 	}
 
@@ -228,7 +251,7 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 		}))
 	}
 
-	if ok && id != "" {
+	if labelID != "" {
 		s.load(id, store)
 		s.store = store
 		s.loadConvoHistory()
