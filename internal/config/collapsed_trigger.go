@@ -46,8 +46,15 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		exports = append(exports, trigger.Export)
 
 		if current.Driver == "webhook" {
-			if sigsec, ok := sourceSys.Data["signatureSecret"]; ok && sigsec.(string) != "" {
-				match["verifiedSystem"] = trigger.Source.System
+			switch v := sourceSys.Data["signatureSecret"].(type) {
+			case string:
+				if len(v) > 0 {
+					match["verifiedSystem"] = trigger.Source.System
+				}
+			case []interface{}:
+				if len(v) > 0 {
+					match["verifiedSystem"] = trigger.Source.System
+				}
 			}
 		}
 	}
