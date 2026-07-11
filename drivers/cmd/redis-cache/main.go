@@ -91,6 +91,9 @@ func loadOptions() {
 	log = driver.GetLogger()
 	redisOptions = redisclient.GetRedisOpts(driver)
 	log.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
+
+	// Load stream_hset configuration from driver options
+	loadStreamConfig()
 }
 
 func start(msg *dipper.Message) {
