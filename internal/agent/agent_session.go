@@ -22,7 +22,7 @@ const (
 	AgentKeyPrefix                 = "agent_session:"
 	ConvoHistoryKeyPrefix          = "convo_history:"
 	MCPToolsCachePrefix            = "mcp_tools:"
-	AgentSessionDefaultTTL         = "72h"
+	AgentSessionDefaultTTL         = "336h"
 	AgentSessionDefaultTimeout     = "1h"
 	MCPToolsCacheDefaultTTL        = "6h"
 	AgentSessionDefaultPollTimeout = time.Second * 9
