@@ -20,10 +20,16 @@ import (
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
-const (
-	StreamHsetIntervalHours = 2
-	StreamHsetTTLHours      = 48
+// streamHsetIntervalHours is the time interval in hours for stream_hset blocks.
+// Configurable via driver option "data.stream_interval_hours".
+var streamHsetIntervalHours = 2
 
+// streamHsetTTLHours is the TTL in hours for stream_hset data.
+// Controls how far back conversation history can be retrieved.
+// Default: 336 hours (2 weeks). Configurable via driver option "data.stream_ttl_hours".
+var streamHsetTTLHours = 336
+
+const (
 	streamHvalsScript = `
 	    local sessions = {'"'..KEYS[1]..'"', '"'..KEYS[#KEYS]..'"'}
 
@@ -47,6 +53,42 @@ const (
 	`
 )
 
+// loadStreamConfig loads stream_hset configuration from driver options.
+func loadStreamConfig() {
+	if driver.Options == nil {
+		return
+	}
+
+	if v, ok := dipper.GetMapData(driver.Options, "data.stream_ttl_hours"); ok {
+		switch t := v.(type) {
+		case int64:
+			streamHsetTTLHours = int(t)
+		case int:
+			streamHsetTTLHours = t
+		case float64:
+			streamHsetTTLHours = int(t)
+		default:
+			log.Warningf("[%s] redis cache invalid stream_ttl_hours type %T, using default", driver.Service, t)
+		}
+	}
+
+	if v, ok := dipper.GetMapData(driver.Options, "data.stream_interval_hours"); ok {
+		switch t := v.(type) {
+		case int64:
+			streamHsetIntervalHours = int(t)
+		case int:
+			streamHsetIntervalHours = t
+		case float64:
+			streamHsetIntervalHours = int(t)
+		default:
+			log.Warningf("[%s] redis cache invalid stream_interval_hours type %T, using default", driver.Service, t)
+		}
+	}
+
+	log.Infof("[%s] stream_hset: interval=%dh, ttl=%dh (default: 336h=2w)",
+		driver.Service, streamHsetIntervalHours, streamHsetTTLHours)
+}
+
 func streamHset(msg *dipper.Message) {
 	dipper.DeserializePayload(msg)
 	prefix := dipper.MustGetMapDataStr(msg.Payload, "prefix")
@@ -54,7 +96,7 @@ func streamHset(msg *dipper.Message) {
 	val := dipper.MustGetMapDataStr(msg.Payload, "value")
 	ttl, _ := dipper.GetMapData(msg.Payload, "ttl")
 
-	exp := StreamHsetTTLHours * time.Hour
+	exp := time.Duration(streamHsetTTLHours) * time.Hour
 	if ttl != nil {
 		switch t := ttl.(type) {
 		case int64:
@@ -71,7 +113,7 @@ func streamHset(msg *dipper.Message) {
 	}
 
 	curr := time.Now().Truncate(time.Hour)
-	if df := curr.Hour() % StreamHsetIntervalHours; df != 0 {
+	if df := curr.Hour() % streamHsetIntervalHours; df != 0 {
 		curr = curr.Add(time.Duration(-df) * time.Hour)
 	}
 
@@ -99,15 +141,15 @@ func streamHvals(msg *dipper.Message) {
 	raw, _ := dipper.GetMapDataBool(msg.Payload, "raw")
 
 	end := time.Now().Truncate(time.Hour)
-	oldest := end.Add(-StreamHsetTTLHours * time.Hour)
-	if df := oldest.Hour() % StreamHsetIntervalHours; df != 0 {
+	oldest := end.Add(-time.Duration(streamHsetTTLHours) * time.Hour)
+	if df := oldest.Hour() % streamHsetIntervalHours; df != 0 {
 		oldest = oldest.Add(time.Duration(-df) * time.Hour)
 	}
 
 	if asOf != "" {
 		end = dipper.Must(time.ParseInLocation("2006010215", asOf, oldest.Location())).(time.Time)
 	}
-	if df := end.Hour() % StreamHsetIntervalHours; df != 0 {
+	if df := end.Hour() % streamHsetIntervalHours; df != 0 {
 		end = end.Add(time.Duration(-df) * time.Hour)
 	}
 
@@ -134,16 +176,16 @@ func streamHvals(msg *dipper.Message) {
 		if blocks < 0 {
 			blocks = 0
 		}
-		earliest = end.Add(time.Duration(-blocks*StreamHsetIntervalHours) * time.Hour)
+		earliest = end.Add(-time.Duration(blocks*streamHsetIntervalHours) * time.Hour)
 		if earliest.Before(oldest) {
 			earliest = oldest
 		}
 	}
 
-	size := int(end.Sub(earliest).Hours()/StreamHsetIntervalHours) + 1
+	size := int(end.Sub(earliest).Hours()/float64(streamHsetIntervalHours)) + 1
 	keys := make([]string, size)
 	for i := 0; i < size; i++ {
-		t := earliest.Add(time.Duration(i*StreamHsetIntervalHours) * time.Hour)
+		t := earliest.Add(time.Duration(i*streamHsetIntervalHours) * time.Hour)
 		keys[i] = prefix + t.Format("2006010215")
 	}
 

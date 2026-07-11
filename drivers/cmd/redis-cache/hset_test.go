@@ -155,7 +155,7 @@ func TestStreamHset(t *testing.T) {
 	assert.Panics(t, func() { streamHset(&dipper.Message{}) }, "streamHset should panic with empty request")
 
 	now := time.Now().Truncate(time.Hour)
-	if df := now.Hour() % StreamHsetIntervalHours; df != 0 {
+	if df := now.Hour() % streamHsetIntervalHours; df != 0 {
 		now = now.Add(time.Duration(-df) * time.Hour)
 	}
 	setName := "session_stream_" + now.Format("2006010215")
@@ -170,7 +170,7 @@ func TestStreamHset(t *testing.T) {
 	}
 
 	mock.ExpectHSet(setName, []string{"sid-1", `{"id":"sid-1"}`}).SetVal(1)
-	mock.ExpectExpire(setName, StreamHsetTTLHours*time.Hour).SetVal(true)
+	mock.ExpectExpire(setName, time.Duration(streamHsetTTLHours)*time.Hour).SetVal(true)
 	assert.NotPanics(t, func() { streamHset(msg) }, "streamHset should not panic with valid input")
 	select {
 	case <-msg.Reply:
@@ -199,10 +199,10 @@ func TestStreamHvals(t *testing.T) {
 	}
 
 	end := time.Now().Truncate(time.Hour)
-	if df := end.Hour() % StreamHsetIntervalHours; df != 0 {
+	if df := end.Hour() % streamHsetIntervalHours; df != 0 {
 		end = end.Add(time.Duration(-df) * time.Hour)
 	}
-	earliest := end.Add(-2 * StreamHsetIntervalHours * time.Hour)
+	earliest := end.Add(-time.Duration(2*streamHsetIntervalHours) * time.Hour)
 
 	keys := []string{
 		"session_stream_" + earliest.Format("2006010215"),
