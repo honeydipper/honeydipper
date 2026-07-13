@@ -2698,3 +2698,165 @@ func TestAgentOverrideEngineAndDriver_NoOverride(t *testing.T) {
 	require.True(t, ok, "engine must be a string")
 	assert.Equal(t, "default_engine", engine, "engine should be from agent config")
 }
+
+// TestResolveUnresolvedToolCalls_NoHistory tests that the method does nothing when history is empty.
+func TestResolveUnresolvedToolCalls_NoHistory(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	s := &AgentSession{
+		store:   store,
+		history: []AgentMessage{},
+	}
+
+	s.resolveUnresolvedToolCalls()
+
+	assert.Empty(t, s.history)
+}
+
+// TestResolveUnresolvedToolCalls_NoToolCalls tests that the method does nothing when the last message has no tool calls.
+func TestResolveUnresolvedToolCalls_NoToolCalls(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	s := &AgentSession{
+		store: store,
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{Role: RoleAgent, Content: "Hi there!"},
+		},
+	}
+
+	s.resolveUnresolvedToolCalls()
+
+	assert.Len(t, s.history, 2)
+}
+
+// TestResolveUnresolvedToolCalls_LastMessageIsToolResult tests that the method does nothing when the last message is a tool result.
+func TestResolveUnresolvedToolCalls_LastMessageIsToolResult(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	s := &AgentSession{
+		store: store,
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{
+				Role: RoleAgent,
+				ToolCalls: []AgentToolCall{
+					{FuncName: "test_tool", Params: map[string]interface{}{"arg": "val"}},
+				},
+			},
+			{
+				Role: RoleToolResult,
+				ToolResult: []map[string]interface{}{
+					{"status": "success", "data": "result"},
+				},
+			},
+		},
+	}
+
+	s.resolveUnresolvedToolCalls()
+
+	assert.Len(t, s.history, 3)
+}
+
+// TestResolveUnresolvedToolCalls_ResolvesUnresolvedToolCalls tests that the method adds synthetic tool results for unresolved tool calls.
+func TestResolveUnresolvedToolCalls_ResolvesUnresolvedToolCalls(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	s := &AgentSession{
+		ID:    "test-session",
+		store: store,
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{
+				Role: RoleAgent,
+				ToolCalls: []AgentToolCall{
+					{FuncName: "test_tool1", Params: map[string]interface{}{"arg": "val1"}},
+					{FuncName: "test_tool2", Params: map[string]interface{}{"arg": "val2"}},
+				},
+			},
+		},
+	}
+
+	s.resolveUnresolvedToolCalls()
+
+	assert.Len(t, s.history, 3)
+	assert.Equal(t, RoleToolResult, s.history[2].Role)
+	assert.Len(t, s.history[2].ToolResult, 2)
+	assert.Equal(t, "failure", s.history[2].ToolResult[0]["status"])
+	assert.Equal(t, "conversation cancelled before tool call could complete", s.history[2].ToolResult[0]["reason"])
+	assert.Equal(t, "test_tool1", s.history[2].ToolResult[0]["func_name"])
+	assert.Equal(t, "test_tool2", s.history[2].ToolResult[1]["func_name"])
+}
+
+// TestResolveUnresolvedToolCalls_Idempotent tests that calling the method multiple times doesn't create duplicates.
+func TestResolveUnresolvedToolCalls_Idempotent(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	s := &AgentSession{
+		ID:    "test-session",
+		store: store,
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{
+				Role: RoleAgent,
+				ToolCalls: []AgentToolCall{
+					{FuncName: "test_tool", Params: map[string]interface{}{"arg": "val"}},
+				},
+			},
+		},
+	}
+
+	// Call twice
+	s.resolveUnresolvedToolCalls()
+	s.resolveUnresolvedToolCalls()
+
+	// Should only have added one tool result message
+	assert.Len(t, s.history, 3)
+	assert.Equal(t, RoleToolResult, s.history[2].Role)
+}
+
+// TestResolveUnresolvedToolCalls_WithExistingToolResultInHistory tests that the method works correctly when there's already a tool result in history.
+func TestResolveUnresolvedToolCalls_WithExistingToolResultInHistory(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["a"] = config.Agent{Name: "a"}
+
+	s := &AgentSession{
+		ID:    "test-session",
+		store: store,
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{
+				Role: RoleAgent,
+				ToolCalls: []AgentToolCall{
+					{FuncName: "tool1", Params: map[string]interface{}{}},
+				},
+			},
+			{
+				Role: RoleToolResult,
+				ToolResult: []map[string]interface{}{
+					{"status": "success", "data": "result1"},
+				},
+			},
+			{Role: RoleUser, Content: "follow up"},
+			{
+				Role: RoleAgent,
+				ToolCalls: []AgentToolCall{
+					{FuncName: "tool2", Params: map[string]interface{}{}},
+				},
+			},
+		},
+	}
+
+	s.resolveUnresolvedToolCalls()
+
+	// Should add a tool result for tool2
+	assert.Len(t, s.history, 6)
+	assert.Equal(t, RoleToolResult, s.history[5].Role)
+	assert.Len(t, s.history[5].ToolResult, 1)
+	assert.Equal(t, "tool2", s.history[5].ToolResult[0]["func_name"])
+}

@@ -147,6 +147,9 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	// in-flight prior turns.
 	s.loadConvoHistory()
 
+	// Resolve any unresolved tool calls from a previous cancelled conversation
+	s.resolveUnresolvedToolCalls()
+
 	s.run()
 }
 
@@ -319,6 +322,9 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 	// stale snapshot when a previous turn for the same conversation is still
 	// in flight (its final tool_result not yet persisted).
 	s.loadConvoHistory()
+
+	// Resolve any unresolved tool calls from a previous cancelled conversation
+	s.resolveUnresolvedToolCalls()
 
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
