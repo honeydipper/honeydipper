@@ -230,7 +230,7 @@ func (s *AgentSession) load(id string, store AgentStore) {
 
 // setup initialises a new session or restores an existing one from cache.
 // Returns the conversation ID.
-func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool) {
+func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool, skipHistoryLoad bool) {
 	// A non-empty agent_session_id label means "restore this session". Otherwise
 	// adopt a session id the caller minted before setup (StartInference does this
 	// so it can ack the id and take the turn lock before reading history), and
@@ -256,7 +256,7 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 		s.store = store
 		s.loadConvoHistory()
 	} else {
-		s.initNewSession(id, msg, store)
+		s.initNewSession(id, msg, store, skipHistoryLoad)
 	}
 
 	// Ensure Agent is set. For restored sessions, load from ConvoState.
@@ -282,7 +282,7 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 }
 
 // initNewSession populates a freshly created session from the incoming message.
-func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store AgentStore) {
+func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store AgentStore, skipHistoryLoad bool) {
 	s.store = store
 	s.CurrentMsg = msg
 	s.ID = id
@@ -298,7 +298,9 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 
 	if convoID, ok := dipper.GetMapDataStr(msg.Payload, "convo_id"); ok && convoID != "" {
 		s.ConvoID = convoID
-		s.loadConvoHistory()
+		if !skipHistoryLoad {
+			s.loadConvoHistory()
+		}
 	} else {
 		s.ConvoID = dipper.NewUUID()
 	}
@@ -770,7 +772,7 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 			s.unlock()
 
 			time.Sleep(time.Second)
-			s.setup(msg, s.store, true)
+			s.setup(msg, s.store, true, false)
 
 			// Check whether the conversation was cancelled while waiting.
 			if s.checkCancelled() {

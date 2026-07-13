@@ -303,7 +303,7 @@ func TestSetup_NewSession(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	assert.NotEmpty(t, s.ID)
 	assert.Equal(t, AgentSessionTypeInference, s.Type)
@@ -323,7 +323,7 @@ func TestSetup_DefaultsToChatTurnType(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	assert.Equal(t, AgentSessionTypeChatTurn, s.Type)
 }
@@ -343,7 +343,7 @@ func TestSetup_CustomTTL(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	assert.Equal(t, "7200", s.TTL)
 }
@@ -381,7 +381,7 @@ func TestSetup_RestoreFromCache(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(newMsg, store, false)
+	s.setup(newMsg, store, false, false)
 
 	assert.Equal(t, "session-abc", s.ID)
 	assert.Equal(t, "1800", s.TTL)
@@ -409,7 +409,7 @@ func TestSetup_ChatTurn_NewConvo(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	assert.Equal(t, AgentSessionTypeChatTurn, s.Type)
 	assert.NotEmpty(t, s.ConvoID)
@@ -447,7 +447,7 @@ func TestSetup_ChatTurn_ExistingConvo(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	assert.Equal(t, "convo-1", s.ConvoID)
 	require.Len(t, s.history, 3)
@@ -471,7 +471,7 @@ func TestParentChildConvoStateBehavior(t *testing.T) {
 	}
 
 	parent := &AgentSession{}
-	parent.setup(parentMsg, store, false)
+	parent.setup(parentMsg, store, false, false)
 
 	// Load parent convo state
 	pcs := &ConvoState{}
@@ -493,7 +493,7 @@ func TestParentChildConvoStateBehavior(t *testing.T) {
 	}
 
 	child := &AgentSession{}
-	child.setup(childMsg, store, false)
+	child.setup(childMsg, store, false, false)
 
 	// Child convo state should have LastSession == ActiveSession == child
 	ccs := &ConvoState{}
@@ -547,7 +547,7 @@ func TestRun_AddsSystemPromptAndUserMessage(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 	s.run()
 
 	// Persisted history contains only the user message; no system message stored.
@@ -587,7 +587,7 @@ func TestRun_InferenceTypeUsesInferencePrompt(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 	s.run()
 
 	// Driver receives the inference-specific prompt, not the general system prompt.
@@ -617,7 +617,7 @@ func TestRun_AgentSwitchUsesCurrentSystemPrompt(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 	// Pre-existing history from a prior turn (no system message).
 	s.history = []AgentMessage{
 		{Role: RoleUser, Content: "previous message"},
@@ -648,7 +648,7 @@ func TestRun_WithUserLabel(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 	s.run()
 
 	userMsg := s.history[len(s.history)-1]
@@ -2236,7 +2236,7 @@ func TestSetup_NewConvo_StoresInterpolatedAgent(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	// Session agent should be interpolated
 	assert.Equal(t, "gpt-4-turbo", s.Agent.Engine)
@@ -2282,7 +2282,7 @@ func TestSetup_ExistingConvo_LoadsAgentFromConvoState(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	// Session should have loaded agent from ConvoState
 	require.NotNil(t, s.Agent)
@@ -2316,7 +2316,7 @@ func TestSetup_PanicsIfAgentMissing(t *testing.T) {
 
 	// Should panic because Agent is nil for an existing conversation
 	assert.Panics(t, func() {
-		s.setup(msg, store, false)
+		s.setup(msg, store, false, false)
 	})
 }
 
@@ -2354,7 +2354,7 @@ func TestSetup_ForgetHistory_ClearsMemory(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	// s.history should be cleared and contain ONLY the marker
 	assert.Len(t, s.history, 1, "history should contain only the marker message")
@@ -2403,7 +2403,7 @@ func TestSetup_ForgetHistory_InjectsMarker(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	// Only the marker should be in history
 	require.Len(t, s.history, 1)
@@ -2441,7 +2441,7 @@ func TestSetup_ForgetHistory_MarkerFormat(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	require.Len(t, s.history, 1)
 	content := s.history[0].Content
@@ -2490,7 +2490,7 @@ func TestSetup_ForgetHistory_MultipleGenerations(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	require.Len(t, s.history, 1)
 	content := s.history[0].Content
@@ -2531,7 +2531,7 @@ func TestSetup_NoForgetHistory_NoMarker(t *testing.T) {
 	}
 
 	s := &AgentSession{}
-	s.setup(msg, store, false)
+	s.setup(msg, store, false, false)
 
 	// History should be loaded as-is from cache without modification
 	assert.Len(t, s.history, 3)
