@@ -903,3 +903,54 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 
 	return true
 }
+
+// resolveUnresolvedToolCalls checks the conversation history for unresolved tool calls
+// (tool calls without corresponding results) and creates synthetic tool result
+// messages with failure status. This handles the case where a conversation was
+// cancelled before tool calls could complete.
+// The method is idempotent: safe to call multiple times without creating duplicates.
+func (s *AgentSession) resolveUnresolvedToolCalls() {
+	if len(s.history) == 0 {
+		return
+	}
+
+	// Check if the last message has unresolved tool calls
+	// Unresolved tool calls means: the last message has ToolCalls populated,
+	// but there is no subsequent RoleToolResult message with the results.
+	lastMsg := s.history[len(s.history)-1]
+
+	// If the last message doesn't have tool calls, nothing to resolve
+	if len(lastMsg.ToolCalls) == 0 {
+		return
+	}
+
+	// If the last message is itself a tool result, the tool calls have been resolved
+	if lastMsg.Role == RoleToolResult {
+		return
+	}
+
+	// At this point, we have unresolved tool calls in the last message
+	// Create synthetic tool results with failure status
+	toolResults := make([]map[string]interface{}, len(lastMsg.ToolCalls))
+
+	for i, tc := range lastMsg.ToolCalls {
+		toolResults[i] = map[string]interface{}{
+			"status":    "failure",
+			"reason":    "conversation cancelled before tool call could complete",
+			"data":      nil,
+			"func_name": tc.FuncName,
+		}
+	}
+
+	toolResultMsg := AgentMessage{
+		Role:       RoleToolResult,
+		ToolResult: toolResults,
+	}
+
+	s.appendConvoHistory(&toolResultMsg)
+
+	if log := s.log(); log != nil {
+		log.Infof("[agent] session [%s] resolved %d unresolved tool calls from previous cancelled conversation",
+			s.ID, len(lastMsg.ToolCalls))
+	}
+}
