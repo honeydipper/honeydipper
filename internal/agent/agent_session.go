@@ -70,6 +70,10 @@ type AgentSession struct {
 	// It is set when the turn lock is acquired and cleared when released.
 	// The lock prevents concurrent sessions from modifying the same conversation.
 	TurnLockKey string
+	// CurrentRequestID is the unique request ID for the current send_to_model call.
+	// It is set when sending a request to the driver and cleared when the turn completes.
+	// The driver should echo this ID back in all agentbus:receive responses.
+	CurrentRequestID string
 
 	store AgentStore
 }
@@ -197,6 +201,8 @@ func (s *AgentSession) syncConvoStateStatus() {
 		cs.updateSessionStatus(s.ID, status, s.ErrorReason, s.InputTokens, s.OutputTokens, s.TotalTokens)
 	})
 
+	// Clear the current request ID when the turn completes.
+	s.CurrentRequestID = ""
 	s.releaseTurnLock()
 }
 
@@ -620,6 +626,11 @@ func (s *AgentSession) sendToDriver() {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
 			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
 	}
+	// Generate a new request ID for this send_to_model call.
+	s.CurrentRequestID = dipper.NewUUID()
+	if log := s.log(); log != nil {
+		log.Debugf("[agent] session [%s] generated request_id=%s", s.ID, s.CurrentRequestID)
+	}
 	s.InputTokens = 0
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
 		"engine":         s.Agent.Engine,
@@ -629,6 +640,7 @@ func (s *AgentSession) sendToDriver() {
 		"model_data":     s.Agent.ModelData,
 		"should_stream":  s.Agent.ShouldStream,
 		"agent_settings": s.Agent.AgentSettings,
+		"request_id":     s.CurrentRequestID,
 	}, "agent_session_id", s.ID, "timeout", timeout))
 }
 
@@ -677,6 +689,18 @@ func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 	if s.checkCancelled() {
 		s.ErrorReason = "conversation cancelled"
 		s.notifyParentFailure(s.ErrorReason)
+
+		return
+	}
+
+	// Validate request_id for correlation (lenient mode: empty request_id = match).
+	// This ensures we ignore responses from cancelled or outdated requests.
+	responseRequestID, _ := dipper.GetMapDataStr(msg.Payload, "request_id")
+	if responseRequestID != "" && responseRequestID != s.CurrentRequestID {
+		if log := s.log(); log != nil {
+			log.Debugf("[agent] session [%s] ignoring response with mismatched request_id: expected=%s got=%s",
+				s.ID, s.CurrentRequestID, responseRequestID)
+		}
 
 		return
 	}
