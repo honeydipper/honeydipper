@@ -52,6 +52,8 @@ type mockStore struct {
 	cfg          *config.Config
 	logger       *logging.Logger
 	noWaitParams map[string]map[string]interface{}
+	noWaitLabels map[string][]string
+	callParams   map[string]map[string]interface{}
 	uiURL        string
 }
 
@@ -131,12 +133,28 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 			}
 			if v, ok3 := m.resp[full]; ok3 {
 				m.record(base)
+				if p, ok := params.(map[string]interface{}); ok {
+					m.mu.Lock()
+					if m.callParams == nil {
+						m.callParams = map[string]map[string]interface{}{}
+					}
+					m.callParams[base] = p
+					m.mu.Unlock()
+				}
 
 				return v, nil
 			}
 		}
 	}
 	m.record(base)
+	if p, ok := params.(map[string]interface{}); ok {
+		m.mu.Lock()
+		if m.callParams == nil {
+			m.callParams = map[string]map[string]interface{}{}
+		}
+		m.callParams[base] = p
+		m.mu.Unlock()
+	}
 	if v, ok := m.resp[base]; ok {
 		return v, nil
 	}
@@ -153,6 +171,10 @@ func (m *mockStore) CallNoWait(feature, method string, params interface{}, label
 			m.noWaitParams = map[string]map[string]interface{}{}
 		}
 		m.noWaitParams[key] = p
+		if m.noWaitLabels == nil {
+			m.noWaitLabels = map[string][]string{}
+		}
+		m.noWaitLabels[key] = labelsKV
 		m.mu.Unlock()
 	}
 
@@ -167,6 +189,26 @@ func (m *mockStore) getNoWaitParams(key string) map[string]interface{} {
 	}
 
 	return m.noWaitParams[key]
+}
+
+func (m *mockStore) getNoWaitLabels(key string) []string { //nolint:unparam
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.noWaitLabels == nil {
+		return nil
+	}
+
+	return m.noWaitLabels[key]
+}
+
+func (m *mockStore) getCallParams(key string) map[string]interface{} { //nolint:unparam
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.callParams == nil {
+		return nil
+	}
+
+	return m.callParams[key]
 }
 
 func (m *mockStore) CallRaw(feature, method string, params []byte, labelsKV ...string) ([]byte, error) {
