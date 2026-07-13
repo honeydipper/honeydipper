@@ -24,8 +24,8 @@ const (
 	MCPToolsCachePrefix                  = "mcp_tools:"
 	AgentSessionDefaultTTL               = "336h"
 	AgentSessionDefaultTimeout           = "1h"
-	MCPToolsCacheDefaultTTL              = "6h"
 	AgentSessionDefaultTurnLockExpire    = "1h"
+	MCPToolsCacheDefaultTTL              = "6h"
 	AgentSessionDefaultDriverCallTimeout = "300s"
 	AgentSessionDefaultPollTimeout       = time.Second * 9
 	MinPollInterval                      = time.Second * 2
@@ -103,9 +103,15 @@ func (s *AgentSession) unlock() {
 // store is passed explicitly because this may run before setup() sets s.store.
 func (s *AgentSession) lockTurn(store AgentStore, convoID string) {
 	s.TurnLockKey = ConvoTurnLockPrefix + convoID
+	// Determine turn lock expiration: message label "timeout" overrides agent config,
+	// which falls back to AgentSessionDefaultTurnLockExpire ("1h").
+	// Lock acquisition timeout is hardcoded at "30m", release timeout at "30s".
 	expire := AgentSessionDefaultTurnLockExpire
 	if s.Agent != nil && s.Agent.TurnLockTimeout != "" {
 		expire = s.Agent.TurnLockTimeout
+	}
+	if timeoutLabel := s.CurrentMsg.Labels["timeout"]; timeoutLabel != "" {
+		expire = timeoutLabel
 	}
 	dipper.Must(store.Call("locker", "lock", map[string]interface{}{
 		"name":   s.TurnLockKey,
@@ -167,6 +173,7 @@ func (s *AgentSession) persist(unlocking bool) {
 // When a terminal state is detected, it also releases the distributed turn lock.
 func (s *AgentSession) syncConvoStateStatus() {
 	var status string
+
 	switch {
 	case s.ErrorReason != "":
 		status = ConvoSessionStatusFailed
@@ -665,231 +672,9 @@ func (s *AgentSession) notifyParent(agentMsg AgentMessage) {
 		},
 		Payload: map[string]interface{}{
 			"data": map[string]interface{}{
-				"output": agentMsg.Content,
+				"text":       agentMsg.Content,
+				"tool_calls": agentMsg.ToolCalls,
 			},
 		},
 	})
-}
-
-// processAgentResponse decodes the model's response message and hands it to processAgentMessage.
-func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
-	// Honour a cancellation that arrived while the model was running.
-	if s.checkCancelled() {
-		s.ErrorReason = "conversation cancelled"
-		s.notifyParentFailure(s.ErrorReason)
-
-		return
-	}
-	m := dipper.MustGetMapData(msg.Payload, "message").(map[string]interface{})
-	var agentMsg AgentMessage
-	dipper.Must(mapstructure.Decode(m, &agentMsg))
-	s.coerceToolCallParams(agentMsg.ToolCalls)
-	if log := s.log(); log != nil {
-		log.Debugf("[agent] session [%s] response received role=%s thinking=%v tool_calls=%d",
-			s.ID, agentMsg.Role, agentMsg.IsThinking, len(agentMsg.ToolCalls))
-	}
-
-	if msg.Labels["status"] != "success" && msg.Labels["status"] != "" {
-		s.ErrorReason = msg.Labels["reason"]
-		s.notifyParentFailure(s.ErrorReason)
-
-		return
-	}
-	s.processAgentMessage(&agentMsg)
-}
-
-// processAgentMessage routes a decoded model message: triggers tool calls, handles thinking
-// tokens, or re-runs the session when the model produces a final user-facing reply.
-func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
-	if s.TokenCounter == nil {
-		// handle streaming chunk, currently expect input/output tokens to be counted and returned.
-		s.InputTokens += agentMsg.InputTokens
-		s.OutputTokens += agentMsg.OutputTokens
-		s.TotalTokens = s.InputTokens + s.OutputTokens
-	}
-
-	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
-	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
-	if agentMsg.Role == RoleAgent && !agentMsg.IsComplete {
-		s.PendingContent += agentMsg.Content
-		s.PendingThoughts += agentMsg.Thoughts
-
-		s.NewPendingContent = s.NewPendingContent || len(agentMsg.Content) > 0
-		s.NewPendingContent = s.NewPendingContent || s.Agent.ShouldEmitThoughts && len(agentMsg.Thoughts) > 0
-
-		return
-	}
-
-	// Populate ConvoID on agent tool calls so the UI can render a
-	// "View Sub-Agent Conversation" link immediately when the tool call
-	// card appears, without waiting for the result.
-	for i, tc := range agentMsg.ToolCalls {
-		if strings.HasPrefix(tc.FuncName, "ag__") {
-			oneShot, _ := dipper.GetMapDataBool(tc.Params, "one_shot")
-			if oneShot {
-				agentMsg.ToolCalls[i].ConvoID = dipper.NewUUID()
-			} else {
-				agentMsg.ToolCalls[i].ConvoID = fmt.Sprintf("%s-%s", s.ConvoID, tc.FuncName[len("ag__"):])
-			}
-		}
-	}
-
-	s.appendConvoHistory(agentMsg)
-	if s.TokenCounter != nil {
-		s.InputTokens += agentMsg.InputTokens
-		s.OutputTokens += agentMsg.OutputTokens
-		s.TotalTokens = s.InputTokens + s.OutputTokens
-	}
-
-	// Final agent message: the complete message added to the
-	// history, reset the pending content and thoughts.
-	if agentMsg.Role == RoleAgent {
-		s.PendingContent = ""
-		s.PendingThoughts = ""
-		s.NewPendingContent = false
-	}
-
-	// Everything else: tool calls, non-agent messages.
-	if len(agentMsg.ToolCalls) > 0 {
-		s.CurrentCall = 0
-		s.ToolCalls = agentMsg.ToolCalls
-		s.nextToolCall()
-
-		return
-	}
-
-	if agentMsg.Role != RoleAgent || !agentMsg.IsComplete {
-		s.persist(false)
-		s.sendToDriver()
-
-		return
-	}
-
-	if s.ParentSessionID != "" {
-		s.notifyParent(*agentMsg)
-	}
-}
-
-func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
-	log := s.log()
-	if log == nil {
-		log = dipper.GetLogger("agent", "INFO")
-	}
-
-	log.Infof("[agent] session [%s] poll received lastpoll=%d resume_key %s", s.ID, s.LastPoll, msg.Labels["resume_key"])
-
-	timeout := AgentSessionDefaultPollTimeout
-	if t, ok := msg.Labels["timeout"]; ok {
-		timeout = dipper.Must(time.ParseDuration(t)).(time.Duration)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	for {
-		rateLimited := !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
-
-		for (!s.NewPendingContent && s.LastPoll == len(s.history) && s.ErrorReason == "") || rateLimited {
-			select {
-			case <-ctx.Done():
-				log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
-				labels := msg.Labels
-				labels["status"] = "failure"
-				labels["reason"] = "poll timeout after " + timeout.String()
-				s.store.EmitMessage(dipper.Message{
-					Channel: dipper.ChannelEventbus,
-					Subject: "agent_response",
-					Labels:  labels,
-				})
-
-				return
-			default:
-			}
-			s.unlock()
-
-			time.Sleep(time.Second)
-			s.setup(msg, s.store, true)
-
-			// Check whether the conversation was cancelled while waiting.
-			if s.checkCancelled() {
-				s.ErrorReason = "conversation cancelled"
-
-				break
-			}
-			rateLimited = !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
-		}
-
-		if s.emitPollResponse(msg) {
-			return
-		}
-	}
-}
-
-func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
-	fullMessages := []map[string]string{}
-	for ; s.LastPoll < len(s.history); s.LastPoll++ {
-		am := s.history[s.LastPoll]
-		if am.Role != RoleAgent {
-			continue
-		}
-		if am.IsThinking && !s.Agent.ShouldEmitThoughts {
-			continue
-		}
-		currentMessage := map[string]string{
-			"content":     am.Content,
-			"is_thinking": strconv.FormatBool(am.IsThinking),
-		}
-		if s.Agent.ShouldEmitThoughts && len(am.Thoughts) > 0 {
-			currentMessage["thoughts"] = am.Thoughts
-		}
-		if len(currentMessage["content"]) > 0 || len(currentMessage["thoughts"]) > 0 {
-			fullMessages = append(fullMessages, currentMessage)
-		}
-	}
-
-	ret := dipper.Message{
-		Channel: dipper.ChannelEventbus,
-		Subject: "agent_response",
-		Payload: map[string]interface{}{
-			"full_messages": fullMessages,
-			"state": AgentState{
-				HistoryLen:  len(s.history),
-				TotalTokens: s.TotalTokens,
-				ConvoID:     s.ConvoID,
-			},
-		},
-	}
-
-	last := s.history[len(s.history)-1]
-	live := !last.IsComplete || last.Role != RoleAgent || len(last.ToolCalls) > 0
-	live = live && len(s.ErrorReason) == 0
-
-	if live && s.NewPendingContent {
-		liveMessage := map[string]string{
-			"content": s.PendingContent,
-		}
-		if s.Agent.ShouldEmitThoughts && len(s.PendingThoughts) > 0 {
-			liveMessage["thoughts"] = s.PendingThoughts
-		}
-		ret.Payload.(map[string]interface{})["live_message"] = liveMessage
-	}
-
-	labels := msg.Labels
-	labels["last_poll"] = strconv.Itoa(s.LastPoll)
-	if s.ErrorReason != "" {
-		labels["status"] = "error"
-		labels["reason"] = s.ErrorReason
-	} else {
-		labels["status"] = "success"
-	}
-
-	if labels["status"] == "success" &&
-		len(fullMessages) == 0 &&
-		!s.NewPendingContent {
-		return false
-	}
-
-	s.LastPollTime = time.Now()
-	s.NewPendingContent = false
-	s.store.EmitMessage(ret)
-
-	return true
 }

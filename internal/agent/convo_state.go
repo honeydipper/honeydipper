@@ -255,14 +255,32 @@ func (cs *ConvoState) archiveConvo(store AgentStore) (string, error) {
 // lockedConvoStateUpdate acquires the distributed lock for convoID, loads the
 // latest state, calls fn with the mutable *ConvoState, persists the result,
 // and then releases the lock.  It is a no-op when convoID is empty.
-func lockedConvoStateUpdate(convoID string, store AgentStore, fn func(*ConvoState)) {
+// Optional agentConfig and labels parameters allow configurable lock expiration:
+// - agentConfig.TurnLockTimeout is used if set (fallback to AgentSessionDefaultTurnLockExpire)
+// - labels["timeout"] overrides everything if present.
+func lockedConvoStateUpdate(convoID string, store AgentStore, fn func(*ConvoState), opts ...LockedConvoStateUpdateOpts) {
 	if convoID == "" {
 		return
+	}
+	// Determine lock expiration with same priority as turn lock:
+	// 1. Default: AgentSessionDefaultTurnLockExpire ("1h")
+	// 2. Agent config: agentConfig.TurnLockTimeout (if provided and non-empty)
+	// 3. Message label: labels["timeout"] (if provided and non-empty)
+	expire := AgentSessionDefaultTurnLockExpire
+	if len(opts) > 0 {
+		if opts[0].AgentConfig != nil && opts[0].AgentConfig.TurnLockTimeout != "" {
+			expire = opts[0].AgentConfig.TurnLockTimeout
+		}
+		if opts[0].Labels != nil {
+			if timeoutLabel := opts[0].Labels["timeout"]; timeoutLabel != "" {
+				expire = timeoutLabel
+			}
+		}
 	}
 	lockKey := ConvoStateKeyPrefix + convoID
 	dipper.Must(store.Call("locker", "lock", map[string]interface{}{
 		"name":   lockKey,
-		"expire": "30s",
+		"expire": expire,
 	}))
 	defer func() {
 		dipper.Must(store.Call("locker", "unlock", map[string]interface{}{
@@ -273,4 +291,10 @@ func lockedConvoStateUpdate(convoID string, store AgentStore, fn func(*ConvoStat
 	cs.load(convoID, store)
 	fn(cs)
 	cs.persist(store)
+}
+
+// LockedConvoStateUpdateOpts holds optional parameters for lockedConvoStateUpdate.
+type LockedConvoStateUpdateOpts struct {
+	AgentConfig *config.Agent
+	Labels      map[string]string
 }

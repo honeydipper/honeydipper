@@ -177,7 +177,13 @@ func (s *AgentSession) resumeWithSkills(skillMap map[string]string) {
 		if len(skillMap) > 0 {
 			cs.Skills = skillMap
 		}
-	})
+	}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+		if s.CurrentMsg != nil {
+			return s.CurrentMsg.Labels
+		}
+
+		return nil
+	}()})
 
 	s.run()
 }
@@ -201,7 +207,13 @@ func (s *AgentSession) handleLoadSkillToolCall(c AgentToolCall, unifiedConvoID s
 	var skillMap map[string]string
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		skillMap = cs.Skills
-	})
+	}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+		if s.CurrentMsg != nil {
+			return s.CurrentMsg.Labels
+		}
+
+		return nil
+	}()})
 	if skillMap == nil {
 		if log := s.log(); log != nil {
 			log.Warningf("[agent] session [%s] hd_load_skill call but no skills found in convo state", s.ID)

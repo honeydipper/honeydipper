@@ -640,7 +640,13 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
 		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 			cs.ActiveSession = cs.LastSession
-		})
+		}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+			if s.CurrentMsg != nil {
+				return s.CurrentMsg.Labels
+			}
+
+			return nil
+		}()})
 	case strings.HasPrefix(c.FuncName, "mcp__"):
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
 	case strings.HasPrefix(c.FuncName, "util__"):

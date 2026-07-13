@@ -138,7 +138,13 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 			for _, msg := range s.history {
 				cs.ContextTokens += s.countMessageTokens(msg)
 			}
-		})
+		}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+			if s.CurrentMsg != nil {
+				return s.CurrentMsg.Labels
+			}
+
+			return nil
+		}()})
 	}
 	s.CurrentCall = 0
 	s.ToolResults = nil
@@ -205,7 +211,13 @@ func (s *AgentSession) compactHistory() bool {
 	// summarization sub-agent will load when started with `compaction_id`.
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		compactID = dipper.Must(cs.archiveConvo(s.store)).(string)
-	})
+	}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+		if s.CurrentMsg != nil {
+			return s.CurrentMsg.Labels
+		}
+
+		return nil
+	}()})
 
 	// Invoke the summarization agent as a sub-agent tool call so the
 	// result is delivered via eventbus:agent_continue and handled through

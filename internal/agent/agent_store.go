@@ -513,6 +513,9 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 	}
 
 	cancelOne := func(id string) {
+		// Load ConvoState first to get agent config for lock timeout
+		cs := &ConvoState{}
+		cs.load(id, p)
 		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
 			now := time.Now()
 			for _, sr := range []*ConvoSessionRef{cs.FirstSession, cs.LastSession, cs.ActiveSession} {
@@ -521,7 +524,7 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 					sr.UpdatedAt = now
 				}
 			}
-		})
+		}, LockedConvoStateUpdateOpts{AgentConfig: cs.Agent, Labels: msg.Labels})
 	}
 
 	if convoID != "" {

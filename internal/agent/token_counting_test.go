@@ -133,7 +133,13 @@ func TestCompactionRecalculatesContextTokens(t *testing.T) {
 	// Set some initial ContextTokens
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		cs.ContextTokens = 500
-	})
+	}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+		if s.CurrentMsg != nil {
+			return s.CurrentMsg.Labels
+		}
+
+		return nil
+	}()})
 
 	// Simulate compaction: replace history and recalculate
 	s.history = []AgentMessage{
@@ -145,7 +151,13 @@ func TestCompactionRecalculatesContextTokens(t *testing.T) {
 		for _, msg := range s.history {
 			cs.ContextTokens += s.countMessageTokens(msg)
 		}
-	})
+	}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+		if s.CurrentMsg != nil {
+			return s.CurrentMsg.Labels
+		}
+
+		return nil
+	}()})
 
 	cs2 := &ConvoState{}
 	cs2.load("test-convo", s.store)
@@ -173,7 +185,13 @@ func TestCompactionRecalculatesContextTokens_OnlyWhenTokenCounterActive(t *testi
 			for _, msg := range s.history {
 				cs.ContextTokens += s.countMessageTokens(msg)
 			}
-		})
+		}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+			if s.CurrentMsg != nil {
+				return s.CurrentMsg.Labels
+			}
+
+			return nil
+		}()})
 	}
 
 	cs2 := &ConvoState{}
@@ -234,7 +252,13 @@ func TestProcessAgentMessage_CountsInputTokensFromContextTokens(t *testing.T) {
 	// Pre-set ContextTokens to simulate the context that was sent to the model
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		cs.ContextTokens = 150
-	})
+	}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+		if s.CurrentMsg != nil {
+			return s.CurrentMsg.Labels
+		}
+
+		return nil
+	}()})
 
 	agentMsg := &AgentMessage{Role: RoleAgent, Content: "Hello!"}
 
@@ -259,7 +283,13 @@ func TestProcessAgentMessage_WritesTokensToMessageBeforePersist(t *testing.T) {
 
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		cs.ContextTokens = 80
-	})
+	}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+		if s.CurrentMsg != nil {
+			return s.CurrentMsg.Labels
+		}
+
+		return nil
+	}()})
 
 	agentMsg := &AgentMessage{Role: RoleAgent, Content: "I can help with that."}
 
@@ -450,7 +480,13 @@ func TestSetupRecalculatesContextTokensFromHistory(t *testing.T) {
 	// Pre-set a stale ContextTokens value
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		cs.ContextTokens = 999
-	})
+	}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+		if s.CurrentMsg != nil {
+			return s.CurrentMsg.Labels
+		}
+
+		return nil
+	}()})
 
 	// Append messages via appendConvoHistory (simulating loaded history)
 	msg1 := AgentMessage{Role: RoleUser, Content: "Hello"}
@@ -465,7 +501,13 @@ func TestSetupRecalculatesContextTokensFromHistory(t *testing.T) {
 			for _, msg := range s.history {
 				cs.ContextTokens += s.countMessageTokens(msg)
 			}
-		})
+		}, LockedConvoStateUpdateOpts{AgentConfig: s.Agent, Labels: func() map[string]string {
+			if s.CurrentMsg != nil {
+				return s.CurrentMsg.Labels
+			}
+
+			return nil
+		}()})
 	}
 
 	// After recalculation, ContextTokens should reflect actual history
