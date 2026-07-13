@@ -10,6 +10,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -52,6 +53,8 @@ type mockStore struct {
 	cfg          *config.Config
 	logger       *logging.Logger
 	noWaitParams map[string]map[string]interface{}
+	noWaitLabels map[string][]string
+	callParams   map[string]map[string]interface{}
 	uiURL        string
 }
 
@@ -131,12 +134,28 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 			}
 			if v, ok3 := m.resp[full]; ok3 {
 				m.record(base)
+				if p, ok := params.(map[string]interface{}); ok {
+					m.mu.Lock()
+					if m.callParams == nil {
+						m.callParams = map[string]map[string]interface{}{}
+					}
+					m.callParams[base] = p
+					m.mu.Unlock()
+				}
 
 				return v, nil
 			}
 		}
 	}
 	m.record(base)
+	if p, ok := params.(map[string]interface{}); ok {
+		m.mu.Lock()
+		if m.callParams == nil {
+			m.callParams = map[string]map[string]interface{}{}
+		}
+		m.callParams[base] = p
+		m.mu.Unlock()
+	}
 	if v, ok := m.resp[base]; ok {
 		return v, nil
 	}
@@ -153,6 +172,10 @@ func (m *mockStore) CallNoWait(feature, method string, params interface{}, label
 			m.noWaitParams = map[string]map[string]interface{}{}
 		}
 		m.noWaitParams[key] = p
+		if m.noWaitLabels == nil {
+			m.noWaitLabels = map[string][]string{}
+		}
+		m.noWaitLabels[key] = labelsKV
 		m.mu.Unlock()
 	}
 
@@ -167,6 +190,26 @@ func (m *mockStore) getNoWaitParams(key string) map[string]interface{} {
 	}
 
 	return m.noWaitParams[key]
+}
+
+func (m *mockStore) getNoWaitLabels(key string) []string { //nolint:unparam
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.noWaitLabels == nil {
+		return nil
+	}
+
+	return m.noWaitLabels[key]
+}
+
+func (m *mockStore) getCallParams(key string) map[string]interface{} { //nolint:unparam
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.callParams == nil {
+		return nil
+	}
+
+	return m.callParams[key]
 }
 
 func (m *mockStore) CallRaw(feature, method string, params []byte, labelsKV ...string) ([]byte, error) {
@@ -2655,4 +2698,539 @@ func TestAgentOverrideEngineAndDriver_NoOverride(t *testing.T) {
 	engine, ok := params["engine"].(string)
 	require.True(t, ok, "engine must be a string")
 	assert.Equal(t, "default_engine", engine, "engine should be from agent config")
+}
+
+// ---------------------------------------------------------------------------
+// Timeout Configuration Tests
+// ---------------------------------------------------------------------------
+
+func TestInterpolateAgentConfig_TurnLockTimeout_EmptyUsesDefault(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:            "myagent",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		TurnLockTimeout: "",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+	})
+
+	assert.Equal(t, "", agent.TurnLockTimeout, "empty turn_lock_timeout should remain empty (default used in lockTurn)")
+}
+
+func TestInterpolateAgentConfig_TurnLockTimeout_ValidDuration(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:            "myagent",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		TurnLockTimeout: "30m",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+	})
+
+	assert.Equal(t, "30m", agent.TurnLockTimeout)
+}
+
+func TestInterpolateAgentConfig_TurnLockTimeout_InvalidDurationLogsWarning(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := logging.MustGetLogger("test")
+	backend := logging.NewLogBackend(&logBuf, "", 0)
+	backendLeveled := logging.AddModuleLevel(backend)
+	backendLeveled.SetLevel(logging.WARNING, "test")
+	logger.SetBackend(backendLeveled)
+
+	store := newMockStore(nil)
+	store.logger = logger
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:            "myagent",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		TurnLockTimeout: "invalid-duration",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+	})
+
+	// Invalid duration should be reset to empty (default will be used)
+	assert.Equal(t, "", agent.TurnLockTimeout)
+	// Warning should be logged
+	assert.Contains(t, logBuf.String(), "invalid turn_lock_timeout duration")
+	assert.Contains(t, logBuf.String(), "using default")
+}
+
+func TestInterpolateAgentConfig_DriverCallTimeout_EmptyUsesDefault(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:              "myagent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+	})
+
+	assert.Equal(t, "", agent.DriverCallTimeout, "empty driver_call_timeout should remain empty (default used in sendToDriver)")
+}
+
+func TestInterpolateAgentConfig_DriverCallTimeout_ValidDuration(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:              "myagent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "120s",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+	})
+
+	assert.Equal(t, "120s", agent.DriverCallTimeout)
+}
+
+func TestInterpolateAgentConfig_DriverCallTimeout_InvalidDurationLogsWarning(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := logging.MustGetLogger("test")
+	backend := logging.NewLogBackend(&logBuf, "", 0)
+	backendLeveled := logging.AddModuleLevel(backend)
+	backendLeveled.SetLevel(logging.WARNING, "test")
+	logger.SetBackend(backendLeveled)
+
+	store := newMockStore(nil)
+	store.logger = logger
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:              "myagent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "not-a-duration",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+	})
+
+	// Invalid duration should be reset to empty (default will be used)
+	assert.Equal(t, "", agent.DriverCallTimeout)
+	// Warning should be logged
+	assert.Contains(t, logBuf.String(), "invalid driver_call_timeout duration")
+	assert.Contains(t, logBuf.String(), "using default")
+}
+
+func TestInterpolateAgentConfig_TurnLockTimeout_Interpolation(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:            "myagent",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		TurnLockTimeout: "$agent_data.lock_timeout",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+		"data": map[string]interface{}{
+			"lock_timeout": "45m",
+		},
+	})
+
+	assert.Equal(t, "45m", agent.TurnLockTimeout)
+}
+
+func TestInterpolateAgentConfig_DriverCallTimeout_Interpolation(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["myagent"] = config.Agent{
+		Name:              "myagent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "$agent_data.call_timeout",
+	}
+
+	agent := interpolateAgentConfig(store, "myagent", map[string]interface{}{
+		"text": "hello",
+		"data": map[string]interface{}{
+			"call_timeout": "200s",
+		},
+	})
+
+	assert.Equal(t, "200s", agent.DriverCallTimeout)
+}
+
+func TestLockTurn_UsesAgentTurnLockTimeout(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:            "test-agent",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		TurnLockTimeout: "45m",
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent:   &agent,
+		store:   store,
+		ID:      "test-session",
+		ConvoID: "test-convo",
+	}
+
+	s.lockTurn(store, "test-convo")
+
+	// Verify the lock call was made with the custom timeout
+	params := store.getCallParams("locker:lock")
+	require.NotNil(t, params)
+	assert.Equal(t, "45m", params["expire"])
+}
+
+func TestLockTurn_UsesDefaultWhenAgentTurnLockTimeoutEmpty(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:            "test-agent",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		TurnLockTimeout: "",
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent:   &agent,
+		store:   store,
+		ID:      "test-session",
+		ConvoID: "test-convo",
+	}
+
+	s.lockTurn(store, "test-convo")
+
+	params := store.getCallParams("locker:lock")
+	require.NotNil(t, params)
+	assert.Equal(t, AgentSessionDefaultTurnLockExpire, params["expire"])
+}
+
+func TestLockTurn_MessageLabelTimeoutNotUsed(t *testing.T) {
+	// The turn lock timeout should NOT be overridden by message label "timeout"
+	// It only uses Agent.TurnLockTimeout or default
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:            "test-agent",
+		Driver:          "openai",
+		Engine:          "gpt-4",
+		TurnLockTimeout: "30m",
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent:   &agent,
+		store:   store,
+		ID:      "test-session",
+		ConvoID: "test-convo",
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"timeout": "10m", // This should be IGNORED for turn lock
+			},
+		},
+	}
+
+	s.lockTurn(store, "test-convo")
+
+	params := store.getCallParams("locker:lock")
+	require.NotNil(t, params)
+	// Should use Agent.TurnLockTimeout (30m), NOT message label timeout (10m)
+	assert.Equal(t, "30m", params["expire"])
+}
+
+func TestSendToDriver_UsesMessageLabelTimeoutFirst(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:              "test-agent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "120s", // Agent config timeout
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent: &agent,
+		store: store,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"timeout": "60s", // Message label timeout (highest priority)
+			},
+		},
+		Type: AgentSessionTypeChatTurn,
+		history: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+		},
+	}
+
+	s.sendToDriver()
+
+	// Check the driver call was made
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+
+	// Check the timeout label passed to the driver call
+	labels := store.getNoWaitLabels("driver:openai:send_to_model")
+	require.NotNil(t, labels)
+	// labelsKV format: "agent_session_id", s.ID, "timeout", timeout
+	// Find the timeout value
+	for i := 0; i < len(labels)-1; i++ {
+		if labels[i] == "timeout" {
+			assert.Equal(t, "60s", labels[i+1], "message label timeout should be used")
+
+			return
+		}
+	}
+	t.Fatal("timeout label not found in driver call")
+}
+
+func TestSendToDriver_UsesAgentDriverCallTimeoutWhenNoMessageLabel(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:              "test-agent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "120s", // Agent config timeout
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent: &agent,
+		store: store,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{}, // No timeout label
+		},
+		Type: AgentSessionTypeChatTurn,
+		history: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+		},
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+
+	// Check the timeout label passed to the driver call
+	labels := store.getNoWaitLabels("driver:openai:send_to_model")
+	require.NotNil(t, labels)
+	for i := 0; i < len(labels)-1; i++ {
+		if labels[i] == "timeout" {
+			assert.Equal(t, "120s", labels[i+1], "agent config timeout should be used when no message label")
+
+			return
+		}
+	}
+	t.Fatal("timeout label not found in driver call")
+}
+
+func TestSendToDriver_UsesDefaultWhenNoMessageLabelAndNoAgentTimeout(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:              "test-agent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "", // No agent timeout
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent: &agent,
+		store: store,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{}, // No timeout label
+		},
+		Type: AgentSessionTypeChatTurn,
+		history: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+		},
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+
+	// Check the timeout label passed to the driver call
+	labels := store.getNoWaitLabels("driver:openai:send_to_model")
+	require.NotNil(t, labels)
+	for i := 0; i < len(labels)-1; i++ {
+		if labels[i] == "timeout" {
+			assert.Equal(t, AgentSessionDefaultDriverCallTimeout, labels[i+1], "default timeout should be used when neither message label nor agent config set")
+
+			return
+		}
+	}
+	t.Fatal("timeout label not found in driver call")
+}
+
+func TestSendToDriver_TimeoutPriority_MessageLabelOverAgentConfig(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:              "test-agent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "300s", // Agent config timeout (lower priority)
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent: &agent,
+		store: store,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{
+				"timeout": "60s", // Message label timeout (higher priority)
+			},
+		},
+		Type: AgentSessionTypeChatTurn,
+		history: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+		},
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+
+	labels := store.getNoWaitLabels("driver:openai:send_to_model")
+	require.NotNil(t, labels)
+	for i := 0; i < len(labels)-1; i++ {
+		if labels[i] == "timeout" {
+			assert.Equal(t, "60s", labels[i+1], "message label timeout should override agent config timeout")
+
+			return
+		}
+	}
+	t.Fatal("timeout label not found in driver call")
+}
+
+func TestSendToDriver_TimeoutPriority_AgentConfigOverDefault(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:              "test-agent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "180s", // Agent config timeout
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent: &agent,
+		store: store,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{}, // No message label timeout
+		},
+		Type: AgentSessionTypeChatTurn,
+		history: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+		},
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+
+	labels := store.getNoWaitLabels("driver:openai:send_to_model")
+	require.NotNil(t, labels)
+	for i := 0; i < len(labels)-1; i++ {
+		if labels[i] == "timeout" {
+			assert.Equal(t, "180s", labels[i+1], "agent config timeout should override default")
+
+			return
+		}
+	}
+	t.Fatal("timeout label not found in driver call")
+}
+
+func TestSendToDriver_TimeoutPriority_DefaultWhenNeitherSet(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Agents["test-agent"] = config.Agent{
+		Name:              "test-agent",
+		Driver:            "openai",
+		Engine:            "gpt-4",
+		DriverCallTimeout: "", // No agent timeout
+	}
+
+	agent := store.cfg.DataSet.Agents["test-agent"]
+
+	s := &AgentSession{
+		Agent: &agent,
+		store: store,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{}, // No message label timeout
+		},
+		Type: AgentSessionTypeChatTurn,
+		history: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+		},
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+
+	labels := store.getNoWaitLabels("driver:openai:send_to_model")
+	require.NotNil(t, labels)
+	for i := 0; i < len(labels)-1; i++ {
+		if labels[i] == "timeout" {
+			assert.Equal(t, AgentSessionDefaultDriverCallTimeout, labels[i+1], "default timeout should be used when neither message label nor agent config set")
+
+			return
+		}
+	}
+	t.Fatal("timeout label not found in driver call")
+}
+
+func TestLockTurn_WithNilAgentUsesDefault(t *testing.T) {
+	store := newMockStore(nil)
+
+	s := &AgentSession{
+		Agent:   nil, // No agent config
+		store:   store,
+		ID:      "test-session",
+		ConvoID: "test-convo",
+	}
+
+	s.lockTurn(store, "test-convo")
+
+	params := store.getCallParams("locker:lock")
+	require.NotNil(t, params)
+	assert.Equal(t, AgentSessionDefaultTurnLockExpire, params["expire"])
+}
+
+func TestSendToDriver_WithMinimalAgentUsesDefault(t *testing.T) {
+	store := newMockStore(nil)
+
+	// Use a minimal agent with no timeout configs set
+	s := &AgentSession{
+		Agent: &config.Agent{Name: "test", Driver: "openai", Engine: "gpt-4"}, // Minimal agent with no timeouts
+		store: store,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels: map[string]string{},
+		},
+		Type: AgentSessionTypeChatTurn,
+		history: []AgentMessage{
+			{Role: RoleSystem, Content: "sys"},
+		},
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
 }
