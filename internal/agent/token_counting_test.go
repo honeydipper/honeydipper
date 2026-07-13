@@ -209,7 +209,7 @@ func TestTokenCounterOnlyUsedWhenSetToSimple(t *testing.T) {
 			}
 
 			s := &AgentSession{}
-			s.initNewSession("test-id", msg, store, false)
+			s.initNewSession("test-id", msg, store)
 			assert.Nil(t, s.TokenCounter, "TokenCounter should be nil after initNewSession for %s", tc.name)
 
 			// Simulate what setup does
@@ -431,7 +431,7 @@ func TestSetupInitializesTokenCounterOnlyForSimple(t *testing.T) {
 			}
 
 			s := &AgentSession{}
-			s.setup(msg, store, false, false)
+			s.setup(msg, store, false)
 
 			if tc.expectNil {
 				assert.Nil(t, s.TokenCounter, "TokenCounter should be nil for %s", tc.name)

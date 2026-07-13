@@ -136,12 +136,17 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 		// under the turn lock and can't pick up a stale snapshot from an in-flight
 		// prior turn.
 		s.lockTurn(p, convoID)
-		s.setup(msg, p, true, false)
+		s.setup(msg, p, true)
+		// Load history under the turn lock so we see the prior turn's completed state.
+		s.loadConvoHistory()
 	} else {
 		// Brand-new conversation: no prior turn exists to race with. Let setup
 		// mint the convo id, then lock it.
-		s.setup(msg, p, true, false)
+		s.setup(msg, p, true)
 		s.lockTurn(p, s.ConvoID)
+		// Load history after acquiring the lock (which is effectively a no-op for
+		// a brand-new convo but keeps the flow symmetric).
+		s.loadConvoHistory()
 	}
 
 	s.run()
@@ -154,7 +159,9 @@ func (p *PersistentAgentStore) ContinueInference(msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[agent] error in ContinueInference")
 	p.Infof("[agent] ContinueInference session=%s subject=%s", msg.Labels["agent_session_id"], msg.Subject)
 	s := &AgentSession{}
-	s.setup(msg, p, true, true)
+	s.setup(msg, p, true)
+	// Load history for the restored session.
+	s.loadConvoHistory()
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error in ContinueInference", func(r interface{}) {
 		if s.ErrorReason == "" {
@@ -178,7 +185,9 @@ func (p *PersistentAgentStore) ReceiveInference(msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[agent] error in ReceiveInference")
 	p.Infof("[agent] ReceiveInference session=%s", msg.Labels["agent_session_id"])
 	s := &AgentSession{}
-	s.setup(msg, p, true, true)
+	s.setup(msg, p, true)
+	// Load history for the restored session.
+	s.loadConvoHistory()
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error in process agent response", func(r interface{}) {
 		if s.ErrorReason == "" {
@@ -216,7 +225,7 @@ func (p *PersistentAgentStore) Wait() {
 }
 
 // Stop signals the store to reject new sessions and returns immediately.
-// Call Wait to block until all in-flight sessions have drained.
+// Call Wait to block until in-flight sessions have drained.
 func (p *PersistentAgentStore) Stop() {
 	p.stopped.Store(true)
 }
@@ -304,7 +313,7 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 	// Run setup first to populate s.Agent with interpolated config (including
 	// TurnLockTimeout from Phase 1). The convo id is known here (it is a
 	// parameter), so setup will adopt it and load the agent config.
-	s.setup(msg, p, true, true)
+	s.setup(msg, p, true)
 
 	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
 	s.lockTurn(p, convoID)
@@ -392,7 +401,9 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 	}
 
 	s := &AgentSession{}
-	s.setup(subMsg, p, false, false)
+	s.setup(subMsg, p, false)
+	// Sub-agents don't use turn locks; load history after setup.
+	s.loadConvoHistory()
 	s.ParentSessionID = msg.Labels["agent_session_id"]
 	s.ParentTurnID = msg.Labels["turn_id"]
 	s.ParentToolCallID = msg.Labels["tool_call_id"]
@@ -474,7 +485,9 @@ func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	p.Infof("[agent] PollInference session=%s", msg.Labels["agent_session_id"])
 
 	s := &AgentSession{}
-	s.setup(msg, p, true, true)
+	s.setup(msg, p, true)
+	// Load history for the restored session.
+	s.loadConvoHistory()
 	defer s.persist(true)
 	s.processAgentPoll(msg)
 }
