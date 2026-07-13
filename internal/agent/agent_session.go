@@ -37,10 +37,11 @@ const (
 
 // AgentSession holds the runtime state of a single agent inference or chat-turn session.
 type AgentSession struct {
-	ID                    string
-	ConvoID               string
-	UnifiedConvoID        string
-	Agent                 *config.Agent
+	ID             string
+	ConvoID        string
+	UnifiedConvoID string
+	Agent          *config.Agent
+
 	history               []AgentMessage
 	CurrentMsg            *dipper.Message
 	Type                  string
@@ -254,7 +255,7 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 	if labelID != "" {
 		s.load(id, store)
 		s.store = store
-		s.loadConvoHistory()
+		// History is loaded explicitly by the caller after setup() returns.
 	} else {
 		s.initNewSession(id, msg, store)
 	}
@@ -387,6 +388,7 @@ func interpolateAgentConfig(store AgentStore, agentName string, payload any) *co
 	text := dipper.MustGetMapDataStr(payload, "text")
 
 	agent := *store.GetAgent(agentName)
+
 	envData := map[string]any{
 		"agent_name": agent.Name,
 		"agent_data": data,

@@ -382,6 +382,7 @@ func TestSetup_RestoreFromCache(t *testing.T) {
 
 	s := &AgentSession{}
 	s.setup(newMsg, store, false)
+	s.loadConvoHistory()
 
 	assert.Equal(t, "session-abc", s.ID)
 	assert.Equal(t, "1800", s.TTL)
