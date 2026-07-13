@@ -99,9 +99,11 @@ func (p *PersistentAgentStore) emitErrorResponse(msg *dipper.Message, reason str
 }
 
 // StartInference handles an incoming inference request by creating and running a new agent session.
+// StartInference handles an incoming inference request by creating and running a new agent session.
 func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	p.wg.Add(1)
 	defer p.wg.Done()
+
 	resumeKey := msg.Labels["resume_key"]
 	defer dipper.SafeExitOnError("[agent] error in handleAgentStart", func(r interface{}) {
 		p.emitErrorResponse(msg, fmt.Sprintf("%v", r))
@@ -117,42 +119,49 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	})
 
 	// StartInference always begins a new turn; tool-call results and other
-	// continuations re-enter via ContinueInference, not here. Mint the session id
-	// up front so we can ack it to the caller — which polls on it — before taking
-	// the turn lock, which can block up to 30m waiting on a prior turn. setup()
-	// adopts this pre-set s.ID.
+	// continuations re-enter via ContinueInference, not here.
 	s.ID = dipper.NewUUID()
-	p.EmitMessage(dipper.Message{
-		Channel: dipper.ChannelEventbus,
-		Subject: "agent_response",
-		Labels: map[string]string{
-			"resume_key":       resumeKey,
-			"agent_session_id": s.ID,
-		},
-	})
 
 	if convoID, _ := dipper.GetMapDataStr(msg.Payload, "convo_id"); convoID != "" {
-		// Existing conversation: lock before setup so setup's history read happens
-		// under the turn lock and can't pick up a stale snapshot from an in-flight
-		// prior turn.
-		s.lockTurn(p, convoID)
+		// Existing conversation: setup first to restore session, then lock,
+		// then load history under the lock to avoid stale snapshots from
+		// in-flight prior turns.
 		s.setup(msg, p, true)
+		// Emit the session ID to the caller (which polls on it) after setup
+		// has adopted the pre-set s.ID.
+		p.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: "agent_response",
+			Labels: map[string]string{
+				"resume_key":       resumeKey,
+				"agent_session_id": s.ID,
+			},
+		})
+		s.lockTurn(p, convoID)
 		// Load history under the turn lock so we see the prior turn's completed state.
 		s.loadConvoHistory()
 	} else {
 		// Brand-new conversation: no prior turn exists to race with. Let setup
 		// mint the convo id, then lock it.
 		s.setup(msg, p, true)
+		// Emit the session ID after setup so the caller can start polling.
+		p.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: "agent_response",
+			Labels: map[string]string{
+				"resume_key":       resumeKey,
+				"agent_session_id": s.ID,
+			},
+		})
 		s.lockTurn(p, s.ConvoID)
-		// Load history after acquiring the lock (which is effectively a no-op for
-		// a brand-new convo but keeps the flow symmetric).
+		// Load history after acquiring the lock (effectively a no-op for a
+		// brand-new convo but keeps the flow symmetric).
 		s.loadConvoHistory()
 	}
 
 	s.run()
 }
 
-// ContinueInference handles an incoming inference continuation request by creating and running a new agent session.
 func (p *PersistentAgentStore) ContinueInference(msg *dipper.Message) {
 	p.wg.Add(1)
 	defer p.wg.Done()
