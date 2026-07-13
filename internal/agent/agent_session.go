@@ -17,16 +17,18 @@ import (
 
 // Session type constants, cache key prefixes, default TTL, and role labels.
 const (
-	AgentSessionTypeInference      = agentpkg.SessionTypeInference
-	AgentSessionTypeChatTurn       = agentpkg.SessionTypeChatTurn
-	AgentKeyPrefix                 = "agent_session:"
-	ConvoHistoryKeyPrefix          = "convo_history:"
-	MCPToolsCachePrefix            = "mcp_tools:"
-	AgentSessionDefaultTTL         = "336h"
-	AgentSessionDefaultTimeout     = "1h"
-	MCPToolsCacheDefaultTTL        = "6h"
-	AgentSessionDefaultPollTimeout = time.Second * 9
-	MinPollInterval                = time.Second * 2
+	AgentSessionTypeInference            = agentpkg.SessionTypeInference
+	AgentSessionTypeChatTurn             = agentpkg.SessionTypeChatTurn
+	AgentKeyPrefix                       = "agent_session:"
+	ConvoHistoryKeyPrefix                = "convo_history:"
+	MCPToolsCachePrefix                  = "mcp_tools:"
+	AgentSessionDefaultTTL               = "336h"
+	AgentSessionDefaultTimeout           = "1h"
+	MCPToolsCacheDefaultTTL              = "6h"
+	AgentSessionDefaultTurnLockExpire    = "1h"
+	AgentSessionDefaultDriverCallTimeout = "300s"
+	AgentSessionDefaultPollTimeout       = time.Second * 9
+	MinPollInterval                      = time.Second * 2
 
 	RoleSystem     = agentpkg.RoleSystem
 	RoleUser       = agentpkg.RoleUser
@@ -101,9 +103,13 @@ func (s *AgentSession) unlock() {
 // store is passed explicitly because this may run before setup() sets s.store.
 func (s *AgentSession) lockTurn(store AgentStore, convoID string) {
 	s.TurnLockKey = ConvoTurnLockPrefix + convoID
+	expire := AgentSessionDefaultTurnLockExpire
+	if s.Agent != nil && s.Agent.TurnLockTimeout != "" {
+		expire = s.Agent.TurnLockTimeout
+	}
 	dipper.Must(store.Call("locker", "lock", map[string]interface{}{
 		"name":   s.TurnLockKey,
-		"expire": "1h",
+		"expire": expire,
 	}, "timeout", "30m"))
 }
 
@@ -405,6 +411,31 @@ func interpolateAgentConfig(store AgentStore, agentName string, payload any) *co
 	agent.Engine = dipper.InterpolateStr("agent_engine", agent.Engine, envData)
 	agent.PreContext = dipper.Interpolate("agent_pre_context", agent.PreContext, envData).([]string)
 	agent.FileTool = dipper.InterpolateStr("agent_file_tool", agent.FileTool, envData)
+	agent.TurnLockTimeout = dipper.InterpolateStr("agent_turn_lock_timeout", agent.TurnLockTimeout, envData)
+	agent.DriverCallTimeout = dipper.InterpolateStr("agent_driver_call_timeout", agent.DriverCallTimeout, envData)
+	// Validate duration format for timeout fields, fall back to defaults if invalid
+	if agent.TurnLockTimeout != "" {
+		if _, err := time.ParseDuration(agent.TurnLockTimeout); err != nil {
+			if log := store.GetLogger(); log != nil {
+				log.Warningf(
+					"[agent] invalid turn_lock_timeout duration %q, using default %s",
+					agent.TurnLockTimeout, AgentSessionDefaultTurnLockExpire,
+				)
+			}
+			agent.TurnLockTimeout = ""
+		}
+	}
+	if agent.DriverCallTimeout != "" {
+		if _, err := time.ParseDuration(agent.DriverCallTimeout); err != nil {
+			if log := store.GetLogger(); log != nil {
+				log.Warningf(
+					"[agent] invalid driver_call_timeout duration %q, using default %s",
+					agent.DriverCallTimeout, AgentSessionDefaultDriverCallTimeout,
+				)
+			}
+			agent.DriverCallTimeout = ""
+		}
+	}
 	agent.AgentSettings = dipper.Interpolate("agent_", agent.AgentSettings, envData)
 	tools := make([]config.AgentToolDef, len(agent.Tools))
 	for i, tool := range agent.Tools {
@@ -554,7 +585,10 @@ func (s *AgentSession) sendToDriver() {
 	tools := s.BuildTools()
 	timeout := s.CurrentMsg.Labels["timeout"]
 	if timeout == "" {
-		timeout = AgentSessionDefaultTimeout
+		timeout = AgentSessionDefaultDriverCallTimeout
+		if s.Agent != nil && s.Agent.DriverCallTimeout != "" {
+			timeout = s.Agent.DriverCallTimeout
+		}
 	}
 
 	// Build the system prompt from the current agent config (inference vs chat).
