@@ -471,3 +471,101 @@ func TestFullFlow_CancelledRequestIgnored(t *testing.T) {
 	require.Len(t, s.history, 1)
 	assert.Equal(t, "new response", s.history[0].Content)
 }
+
+// ---------------------------------------------------------------------------
+// Scenario tests: specific edge cases
+// ---------------------------------------------------------------------------
+
+func TestLateResponseAfterSessionComplete(t *testing.T) {
+	store := newMockStore(nil)
+	agent := newTestAgent()
+	store.cfg.DataSet.Agents["a"] = *agent
+
+	s := &AgentSession{
+		store:            store,
+		Agent:            agent,
+		ID:               "test-session",
+		CurrentRequestID: "old-request-id",
+		ConvoID:          "convo-1",
+		history: []AgentMessage{
+			{Role: RoleAgent, Content: "done", IsComplete: true},
+		},
+	}
+
+	// Step 1: Session completes normally
+	s.syncConvoStateStatus()
+	
+	// Verify CurrentRequestID is cleared
+	assert.Empty(t, s.CurrentRequestID)
+	
+	// Step 2: Late response arrives with old request_id
+	lateMsg := &dipper.Message{
+		Labels: map[string]string{"status": "success"},
+		Payload: map[string]interface{}{
+			"request_id": "old-request-id",
+			"message": map[string]interface{}{
+				"Role":        RoleAgent,
+				"Content":     "late response",
+				"is_complete": true,
+			},
+		},
+	}
+	s.processAgentResponse(lateMsg)
+	
+	// Late response should be IGNORED because CurrentRequestID is now empty
+	// and the response has a non-empty request_id that doesn't match
+	// The history should NOT have the late response
+	for _, h := range s.history {
+		assert.NotEqual(t, "late response", h.Content)
+	}
+}
+
+func TestLateResponseAfterNewTurnStarted(t *testing.T) {
+	store := newMockStore(nil)
+	agent := newTestAgent()
+	store.cfg.DataSet.Agents["a"] = *agent
+
+	s := &AgentSession{
+		store: store,
+		Agent: agent,
+		ID:    "test-session",
+		CurrentMsg: &dipper.Message{
+			Labels:  map[string]string{},
+			Payload: map[string]interface{}{"text": "test"},
+		},
+	}
+
+	// Step 1: First turn sends to driver
+	s.sendToDriver()
+	oldRequestID := s.CurrentRequestID
+	
+	// Step 2: First turn completes (CurrentRequestID cleared)
+	s.history = append(s.history, AgentMessage{Role: RoleAgent, Content: "done", IsComplete: true})
+	s.syncConvoStateStatus()
+	
+	// Verify CurrentRequestID is cleared
+	assert.Empty(t, s.CurrentRequestID)
+	
+	// Step 3: New turn starts (new request_id generated)
+	s.sendToDriver()
+	newRequestID := s.CurrentRequestID
+	assert.NotEqual(t, oldRequestID, newRequestID)
+	
+	// Step 4: Late response from old turn arrives
+	lateMsg := &dipper.Message{
+		Labels: map[string]string{"status": "success"},
+		Payload: map[string]interface{}{
+			"request_id": oldRequestID,
+			"message": map[string]interface{}{
+				"Role":        RoleAgent,
+				"Content":     "late response from old turn",
+				"is_complete": true,
+			},
+		},
+	}
+	s.processAgentResponse(lateMsg)
+	
+	// Late response should be IGNORED
+	assert.Len(t, s.history, 1) // Only the "done" message, not the late response
+	assert.Equal(t, "done", s.history[0].Content)
+}
