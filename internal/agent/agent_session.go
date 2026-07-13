@@ -210,9 +210,19 @@ func (s *AgentSession) checkCancelled() bool {
 	}
 	cs := &ConvoState{}
 	cs.load(s.ConvoID, s.store)
+
+	// If this session is not the active session, it's considered cancelled.
+	// This handles the case where a new turn has started and the old session
+	// is no longer active.
+	if cs.ActiveSession == nil || cs.ActiveSession.SessionID != s.ID {
+		return true
+	}
+
+	// Also check if the session is explicitly marked as cancelled
 	if cs.isSessionCancelled(s.ID) {
 		return true
 	}
+	// Check unified convo as well
 	if s.UnifiedConvoID != "" && s.UnifiedConvoID != s.ConvoID {
 		ucs := &ConvoState{}
 		ucs.load(s.UnifiedConvoID, s.store)
