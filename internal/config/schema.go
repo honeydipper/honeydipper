@@ -186,6 +186,8 @@ type Agent struct {
 	FileTool           string                 `json:"file_tool" mapstructure:"file_tool"`
 	Description        string
 	TokenCounter       string `json:"token_counter" mapstructure:"token_counter"`
+	TurnLockTimeout    string `json:"turn_lock_timeout" mapstructure:"turn_lock_timeout"`
+	DriverCallTimeout  string `json:"driver_call_timeout" mapstructure:"driver_call_timeout"`
 	Meta               interface{}
 }
 
