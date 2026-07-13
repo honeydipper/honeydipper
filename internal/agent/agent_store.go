@@ -301,13 +301,18 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 
 	s := &AgentSession{}
 
-	// Take the turn lock before setup so the history is read under the lock. The
-	// convo id is known here (it is a parameter), so unlike StartInference we do
-	// not need to run setup first to discover it. This avoids starting the turn
-	// from a stale snapshot when a previous turn for the same conversation is
-	// still in flight (its final tool_result not yet persisted).
-	s.lockTurn(p, convoID)
+	// Run setup first to populate s.Agent with interpolated config (including
+	// TurnLockTimeout from Phase 1). The convo id is known here (it is a
+	// parameter), so setup will adopt it and load the agent config.
 	s.setup(msg, p, true)
+
+	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
+	s.lockTurn(p, convoID)
+
+	// Reload conversation history under the turn lock to avoid starting from a
+	// stale snapshot when a previous turn for the same conversation is still
+	// in flight (its final tool_result not yet persisted).
+	s.loadConvoHistory()
 
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
