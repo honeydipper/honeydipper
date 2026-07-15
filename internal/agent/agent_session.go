@@ -167,6 +167,7 @@ func (s *AgentSession) persist(unlocking bool) {
 // When a terminal state is detected, it also releases the distributed turn lock.
 func (s *AgentSession) syncConvoStateStatus() {
 	var status string
+
 	switch {
 	case s.ErrorReason != "":
 		status = ConvoSessionStatusFailed
@@ -692,6 +693,7 @@ func (s *AgentSession) processAgentResponse(msg *dipper.Message) {
 	}
 	m := dipper.MustGetMapData(msg.Payload, "message").(map[string]interface{})
 	var agentMsg AgentMessage
+
 	dipper.Must(mapstructure.Decode(m, &agentMsg))
 	s.coerceToolCallParams(agentMsg.ToolCalls)
 	if log := s.log(); log != nil {
@@ -718,9 +720,8 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		s.TotalTokens = s.InputTokens + s.OutputTokens
 	}
 
-	// Streaming chunk: non-complete agent content with no tool calls and not a thinking token.
-	// Accumulate in PendingContent to avoid one Redis rpush per chunk.
-	if agentMsg.Role == RoleAgent && !agentMsg.IsComplete {
+	// Streaming chunk: accumulate in PendingContent to avoid one Redis rpush per chunk.
+	if agentMsg.IsChunk {
 		s.PendingContent += agentMsg.Content
 		s.PendingThoughts += agentMsg.Thoughts
 
@@ -768,6 +769,8 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		return
 	}
 
+	// Non-agent message or truncated response (IsChunk=false, IsComplete=false):
+	// persist and re-send to driver to continue.
 	if agentMsg.Role != RoleAgent || !agentMsg.IsComplete {
 		s.persist(false)
 		s.sendToDriver()
@@ -775,6 +778,7 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		return
 	}
 
+	// Agent message with IsComplete=true: notify parent if this is a sub-agent.
 	if s.ParentSessionID != "" {
 		s.notifyParent(*agentMsg)
 	}
@@ -846,6 +850,7 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 		currentMessage := map[string]string{
 			"content":     am.Content,
 			"is_thinking": strconv.FormatBool(am.IsThinking),
+			"is_chunk":    strconv.FormatBool(am.IsChunk),
 		}
 		if s.Agent.ShouldEmitThoughts && len(am.Thoughts) > 0 {
 			currentMessage["thoughts"] = am.Thoughts
@@ -874,7 +879,8 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 
 	if live && s.NewPendingContent {
 		liveMessage := map[string]string{
-			"content": s.PendingContent,
+			"content":  s.PendingContent,
+			"is_chunk": "true",
 		}
 		if s.Agent.ShouldEmitThoughts && len(s.PendingThoughts) > 0 {
 			liveMessage["thoughts"] = s.PendingThoughts

@@ -1220,8 +1220,8 @@ func TestProcessAgentMessage_StreamingChunk(t *testing.T) {
 
 	// Non-complete streaming chunks must be accumulated in PendingContent,
 	// not written to convo history, to avoid one Redis rpush per chunk.
-	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Hello"})
-	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: ", world"})
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Hello", IsChunk: true})
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: ", world", IsChunk: true})
 
 	assert.Equal(t, "Hello, world", s.PendingContent)
 	assert.Empty(t, s.history, "streaming chunks must not appear in history")
@@ -1233,8 +1233,8 @@ func TestProcessAgentMessage_StreamingComplete(t *testing.T) {
 
 	// Simulate two chunks followed by a final IsComplete=true message that
 	// carries the full content (new protocol: last message is not a delta).
-	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk1"})
-	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk2"})
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk1", IsChunk: true})
+	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk2", IsChunk: true})
 	s.processAgentMessage(&AgentMessage{Role: RoleAgent, Content: "Chunk1Chunk2", IsComplete: true})
 
 	// PendingContent should be cleared after the complete message.
@@ -1253,6 +1253,7 @@ func TestProcessAgentMessage_Thinking_NotEmittedByDefault(t *testing.T) {
 	agentMsg := &AgentMessage{
 		Role:       RoleAgent,
 		IsThinking: true,
+		IsChunk:    true,
 		Content:    "I am thinking...",
 	}
 
@@ -1269,6 +1270,7 @@ func TestProcessAgentMessage_Thinking_DoesNotRerun(t *testing.T) {
 	agentMsg := &AgentMessage{
 		Role:       RoleAgent,
 		IsThinking: true,
+		IsChunk:    true,
 		Content:    "thinking...",
 	}
 
