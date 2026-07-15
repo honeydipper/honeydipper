@@ -32,6 +32,7 @@ type Message struct {
 	Content      string                   `json:"content" mapstructure:"content"`
 	Thoughts     string                   `json:"thoughts" mapstructure:"thoughts"` // optional field for model reasoning text
 	IsComplete   bool                     `json:"is_complete" mapstructure:"is_complete"`
+	IsChunk      bool                     `json:"is_chunk" mapstructure:"is_chunk"` // true when the message is a streaming chunk
 	InputTokens  int                      `json:"input_tokens" mapstructure:"input_tokens"`
 	OutputTokens int                      `json:"output_tokens" mapstructure:"output_tokens"`
 }
