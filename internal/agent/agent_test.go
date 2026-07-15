@@ -201,7 +201,7 @@ func (m *mockStore) getNoWaitLabels(key string) []string { //nolint:unparam
 	return m.noWaitLabels[key]
 }
 
-func (m *mockStore) getCallParams(key string) map[string]interface{} { //nolint:unparam
+func (m *mockStore) getCallParams(key string) map[string]interface{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.callParams == nil {
@@ -2861,4 +2861,110 @@ func TestResolveUnresolvedToolCalls_WithExistingToolResultInHistory(t *testing.T
 	assert.Equal(t, RoleToolResult, s.history[5].Role)
 	assert.Len(t, s.history[5].ToolResult, 1)
 	assert.Equal(t, "tool2", s.history[5].ToolResult[0]["func_name"])
+}
+
+// TestCancelConvo_ReleasesTurnLock verifies that CancelConvo releases the
+// conversation turn lock so a new turn can start immediately without waiting
+// for the lock to expire (default 1 hour).
+func TestCancelConvo_ReleasesTurnLock(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	// Pre-populate a ConvoState with an active session so CancelConvo has
+	// something to mark as cancelled.
+	existingState := &ConvoState{
+		ConvoID: "convo-cancel",
+		ActiveSession: &ConvoSessionRef{
+			SessionID: "active-session",
+			Status:    ConvoSessionStatusActive,
+		},
+	}
+	helper.resp["cache:load:"+ConvoStateKeyPrefix+"convo-cancel"] = mustMarshalJSON(existingState)
+
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"convo_id": "convo-cancel",
+		},
+	}
+
+	store.CancelConvo(msg)
+
+	// Verify locker:unlock was called with the correct turn lock key.
+	// The mockStore records calls as "locker:unlock".
+	assert.True(t, helper.hasCall("locker:unlock"), "locker:unlock should be called to release turn lock")
+
+	// Check the call parameters to verify the correct lock key was used.
+	params := helper.getCallParams("locker:unlock")
+	require.NotNil(t, params, "locker:unlock call params should be recorded")
+	assert.Equal(t, ConvoTurnLockPrefix+"convo-cancel", params["name"], "turn lock key should match convo ID")
+}
+
+// TestCancelConvo_ReleasesUnifiedConvoTurnLock verifies that when a unified
+// conversation ID is provided and differs from the regular convo ID, the turn
+// lock is released for both.
+func TestCancelConvo_ReleasesUnifiedConvoTurnLock(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+
+	// Pre-populate both ConvoStates.
+	convoState := &ConvoState{
+		ConvoID: "convo-main",
+		ActiveSession: &ConvoSessionRef{
+			SessionID: "active-session",
+			Status:    ConvoSessionStatusActive,
+		},
+	}
+	unifiedState := &ConvoState{
+		ConvoID: "unified-convo",
+		ActiveSession: &ConvoSessionRef{
+			SessionID: "active-session-unified",
+			Status:    ConvoSessionStatusActive,
+		},
+	}
+	helper.resp["cache:load:"+ConvoStateKeyPrefix+"convo-main"] = mustMarshalJSON(convoState)
+	helper.resp["cache:load:"+ConvoStateKeyPrefix+"unified-convo"] = mustMarshalJSON(unifiedState)
+
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"convo_id":         "convo-main",
+			"unified_convo_id": "unified-convo",
+		},
+	}
+
+	store.CancelConvo(msg)
+
+	// Verify locker:unlock was called for the turn locks (2 times for turn locks
+	// + 2 times for ConvoState locks from lockedConvoStateUpdate = 4 total).
+	calls := helper.getCalls()
+	unlockCount := 0
+	for _, c := range calls {
+		if c == "locker:unlock" {
+			unlockCount++
+		}
+	}
+	// 2 for turn locks + 2 for ConvoState locks
+	assert.Equal(t, 4, unlockCount, "locker:unlock should be called 4 times total")
+
+	// Verify the turn lock keys were used in the calls.
+	// Since mockStore only records the last call params for a given feature:method,
+	// we check that at least the last call was for one of the turn locks.
+	params := helper.getCallParams("locker:unlock")
+	require.NotNil(t, params)
+	// The last call should be for the unified convo turn lock (called second)
+	assert.Equal(t, ConvoTurnLockPrefix+"unified-convo", params["name"])
 }

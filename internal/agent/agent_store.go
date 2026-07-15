@@ -528,6 +528,11 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 				}
 			}
 		})
+		// Release the turn lock for this conversation
+		lockKey := ConvoTurnLockPrefix + id
+		dipper.Must(p.Call("locker", "unlock", map[string]interface{}{
+			"name": lockKey,
+		}, "timeout", "30s"))
 	}
 
 	if convoID != "" {
