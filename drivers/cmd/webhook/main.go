@@ -1,5 +1,3 @@
-// Copyright 2022 PayPal Inc.
-
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
 // you can obtain one at https://mit-license.org.
@@ -88,7 +86,6 @@ func main() {
 }
 
 func stopWebhook(*dipper.Message) {
-	dipper.Must(server.Shutdown(context.Background()))
 }
 
 func loadOptions(m *dipper.Message) {
@@ -110,16 +107,12 @@ func loadOptions(m *dipper.Message) {
 	// Process driver.Options into local temporary maps using ok-checked type assertions
 	hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
 	if !ok || hooksObj == nil {
-		log.Warningf("[%s] no hooks defined for webhook driver", driver.Service)
-
-		return
+		log.Panicf("[%s] no hooks defined for webhook driver", driver.Service)
 	}
 
 	newHooks, ok := hooksObj.(map[string]interface{})
 	if !ok {
-		log.Warningf("[%s] hook data should be a map of event to conditions", driver.Service)
-
-		return
+		log.Panicf("[%s] hook data should be a map of event to conditions", driver.Service)
 	}
 
 	log.Debugf("[%s] hook data : %+v", driver.Service, newHooks)
