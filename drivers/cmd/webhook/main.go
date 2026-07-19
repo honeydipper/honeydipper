@@ -62,6 +62,8 @@ var (
 	configMu      sync.RWMutex
 	configUpdated bool
 	driverAlive   bool
+	retryInterval    = 500 * time.Millisecond // initial backoff for bind failures
+	maxRetryInterval = 30 * time.Second       // cap for exponential backoff
 )
 
 // Addr : listening address and port of the webhook.
@@ -107,12 +109,16 @@ func loadOptions(m *dipper.Message) {
 	// Process driver.Options into local temporary maps using ok-checked type assertions
 	hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
 	if !ok || hooksObj == nil {
-		log.Panicf("[%s] no hooks defined for webhook driver", driver.Service)
+		log.Warningf("[%s] no hooks defined for webhook driver", driver.Service)
+
+		return
 	}
 
 	newHooks, ok := hooksObj.(map[string]interface{})
 	if !ok {
-		log.Panicf("[%s] hook data should be a map of event to conditions", driver.Service)
+		log.Warningf("[%s] hook data should be a map of event to conditions", driver.Service)
+
+		return
 	}
 
 	log.Debugf("[%s] hook data : %+v", driver.Service, newHooks)
@@ -179,9 +185,24 @@ func startWebhook(m *dipper.Message) {
 	}
 	go func() {
 		log.Infof("[%s] start listening for webhook requests on %s", driver.Service, addr)
-		log.Infof("[%s] listener stopped: %+v", driver.Service, server.ListenAndServe())
+		err := server.ListenAndServe()
+		log.Infof("[%s] listener stopped: %+v", driver.Service, err)
+
 		if driver.State == dipper.DriverStateAlive {
-			startWebhook(m)
+			if errors.Is(err, http.ErrServerClosed) {
+				// Clean shutdown for address change - reset backoff and restart immediately
+				retryInterval = 500 * time.Millisecond
+				startWebhook(m)
+			} else {
+				// Bind failure or other error - log once, back off, then retry
+				log.Errorf("[%s] webhook listener error: %v, retrying in %v", driver.Service, err, retryInterval)
+				time.Sleep(retryInterval)
+				retryInterval *= 2
+				if retryInterval > maxRetryInterval {
+					retryInterval = maxRetryInterval
+				}
+				startWebhook(m)
+			}
 		}
 	}()
 }
