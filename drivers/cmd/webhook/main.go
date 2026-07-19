@@ -54,14 +54,14 @@ func initFlags() {
 }
 
 var (
-	driver        *dipper.Driver
-	server        *http.Server
-	hooks         map[string]interface{}
-	sysMap        map[string]map[string]interface{}
-	addr          string
-	configMu      sync.RWMutex
-	configUpdated bool
-	driverAlive   bool
+	driver           *dipper.Driver
+	server           *http.Server
+	hooks            map[string]interface{}
+	sysMap           map[string]map[string]interface{}
+	addr             string
+	configMu         sync.RWMutex
+	configUpdated    bool
+	driverAlive      bool
 	retryInterval    = 500 * time.Millisecond // initial backoff for bind failures
 	maxRetryInterval = 30 * time.Second       // cap for exponential backoff
 )
@@ -88,6 +88,7 @@ func main() {
 }
 
 func stopWebhook(*dipper.Message) {
+	dipper.Must(server.Shutdown(context.Background()))
 }
 
 func loadOptions(m *dipper.Message) {
