@@ -10,6 +10,8 @@
 package workflow
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -319,5 +321,183 @@ func TestProcessSaveCacheState_MemcacheEnabled_TTLCapped(t *testing.T) {
 	item := es.GetCache().Get("test-key")
 	if item == nil {
 		t.Fatal("expected data in memcache")
+	}
+}
+
+func TestProcessCheckCacheState_HashField_MemcacheHit(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: true}
+	s.store = es
+	s.Workflow.CacheKey = "myhash#myfield"
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}}
+	es.GetCache().Set("myhash#myfield", map[string]any{"data": "memcached-result"}, time.Hour)
+
+	s.processCheckCacheState()
+
+	if s.CurrentMsg.Labels[LabelFromCache] != "true" {
+		t.Error("expected from_cache label to be set")
+	}
+	data := s.Ctx["cache-data"].(map[string]any)
+	if data["data"] != "memcached-result" {
+		t.Errorf("expected memcached data, got %v", data)
+	}
+	if es.lastCallFeature == "cache" {
+		t.Error("should not call external cache when memcache hit")
+	}
+}
+
+func TestProcessCheckCacheState_HashField_MissHget(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: false}
+	es.callReturn = func(feature, method string) ([]byte, error) {
+		if feature == "cache" && method == "hget" {
+			return []byte(`{"data": "hash-field-result"}`), nil
+		}
+
+		return nil, nil
+	}
+	s.store = es
+	s.Workflow.CacheKey = "myhash#myfield"
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}}
+
+	s.processCheckCacheState()
+
+	if s.CurrentMsg.Labels[LabelFromCache] != "true" {
+		t.Error("expected from_cache label to be set")
+	}
+	if es.lastCallFeature != "cache" || es.lastCallMethod != "hget" {
+		t.Errorf("expected cache hget call, got %s.%s", es.lastCallFeature, es.lastCallMethod)
+	}
+	params, ok := es.lastCallParams.(map[string]any)
+	if !ok {
+		t.Fatalf("params should be map")
+	}
+	if params["key"] != "workflow-cache/myhash" {
+		t.Errorf("unexpected hget key: %v", params["key"])
+	}
+	if params["field"] != "myfield" {
+		t.Errorf("unexpected hget field: %v", params["field"])
+	}
+	data := s.Ctx["cache-data"].(map[string]any)
+	if data["data"] != "hash-field-result" {
+		t.Errorf("expected hash field data, got %v", data)
+	}
+}
+
+func TestProcessSaveCacheState_HashField(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: true}
+	s.store = es
+	s.Workflow.CacheKey = "myhash#myfield"
+	s.Workflow.CacheTTL = "30m"
+	s.Ctx["cache-data"] = map[string]any{"result": "data"}
+
+	s.processSaveCacheState()
+
+	item := es.GetCache().Get("myhash#myfield")
+	if item == nil {
+		t.Fatal("expected data in memcache for hash field key")
+	}
+	if es.lastCallFeature != "cache" || es.lastCallMethod != "hset" {
+		t.Errorf("expected cache hset call, got %s.%s", es.lastCallFeature, es.lastCallMethod)
+	}
+	params, ok := es.lastCallParams.(map[string]any)
+	if !ok {
+		t.Fatalf("params should be map")
+	}
+	if params["key"] != "workflow-cache/myhash" {
+		t.Errorf("unexpected hset key: %v", params["key"])
+	}
+	if params["ttl"] != "30m" {
+		t.Errorf("unexpected hset ttl: %v", params["ttl"])
+	}
+	expected, _ := json.Marshal(map[string]any{"result": "data"})
+	if !reflect.DeepEqual(params["value"], map[string]any{"myfield": string(expected)}) {
+		t.Errorf("unexpected hset value: %v", params["value"])
+	}
+}
+
+func TestProcessCheckCacheState_NormalKeyUsesLoad(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: false}
+	es.callReturn = func(feature, method string) ([]byte, error) {
+		if feature == "cache" && method == "load" {
+			return []byte(`{"data": "normal-result"}`), nil
+		}
+
+		return nil, nil
+	}
+	s.store = es
+	s.Workflow.CacheKey = "test-key"
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}}
+
+	s.processCheckCacheState()
+
+	if es.lastCallFeature != "cache" || es.lastCallMethod != "load" {
+		t.Errorf("expected cache load call for normal key, got %s.%s", es.lastCallFeature, es.lastCallMethod)
+	}
+	if s.CurrentMsg.Labels[LabelFromCache] != "true" {
+		t.Error("expected from_cache label to be set")
+	}
+}
+
+func TestProcessSaveCacheState_NormalKeyUsesSave(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: true}
+	s.store = es
+	s.Workflow.CacheKey = "test-key"
+	s.Workflow.CacheTTL = "1h"
+	s.Ctx["cache-data"] = map[string]any{"result": "data"}
+
+	s.processSaveCacheState()
+
+	if es.lastCallFeature != "cache" || es.lastCallMethod != "save" {
+		t.Errorf("expected cache save call for normal key, got %s.%s", es.lastCallFeature, es.lastCallMethod)
+	}
+	params, ok := es.lastCallParams.(map[string]any)
+	if !ok {
+		t.Fatalf("params should be map")
+	}
+	if params["key"] != "workflow-cache/test-key" {
+		t.Errorf("unexpected cache key for normal key: %v", params["key"])
+	}
+}
+
+func TestProcessCheckCacheState_WholeHashFallsThrough(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: false}
+	es.callReturn = func(feature, method string) ([]byte, error) {
+		if feature == "cache" && method == "load" {
+			return []byte(`{"data": "whole-hash-result"}`), nil
+		}
+
+		return nil, nil
+	}
+	s.store = es
+	s.Workflow.CacheKey = "myhash#"
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}}
+
+	s.processCheckCacheState()
+
+	if es.lastCallFeature != "cache" || es.lastCallMethod != "load" {
+		t.Errorf("expected cache load call for whole-hash key (phase 3 not implemented), got %s.%s", es.lastCallFeature, es.lastCallMethod)
+	}
+	if s.CurrentMsg.Labels[LabelFromCache] != "true" {
+		t.Error("expected from_cache label to be set")
+	}
+}
+
+func TestProcessSaveCacheState_WholeHashFallsThrough(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: true}
+	s.store = es
+	s.Workflow.CacheKey = "myhash#"
+	s.Workflow.CacheTTL = "1h"
+	s.Ctx["cache-data"] = map[string]any{"result": "data"}
+
+	s.processSaveCacheState()
+
+	if es.lastCallFeature != "cache" || es.lastCallMethod != "save" {
+		t.Errorf("expected cache save call for whole-hash key (phase 3 not implemented), got %s.%s", es.lastCallFeature, es.lastCallMethod)
 	}
 }
