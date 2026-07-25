@@ -25,6 +25,11 @@ func TestHset(t *testing.T) {
 		TestLoadOptions(t)
 	}
 
+	// Explicitly enable per-field expiration to preserve the existing per-field
+	// HEXPIRE (Redis >= 7.4) code path coverage.
+	perFieldExpiration = true
+	defer func() { perFieldExpiration = false }()
+
 	db, mock := redismock.NewClientMock()
 	redisOptions = &redisclient.Options{Client: db}
 
@@ -71,6 +76,63 @@ func TestHset(t *testing.T) {
 	}
 }
 
+// TestHsetWholeHashExpire verifies the fallback path used when per-field
+// expiration is disabled (perFieldExpiration = false): the whole hash key is
+// given a single shared TTL via EXPIRE instead of per-field HEXPIRE. This keeps
+// the feature compatible with Redis versions older than 7.4.
+func TestHsetWholeHashExpire(t *testing.T) {
+	if driver == nil {
+		TestLoadOptions(t)
+	}
+
+	perFieldExpiration = false
+
+	db, mock := redismock.NewClientMock()
+	redisOptions = &redisclient.Options{Client: db}
+
+	assert.Panics(t, func() { hset(&dipper.Message{}) }, "hset should panic with empty request")
+
+	msg := &dipper.Message{
+		Payload: map[string]interface{}{
+			"key": "hfoo",
+			"value": map[string]interface{}{
+				"field": "value",
+			},
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+
+	mock.ExpectHSet("hfoo", map[string]interface{}{"field": "value"}).SetVal(1)
+	mock.ExpectExpire("hfoo", 24*time.Hour).SetVal(true)
+	assert.NotPanics(t, func() { hset(msg) }, "hset should not panic with whole-hash expire (default ttl)")
+	select {
+	case <-msg.Reply:
+	default:
+		assert.Fail(t, "hset should reply a dipper message")
+	}
+
+	mock.ClearExpect()
+
+	msg2 := &dipper.Message{
+		Payload: map[string]interface{}{
+			"key": "hfoo2",
+			"value": map[string]interface{}{
+				"field": "value2",
+			},
+			"ttl": "1h",
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+	mock.ExpectHSet("hfoo2", map[string]interface{}{"field": "value2"}).SetVal(1)
+	mock.ExpectExpire("hfoo2", time.Hour).SetVal(true)
+	assert.NotPanics(t, func() { hset(msg2) }, "hset should not panic with whole-hash expire (custom ttl)")
+	select {
+	case <-msg2.Reply:
+	default:
+		assert.Fail(t, "hset should reply a dipper message")
+	}
+}
+
 func TestHvals(t *testing.T) {
 	if driver == nil {
 		TestLoadOptions(t)
@@ -88,11 +150,11 @@ func TestHvals(t *testing.T) {
 		Reply: make(chan dipper.Message, 1),
 	}
 
-	mock.ExpectHVals("hfoo").SetVal([]string{"\"value\""})
+	mock.ExpectHVals("hfoo").SetVal([]string{`"value"`})
 	assert.NotPanics(t, func() { hvals(msg) }, "hvals should not panic with good data")
 	select {
 	case reply := <-msg.Reply:
-		assert.Equal(t, "[\"value\"]", string(reply.Payload.([]byte)), "hvals should return hash field value")
+		assert.Equal(t, `["value"]`, string(reply.Payload.([]byte)), "hvals should return hash field value")
 	default:
 		assert.Fail(t, "hvals should reply a dipper message")
 	}

@@ -82,6 +82,8 @@ func main() {
 	driver.RPCHandlers["hset"] = hset
 	driver.RPCHandlers["hvals"] = hvals
 	driver.RPCHandlers["hmget"] = hmget
+	driver.RPCHandlers["hget"] = hget
+	driver.RPCHandlers["hgetall"] = hgetall
 	driver.RPCHandlers["stream_hset"] = streamHset
 	driver.RPCHandlers["stream_hvals"] = streamHvals
 	driver.Run()
@@ -94,6 +96,7 @@ func loadOptions() {
 
 	// Load stream_hset configuration from driver options
 	loadStreamConfig()
+	loadHashConfig()
 }
 
 func start(msg *dipper.Message) {
