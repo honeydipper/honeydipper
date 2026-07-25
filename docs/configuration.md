@@ -169,6 +169,46 @@ drivers:
         ...
 ```
 
+### redis-cache
+
+The `redis-cache` driver provides the `cache` feature used by workflow data
+caching (see [Caching](./workflow.md#caching)). It stores cache entries in
+Redis and supports both plain keys and Redis hashes (the `#` cache-key syntax
+documented in the workflow guide).
+
+#### Configuration
+
+ - `data.per_field_expiration` *(boolean, default `false`)* &mdash; Controls how TTLs
+   are applied to Redis hashes written by the `hset` RPC (used for `name#field`
+   cache keys).
+
+    - When `true`, each hash field gets its **own** expiration via Redis
+      `HEXPIRE`. This requires **Redis >= 7.4** (per-field expiration was
+      introduced in Redis 7.4); expired fields are removed automatically by
+      Redis.
+    - When `false` (the default), per-field `HEXPIRE` is **not** used.
+      Instead the whole hash key receives a single shared TTL via `EXPIRE`,
+      which is compatible with **Redis versions older than 7.4**.
+
+   Plain (non-`#`) cache keys are always stored as whole keys and are unaffected
+   by this option.
+
+#### RPCs
+
+The driver exposes the following RPCs, called internally by the workflow
+caching engine through the `cache` feature:
+
+ - `load` / `save` &mdash; read/write a whole plain cache key (the legacy, non-`#`
+   path).
+ - `hget` &mdash; `HGET key field`; returns the raw value of a single hash field (or
+   empty on a miss).
+ - `hgetall` &mdash; `HGETALL key`; returns a `map[string]any` of `field -> value`
+   for the entire hash (or empty on a miss). Used by the `name#` whole-hash
+   read-only cache path.
+ - `hset` &mdash; write one or more hash fields with a TTL, applying per-field
+   `HEXPIRE` or whole-hash `EXPIRE` according to the `per_field_expiration`
+   option (used by the `name#field` cache path).
+
 ## Systems
 
 As defined, systems are a group of triggers and actions and some data that can be re-used.
