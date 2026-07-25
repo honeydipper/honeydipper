@@ -242,6 +242,40 @@ workflows:
       - call_workflow: notify_cached_result
 ```
 
+#### Hash-based cache keys (Redis)
+
+When the `cache` feature is backed by the `redis-cache` driver, the
+`cache_key` accepts a `#` syntax for storing and reading entries inside a
+single Redis hash. This is handy when several workflows need to share one
+logical cache object whose fields are populated independently.
+
+The caching mode is selected by the presence and position of `#` in the key:
+
+ - **Normal key** (for example `myapp:data:{{ .ctx.key }}` &mdash; no `#`): behaves
+   exactly as described above. The entry is stored and read as a single value
+   via the `cache` `save`/`load` RPCs, and is additionally held in the
+   in-memory memcache. *This mode is unchanged by the hash feature.*
+
+ - **Single hash field** (`name#field`): caches only the field `field` within
+   the Redis hash `name` as an independent, TTL'd entry. It is written via the
+   `cache` `hset` RPC and read via `hget`. Each field carries its own TTL
+   (controlled by the driver's `per_field_expiration` option &mdash; see
+   [Redis cache driver](./configuration.md#redis-cache)). Use this when several
+   workflows contribute different pieces of data to one shared cache object.
+
+ - **Whole hash** (`name#` &mdash; a trailing `#` with an empty field): reads the
+   **entire** Redis hash `name` into `cache-data` as a map of
+   `field -> decoded value`. It is a **read-only aggregate view**: it is read
+   directly from Redis via the `cache` `hgetall` RPC, it does **not** consult
+   or populate the in-memory memcache, and it **never writes back** to Redis or
+   the memcache &mdash; even when `force-cache-refresh` is set or the hash is
+   empty. This makes it ideal for reading a shared cache object that other
+   workflows populate through `name#field` keys.
+
+In every `#` mode the underlying Redis key is `workflow-cache/<name>`, and
+field values are JSON-encoded, so `cache-data` has the same shape regardless of
+which mode populated it.
+
 ### Iterations
 Any of the actions can be combined with an `iterate` or `iterate_parallel` field to be executed multiple times with different values from a list. The current element of the list will be stored in a local contextual data item named `current`. Optionally, you can also customize the name of contextual data item using `iterate_as`. The elements of the lists to be iterated don't have to be simple strings, it can be a map or other complex data structures.
 
