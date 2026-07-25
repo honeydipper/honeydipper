@@ -463,12 +463,15 @@ func TestProcessSaveCacheState_NormalKeyUsesSave(t *testing.T) {
 	}
 }
 
-func TestProcessCheckCacheState_WholeHashFallsThrough(t *testing.T) {
+func TestProcessCheckCacheState_WholeHashHit(t *testing.T) {
 	s := makeExecuteSession()
-	es := &cacheTestStore{memcacheEnabled: false}
+	es := &cacheTestStore{memcacheEnabled: true}
+	// A stale memcache entry must be ignored for whole-hash keys.
+	es.GetCache().Set("myhash#", map[string]any{"stale": true}, time.Hour)
 	es.callReturn = func(feature, method string) ([]byte, error) {
-		if feature == "cache" && method == "load" {
-			return []byte(`{"data": "whole-hash-result"}`), nil
+		if feature == "cache" && method == "hgetall" {
+			// Each hash field stores a JSON-encoded value.
+			return []byte(`{"alpha":"{\"n\":1}","beta":"\"world\""}`), nil
 		}
 
 		return nil, nil
@@ -479,15 +482,109 @@ func TestProcessCheckCacheState_WholeHashFallsThrough(t *testing.T) {
 
 	s.processCheckCacheState()
 
-	if es.lastCallFeature != "cache" || es.lastCallMethod != "load" {
-		t.Errorf("expected cache load call for whole-hash key (phase 3 not implemented), got %s.%s", es.lastCallFeature, es.lastCallMethod)
-	}
 	if s.CurrentMsg.Labels[LabelFromCache] != "true" {
 		t.Error("expected from_cache label to be set")
 	}
+	if s.CurrentMsg.Labels["status"] != SessionStatusSuccess {
+		t.Error("expected status to be success")
+	}
+	if es.lastCallFeature != "cache" || es.lastCallMethod != "hgetall" {
+		t.Errorf("expected cache hgetall call, got %s.%s", es.lastCallFeature, es.lastCallMethod)
+	}
+	data, ok := s.Ctx["cache-data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected cache-data map, got %T", s.Ctx["cache-data"])
+	}
+	alpha, ok := data["alpha"].(map[string]any)
+	if !ok || alpha["n"] != float64(1) {
+		t.Errorf("expected alpha={n:1}, got %v", data["alpha"])
+	}
+	if data["beta"] != "world" {
+		t.Errorf("expected beta=world, got %v", data["beta"])
+	}
+	if _, stale := data["stale"]; stale {
+		t.Error("stale memcache entry should have been ignored for whole-hash key")
+	}
 }
 
-func TestProcessSaveCacheState_WholeHashFallsThrough(t *testing.T) {
+func TestProcessCheckCacheState_WholeHashNoData(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: false}
+	es.callReturn = func(feature, method string) ([]byte, error) {
+		if feature == "cache" && method == "hgetall" {
+			return nil, nil
+		}
+
+		return nil, nil
+	}
+	s.store = es
+	s.Workflow.CacheKey = "myhash#"
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}}
+
+	s.processCheckCacheState()
+
+	if s.CurrentMsg.Labels[LabelFromCache] == "true" {
+		t.Error("from_cache label should not be set on whole-hash miss")
+	}
+	if s.CurrentMsg.Labels["status"] == SessionStatusSuccess {
+		t.Error("status should not be success on whole-hash miss")
+	}
+	if s.Ctx["cache-data"] != nil {
+		t.Error("cache-data should not be set on whole-hash miss")
+	}
+}
+
+func TestProcessCheckCacheState_WholeHashForceRefresh(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: false}
+	es.callReturn = func(feature, method string) ([]byte, error) {
+		if feature == "cache" && method == "hgetall" {
+			return []byte(`{"alpha":"1"}`), nil
+		}
+
+		return nil, nil
+	}
+	s.store = es
+	s.Workflow.CacheKey = "myhash#"
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}}
+	s.Ctx["force-cache-refresh"] = true
+
+	s.processCheckCacheState()
+
+	if s.CurrentMsg.Labels[LabelFromCache] == "true" {
+		t.Error("from_cache label should not be set when force refresh")
+	}
+	if s.Ctx["cache-data"] != nil {
+		t.Error("cache-data should not be set when force refresh")
+	}
+}
+
+func TestProcessCheckCacheState_WholeHashEmptyName(t *testing.T) {
+	s := makeExecuteSession()
+	es := &cacheTestStore{memcacheEnabled: false}
+	calls := 0
+	es.callReturn = func(feature, method string) ([]byte, error) {
+		if feature == "cache" && method == "hgetall" {
+			calls++
+		}
+
+		return nil, nil
+	}
+	s.store = es
+	s.Workflow.CacheKey = "#"
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}}
+
+	s.processCheckCacheState()
+
+	if calls != 0 {
+		t.Error("hgetall should not be called for empty hash name")
+	}
+	if s.Ctx["cache-data"] != nil {
+		t.Error("cache-data should not be set for empty hash name")
+	}
+}
+
+func TestProcessSaveCacheState_WholeHashNoWrite(t *testing.T) {
 	s := makeExecuteSession()
 	es := &cacheTestStore{memcacheEnabled: true}
 	s.store = es
@@ -497,7 +594,10 @@ func TestProcessSaveCacheState_WholeHashFallsThrough(t *testing.T) {
 
 	s.processSaveCacheState()
 
-	if es.lastCallFeature != "cache" || es.lastCallMethod != "save" {
-		t.Errorf("expected cache save call for whole-hash key (phase 3 not implemented), got %s.%s", es.lastCallFeature, es.lastCallMethod)
+	if es.lastCallFeature == "cache" {
+		t.Errorf("should not call cache for whole-hash save, got %s.%s", es.lastCallFeature, es.lastCallMethod)
+	}
+	if es.GetCache().Get("myhash#") != nil {
+		t.Error("should not write to memcache for whole-hash save")
 	}
 }
