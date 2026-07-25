@@ -9,6 +9,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -28,6 +29,15 @@ var streamHsetIntervalHours = 2
 // Controls how far back conversation history can be retrieved.
 // Default: 336 hours (2 weeks). Configurable via driver option "data.stream_ttl_hours".
 var streamHsetTTLHours = 336
+
+// perFieldExpiration controls how TTL is applied to hash fields saved via the
+// hset handler. When true, each field gets its own expiration through per-field
+// HEXPIRE (requires Redis >= 7.4). When false (the default), the whole hash key
+// is given a single shared TTL via EXPIRE, which is compatible with older Redis
+// versions.
+//
+// Configurable via driver option "data.per_field_expiration" (boolean).
+var perFieldExpiration = false
 
 const (
 	streamHvalsScript = `
@@ -87,6 +97,24 @@ func loadStreamConfig() {
 
 	log.Infof("[%s] stream_hset: interval=%dh, ttl=%dh (default: 336h=2w)",
 		driver.Service, streamHsetIntervalHours, streamHsetTTLHours)
+}
+
+// loadHashConfig loads hash-related configuration from driver options.
+func loadHashConfig() {
+	if driver.Options == nil {
+		return
+	}
+
+	if v, ok := dipper.GetMapData(driver.Options, "data.per_field_expiration"); ok {
+		switch t := v.(type) {
+		case bool:
+			perFieldExpiration = t
+		default:
+			log.Warningf("[%s] redis cache invalid per_field_expiration type %T, using default", driver.Service, t)
+		}
+	}
+
+	log.Infof("[%s] hash per_field_expiration: %v", driver.Service, perFieldExpiration)
 }
 
 func streamHset(msg *dipper.Message) {
@@ -273,6 +301,19 @@ func hset(msg *dipper.Message) {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
 	if len(fields) > 0 {
+		applyHashExpiration(ctx, client, key, exp, fields)
+	}
+
+	msg.Reply <- dipper.Message{}
+}
+
+// applyHashExpiration sets the TTL for a hash key written by hset. When
+// perFieldExpiration is enabled (Redis >= 7.4), each field receives its own
+// expiration via per-field HEXPIRE (executed through a Lua script so expired
+// fields are auto-removed by Redis). Otherwise the whole hash key is given a
+// single shared TTL via EXPIRE, which works on Redis versions older than 7.4.
+func applyHashExpiration(ctx context.Context, client redisclient.Options, key string, exp time.Duration, fields []string) {
+	if perFieldExpiration {
 		ttlSeconds := int64(exp / time.Second)
 		args := make([]interface{}, 2+len(fields))
 		args[0] = ttlSeconds
@@ -283,9 +324,70 @@ func hset(msg *dipper.Message) {
 		if _, err := client.Eval(ctx, hexpireScript, []string{key}, args...).Result(); err != nil && !errors.Is(err, redis.Nil) {
 			log.Panicf("[%s] redis error: %v", driver.Service, err)
 		}
+
+		return
 	}
 
-	msg.Reply <- dipper.Message{}
+	if err := client.Expire(ctx, key, exp).Err(); err != nil && !errors.Is(err, redis.Nil) {
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	}
+}
+
+// hget performs HGET key field and returns the raw field value. It returns an
+// empty (nil) payload on a cache miss (redis.Nil) and panics on real errors,
+// mirroring the behavior of the load handler.
+func hget(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+	field := dipper.MustGetMapDataStr(msg.Payload, "field")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	val, err := client.HGet(ctx, key, field).Result()
+	switch {
+	case errors.Is(err, redis.Nil):
+		msg.Reply <- dipper.Message{}
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		msg.Reply <- dipper.Message{
+			Payload: []byte(val),
+			IsRaw:   true,
+		}
+	}
+}
+
+// hgetall performs HGETALL key and returns a map[string]any of field -> value
+// (string). When per-field expiration is enabled, expired hash fields are
+// auto-removed by Redis so they are naturally excluded from the result. It
+// returns an empty (no error) payload on a cache miss.
+func hgetall(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	key := dipper.MustGetMapDataStr(msg.Payload, "key")
+
+	client := redisclient.NewClient(redisOptions)
+	defer client.Close()
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+
+	val, err := client.HGetAll(ctx, key).Result()
+	switch {
+	case errors.Is(err, redis.Nil):
+		msg.Reply <- dipper.Message{}
+	case err != nil:
+		log.Panicf("[%s] redis error: %v", driver.Service, err)
+	default:
+		result := map[string]any{}
+		for k, v := range val {
+			result[k] = v
+		}
+		msg.Reply <- dipper.Message{
+			Payload: result,
+		}
+	}
 }
 
 func hvals(msg *dipper.Message) {
