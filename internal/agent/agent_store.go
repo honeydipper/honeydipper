@@ -252,20 +252,6 @@ func (p *PersistentAgentStore) Stop() {
 //
 // The returned ConvoState is ready for runTurn (cs.Agent, cs.TTL populated).
 // If created=true, the state has been persisted. The caller should NOT persist again.
-// resolveOrRecreateConvoState loads or recreates the ConvoState for the given conversation.
-// It implements the Phase 2 recovery truth table:
-//
-//	cs present | agent supplied | agentOverride | behavior
-//	-----------|----------------|---------------|--------------------------------------
-//	no         | no             | n/a           | error (unrecoverable)
-//	no         | yes            | false         | recreate cs with supplied agent
-//	no         | yes            | true          | recreate cs with supplied agent
-//	yes        | no             | n/a           | return existing cs (created=false)
-//	yes        | yes            | false         | return existing cs (created=false); ignore supplied agent
-//	yes        | yes            | true          | recreate/overwrite cs with supplied agent
-//
-// The returned ConvoState is ready for runTurn (cs.Agent, cs.TTL populated).
-// If created=true, the state has been persisted. The caller should NOT persist again.
 func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName string, agentOverride bool) (*ConvoState, bool, error) {
 	cs := &ConvoState{}
 	cs.load(convoID, p)

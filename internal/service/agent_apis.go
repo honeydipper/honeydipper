@@ -147,32 +147,6 @@ func handleConvoCancelAPI(resp *api.Response) {
 //	yes        | no             | n/a            | use existing cs (normal turn)
 //	yes        | yes            | false (stick)  | use existing cs; do not overwrite
 //	yes        | yes            | true (override)| recreate/overwrite cs with supplied agent
-//
-// Today (pre-Phase-2) the handler always returns {"ok":true} and never surfaces a
-// reclaimed convo; the regression tests in internal/agent/agent_store_test.go and
-// internal/service/agent_apis_test.go pin that broken behavior.
-// handleConvoTurnAPI starts a new chat turn on an existing conversation from the UI.
-// Expects convoID path param plus text (and optional user, engine, driver) in the
-// request body. The turn runs asynchronously; the API returns immediately with {"ok":true}
-// on success, or the ConversationExpiredResponse body when the conversation was reclaimed
-// and no agent was supplied to recreate it.
-//
-// Recovery contract (see docs/conversation-recovery-contract.md). The request body
-// below may additionally carry:
-//   - agent (string, optional): the agent to use when recreating a reclaimed conversation.
-//   - agent_override (bool, optional, default false): when true, allow StartTurn to
-//     recreate/overwrite the ConvoState even when one is present; when false, StartTurn
-//     must stick to the existing ConvoState and never overwrite it.
-//
-// Truth table (implemented in Phase 2):
-//
-//	cs present | agent supplied | agent_override | behavior
-//	no         | no             | n/a            | 409 conversation_expired (UI prompts for agent)
-//	no         | yes            | false          | recreate cs with supplied agent (nothing to stick to)
-//	no         | yes            | true           | recreate cs with supplied agent
-//	yes        | no             | n/a            | use existing cs (normal turn)
-//	yes        | yes            | false (stick)  | use existing cs; do not overwrite
-//	yes        | yes            | true (override)| recreate/overwrite cs with supplied agent
 func handleConvoTurnAPI(resp *api.Response) {
 	resp.Request = dipper.DeserializePayload(resp.Request)
 	convoID := dipper.MustGetMapDataStr(resp.Request.Payload, "convoID")
