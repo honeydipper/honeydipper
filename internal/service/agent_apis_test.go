@@ -129,11 +129,6 @@ func (c *captureReceiver) SendMessage(m *dipper.Message) {
 	c.captured = m
 }
 
-// TestHandleConvoTurnAPI_EvictedConvoReturnsOkTrue is a PHASE-1 regression
-// test. It encodes TODAY'S BROKEN behavior: when convo_state:<id> has been
-// reclaimed by Redis and no agent is supplied, handleConvoTurnAPI still returns
-// {"ok":true} (a false success) instead of surfacing the failure. Phase 2 will
-
 // TestHandleConvoTurnAPI_EvictedConvoNoAgent_ReturnsExpired is a PHASE-2 test.
 // It asserts the FIXED behavior: when convo_state:<id> has been reclaimed by Redis
 // and no agent is supplied, handleConvoTurnAPI returns the ConversationExpiredResponse.

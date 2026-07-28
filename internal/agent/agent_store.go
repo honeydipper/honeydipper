@@ -15,6 +15,7 @@ import (
 )
 
 // Static errors for resolveOrRecreateConvoState.
+
 var (
 	errConvoExpiredNoAgent  = errors.New("conversation expired and no agent supplied to recreate")
 	errAgentNotFound        = errors.New("agent not found in config")
