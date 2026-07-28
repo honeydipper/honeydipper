@@ -34,7 +34,10 @@ type recoveryMemHelper struct {
 func newRecoveryMemHelper() *recoveryMemHelper {
 	return &recoveryMemHelper{
 		cache: map[string]string{},
-		cfg:   &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{}}},
+		cfg: &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{
+			"test_agent": {Name: "test_agent", Engine: "openai", Driver: "openai", ModelData: map[string]interface{}{}},
+			"new_agent":  {Name: "new_agent", Engine: "openai", Driver: "openai", ModelData: map[string]interface{}{}},
+		}}},
 	}
 }
 
@@ -130,8 +133,11 @@ func (c *captureReceiver) SendMessage(m *dipper.Message) {
 // test. It encodes TODAY'S BROKEN behavior: when convo_state:<id> has been
 // reclaimed by Redis and no agent is supplied, handleConvoTurnAPI still returns
 // {"ok":true} (a false success) instead of surfacing the failure. Phase 2 will
-// change this to a 409 conversation_expired so the UI can prompt for an agent.
-func TestHandleConvoTurnAPI_EvictedConvoReturnsOkTrue(t *testing.T) {
+
+// TestHandleConvoTurnAPI_EvictedConvoNoAgent_ReturnsExpired is a PHASE-2 test.
+// It asserts the FIXED behavior: when convo_state:<id> has been reclaimed by Redis
+// and no agent is supplied, handleConvoTurnAPI returns the ConversationExpiredResponse.
+func TestHandleConvoTurnAPI_EvictedConvoNoAgent_ReturnsExpired(t *testing.T) {
 	helper := newRecoveryMemHelper()
 	convoID := "evicted-convo-svc-1"
 
@@ -172,7 +178,7 @@ func TestHandleConvoTurnAPI_EvictedConvoReturnsOkTrue(t *testing.T) {
 	// Return() calls Factrory.Live.Done(); balance it to avoid a panic.
 	resp.Factrory.Live.Add(1)
 
-	// (c) Drive the broken revive path through the real API handler.
+	// (c) Drive the FIXED revive path through the real API handler.
 	handleConvoTurnAPI(resp)
 
 	receiver.mu.Lock()
@@ -182,12 +188,122 @@ func TestHandleConvoTurnAPI_EvictedConvoReturnsOkTrue(t *testing.T) {
 
 	payload, ok := captured.Payload.([]byte)
 	require.True(t, ok, "expected raw byte payload")
-	require.JSONEq(t, `{"ok":true}`, string(payload),
-		"broken behavior returns false-success {\"ok\":true}")
+	require.JSONEq(t, ConversationExpiredResponse, string(payload),
+		"fixed behavior must return conversation_expired response")
 
 	// After the goroutine completes, the convo_state must remain absent (no
 	// recreation) which confirms the turn never actually started.
 	realStore.Wait()
 	recreated := helper.hasCache(agent.ConvoStateKeyPrefix + convoID)
-	require.False(t, recreated, "broken behavior must not recreate convo_state on evicted convo")
+	require.False(t, recreated, "fixed behavior must not recreate convo_state on evicted convo without agent")
+}
+
+// TestHandleConvoTurnAPI_EvictedConvoWithAgent_Recovers asserts that when an
+// agent is supplied for an evicted conversation, the conversation is recreated
+// and the turn starts successfully.
+func TestHandleConvoTurnAPI_EvictedConvoWithAgent_Recovers(t *testing.T) {
+	helper := newRecoveryMemHelper()
+	convoID := "evicted-convo-svc-2"
+
+	// Seed and evict
+	seeded := map[string]interface{}{
+		"convo_id":     convoID,
+		"last_session": map[string]interface{}{"agent_name": "old_agent", "type": "chat_turn"},
+	}
+	seededBytes, err := json.Marshal(seeded)
+	require.NoError(t, err)
+	helper.cache[agent.ConvoStateKeyPrefix+convoID] = string(seededBytes)
+	if _, err := helper.Call("cache", "del", map[string]interface{}{
+		"key": agent.ConvoStateKeyPrefix + convoID,
+	}); err != nil {
+		t.Fatalf("eviction del failed: %v", err)
+	}
+
+	realStore := agent.NewAgentStore(helper, "")
+	prev := agentStore
+	agentStore = realStore
+	defer func() { agentStore = prev }()
+
+	receiver := &captureReceiver{}
+	resp := &api.Response{
+		EventBus: receiver,
+		Request: &dipper.Message{
+			Labels: map[string]string{"user": "u", "user_provider": "p"},
+			Payload: map[string]interface{}{
+				"convoID": convoID,
+				"body":    `{"text":"hi", "agent": "test_agent"}`,
+			},
+		},
+		Factrory: api.NewResponseFactory(),
+	}
+	resp.Factrory.Live.Add(1)
+
+	// Supply an agent - should recover and start turn
+	handleConvoTurnAPI(resp)
+
+	receiver.mu.Lock()
+	captured := receiver.captured
+	receiver.mu.Unlock()
+	require.NotNil(t, captured, "expected handleConvoTurnAPI to return a result")
+
+	payload, ok := captured.Payload.([]byte)
+	require.True(t, ok, "expected raw byte payload")
+	require.JSONEq(t, `{"ok":true}`, string(payload), "recovery must return ok true")
+
+	// ConvoState should be recreated
+	realStore.Wait()
+	recreated := helper.hasCache(agent.ConvoStateKeyPrefix + convoID)
+	require.True(t, recreated, "recovery must recreate convo_state")
+}
+
+// TestHandleConvoTurnAPI_LiveConvo_UsesExisting asserts normal turn behavior
+// when ConvoState is present.
+func TestHandleConvoTurnAPI_LiveConvo_UsesExisting(t *testing.T) {
+	helper := newRecoveryMemHelper()
+	convoID := "live-convo-svc-1"
+
+	// Seed a live conversation (don't evict)
+	seeded := map[string]interface{}{
+		"convo_id":     convoID,
+		"last_session": map[string]interface{}{"agent_name": "test_agent", "type": "chat_turn"},
+	}
+	seededBytes, err := json.Marshal(seeded)
+	require.NoError(t, err)
+	helper.cache[agent.ConvoStateKeyPrefix+convoID] = string(seededBytes)
+
+	realStore := agent.NewAgentStore(helper, "")
+	prev := agentStore
+	agentStore = realStore
+	defer func() { agentStore = prev }()
+
+	receiver := &captureReceiver{}
+	resp := &api.Response{
+		EventBus: receiver,
+		Request: &dipper.Message{
+			Labels: map[string]string{"user": "u", "user_provider": "p"},
+			Payload: map[string]interface{}{
+				"convoID": convoID,
+				"body":    `{"text":"hi"}`,
+			},
+		},
+		Factrory: api.NewResponseFactory(),
+	}
+	resp.Factrory.Live.Add(1)
+
+	// Normal turn - no agent needed in body
+	handleConvoTurnAPI(resp)
+
+	receiver.mu.Lock()
+	captured := receiver.captured
+	receiver.mu.Unlock()
+	require.NotNil(t, captured)
+
+	payload, ok := captured.Payload.([]byte)
+	require.True(t, ok)
+	require.JSONEq(t, `{"ok":true}`, string(payload))
+
+	// ConvoState should still exist
+	realStore.Wait()
+	recreated := helper.hasCache(agent.ConvoStateKeyPrefix + convoID)
+	require.True(t, recreated, "live convo must keep convo_state")
 }

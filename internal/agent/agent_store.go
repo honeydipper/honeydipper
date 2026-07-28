@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -11,6 +12,13 @@ import (
 	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/op/go-logging"
+)
+
+// Static errors for resolveOrRecreateConvoState.
+var (
+	errConvoExpiredNoAgent  = errors.New("conversation expired and no agent supplied to recreate")
+	errAgentNotFound        = errors.New("agent not found in config")
+	errCannotDetermineAgent = errors.New("cannot determine agent name for conversation")
 )
 
 // AgentStore is the interface used by agent sessions to interact with the store.
@@ -25,7 +33,7 @@ type AgentStore interface {
 	// StartTurn fires a new chat turn on an existing conversation without a
 	// return path back to a workflow. It is used by the UI-initiated turn API.
 	// engine and driver are optional overrides; empty strings mean "no override".
-	StartTurn(convoID, text, user, engine, driver string)
+	StartTurn(convoID, text, user, engine, driver, agent string, agentOverride bool) error
 	// StartNewConvo starts a brand-new conversation for the named agent and
 	// returns the generated convo_id synchronously. The session runs asynchronously.
 	// engine and driver are optional overrides; empty strings mean "no override".
@@ -230,40 +238,147 @@ func (p *PersistentAgentStore) Stop() {
 	p.stopped.Store(true)
 }
 
-// StartTurn starts a new chat turn on an existing conversation without a workflow
-// return path. The agent name is inferred from the most recent session recorded in
-// the ConvoState. The turn runs asynchronously; errors are logged, not propagated.
-// engine and driver are optional overrides; empty strings mean "no override".
-func (p *PersistentAgentStore) StartTurn(convoID, text, user, engine, driver string) {
+// resolveOrRecreateConvoState loads or recreates the ConvoState for the given conversation.
+// It implements the Phase 2 recovery truth table:
+//
+//	cs present | agent supplied | agentOverride | behavior
+//	-----------|----------------|---------------|--------------------------------------
+//	no         | no             | n/a           | error (unrecoverable)
+//	no         | yes            | false         | recreate cs with supplied agent
+//	no         | yes            | true          | recreate cs with supplied agent
+//	yes        | no             | n/a           | return existing cs (created=false)
+//	yes        | yes            | false         | return existing cs (created=false); ignore supplied agent
+//	yes        | yes            | true          | recreate/overwrite cs with supplied agent
+//
+// The returned ConvoState is ready for runTurn (cs.Agent, cs.TTL populated).
+// If created=true, the state has been persisted. The caller should NOT persist again.
+// resolveOrRecreateConvoState loads or recreates the ConvoState for the given conversation.
+// It implements the Phase 2 recovery truth table:
+//
+//	cs present | agent supplied | agentOverride | behavior
+//	-----------|----------------|---------------|--------------------------------------
+//	no         | no             | n/a           | error (unrecoverable)
+//	no         | yes            | false         | recreate cs with supplied agent
+//	no         | yes            | true          | recreate cs with supplied agent
+//	yes        | no             | n/a           | return existing cs (created=false)
+//	yes        | yes            | false         | return existing cs (created=false); ignore supplied agent
+//	yes        | yes            | true          | recreate/overwrite cs with supplied agent
+//
+// The returned ConvoState is ready for runTurn (cs.Agent, cs.TTL populated).
+// If created=true, the state has been persisted. The caller should NOT persist again.
+func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName string, agentOverride bool) (*ConvoState, bool, error) {
+	cs := &ConvoState{}
+	cs.load(convoID, p)
+
+	// Check if ConvoState exists (has meaningful data beyond just ConvoID).
+	// A freshly loaded empty state has only ConvoID populated.
+	csExists := cs.FirstSession != nil || cs.LastSession != nil || cs.Agent != nil || cs.Cancelled
+
+	// Case: cs missing, no agent -> unrecoverable
+	if !csExists && agentName == "" {
+		return nil, false, fmt.Errorf("%w: conversation %s expired and no agent supplied to recreate", errConvoExpiredNoAgent, convoID)
+	}
+
+	// Case: cs present, agentOverride false (or no agent supplied) -> use existing
+	useExisting := csExists && (!agentOverride || agentName == "")
+	if !useExisting {
+		// Case: recreate/overwrite (cs missing with agent, or cs present with agentOverride true)
+		// We need the agent config to populate cs.Agent.
+		agentCfg := p.GetAgent(agentName)
+		if agentCfg == nil {
+			return nil, false, fmt.Errorf("%w: %s", errAgentNotFound, agentName)
+		}
+
+		// Build a fresh ConvoState with the supplied agent.
+		newCS := &ConvoState{
+			ConvoID: convoID,
+			TTL:     ConvoStreamTTL,
+			Agent:   interpolateAgentConfig(p, agentName, map[string]interface{}{"text": "recovery placeholder"}),
+		}
+
+		// Persist the new state immediately so it exists before runTurn loads it.
+		newCS.persist(p)
+
+		return newCS, true, nil
+	}
+
+	// Use existing state - resolve agent from existing state (LastSession/FirstSession).
+	// Ignore any supplied agentName when not overriding.
+	resolvedAgentName := ""
+	switch {
+	case cs.LastSession != nil && cs.LastSession.Type != AgentSessionTypeInference:
+		resolvedAgentName = cs.LastSession.AgentName
+	case cs.FirstSession != nil:
+		resolvedAgentName = cs.FirstSession.AgentName
+	}
+
+	// If still no agent name (corrupt state), fall through to recreate logic below.
+	if resolvedAgentName != "" {
+		// Ensure cs.Agent is populated for runTurn.
+		if cs.Agent == nil {
+			cs.Agent = interpolateAgentConfig(p, resolvedAgentName, map[string]interface{}{"text": "recovery placeholder"})
+		}
+		// Ensure TTL is set for persistence.
+		if cs.TTL == "" {
+			cs.TTL = ConvoStreamTTL
+		}
+
+		return cs, false, nil
+	}
+
+	// Fall through to recreate if agentName still empty.
+	agentCfg := p.GetAgent(agentName)
+	if agentCfg == nil {
+		return nil, false, fmt.Errorf("%w: %s", errAgentNotFound, agentName)
+	}
+
+	// Build a fresh ConvoState with the supplied agent.
+	newCS := &ConvoState{
+		ConvoID: convoID,
+		TTL:     ConvoStreamTTL,
+		Agent:   interpolateAgentConfig(p, agentName, map[string]interface{}{"text": "recovery placeholder"}),
+	}
+
+	// Persist the new state immediately so it exists before runTurn loads it.
+	newCS.persist(p)
+
+	return newCS, true, nil
+}
+
+func (p *PersistentAgentStore) StartTurn(convoID, text, user, engine, driver, agent string, agentOverride bool) error {
+	// Validate/resolve the ConvoState synchronously so errors can be returned.
+	cs, created, err := p.resolveOrRecreateConvoState(convoID, agent, agentOverride)
+	if err != nil {
+		p.Errorf("[agent] StartTurn: %v", err)
+
+		return err
+	}
+
+	agentName := ""
+	if cs.Agent != nil {
+		agentName = cs.Agent.Name
+	}
+	if agentName == "" {
+		err := fmt.Errorf("%w: %s", errCannotDetermineAgent, convoID)
+		p.Errorf("[agent] StartTurn: %v", err)
+
+		return err
+	}
+
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
 		defer dipper.SafeExitOnError("[agent] error in StartTurn")
 
-		// Resolve the agent name from the ConvoState.
-		// Sub-agent (inference) sessions register themselves into the unified
-		// ConvoState and can overwrite LastSession with a sub-agent name.
-		// To guard against starting a new turn with the wrong agent, prefer
-		// the last ChatTurn session; fall back to FirstSession when LastSession
-		// is an inference session.
-		cs := &ConvoState{}
-		cs.load(convoID, p)
-		agentName := ""
-		switch {
-		case cs.LastSession != nil && cs.LastSession.Type != AgentSessionTypeInference:
-			agentName = cs.LastSession.AgentName
-		case cs.FirstSession != nil:
-			agentName = cs.FirstSession.AgentName
+		if created {
+			p.Infof("[agent] StartTurn convo=%s agent=%s (recreated)", convoID, agentName)
+		} else {
+			p.Infof("[agent] StartTurn convo=%s agent=%s", convoID, agentName)
 		}
-		if agentName == "" {
-			p.Errorf("[agent] StartTurn: cannot determine agent name for convo %s", convoID)
-
-			return
-		}
-
-		p.Infof("[agent] StartTurn convo=%s agent=%s", convoID, agentName)
 		p.runTurn(agentName, convoID, text, user, engine, driver)
 	}()
+
+	return nil
 }
 
 // StartNewConvo starts a brand-new conversation for the named agent and returns

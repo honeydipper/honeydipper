@@ -221,14 +221,16 @@ func (m *mockStore) CallRawNoWait(feature, method string, params []byte, rpcID s
 
 func (m *mockStore) GetName() string { return "mock-store" }
 
-func (m *mockStore) StartInference(msg *dipper.Message)                                {}
-func (m *mockStore) ContinueInference(msg *dipper.Message)                             {}
-func (m *mockStore) ReceiveInference(msg *dipper.Message)                              {}
-func (m *mockStore) PollInference(msg *dipper.Message)                                 {}
-func (m *mockStore) StartAgentCall(msg *dipper.Message)                                {}
-func (m *mockStore) StartMCPCall(msg *dipper.Message)                                  {}
-func (m *mockStore) CancelConvo(msg *dipper.Message)                                   {}
-func (m *mockStore) StartTurn(convoID, text, user, engine, driver string)              {}
+func (m *mockStore) StartInference(msg *dipper.Message)    {}
+func (m *mockStore) ContinueInference(msg *dipper.Message) {}
+func (m *mockStore) ReceiveInference(msg *dipper.Message)  {}
+func (m *mockStore) PollInference(msg *dipper.Message)     {}
+func (m *mockStore) StartAgentCall(msg *dipper.Message)    {}
+func (m *mockStore) StartMCPCall(msg *dipper.Message)      {}
+func (m *mockStore) CancelConvo(msg *dipper.Message)       {}
+func (m *mockStore) StartTurn(convoID, text, user, engine, driver, agent string, agentOverride bool) error {
+	return nil
+}
 func (m *mockStore) StartNewConvo(agentName, text, user, engine, driver string) string { return "" }
 
 func (m *mockStore) GetAgent(name string) *config.Agent {
@@ -2051,7 +2053,7 @@ func TestStartTurn_UsesParentAgentWhenLastSessionIsSubAgent(t *testing.T) {
 
 	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
-	store.StartTurn(convoID, "hello again", "user1", "", "")
+	store.StartTurn(convoID, "hello again", "user1", "", "", "", false)
 	store.Wait()
 
 	// The new session must be dispatched to the parent agent (super_coder), not code_executor.
@@ -2663,7 +2665,7 @@ func TestAgentOverrideEngineAndDriver_ExistingTurn(t *testing.T) {
 
 	store := NewAgentStore(helper, "").(*PersistentAgentStore)
 
-	store.StartTurn(convoID, "follow up", "user1", "claude-3", "anthropic")
+	store.StartTurn(convoID, "follow up", "user1", "claude-3", "anthropic", "", false)
 	store.Wait()
 
 	params := helper.getNoWaitParams("driver:anthropic:send_to_model")
