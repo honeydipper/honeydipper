@@ -21,11 +21,11 @@ import (
 // errConvoNotFound is returned when a conversation is not found.
 var errConvoNotFound = errors.New("conversation not found")
 
-// ConversationExpiredResponse is the JSON body returned (HTTP 409) when a
+// ConversationExpiredResponse is the JSON body returned when a
 // conversation's ConvoState has been reclaimed by Redis and no agent was
 // supplied to recreate it. It is declared as NON-FUNCTIONAL scaffolding so the
 // recovery contract lives in code; handleConvoTurnAPI does NOT consult it yet.
-// Phase 2 will surface it to the UI so the user can pick an agent to continue.
+// Phase 2 surfaces it to the UI so the user can pick an agent to continue.
 const ConversationExpiredResponse = `{"ok":false,"error":"conversation_expired","message":"select an agent to continue"}`
 
 func setupAgentAPIs() {
@@ -147,21 +147,15 @@ func handleConvoCancelAPI(resp *api.Response) {
 //	yes        | no             | n/a            | use existing cs (normal turn)
 //	yes        | yes            | false (stick)  | use existing cs; do not overwrite
 //	yes        | yes            | true (override)| recreate/overwrite cs with supplied agent
-//
-// Today (pre-Phase-2) the handler always returns {"ok":true} and never surfaces a
-// reclaimed convo; the regression tests in internal/agent/agent_store_test.go and
-// internal/service/agent_apis_test.go pin that broken behavior.
 func handleConvoTurnAPI(resp *api.Response) {
 	resp.Request = dipper.DeserializePayload(resp.Request)
 	convoID := dipper.MustGetMapDataStr(resp.Request.Payload, "convoID")
 
 	// POST body arrives as a JSON string under payload["body"].
 	var body struct {
-		Text   string `json:"text"`
-		Engine string `json:"engine"`
-		Driver string `json:"driver"`
-		// Agent and AgentOverride are recovery-contract scaffolding (Phase 2). They
-		// are parsed here but not yet consulted by the handler.
+		Text          string `json:"text"`
+		Engine        string `json:"engine"`
+		Driver        string `json:"driver"`
 		Agent         string `json:"agent"`
 		AgentOverride bool   `json:"agent_override"`
 	}
@@ -170,7 +164,16 @@ func handleConvoTurnAPI(resp *api.Response) {
 	}
 
 	user := buildUserTag(resp.Request.Labels["user"], resp.Request.Labels["user_provider"])
-	agentStore.StartTurn(convoID, body.Text, user, body.Engine, body.Driver)
+	err := agentStore.StartTurn(convoID, body.Text, user, body.Engine, body.Driver, body.Agent, body.AgentOverride)
+	if err != nil {
+		// Unrecoverable: conversation expired and no agent supplied.
+		// Return the ConversationExpiredResponse body.
+		// Note: HTTP status will be 200 (current architecture limitation);
+		// the body indicates the error condition for the UI.
+		resp.Return([]byte(ConversationExpiredResponse))
+
+		return
+	}
 
 	resp.Return([]byte(`{"ok":true}`))
 }

@@ -11,6 +11,7 @@ package agent
 
 import (
 	"bytes"
+	"encoding/json"
 	"sync"
 	"testing"
 
@@ -36,7 +37,13 @@ type memCacheHelper struct {
 func newMemCacheHelper() *memCacheHelper {
 	return &memCacheHelper{
 		cache: map[string]string{},
-		cfg:   &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{}}},
+		cfg: &config.Config{DataSet: &config.DataSet{Agents: map[string]config.Agent{
+			"test_agent":      {Name: "test_agent", Engine: "openai", Driver: "openai", ModelData: map[string]interface{}{}},
+			"new_agent":       {Name: "new_agent", Engine: "openai", Driver: "openai", ModelData: map[string]interface{}{}},
+			"old_agent":       {Name: "old_agent", Engine: "openai", Driver: "openai", ModelData: map[string]interface{}{}},
+			"original_agent":  {Name: "original_agent", Engine: "openai", Driver: "openai", ModelData: map[string]interface{}{}},
+			"different_agent": {Name: "different_agent", Engine: "openai", Driver: "openai", ModelData: map[string]interface{}{}},
+		}}},
 	}
 }
 
@@ -172,22 +179,20 @@ func newCaptureLogger(buf *bytes.Buffer) *logging.Logger {
 	format := logging.MustStringFormatter("%{message}")
 	formatted := logging.NewBackendFormatter(backend, format)
 	leveled := logging.AddModuleLevel(formatted)
-	leveled.SetLevel(logging.ERROR, "")
-	leveled.SetLevel(logging.ERROR, "agent-recovery-test")
+	leveled.SetLevel(logging.INFO, "")
+	leveled.SetLevel(logging.INFO, "agent-recovery-test")
 	logger := logging.MustGetLogger("agent-recovery-test")
 	logger.SetBackend(leveled)
 
 	return logger
 }
 
-// TestStartTurn_ConvoStateEvicted_RegressesToSilentNoOp is a PHASE-1 regression
-// test. It encodes TODAY'S BROKEN behavior so that Phase 2's recovery fix flips
-// it. When a conversation's convo_state:<id> key has been reclaimed by Redis
-// (TTL/eviction) and no agent is supplied, StartTurn cannot resolve an agent
-// name, logs "cannot determine agent name for convo <id>", returns silently,
-// and the API handler still answers {"ok":true}. No turn starts, no history is
-// appended, and ConvoState.ActiveSession is never set.
-func TestStartTurn_ConvoStateEvicted_RegressesToSilentNoOp(t *testing.T) {
+// TestStartTurn_ConvoStateEvicted_NoAgent_ReturnsError is a PHASE-2 test.
+// It asserts the FIXED behavior: when a conversation's convo_state:<id> key has been
+// reclaimed by Redis (TTL/eviction) and no agent is supplied, StartTurn returns an error
+// (does not silently succeed). No turn starts, no history is appended, and ConvoState
+// ActiveSession is never set.
+func TestStartTurn_ConvoStateEvicted_NoAgent_ReturnsError(t *testing.T) {
 	helper := newMemCacheHelper()
 	convoID := "evicted-convo-1"
 
@@ -232,35 +237,95 @@ func TestStartTurn_ConvoStateEvicted_RegressesToSilentNoOp(t *testing.T) {
 
 	savesBefore := helper.callCount("cache:save")
 
-	// (c) Drive the broken revive path.
-	store.StartTurn(convoID, "are you still there?", "user1", "", "")
+	// (c) Drive the FIXED revive path - no agent supplied.
+	err := store.StartTurn(convoID, "are you still there?", "user1", "", "", "", false)
 	store.Wait()
 
-	// Assertion 1: the unresolvable-agent branch was hit.
-	logOut := logBuf.String()
-	require.Contains(t, logOut, "cannot determine agent name for convo "+convoID,
-		"expected StartTurn to hit the unresolvable-agent branch")
+	// Assertion 1: StartTurn returns an error (unrecoverable).
+	require.Error(t, err, "StartTurn must return error when convo evicted and no agent supplied")
+	require.Contains(t, err.Error(), "conversation "+convoID+" expired and no agent supplied to recreate")
 
 	// Assertion 2: ConvoState was NOT recreated (no new convo_state persisted).
 	_, recreated := helper.getCache(ConvoStateKeyPrefix + convoID)
-	require.False(t, recreated, "broken behavior must NOT recreate convo_state")
-	require.Equal(t, savesBefore, helper.callCount("cache:save"),
-		"broken behavior must not persist a new convo_state")
+	require.False(t, recreated, "fixed behavior must NOT recreate convo_state when no agent supplied")
+	require.Equal(t, savesBefore, helper.callCount("cache:save"), "fixed behavior must not persist a new convo_state")
 
 	// Assertion 3: no history appended to convo_history:<id>.
 	hist, _ := helper.getCache(ConvoHistoryKeyPrefix + convoID)
-	require.Empty(t, hist, "broken behavior must not append to convo_history")
+	require.Empty(t, hist, "fixed behavior must not append to convo_history")
 
 	// Assertion 4: no model/AI driver call nor agent_response emitted (no turn).
-	require.Empty(t, helper.getEmitted(), "broken behavior must not emit any message")
+	require.Empty(t, helper.getEmitted(), "fixed behavior must not emit any message")
+
+	// Assertion 5: the old "cannot determine agent name" log is NOT present.
+	require.NotContains(t, logBuf.String(), "cannot determine agent name for convo "+convoID,
+		"fixed behavior must not log the old unresolvable-agent message")
 }
 
-// TestStartTurn_ConvoStatePresent_UsesExistingAgent is the happy-path companion
-// that documents the NORMAL behavior the evicted case diverges from. With a live
-// ConvoState the agent name resolves and StartTurn proceeds past the guard (it
-// only fails afterward because this test provides no real AI driver). It exists
-// to make the eviction regression test's intent unambiguous.
-func TestStartTurn_ConvoStatePresent_UsesExistingAgent(t *testing.T) {
+// TestStartTurn_ConvoStateEvicted_WithAgent_Recovers recreates the ConvoState
+// when an agent is supplied for an evicted conversation. This is the core
+// recovery path: the conversation continues seamlessly with a new turn.
+func TestStartTurn_ConvoStateEvicted_WithAgent_Recovers(t *testing.T) {
+	helper := newMemCacheHelper()
+	convoID := "evicted-convo-2"
+
+	// (a) Seed and then evict (same as above).
+	seeded := &ConvoState{
+		ConvoID: convoID,
+		FirstSession: &ConvoSessionRef{
+			SessionID: "sess-prev",
+			AgentName: "old_agent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+		LastSession: &ConvoSessionRef{
+			SessionID: "sess-prev",
+			AgentName: "old_agent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+	helper.cache[ConvoStateKeyPrefix+convoID] = string(dipper.SerializeContent(seeded))
+	if _, err := helper.Call("cache", "del", map[string]interface{}{
+		"key": ConvoStateKeyPrefix + convoID,
+	}); err != nil {
+		t.Fatalf("eviction del failed: %v", err)
+	}
+
+	var logBuf bytes.Buffer
+	store := &PersistentAgentStore{
+		StoreHelper: helper,
+		Logger:      newCaptureLogger(&logBuf),
+	}
+
+	// (b) Drive the recovery path - agent supplied, no override needed (cs missing).
+	err := store.StartTurn(convoID, "are you still there?", "user1", "", "", "test_agent", false)
+	require.NoError(t, err, "StartTurn must succeed when agent supplied for evicted convo")
+	store.Wait()
+
+	// Assertion 1: ConvoState WAS recreated with the new agent.
+	csData, ok := helper.getCache(ConvoStateKeyPrefix + convoID)
+	require.True(t, ok, "recovery must recreate convo_state")
+	var cs ConvoState
+	require.NoError(t, json.Unmarshal([]byte(csData), &cs))
+	require.Equal(t, "test_agent", cs.Agent.Name, "recreated ConvoState must have the supplied agent")
+
+	// Assertion 2: history was appended (turn started).
+	hist, _ := helper.getCache(ConvoHistoryKeyPrefix + convoID)
+	require.NotEmpty(t, hist, "recovery must append to convo_history")
+
+	// Assertion 3: no "cannot determine agent name" log.
+	require.NotContains(t, logBuf.String(), "cannot determine agent name",
+		"recovery must not log the old unresolvable-agent message")
+
+	// Assertion 4: log should indicate recreation.
+	require.Contains(t, logBuf.String(), "recreated", "recovery should log recreated state")
+}
+
+// TestStartTurn_ConvoStatePresent_NoOverride_UsesExisting asserts the
+// normal turn path: when ConvoState is present and no agent override,
+// the existing state is used (agent resolved from LastSession/FirstSession).
+func TestStartTurn_ConvoStatePresent_NoOverride_UsesExisting(t *testing.T) {
 	helper := newMemCacheHelper()
 	convoID := "live-convo-1"
 
@@ -281,12 +346,97 @@ func TestStartTurn_ConvoStatePresent_UsesExistingAgent(t *testing.T) {
 		Logger:      newCaptureLogger(&logBuf),
 	}
 
-	// With a present ConvoState the guard is NOT triggered: StartTurn proceeds
-	// to runTurn, which eventually fails for lack of a real AI driver (not the
-	// "cannot determine agent name" log). We only assert the guard log is absent.
-	store.StartTurn(convoID, "hi", "user1", "", "")
+	// With a present ConvoState and no agent supplied, the guard is NOT triggered.
+	// StartTurn proceeds to runTurn (which fails for lack of real AI driver).
+	err := store.StartTurn(convoID, "hi", "user1", "", "", "", false)
+	require.NoError(t, err, "StartTurn must succeed when cs present")
+
+	// Wait for the turn to complete (it will fail at driver level, not at agent resolution).
 	store.Wait()
 
 	require.NotContains(t, logBuf.String(), "cannot determine agent name for convo "+convoID,
 		"present convo_state must resolve an agent and skip the guard")
+
+	// ConvoState should still have the original agent (not recreated).
+	csData, ok := helper.getCache(ConvoStateKeyPrefix + convoID)
+	require.True(t, ok)
+	var cs ConvoState
+	require.NoError(t, json.Unmarshal([]byte(csData), &cs))
+	require.Equal(t, "test_agent", cs.Agent.Name, "existing agent must be preserved")
+}
+
+// TestStartTurn_ConvoStatePresent_Override_Recreates asserts that when
+// ConvoState is present but agentOverride=true with a new agent, the state
+// is recreated with the new agent.
+func TestStartTurn_ConvoStatePresent_Override_Recreates(t *testing.T) {
+	helper := newMemCacheHelper()
+	convoID := "live-convo-override"
+
+	seeded := &ConvoState{
+		ConvoID: convoID,
+		LastSession: &ConvoSessionRef{
+			SessionID: "sess-live",
+			AgentName: "old_agent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+	helper.cache[ConvoStateKeyPrefix+convoID] = string(dipper.SerializeContent(seeded))
+
+	var logBuf bytes.Buffer
+	store := &PersistentAgentStore{
+		StoreHelper: helper,
+		Logger:      newCaptureLogger(&logBuf),
+	}
+
+	// With agentOverride=true and a different agent, the state should be recreated.
+	err := store.StartTurn(convoID, "hi", "user1", "", "", "new_agent", true)
+	require.NoError(t, err)
+	store.Wait()
+
+	// ConvoState should be recreated with the new agent.
+	csData, ok := helper.getCache(ConvoStateKeyPrefix + convoID)
+	require.True(t, ok)
+	var cs ConvoState
+	require.NoError(t, json.Unmarshal([]byte(csData), &cs))
+	require.Equal(t, "new_agent", cs.Agent.Name, "override must recreate with new agent")
+	require.Contains(t, logBuf.String(), "recreated", "override should log recreated state")
+}
+
+// TestStartTurn_ConvoStatePresent_WithAgentNoOverride_SticksToExisting asserts
+// that when ConvoState is present AND agent is supplied but agentOverride=false,
+// the existing state is used (agent from state is kept, supplied agent ignored).
+func TestStartTurn_ConvoStatePresent_WithAgentNoOverride_SticksToExisting(t *testing.T) {
+	helper := newMemCacheHelper()
+	convoID := "live-convo-stick"
+
+	seeded := &ConvoState{
+		ConvoID: convoID,
+		LastSession: &ConvoSessionRef{
+			SessionID: "sess-live",
+			AgentName: "original_agent",
+			Type:      AgentSessionTypeChatTurn,
+			Status:    ConvoSessionStatusComplete,
+		},
+	}
+	helper.cache[ConvoStateKeyPrefix+convoID] = string(dipper.SerializeContent(seeded))
+
+	var logBuf bytes.Buffer
+	store := &PersistentAgentStore{
+		StoreHelper: helper,
+		Logger:      newCaptureLogger(&logBuf),
+	}
+
+	// Supply a different agent but NO override - should stick to existing.
+	err := store.StartTurn(convoID, "hi", "user1", "", "", "different_agent", false)
+	require.NoError(t, err)
+	store.Wait()
+
+	// ConvoState should still have the original agent.
+	csData, ok := helper.getCache(ConvoStateKeyPrefix + convoID)
+	require.True(t, ok)
+	var cs ConvoState
+	require.NoError(t, json.Unmarshal([]byte(csData), &cs))
+	require.Equal(t, "original_agent", cs.Agent.Name, "stick must keep original agent")
+	require.NotContains(t, logBuf.String(), "recreated", "stick must not log recreated state")
 }
