@@ -191,7 +191,7 @@ func handleAgentRecover(_ *driver.Runtime, msg *dipper.Message) {
 // handleAgentCall handles an eventbus:agent_call dispatched by an agent session
 // when a model invokes a sub-agent as a tool.
 func handleAgentCall(_ *driver.Runtime, msg *dipper.Message) {
-	defer dipper.SafeExitOnError("[agent] error in handleAgentCall", func(r error) {
+	defer dipper.SafeExitOnError("[agent] error in handleAgentCall", func(r interface{}) {
 		agentStore.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: dipper.EventbusAgentContinue,
@@ -200,7 +200,7 @@ func handleAgentCall(_ *driver.Runtime, msg *dipper.Message) {
 				"turn_id":          msg.Labels["turn_id"],
 				"tool_call_id":     msg.Labels["tool_call_id"],
 				"status":           "failure",
-				"reason":           r.Error(),
+				"reason":           fmt.Sprintf("%v", r),
 			},
 		})
 	})
@@ -212,7 +212,7 @@ func handleAgentCall(_ *driver.Runtime, msg *dipper.Message) {
 // handleMCPCall handles an eventbus:mcp_call dispatched by an agent session
 // when a model invokes a remote MCP server tool.
 func handleMCPCall(_ *driver.Runtime, msg *dipper.Message) {
-	defer dipper.SafeExitOnError("[agent] error in handleMCPCall", func(r error) {
+	defer dipper.SafeExitOnError("[agent] error in handleMCPCall", func(r interface{}) {
 		agentStore.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: dipper.EventbusAgentContinue,
@@ -221,7 +221,7 @@ func handleMCPCall(_ *driver.Runtime, msg *dipper.Message) {
 				"turn_id":          msg.Labels["turn_id"],
 				"tool_call_id":     msg.Labels["tool_call_id"],
 				"status":           "failure",
-				"reason":           r.Error(),
+				"reason":           fmt.Sprintf("%v", r),
 			},
 		})
 	})
@@ -235,14 +235,14 @@ func handleAgentPoll(_ *driver.Runtime, msg *dipper.Message) {
 	if resumeKey == "" {
 		dipper.Logger.Panicf("[agent] poll request received without resume key %+v", msg.Labels)
 	}
-	defer dipper.SafeExitOnError("[agent] error in handleAgentPoll", func(r error) {
+	defer dipper.SafeExitOnError("[agent] error in handleAgentPoll", func(r interface{}) {
 		agentStore.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: "agent_response",
 			Labels: map[string]string{
 				"resume_key": resumeKey,
 				"status":     "error",
-				"reason":     r.Error(),
+				"reason":     fmt.Sprintf("%v", r),
 			},
 		})
 	})
