@@ -640,7 +640,6 @@ func (s *AgentSession) sendToDriver() {
 		"model_data":     s.Agent.ModelData,
 		"should_stream":  s.Agent.ShouldStream,
 		"agent_settings": s.Agent.AgentSettings,
-		"convo_id":       s.ConvoID,
 	}, "agent_session_id", s.ID, "timeout", timeout))
 }
 

@@ -237,7 +237,6 @@ func (w *Session) callFunction(f *config.Function) {
 	delete(labels, "status")
 	delete(labels, "reason")
 	delete(labels, "performing")
-	delete(labels, "convo_id")
 	labels["sessionID"] = w.ID
 	labels["cursor"] = w.CurrentMsg.Labels["cursor"]
 	if w.EventID != "" {
@@ -314,7 +313,6 @@ func (w *Session) callAgent() {
 	delete(labels, "status")
 	delete(labels, "reason")
 	delete(labels, "performing")
-	delete(labels, "convo_id")
 
 	w.incCursor()
 	labels["agent_name"] = w.Workflow.CallAgent
@@ -364,7 +362,6 @@ func (w *Session) waitAgent() {
 	delete(labels, "status")
 	delete(labels, "reason")
 	delete(labels, "performing")
-	delete(labels, "convo_id")
 
 	w.incCursor()
 	labels["agent_session_id"] = w.Workflow.WaitAgent
