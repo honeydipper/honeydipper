@@ -2,11 +2,12 @@
 
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
-// you can obtain one at https://mit-license.org/.
+// you can obtain one at https://mit-license.org.
 
 package service
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/honeydipper/honeydipper/v4/internal/agent"
@@ -110,29 +111,32 @@ func agentRoute(msg *dipper.Message) []RoutedMessage {
 	return nil
 }
 
-// handleAgentStart receives an agentbus:start message and calls StartInference on the store.
 func handleAgentStart(_ *driver.Runtime, msg *dipper.Message) {
 	resumeKey := msg.Labels["resume_key"]
 	if resumeKey == "" {
-		dipper.Logger.Panicf("agent recevied start request without resume key %+v", msg.Labels)
+		dipper.Logger.Panicf("agent received start request without resume key %+v", msg.Labels)
 	}
-	defer dipper.SafeExitOnError("[agent] error in handleAgentStart", func(r error) {
+	defer dipper.SafeExitOnError("[agent] error in handleAgentStart", func(r interface{}) {
 		agentStore.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: "agent_response",
 			Labels: map[string]string{
 				"resume_key": resumeKey,
 				"status":     "error",
-				"reason":     r.Error(),
+				"reason":     fmt.Sprintf("%v", r),
 			},
 		})
 	})
 	<-agentSvc.Ready()
 	msg = dipper.DeserializePayload(msg)
-	go agentStore.StartInference(msg)
+	if err := agentStore.StartInference(msg); err != nil {
+		// StartInference returns ErrConvoExpiredNoAgent (and other errors) when
+		// it cannot recover. The defer above will emit the error response.
+		// We panic here to trigger the defer's error handler.
+		panic(err)
+	}
 }
 
-// handleAgentContinue receives an agentbus:continue message (tool-call result from the
 // operator) and calls ContinueInference on the store.
 func handleAgentContinue(_ *driver.Runtime, msg *dipper.Message) {
 	defer dipper.SafeExitOnError("[agent] error in handleAgentContinue")
@@ -151,7 +155,7 @@ func handleAgentReceive(_ *driver.Runtime, msg *dipper.Message) {
 }
 
 // handleRPCInterrupted handles an eventbus:rpc/interrupted notification from an AI-model
-// driver whose context was cancelled mid-inference.  If the message carries an
+// driver whose context was cancelled mid-inference. If the message carries an
 // agent_session_id label the session is queued for recovery via the durable
 // agent_recover redis topic.
 func handleRPCInterrupted(_ *driver.Runtime, msg *dipper.Message) {
@@ -187,7 +191,7 @@ func handleAgentRecover(_ *driver.Runtime, msg *dipper.Message) {
 // handleAgentCall handles an eventbus:agent_call dispatched by an agent session
 // when a model invokes a sub-agent as a tool.
 func handleAgentCall(_ *driver.Runtime, msg *dipper.Message) {
-	defer dipper.SafeExitOnError("[agent] error in handleAgentCall", func(r error) {
+	defer dipper.SafeExitOnError("[agent] error in handleAgentCall", func(r interface{}) {
 		agentStore.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: dipper.EventbusAgentContinue,
@@ -196,7 +200,7 @@ func handleAgentCall(_ *driver.Runtime, msg *dipper.Message) {
 				"turn_id":          msg.Labels["turn_id"],
 				"tool_call_id":     msg.Labels["tool_call_id"],
 				"status":           "failure",
-				"reason":           r.Error(),
+				"reason":           fmt.Sprintf("%v", r),
 			},
 		})
 	})
@@ -208,7 +212,7 @@ func handleAgentCall(_ *driver.Runtime, msg *dipper.Message) {
 // handleMCPCall handles an eventbus:mcp_call dispatched by an agent session
 // when a model invokes a remote MCP server tool.
 func handleMCPCall(_ *driver.Runtime, msg *dipper.Message) {
-	defer dipper.SafeExitOnError("[agent] error in handleMCPCall", func(r error) {
+	defer dipper.SafeExitOnError("[agent] error in handleMCPCall", func(r interface{}) {
 		agentStore.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: dipper.EventbusAgentContinue,
@@ -217,7 +221,7 @@ func handleMCPCall(_ *driver.Runtime, msg *dipper.Message) {
 				"turn_id":          msg.Labels["turn_id"],
 				"tool_call_id":     msg.Labels["tool_call_id"],
 				"status":           "failure",
-				"reason":           r.Error(),
+				"reason":           fmt.Sprintf("%v", r),
 			},
 		})
 	})
@@ -231,14 +235,14 @@ func handleAgentPoll(_ *driver.Runtime, msg *dipper.Message) {
 	if resumeKey == "" {
 		dipper.Logger.Panicf("[agent] poll request received without resume key %+v", msg.Labels)
 	}
-	defer dipper.SafeExitOnError("[agent] error in handleAgentPoll", func(r error) {
+	defer dipper.SafeExitOnError("[agent] error in handleAgentPoll", func(r interface{}) {
 		agentStore.EmitMessage(dipper.Message{
 			Channel: dipper.ChannelEventbus,
 			Subject: "agent_response",
 			Labels: map[string]string{
 				"resume_key": resumeKey,
 				"status":     "error",
-				"reason":     r.Error(),
+				"reason":     fmt.Sprintf("%v", r),
 			},
 		})
 	})
