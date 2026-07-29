@@ -48,7 +48,11 @@ func (m *mockAgentStore) hasCall(s string) bool {
 	return false
 }
 
-func (m *mockAgentStore) StartInference(_ *dipper.Message)    { m.record("start") }
+func (m *mockAgentStore) StartInference(_ *dipper.Message) error {
+	m.record("start")
+
+	return nil
+}
 func (m *mockAgentStore) ContinueInference(_ *dipper.Message) { m.record("continue") }
 func (m *mockAgentStore) ReceiveInference(_ *dipper.Message)  { m.record("receive") }
 func (m *mockAgentStore) PollInference(_ *dipper.Message)     { m.record("poll") }

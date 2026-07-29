@@ -81,13 +81,13 @@ func (f *FakeStore) CallWithMessageNoWait(msg *dipper.Message) error     { retur
 func (f *FakeStore) GetName() string                                     { return "fake" }
 
 // AgentStore minimal methods.
-func (f *FakeStore) StartInference(msg *dipper.Message)    {}
-func (f *FakeStore) PollInference(msg *dipper.Message)     {}
-func (f *FakeStore) ContinueInference(msg *dipper.Message) {}
-func (f *FakeStore) ReceiveInference(msg *dipper.Message)  {}
-func (f *FakeStore) StartAgentCall(msg *dipper.Message)    {}
-func (f *FakeStore) StartMCPCall(msg *dipper.Message)      {}
-func (f *FakeStore) CancelConvo(msg *dipper.Message)       {}
+func (f *FakeStore) StartInference(msg *dipper.Message) error { return nil }
+func (f *FakeStore) PollInference(msg *dipper.Message)        {}
+func (f *FakeStore) ContinueInference(msg *dipper.Message)    {}
+func (f *FakeStore) ReceiveInference(msg *dipper.Message)     {}
+func (f *FakeStore) StartAgentCall(msg *dipper.Message)       {}
+func (f *FakeStore) StartMCPCall(msg *dipper.Message)         {}
+func (f *FakeStore) CancelConvo(msg *dipper.Message)          {}
 func (f *FakeStore) StartTurn(convoID, text, user, engine, driver, agent string, agentOverride bool) error {
 	return nil
 }
