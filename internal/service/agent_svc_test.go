@@ -252,17 +252,6 @@ func TestHandleAgentReceive(t *testing.T) {
 	assert.Eventually(t, func() bool { return mock.hasCall("receive") }, 200*time.Millisecond, 5*time.Millisecond)
 }
 
-func TestHandleAgentPoll(t *testing.T) {
-	mock := setupHandlerGlobals(t)
-	msg := &dipper.Message{
-		Channel: dipper.ChannelEventbus,
-		Subject: SubjectEventbusAgentPoll,
-		Labels:  map[string]string{"resume_key": "test-resume-key"},
-	}
-	handleAgentPoll(nil, msg)
-	assert.Eventually(t, func() bool { return mock.hasCall("poll") }, 200*time.Millisecond, 5*time.Millisecond)
-}
-
 // TestHandleAgentStart_EvictedConvoNoAgent_EmitsErrorResponse verifies that
 // when handleAgentStart receives a message for an evicted conversation with
 // no agent_name label, it emits an agent_response with status=error and
@@ -283,11 +272,11 @@ func TestHandleAgentStart_EvictedConvoNoAgent_EmitsErrorResponse(t *testing.T) {
 		Subject: SubjectEventbusAgentStart,
 		Labels: map[string]string{
 			"resume_key": "test-resume-key-error",
-			"convo_id":   "evicted-convo",
-			// No agent_name label
+			// No agent_name label, convo_id moved to payload
 		},
 		Payload: map[string]interface{}{
-			"text": "hello",
+			"text":     "hello",
+			"convo_id": "evicted-convo",
 		},
 	}
 
@@ -338,11 +327,12 @@ func TestHandleAgentStart_EvictedConvoWithAgent_Recovers(t *testing.T) {
 		Subject: SubjectEventbusAgentStart,
 		Labels: map[string]string{
 			"resume_key": "test-resume-key-recover",
-			"convo_id":   "evicted-convo-recover",
 			"agent_name": "recovery_agent",
+			// convo_id moved to payload
 		},
 		Payload: map[string]interface{}{
-			"text": "hello",
+			"text":     "hello",
+			"convo_id": "evicted-convo-recover",
 		},
 	}
 
@@ -374,8 +364,21 @@ func TestHandleAgentStart_EvictedConvoWithAgent_Recovers(t *testing.T) {
 	require.Empty(t, mock.errorResponses, "no error response should be emitted for recovery case")
 }
 
-// errorCapturingMockAgentStore is a mock that returns ErrConvoExpiredNoAgent
-// from StartInference and captures emitted messages.
+func TestHandleAgentPoll(t *testing.T) {
+	mock := setupHandlerGlobals(t)
+	msg := &dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: SubjectEventbusAgentPoll,
+		Labels:  map[string]string{"resume_key": "test-resume-key"},
+	}
+	handleAgentPoll(nil, msg)
+	assert.Eventually(t, func() bool { return mock.hasCall("poll") }, 200*time.Millisecond, 5*time.Millisecond)
+}
+
+// TestHandleAgentStart_EvictedConvoNoAgent_EmitsErrorResponse verifies that
+// when handleAgentStart receives a message for an evicted conversation with
+// no agent_name label, it emits an agent_response with status=error and
+// reason indicating conversation_expired.
 type errorCapturingMockAgentStore struct {
 	mu             sync.Mutex
 	emitted        []*dipper.Message

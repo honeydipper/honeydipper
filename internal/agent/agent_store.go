@@ -120,8 +120,8 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) error {
 	})
 	p.Infof("[agent] StartInference agent=%s", msg.Labels["agent_name"])
 
-	// Extract labels for recovery
-	convoID := msg.Labels["convo_id"]
+	// Extract labels for recovery - read convo_id from payload
+	convoID, _ := dipper.GetMapDataStr(msg.Payload, "convo_id")
 	agentName := msg.Labels["agent_name"]
 	agentOverride := strings.EqualFold(msg.Labels["agent_override"], "true")
 
