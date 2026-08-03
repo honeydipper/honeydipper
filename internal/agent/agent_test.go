@@ -221,13 +221,13 @@ func (m *mockStore) CallRawNoWait(feature, method string, params []byte, rpcID s
 
 func (m *mockStore) GetName() string { return "mock-store" }
 
-func (m *mockStore) StartInference(msg *dipper.Message) error { return nil }
-func (m *mockStore) ContinueInference(msg *dipper.Message)    {}
-func (m *mockStore) ReceiveInference(msg *dipper.Message)     {}
-func (m *mockStore) PollInference(msg *dipper.Message)        {}
-func (m *mockStore) StartAgentCall(msg *dipper.Message)       {}
-func (m *mockStore) StartMCPCall(msg *dipper.Message)         {}
-func (m *mockStore) CancelConvo(msg *dipper.Message)          {}
+func (m *mockStore) StartInference(msg *dipper.Message)    {}
+func (m *mockStore) ContinueInference(msg *dipper.Message) {}
+func (m *mockStore) ReceiveInference(msg *dipper.Message)  {}
+func (m *mockStore) PollInference(msg *dipper.Message)     {}
+func (m *mockStore) StartAgentCall(msg *dipper.Message)    {}
+func (m *mockStore) StartMCPCall(msg *dipper.Message)      {}
+func (m *mockStore) CancelConvo(msg *dipper.Message)       {}
 func (m *mockStore) StartTurn(convoID, text, user, engine, driver, agent string, agentOverride bool) error {
 	return nil
 }
@@ -1734,7 +1734,7 @@ func TestPersistentAgentStore_StartInference(t *testing.T) {
 		Payload: map[string]interface{}{"text": "hello"},
 	}
 
-	_ = store.StartInference(msg)
+	store.StartInference(msg)
 
 	// send_to_model should have been called on the helper.
 	assert.True(t, helper.hasCall("driver:openai:send_to_model"))
@@ -1813,7 +1813,7 @@ func TestPersistentAgentStore_StartInference_NewTurnLocksBeforeReadingHistory(t 
 		},
 	}
 
-	_ = store.StartInference(msg)
+	store.StartInference(msg)
 
 	require.True(t, helper.hasCall("driver:openai:send_to_model"))
 	params := helper.getNoWaitParams("driver:openai:send_to_model")
