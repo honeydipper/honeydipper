@@ -401,6 +401,9 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 // interpolateAgentConfig applies template interpolation to the agent's config fields using the current session data.
 func interpolateAgentConfig(store AgentStore, agentName string, payload any) *config.Agent {
 	data, _ := dipper.GetMapData(payload, "data")
+	if data == nil {
+		data = map[string]interface{}{}
+	}
 	user, _ := dipper.GetMapDataStr(payload, "user")
 	text := dipper.MustGetMapDataStr(payload, "text")
 

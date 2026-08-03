@@ -129,12 +129,7 @@ func handleAgentStart(_ *driver.Runtime, msg *dipper.Message) {
 	})
 	<-agentSvc.Ready()
 	msg = dipper.DeserializePayload(msg)
-	if err := agentStore.StartInference(msg); err != nil {
-		// StartInference returns ErrConvoExpiredNoAgent (and other errors) when
-		// it cannot recover. The defer above will emit the error response.
-		// We panic here to trigger the defer's error handler.
-		panic(err)
-	}
+	agentStore.StartInference(msg)
 }
 
 // operator) and calls ContinueInference on the store.
