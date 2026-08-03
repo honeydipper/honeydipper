@@ -595,16 +595,6 @@ func (s *AgentSession) getConvoContextTokens() int {
 	return cs.ContextTokens
 }
 
-// filterHistoryForModel removes trailing incomplete/empty agent messages from history
-// before sending to the model. Some models don't support assistant message prefill,
-// so we ensure the last message sent to the model is never an incomplete agent message.
-//
-// It removes trailing messages where:
-//   - Role == RoleAgent AND
-//   - (IsComplete == false OR IsThinking == true OR (Content == "" AND len(ToolCalls) == 0))
-//
-// All other messages are preserved. Returns a copy of the history with trailing
-// incomplete agent messages stripped.
 // prepareHistoryForModel filters trailing incomplete/empty agent messages from history
 // AND determines if a "continue" user message should be injected.
 // It returns both the filtered history and a boolean indicating whether to inject "continue".
@@ -622,61 +612,56 @@ func prepareHistoryForModel(history []AgentMessage) (filteredHistory []AgentMess
 		return []AgentMessage{}, false
 	}
 
-	// Find the last meaningful message index (skip trailing empty agent messages only)
-	// Empty agent message = Content=="" AND ToolCalls empty AND not IsThinking
-	// Thinking messages (IsThinking==true) are NOT skipped - they are meaningful
-	lastMeaningfulIdx := len(history) - 1
-	for lastMeaningfulIdx >= 0 {
-		msg := history[lastMeaningfulIdx]
-		if msg.Role == RoleAgent && msg.Content == "" && len(msg.ToolCalls) == 0 && !msg.IsThinking {
-			lastMeaningfulIdx--
-		} else {
+	// Single backward pass to find both:
+	// - lastMeaningfulIdx: last message that is NOT an empty agent (Content=="" && ToolCalls=0 && !IsThinking)
+	// - lastKeepIdx: last message to KEEP (non-agent OR complete non-thinking agent with content/toolCalls)
+	lastMeaningfulIdx := -1
+	lastKeepIdx := -1
+
+	for i := len(history) - 1; i >= 0; i-- {
+		msg := history[i]
+		isEmptyAgent := msg.Role == RoleAgent && msg.Content == "" && len(msg.ToolCalls) == 0 && !msg.IsThinking
+
+		// Track last meaningful message (skip only empty non-thinking agents)
+		if lastMeaningfulIdx == -1 && !isEmptyAgent {
+			lastMeaningfulIdx = i
+		}
+
+		// Track last message to keep (skip incomplete, thinking, or empty agents)
+		if lastKeepIdx == -1 {
+			if msg.Role != RoleAgent {
+				lastKeepIdx = i
+			} else if msg.IsComplete && !msg.IsThinking && (msg.Content != "" || len(msg.ToolCalls) > 0) {
+				lastKeepIdx = i
+			}
+			// else: incomplete/thinking/empty agent -> continue searching
+		}
+
+		// Early exit if both found
+		if lastMeaningfulIdx != -1 && lastKeepIdx != -1 {
 			break
 		}
 	}
 
 	// Determine if we should inject "continue"
-	// This is true if the last meaningful message is an incomplete agent message
-	// that has either content OR is a thinking message
+	// True if the last meaningful message is an incomplete agent with content or thinking
 	if lastMeaningfulIdx >= 0 {
 		lastMsg := history[lastMeaningfulIdx]
 		injectContinue = lastMsg.Role == RoleAgent && !lastMsg.IsComplete && (lastMsg.Content != "" || lastMsg.IsThinking)
 	}
 
-	// Filter history: find last index to keep (remove trailing incomplete/empty/thinking agent messages)
-	lastKeep := len(history) - 1
-	for lastKeep >= 0 {
-		msg := history[lastKeep]
-		if msg.Role == RoleAgent &&
-			(!msg.IsComplete || msg.IsThinking || (msg.Content == "" && len(msg.ToolCalls) == 0)) {
-			lastKeep--
-		} else {
-			break
-		}
-	}
-
-	// If all messages are filtered out, return empty slice
-	if lastKeep < 0 {
+	// If no message to keep, return empty slice
+	if lastKeepIdx < 0 {
 		return []AgentMessage{}, injectContinue
 	}
 
-	// Return a copy up to lastKeep (inclusive)
-	result := make([]AgentMessage, lastKeep+1)
-	copy(result, history[:lastKeep+1])
+	// Return a copy up to lastKeepIdx (inclusive)
+	result := make([]AgentMessage, lastKeepIdx+1)
+	copy(result, history[:lastKeepIdx+1])
 
 	return result, injectContinue
 }
 
-// filterHistoryForModel removes trailing incomplete/empty agent messages from history
-// before sending to the model. Some models don't support assistant message prefill,
-// so we ensure the last message sent to the model is never an incomplete agent message.
-//
-// It removes trailing messages where:
-//   - Role == RoleAgent AND
-//   - (IsComplete == false OR IsThinking == true OR (Content == "" AND len(ToolCalls) == 0))
-//
-// All other messages are preserved. Returns a copy of the history with trailing
-// incomplete agent messages stripped.
 func filterHistoryForModel(history []AgentMessage) []AgentMessage {
 	filtered, _ := prepareHistoryForModel(history)
 
