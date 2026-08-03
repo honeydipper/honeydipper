@@ -595,6 +595,45 @@ func (s *AgentSession) getConvoContextTokens() int {
 	return cs.ContextTokens
 }
 
+// filterHistoryForModel removes trailing incomplete/empty agent messages from history
+// before sending to the model. Some models don't support assistant message prefill,
+// so we ensure the last message sent to the model is never an incomplete agent message.
+//
+// It removes trailing messages where:
+//   - Role == RoleAgent AND
+//   - (IsComplete == false OR IsThinking == true OR (Content == "" AND len(ToolCalls) == 0))
+//
+// All other messages are preserved. Returns a copy of the history with trailing
+// incomplete agent messages stripped.
+func filterHistoryForModel(history []AgentMessage) []AgentMessage {
+	if len(history) == 0 {
+		return history
+	}
+
+	// Find the last index that should be kept (non-trailing or non-agent or complete agent)
+	lastKeep := len(history) - 1
+	for lastKeep >= 0 {
+		msg := history[lastKeep]
+		if msg.Role == RoleAgent &&
+			(!msg.IsComplete || msg.IsThinking || (msg.Content == "" && len(msg.ToolCalls) == 0)) {
+			lastKeep--
+		} else {
+			break
+		}
+	}
+
+	// If all messages are filtered out, return empty slice
+	if lastKeep < 0 {
+		return []AgentMessage{}
+	}
+
+	// Return a copy up to lastKeep (inclusive)
+	result := make([]AgentMessage, lastKeep+1)
+	copy(result, history[:lastKeep+1])
+
+	return result
+}
+
 func (s *AgentSession) sendToDriver() {
 	tools := s.BuildTools()
 	timeout := s.CurrentMsg.Labels["timeout"]
@@ -628,7 +667,7 @@ func (s *AgentSession) sendToDriver() {
 	// messages so the driver always sees exactly one, up-to-date system entry.
 	history := make([]AgentMessage, 0, len(s.history)+1)
 	history = append(history, AgentMessage{Role: RoleSystem, Content: systemPrompt})
-	history = append(history, s.history...)
+	history = append(history, filterHistoryForModel(s.history)...)
 
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
