@@ -605,12 +605,45 @@ func (s *AgentSession) getConvoContextTokens() int {
 //
 // All other messages are preserved. Returns a copy of the history with trailing
 // incomplete agent messages stripped.
-func filterHistoryForModel(history []AgentMessage) []AgentMessage {
+// prepareHistoryForModel filters trailing incomplete/empty agent messages from history
+// AND determines if a "continue" user message should be injected.
+// It returns both the filtered history and a boolean indicating whether to inject "continue".
+//
+// Filtering criteria (trailing messages removed):
+//   - Role == RoleAgent AND (IsComplete == false OR IsThinking == true OR (Content == "" AND len(ToolCalls) == 0))
+//
+// "Continue" injection criteria:
+//   - After skipping trailing empty agent messages (Content=="" AND ToolCalls empty AND not IsThinking),
+//     if the last meaningful message is an incomplete agent message that has either
+//     content (Content != "") OR is a thinking message (IsThinking == true),
+//     then inject "Please continue." to prompt the model to continue its response.
+func prepareHistoryForModel(history []AgentMessage) (filteredHistory []AgentMessage, injectContinue bool) {
 	if len(history) == 0 {
-		return history
+		return []AgentMessage{}, false
 	}
 
-	// Find the last index that should be kept (non-trailing or non-agent or complete agent)
+	// Find the last meaningful message index (skip trailing empty agent messages only)
+	// Empty agent message = Content=="" AND ToolCalls empty AND not IsThinking
+	// Thinking messages (IsThinking==true) are NOT skipped - they are meaningful
+	lastMeaningfulIdx := len(history) - 1
+	for lastMeaningfulIdx >= 0 {
+		msg := history[lastMeaningfulIdx]
+		if msg.Role == RoleAgent && msg.Content == "" && len(msg.ToolCalls) == 0 && !msg.IsThinking {
+			lastMeaningfulIdx--
+		} else {
+			break
+		}
+	}
+
+	// Determine if we should inject "continue"
+	// This is true if the last meaningful message is an incomplete agent message
+	// that has either content OR is a thinking message
+	if lastMeaningfulIdx >= 0 {
+		lastMsg := history[lastMeaningfulIdx]
+		injectContinue = lastMsg.Role == RoleAgent && !lastMsg.IsComplete && (lastMsg.Content != "" || lastMsg.IsThinking)
+	}
+
+	// Filter history: find last index to keep (remove trailing incomplete/empty/thinking agent messages)
 	lastKeep := len(history) - 1
 	for lastKeep >= 0 {
 		msg := history[lastKeep]
@@ -624,44 +657,30 @@ func filterHistoryForModel(history []AgentMessage) []AgentMessage {
 
 	// If all messages are filtered out, return empty slice
 	if lastKeep < 0 {
-		return []AgentMessage{}
+		return []AgentMessage{}, injectContinue
 	}
 
 	// Return a copy up to lastKeep (inclusive)
 	result := make([]AgentMessage, lastKeep+1)
 	copy(result, history[:lastKeep+1])
 
-	return result
+	return result, injectContinue
 }
 
-// shouldInjectContinueMessage checks if the last non-empty message in history
-// is an incomplete agent message with content. It skips trailing empty agent
-// messages (Content=="" AND ToolCalls empty) to find the last meaningful message.
-func shouldInjectContinueMessage(history []AgentMessage) bool {
-	if len(history) == 0 {
-		return false
-	}
+// filterHistoryForModel removes trailing incomplete/empty agent messages from history
+// before sending to the model. Some models don't support assistant message prefill,
+// so we ensure the last message sent to the model is never an incomplete agent message.
+//
+// It removes trailing messages where:
+//   - Role == RoleAgent AND
+//   - (IsComplete == false OR IsThinking == true OR (Content == "" AND len(ToolCalls) == 0))
+//
+// All other messages are preserved. Returns a copy of the history with trailing
+// incomplete agent messages stripped.
+func filterHistoryForModel(history []AgentMessage) []AgentMessage {
+	filtered, _ := prepareHistoryForModel(history)
 
-	// Find the last non-empty message (skip trailing empty agent messages)
-	lastMeaningfulIdx := len(history) - 1
-	for lastMeaningfulIdx >= 0 {
-		msg := history[lastMeaningfulIdx]
-		// Skip empty agent messages (no content, no tool calls)
-		if msg.Role == RoleAgent && msg.Content == "" && len(msg.ToolCalls) == 0 {
-			lastMeaningfulIdx--
-		} else {
-			break
-		}
-	}
-
-	// Check if the last meaningful message is an incomplete agent message with content
-	if lastMeaningfulIdx < 0 {
-		return false
-	}
-
-	lastMsg := history[lastMeaningfulIdx]
-
-	return lastMsg.Role == RoleAgent && !lastMsg.IsComplete && lastMsg.Content != ""
+	return filtered
 }
 
 func (s *AgentSession) sendToDriver() {
@@ -693,22 +712,21 @@ func (s *AgentSession) sendToDriver() {
 		}
 	}
 
-	// Determine if we should inject a "continue" user message.
-	// This happens when the last non-empty message in history is an incomplete
-	// agent message with content (meaning the model produced meaningful output
-	// but didn't finish). We skip over trailing empty agent messages
-	// (Content=="" AND ToolCalls empty) to find the last meaningful message.
-	shouldInjectContinue := shouldInjectContinueMessage(s.history)
+	// Prepare history for the model: filter trailing incomplete messages and
+	// determine if we should inject a "continue" user message.
+	// This happens when the last meaningful message (skipping empty agent messages)
+	// is an incomplete agent message with content OR a thinking message.
+	filteredHistory, shouldInjectContinue := prepareHistoryForModel(s.history)
 
 	// Prepend the system prompt ephemerally; filter any legacy persisted system
 	// messages so the driver always sees exactly one, up-to-date system entry.
-	history := make([]AgentMessage, 0, len(s.history)+1)
+	history := make([]AgentMessage, 0, len(filteredHistory)+2)
 	history = append(history, AgentMessage{Role: RoleSystem, Content: systemPrompt})
-	history = append(history, filterHistoryForModel(s.history)...)
+	history = append(history, filteredHistory...)
 
-	// Inject "continue" user message if the last non-empty message was an
-	// incomplete agent message with content. This prompts the model to continue
-	// its response rather than starting fresh.
+	// Inject "continue" user message if the last meaningful message was an
+	// incomplete agent message with content or a thinking message. This prompts
+	// the model to continue its response rather than starting fresh.
 	if shouldInjectContinue {
 		history = append(history, AgentMessage{Role: RoleUser, Content: "Please continue."})
 	}

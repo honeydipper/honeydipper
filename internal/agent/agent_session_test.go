@@ -209,6 +209,133 @@ func TestFilterHistoryForModel_SendToDriverIntegration(t *testing.T) {
 	}
 }
 
+// TestPrepareHistoryForModel tests the combined prepareHistoryForModel function.
+func TestPrepareHistoryForModel(t *testing.T) {
+	tests := []struct {
+		name                 string
+		history              []agent.Message
+		expectedFiltered     []agent.Message
+		expectInjectContinue bool
+	}{
+		{
+			name:                 "empty history returns empty",
+			history:              []agent.Message{},
+			expectedFiltered:     []agent.Message{},
+			expectInjectContinue: false,
+		},
+		{
+			name: "empty assistant message at end - filtered, no continue",
+			history: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "", IsComplete: false},
+			},
+			expectedFiltered: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+			},
+			expectInjectContinue: false,
+		},
+		{
+			name: "thinking-only assistant message at end - filtered, injects continue",
+			history: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "", IsThinking: true, Thoughts: "Let me think..."},
+			},
+			expectedFiltered: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+			},
+			expectInjectContinue: true, // Changed: thinking messages now trigger continue
+		},
+		{
+			name: "complete assistant message with content - preserved, no continue",
+			history: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "Hi there!", IsComplete: true},
+			},
+			expectedFiltered: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "Hi there!", IsComplete: true},
+			},
+			expectInjectContinue: false,
+		},
+		{
+			name: "incomplete agent with content at end - filtered, injects continue",
+			history: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "Partial response", IsComplete: false},
+			},
+			expectedFiltered: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+			},
+			expectInjectContinue: true,
+		},
+		{
+			name: "thinking agent with content - filtered, injects continue",
+			history: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "Let me think...", IsThinking: true, Thoughts: "internal thoughts"},
+			},
+			expectedFiltered: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+			},
+			expectInjectContinue: true, // thinking with content also triggers continue
+		},
+		{
+			name: "multiple trailing incomplete agent messages - all filtered",
+			history: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "Thinking...", IsThinking: true},
+				{Role: RoleAgent, Content: "", IsComplete: false},
+				{Role: RoleAgent, Content: "", IsComplete: false},
+			},
+			expectedFiltered: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+			},
+			expectInjectContinue: true, // last meaningful is thinking message
+		},
+		{
+			name: "all messages filtered - injects continue",
+			history: []agent.Message{
+				{Role: RoleAgent, Content: "Partial", IsComplete: false},
+				{Role: RoleAgent, Content: "", IsComplete: false},
+			},
+			expectedFiltered:     []agent.Message{},
+			expectInjectContinue: true,
+		},
+		{
+			name: "incomplete agent with tool calls but no content - filtered, no continue",
+			history: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "", IsComplete: false, ToolCalls: []agent.ToolCall{{FuncName: "test_func"}}},
+			},
+			expectedFiltered: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+			},
+			expectInjectContinue: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered, injectContinue := prepareHistoryForModel(tt.history)
+
+			if !reflect.DeepEqual(filtered, tt.expectedFiltered) {
+				t.Errorf("filtered = %v, want %v", filtered, tt.expectedFiltered)
+			}
+
+			if injectContinue != tt.expectInjectContinue {
+				t.Errorf("injectContinue = %v, want %v", injectContinue, tt.expectInjectContinue)
+			}
+
+			// Verify it returns a copy, not the original slice
+			if len(tt.history) > 0 && len(filtered) > 0 {
+				if &filtered[0] == &tt.history[0] {
+					t.Errorf("prepareHistoryForModel returned original slice, not a copy")
+				}
+			}
+		})
+	}
+}
+
 // TestSendToDriver_ContinueInjection tests the "continue" user message injection logic.
 func TestSendToDriver_ContinueInjection(t *testing.T) {
 	tests := []struct {
@@ -227,13 +354,13 @@ func TestSendToDriver_ContinueInjection(t *testing.T) {
 			expectedLastMsg:      nil,
 		},
 		{
-			name: "thinking agent at end -> no inject (skips to user)",
+			name: "thinking agent at end -> injects continue (changed behavior)",
 			history: []agent.Message{
 				{Role: RoleUser, Content: "Hello"},
 				{Role: RoleAgent, Content: "", IsThinking: true, Thoughts: "Let me think..."},
 			},
-			expectInjectContinue: false,
-			expectedLastMsg:      nil,
+			expectInjectContinue: true, // CHANGED: now injects continue for thinking messages
+			expectedLastMsg:      &agent.Message{Role: RoleUser, Content: "Please continue."},
 		},
 		{
 			name: "incomplete agent with content at end -> injects continue",
@@ -311,39 +438,30 @@ func TestSendToDriver_ContinueInjection(t *testing.T) {
 			expectInjectContinue: true,
 			expectedLastMsg:      &agent.Message{Role: RoleUser, Content: "Please continue."},
 		},
+		{
+			name: "thinking agent with content and tool calls -> injects continue",
+			history: []agent.Message{
+				{Role: RoleUser, Content: "Hello"},
+				{Role: RoleAgent, Content: "Let me think and call a tool", IsThinking: true, Thoughts: "thinking...", ToolCalls: []agent.ToolCall{{FuncName: "test_func"}}},
+			},
+			expectInjectContinue: true, // thinking with content triggers continue
+			expectedLastMsg:      &agent.Message{Role: RoleUser, Content: "Please continue."},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Simulate what sendToDriver does
-			shouldInjectContinue := false
-			if len(tt.history) > 0 {
-				lastMeaningfulIdx := len(tt.history) - 1
-				for lastMeaningfulIdx >= 0 {
-					msg := tt.history[lastMeaningfulIdx]
-					if msg.Role == RoleAgent && msg.Content == "" && len(msg.ToolCalls) == 0 {
-						lastMeaningfulIdx--
-					} else {
-						break
-					}
-				}
-
-				if lastMeaningfulIdx >= 0 {
-					lastMsg := tt.history[lastMeaningfulIdx]
-					if lastMsg.Role == RoleAgent && !lastMsg.IsComplete && lastMsg.Content != "" {
-						shouldInjectContinue = true
-					}
-				}
-			}
+			// Use the new combined function to simulate what sendToDriver does
+			filteredHistory, shouldInjectContinue := prepareHistoryForModel(tt.history)
 
 			if shouldInjectContinue != tt.expectInjectContinue {
 				t.Errorf("shouldInjectContinue = %v, want %v", shouldInjectContinue, tt.expectInjectContinue)
 			}
 
 			// Build history as sendToDriver would
-			history := make([]agent.Message, 0, len(tt.history)+1)
+			history := make([]agent.Message, 0, len(filteredHistory)+2)
 			history = append(history, agent.Message{Role: RoleSystem, Content: "System prompt"})
-			history = append(history, filterHistoryForModel(tt.history)...)
+			history = append(history, filteredHistory...)
 
 			if shouldInjectContinue {
 				history = append(history, agent.Message{Role: RoleUser, Content: "Please continue."})
