@@ -634,6 +634,36 @@ func filterHistoryForModel(history []AgentMessage) []AgentMessage {
 	return result
 }
 
+// shouldInjectContinueMessage checks if the last non-empty message in history
+// is an incomplete agent message with content. It skips trailing empty agent
+// messages (Content=="" AND ToolCalls empty) to find the last meaningful message.
+func shouldInjectContinueMessage(history []AgentMessage) bool {
+	if len(history) == 0 {
+		return false
+	}
+
+	// Find the last non-empty message (skip trailing empty agent messages)
+	lastMeaningfulIdx := len(history) - 1
+	for lastMeaningfulIdx >= 0 {
+		msg := history[lastMeaningfulIdx]
+		// Skip empty agent messages (no content, no tool calls)
+		if msg.Role == RoleAgent && msg.Content == "" && len(msg.ToolCalls) == 0 {
+			lastMeaningfulIdx--
+		} else {
+			break
+		}
+	}
+
+	// Check if the last meaningful message is an incomplete agent message with content
+	if lastMeaningfulIdx < 0 {
+		return false
+	}
+
+	lastMsg := history[lastMeaningfulIdx]
+
+	return lastMsg.Role == RoleAgent && !lastMsg.IsComplete && lastMsg.Content != ""
+}
+
 func (s *AgentSession) sendToDriver() {
 	tools := s.BuildTools()
 	timeout := s.CurrentMsg.Labels["timeout"]
@@ -663,15 +693,29 @@ func (s *AgentSession) sendToDriver() {
 		}
 	}
 
+	// Determine if we should inject a "continue" user message.
+	// This happens when the last non-empty message in history is an incomplete
+	// agent message with content (meaning the model produced meaningful output
+	// but didn't finish). We skip over trailing empty agent messages
+	// (Content=="" AND ToolCalls empty) to find the last meaningful message.
+	shouldInjectContinue := shouldInjectContinueMessage(s.history)
+
 	// Prepend the system prompt ephemerally; filter any legacy persisted system
 	// messages so the driver always sees exactly one, up-to-date system entry.
 	history := make([]AgentMessage, 0, len(s.history)+1)
 	history = append(history, AgentMessage{Role: RoleSystem, Content: systemPrompt})
 	history = append(history, filterHistoryForModel(s.history)...)
 
+	// Inject "continue" user message if the last non-empty message was an
+	// incomplete agent message with content. This prompts the model to continue
+	// its response rather than starting fresh.
+	if shouldInjectContinue {
+		history = append(history, AgentMessage{Role: RoleUser, Content: "Please continue."})
+	}
+
 	if log := s.log(); log != nil {
-		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
-			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
+		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d inject_continue=%v",
+			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools), shouldInjectContinue)
 	}
 	s.InputTokens = 0
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
