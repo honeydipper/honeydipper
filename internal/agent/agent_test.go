@@ -2970,3 +2970,193 @@ func TestCancelConvo_ReleasesUnifiedConvoTurnLock(t *testing.T) {
 	// The last call should be for the unified convo turn lock (called second)
 	assert.Equal(t, ConvoTurnLockPrefix+"unified-convo", params["name"])
 }
+
+// ---------------------------------------------------------------------------
+// AgentSession.sendToDriver tests - ensure last message is user
+// ---------------------------------------------------------------------------
+
+func TestSendToDriver_EnsuresLastMessageIsUser_AgentLast(t *testing.T) {
+	store := newMockStore(nil)
+	agentA := config.Agent{
+		Name:         "a",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "sys prompt",
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store:      store,
+		Agent:      &agentA,
+		ID:         "test-session",
+		CurrentMsg: &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"text": "input"}},
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{Role: RoleAgent, Content: "incomplete response", IsComplete: false},
+		},
+		Type: AgentSessionTypeChatTurn,
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+
+	// History should have: system prompt + user + agent + "Please continue."
+	require.Len(t, driverHistory, 4)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, RoleUser, driverHistory[1].Role)
+	assert.Equal(t, RoleAgent, driverHistory[2].Role)
+	assert.Equal(t, RoleUser, driverHistory[3].Role)
+	assert.Equal(t, "Please continue.", driverHistory[3].Content)
+}
+
+func TestSendToDriver_EnsuresLastMessageIsUser_ToolLast(t *testing.T) {
+	store := newMockStore(nil)
+	agentA := config.Agent{
+		Name:         "a",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "sys prompt",
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store:      store,
+		Agent:      &agentA,
+		ID:         "test-session",
+		CurrentMsg: &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"text": "input"}},
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{Role: RoleTool, Content: "tool output"},
+		},
+		Type: AgentSessionTypeChatTurn,
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+
+	require.Len(t, driverHistory, 4)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, RoleUser, driverHistory[1].Role)
+	assert.Equal(t, RoleTool, driverHistory[2].Role)
+	assert.Equal(t, RoleUser, driverHistory[3].Role)
+	assert.Equal(t, "Please continue.", driverHistory[3].Content)
+}
+
+func TestSendToDriver_EnsuresLastMessageIsUser_SystemLast(t *testing.T) {
+	store := newMockStore(nil)
+	agentA := config.Agent{
+		Name:         "a",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "sys prompt",
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store:      store,
+		Agent:      &agentA,
+		ID:         "test-session",
+		CurrentMsg: &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"text": "input"}},
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{Role: RoleSystem, Content: "legacy system message"},
+		},
+		Type: AgentSessionTypeChatTurn,
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+
+	require.Len(t, driverHistory, 4)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, RoleUser, driverHistory[1].Role)
+	assert.Equal(t, RoleSystem, driverHistory[2].Role)
+	assert.Equal(t, RoleUser, driverHistory[3].Role)
+	assert.Equal(t, "Please continue.", driverHistory[3].Content)
+}
+
+func TestSendToDriver_EnsuresLastMessageIsUser_UserLast_NoExtra(t *testing.T) {
+	store := newMockStore(nil)
+	agentA := config.Agent{
+		Name:         "a",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "sys prompt",
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store:      store,
+		Agent:      &agentA,
+		ID:         "test-session",
+		CurrentMsg: &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"text": "input"}},
+		history: []AgentMessage{
+			{Role: RoleUser, Content: "hello"},
+			{Role: RoleAgent, Content: "complete response", IsComplete: true},
+			{Role: RoleUser, Content: "follow up"},
+		},
+		Type: AgentSessionTypeChatTurn,
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+
+	// History should have: system prompt + 3 user/agent messages, NO extra "Please continue."
+	require.Len(t, driverHistory, 4)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, RoleUser, driverHistory[1].Role)
+	assert.Equal(t, RoleAgent, driverHistory[2].Role)
+	assert.Equal(t, RoleUser, driverHistory[3].Role)
+	assert.Equal(t, "follow up", driverHistory[3].Content)
+}
+
+func TestSendToDriver_EnsuresLastMessageIsUser_EmptyHistory(t *testing.T) {
+	store := newMockStore(nil)
+	agentA := config.Agent{
+		Name:         "a",
+		Driver:       "openai",
+		Engine:       "gpt-4",
+		SystemPrompt: "sys prompt",
+	}
+	store.cfg.DataSet.Agents["a"] = agentA
+
+	s := &AgentSession{
+		store:      store,
+		Agent:      &agentA,
+		ID:         "test-session",
+		CurrentMsg: &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"text": "input"}},
+		history:    []AgentMessage{},
+		Type:       AgentSessionTypeChatTurn,
+	}
+
+	s.sendToDriver()
+
+	assert.True(t, store.hasCall("driver:openai:send_to_model"))
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory := params["history"].([]AgentMessage)
+
+	// Even with empty history, system prompt is added first, making last message
+	// a system message (not user), so "Please continue." is appended.
+	require.Len(t, driverHistory, 2)
+	assert.Equal(t, RoleSystem, driverHistory[0].Role)
+	assert.Equal(t, "sys prompt", driverHistory[0].Content)
+	assert.Equal(t, RoleUser, driverHistory[1].Role)
+	assert.Equal(t, "Please continue.", driverHistory[1].Content)
+}

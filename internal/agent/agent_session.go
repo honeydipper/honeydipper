@@ -630,6 +630,12 @@ func (s *AgentSession) sendToDriver() {
 	history = append(history, AgentMessage{Role: RoleSystem, Content: systemPrompt})
 	history = append(history, s.history...)
 
+	// Ensure the last message is a user message to avoid "assistant message prefill not supported" errors.
+	// Some models reject requests where the last message is from the assistant (agent), tool, or system.
+	if len(history) > 0 && history[len(history)-1].Role != RoleUser {
+		history = append(history, AgentMessage{Role: RoleUser, Content: "Please continue."})
+	}
+
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
 			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
