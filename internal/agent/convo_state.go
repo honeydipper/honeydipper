@@ -152,9 +152,9 @@ func (cs *ConvoState) updateSessionStatus(sessionID, status string, reason strin
 		if ref == nil || ref.SessionID != sessionID {
 			return
 		}
-		ref.InputTokens = inputTokens
-		ref.OutputTokens = outputTokens
-		ref.TotalTokens = totalTokens
+		ref.InputTokens += inputTokens
+		ref.OutputTokens += outputTokens
+		ref.TotalTokens += totalTokens
 		ref.UpdatedAt = now
 
 		if ref.Status != ConvoSessionStatusComplete && ref.Status != ConvoSessionStatusFailed {
