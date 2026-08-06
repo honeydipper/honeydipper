@@ -639,6 +639,18 @@ func (s *AgentSession) sendToDriver() {
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
 			s.ID, s.Agent.Driver, s.Agent.Engine, len(history), len(tools))
+	// Check if compaction is needed before sending to model.
+	if s.Agent != nil && s.Agent.CompactionPolicy != nil {
+		compactionService := CompactionService{store: s.store}
+		if compactionService.NeedsCompaction(s.history, s.Agent.CompactionPolicy) {
+			if err := compactionService.Compact(s); err != nil {
+				if log := s.log(); log != nil {
+					log.Errorf("[agent] session [%s] compaction failed: %v", s.ID, err)
+				}
+				// Continue with uncompacted history on error - best effort.
+			}
+		}
+	}
 	}
 	s.InputTokens = 0
 	dipper.Must(s.store.CallNoWait("driver:"+s.Agent.Driver, "send_to_model", map[string]interface{}{
