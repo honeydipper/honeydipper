@@ -8,16 +8,46 @@
 package redisclient
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"cloud.google.com/go/auth"
+	"cloud.google.com/go/auth/credentials"
 	"github.com/go-redis/redis/v8"
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
+
+const (
+	cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
+	valkeyIAMUsername  = "default"
+)
+
+var (
+	errIAMRequiresTLS      = errors.New("redis IAM authentication requires TLS")
+	errIAMWithStaticAuth   = errors.New("redis IAM authentication cannot be combined with a static username or password")
+	errIAMWithNonDefaultDB = errors.New("redis IAM authentication requires DB 0")
+	errIAMTokenEmpty       = errors.New("retrieve IAM access token for Redis connection: token is empty")
+	errIAMTokenExpired     = errors.New("retrieve IAM access token for Redis connection: token is expired")
+	newIAMTokenProvider    = defaultIAMTokenProvider
+)
+
+func defaultIAMTokenProvider() (auth.TokenProvider, error) {
+	tokenProvider, err := credentials.DetectDefault(&credentials.DetectOptions{
+		Scopes: []string{cloudPlatformScope},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("detect application default credentials: %w", err)
+	}
+
+	return tokenProvider, nil
+}
 
 // Options wraps redis.Options and provide a persisted redis.Client.
 type Options struct {
@@ -90,6 +120,46 @@ func setupTLSConfig(driver *dipper.Driver) *tls.Config {
 	return config
 }
 
+func setupIAMAuth(driver *dipper.Driver, opts *redis.Options) error {
+	if !driver.CheckOption("data.connection.IAM.Enabled") {
+		return nil
+	}
+	if opts.TLSConfig == nil {
+		return errIAMRequiresTLS
+	}
+	if opts.Username != "" || opts.Password != "" {
+		return errIAMWithStaticAuth
+	}
+	if opts.DB != 0 {
+		return errIAMWithNonDefaultDB
+	}
+
+	tokenProvider, err := newIAMTokenProvider()
+	if err != nil {
+		return fmt.Errorf("initialize application default credentials for Redis IAM authentication: %w", err)
+	}
+
+	opts.OnConnect = func(ctx context.Context, conn *redis.Conn) error {
+		token, err := tokenProvider.Token(ctx)
+		if err != nil {
+			return fmt.Errorf("retrieve IAM access token for Redis connection: %w", err)
+		}
+		if token == nil || token.Value == "" {
+			return errIAMTokenEmpty
+		}
+		if !token.Expiry.IsZero() && !token.Expiry.After(time.Now()) {
+			return errIAMTokenExpired
+		}
+		if err := conn.AuthACL(ctx, valkeyIAMUsername, token.Value).Err(); err != nil {
+			return fmt.Errorf("authenticate Redis connection with IAM: %w", err)
+		}
+
+		return nil
+	}
+
+	return nil
+}
+
 // GetRedisOpts configures driver to talk to Redis.
 func GetRedisOpts(driver *dipper.Driver) *Options {
 	if conn, ok := dipper.GetMapData(driver.Options, "data.connection"); ok {
@@ -130,6 +200,7 @@ func GetRedisOpts(driver *dipper.Driver) *Options {
 	if driver.CheckOption("data.connection.TLS.Enabled") {
 		opts.TLSConfig = setupTLSConfig(driver)
 	}
+	dipper.Must(setupIAMAuth(driver, opts))
 
 	return &Options{
 		Options: opts,

@@ -42,6 +42,24 @@ drivers:
       # Password: xxxxxxxx
 ```
 
+For Memorystore for Valkey IAM authentication, configure TLS and the IAM
+connection mode instead of a static username or password. The workload's
+Application Default Credentials must have permission to connect to the Valkey
+instance. IAM authentication supports only database 0.
+
+```yaml
+drivers:
+  redisqueue:
+    connection:
+      Addr: <Valkey primary endpoint>:6379
+      IAM:
+        Enabled: true
+      TLS:
+        Enabled: true
+        CACerts:
+          - <Valkey server CA certificate>
+```
+
 ## Step 2: Bootstrap your daemon
 
 ### Running in Kubernetes
@@ -174,4 +192,3 @@ Alternatively, you can follow the [developer setup guide](./howtos/setup_local.m
 ## Step 3: Hacking away
 
 That's it &mdash; your Honeydipper daemon is bootstrapped. You can start to configure it to suit your needs. The daemon pulls your config repos every minute, and will reload when changes are detected. See the [Honeydipper Guides](./README.md) for more documents, including a way to setup GitHub push event-driven reload.
-
