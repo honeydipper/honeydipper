@@ -520,6 +520,17 @@ func (s *AgentSession) appendConvoHistory(msg *AgentMessage) {
 
 // run appends the current user message and dispatches the conversation to the AI driver.
 func (s *AgentSession) run() {
+	// Slash commands are intercepted in chat-turn (conversation) sessions before
+	// the user message is appended or sent to the driver. Non-turn commands
+	// mutate state and call reply(); run() returns without sendToDriver() so the
+	// existing agent_poll/emitPollResponse loop and UI convoHistory read both
+	// observe the complete agent message. Slash command text is NOT recorded as
+	// a user message.
+	if s.isSlashTurn() {
+		if s.dispatchSlashCommand() {
+			return
+		}
+	}
 	if s.loadPreContextAndSkills() {
 		return
 	}
