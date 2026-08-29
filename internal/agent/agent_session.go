@@ -491,7 +491,10 @@ func (s *AgentSession) appendConvoHistory(msg *AgentMessage) {
 
 	// Count message tokens and add to ContextTokens when TokenCounter is active.
 	// This ensures ContextTokens = sum of all history message tokens by construction.
-	if s.TokenCounter != nil {
+	// Slash-origin messages (IsSlash) are excluded: they are never part of the
+	// model context, so counting them would inflate ContextTokens and skew the
+	// compaction threshold.
+	if s.TokenCounter != nil && !msg.IsSlash {
 		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 			msg.InputTokens = cs.ContextTokens
 			msg.OutputTokens = s.countMessageTokens(*msg)
@@ -637,9 +640,17 @@ func (s *AgentSession) sendToDriver() {
 
 	// Prepend the system prompt ephemerally; filter any legacy persisted system
 	// messages so the driver always sees exactly one, up-to-date system entry.
+	// Slash-origin messages (IsSlash), including the slash command text and its
+	// reply, are NEVER sent to the model as context, so they are filtered out
+	// here before any driver serialization.
 	history := make([]AgentMessage, 0, len(s.history)+1)
 	history = append(history, AgentMessage{Role: RoleSystem, Content: systemPrompt})
-	history = append(history, s.history...)
+	for _, m := range s.history {
+		if m.IsSlash {
+			continue
+		}
+		history = append(history, m)
+	}
 
 	// Ensure the last message is a user message to avoid "assistant message prefill not supported" errors.
 	// Some models reject requests where the last message is from the assistant (agent), tool, or system.

@@ -10,7 +10,6 @@
 package agent
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
@@ -120,6 +119,9 @@ func requireLastAgentReply(t *testing.T, s *AgentSession) AgentMessage {
 	assert.Equal(t, RoleAgent, last.Role)
 	assert.True(t, last.IsComplete)
 	assert.Empty(t, last.ToolCalls)
+	// Every reply produced for a slash command must be marked IsSlash so it is
+	// excluded from the model context (this helper is only used for slash tests).
+	assert.True(t, last.IsSlash, "slash reply must be marked IsSlash")
 
 	return last
 }
@@ -133,18 +135,19 @@ func TestSlashRun_ChatTurnHelp_DoesNotSendToDriver(t *testing.T) {
 
 	s.run()
 
-	// No model invocation; slash command text is NOT recorded as a user message.
+	// No model invocation for a slash command.
 	assert.False(t, store.hasCall("driver:openai:send_to_model"))
-	require.Len(t, s.history, 1)
+	// History: the marked slash command text (RoleUser) followed by the marked reply.
+	require.Len(t, s.history, 2)
+	assert.Equal(t, RoleUser, s.history[0].Role)
+	assert.Equal(t, "/help", s.history[0].Content)
+	assert.True(t, s.history[0].IsSlash, "slash command text must be marked IsSlash")
 	last := requireLastAgentReply(t, s)
+	assert.True(t, last.IsSlash, "reply to a slash command must be marked IsSlash")
 	assert.Contains(t, last.Content, "/help")
 	assert.Contains(t, last.Content, "/compact")
 	assert.Contains(t, last.Content, "/model")
 	assert.Contains(t, last.Content, "/refresh")
-
-	for _, m := range s.history {
-		assert.NotEqual(t, RoleUser, m.Role, "slash command text must not be recorded as a user message")
-	}
 }
 
 func TestSlashRun_InferenceTextPassesThrough(t *testing.T) {
@@ -346,18 +349,26 @@ func TestSlashCompact_ForceDispatchesSummarizer(t *testing.T) {
 	require.NotEmpty(t, emitted, "expected an agent_call to the summarizer")
 	assert.Equal(t, "agent_call", emitted[0].Subject)
 
-	// The slash text must NOT have been recorded as a user message: the history
-	// length is unchanged from the seeded history plus the summarizer tool-call
-	// entry (no extra RoleUser message was appended).
+	// The slash command text IS recorded as a marked RoleUser message (IsSlash)
+	// so the UI has a complete record; it is excluded from the model context via
+	// the IsSlash marker. The summarizer tool-call entry is REAL model context
+	// and must NOT be marked IsSlash.
 	require.NotEmpty(t, s.history)
 	last := s.history[len(s.history)-1]
 	assert.Equal(t, RoleAgent, last.Role)
 	assert.NotEmpty(t, last.ToolCalls)
-	for _, m := range s.history {
-		if strings.HasPrefix(m.Content, "/compact") {
-			t.Fatalf("slash text leaked into history as a user message")
+	assert.False(t, last.IsSlash, "summarizer tool-call is real model context and must not be marked IsSlash")
+
+	// The slash text entry itself is marked IsSlash.
+	var slashEntry *AgentMessage
+	for i := range s.history {
+		if s.history[i].Content == "/compact" {
+			slashEntry = &s.history[i]
 		}
 	}
+	require.NotNil(t, slashEntry, "expected the /compact command text in history")
+	assert.Equal(t, RoleUser, slashEntry.Role)
+	assert.True(t, slashEntry.IsSlash, "slash command text must be marked IsSlash")
 }
 
 // ---------------------------------------------------------------------------
@@ -397,4 +408,212 @@ func TestSlashRun_NonTurnReply_ObservableViaHistoryAndPoll(t *testing.T) {
 	require.True(t, ok, "expected full_messages in poll response")
 	require.NotEmpty(t, fullMessages)
 	assert.Contains(t, fullMessages[0]["content"], "/help")
+}
+
+// ---------------------------------------------------------------------------
+// IsSlash refinement tests
+// ---------------------------------------------------------------------------
+
+func TestSlash_ReplyIsMarked_NormalModelMessageIsNot(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+
+	// A slash command reply must be marked IsSlash.
+	s.appendConvoHistory(&AgentMessage{Role: RoleUser, User: "u", Content: "/help", IsSlash: true})
+	s.reply("some help output")
+	require.NotEmpty(t, s.history)
+	reply := s.history[len(s.history)-1]
+	assert.Equal(t, RoleAgent, reply.Role)
+	assert.True(t, reply.IsSlash, "slash reply must be marked IsSlash")
+
+	// A normal model message via processAgentMessage must NOT be marked.
+	s.TokenCounter = nil
+	modelMsg := &AgentMessage{Role: RoleAgent, Content: "normal model output", IsComplete: true}
+	s.processAgentMessage(modelMsg)
+	last := s.history[len(s.history)-1]
+	assert.Equal(t, "normal model output", last.Content)
+	assert.False(t, last.IsSlash, "normal model message must not be marked IsSlash")
+	_ = store
+}
+
+func TestSlash_ModelNeverSeesSlashMessages(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+
+	// Interleave normal conversation messages with slash-origin messages.
+	s.history = []AgentMessage{
+		{Role: RoleUser, User: "u", Content: "hello"},
+		{Role: RoleAgent, Content: "hi there", IsComplete: true},
+		{Role: RoleUser, User: "u", Content: "/help", IsSlash: true},
+		{Role: RoleAgent, Content: "Available slash commands...", IsComplete: true, IsSlash: true},
+		{Role: RoleUser, User: "u", Content: "next question"},
+	}
+
+	// Call sendToDriver directly and inspect the history passed to the driver.
+	s.sendToDriver()
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params, "sendToDriver must invoke the driver")
+	driverHistory, ok := params["history"].([]AgentMessage)
+	require.True(t, ok)
+
+	// Build expected: system prompt plus only the non-slash messages in order.
+	expected := []string{"You are helpful.", "hello", "hi there", "next question"}
+	require.Len(t, driverHistory, len(expected))
+	for i, want := range expected {
+		assert.Equal(t, want, driverHistory[i].Content, "driver history[%d]", i)
+		assert.False(t, driverHistory[i].IsSlash, "driver must never see slash-origin messages")
+	}
+}
+
+func TestSlash_MarkedReplyStillReturnedViaPoll(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+	s.run()
+
+	// The marked reply is still returned via emitPollResponse/agent_response on poll.
+	require.Len(t, s.history, 2)
+	assert.True(t, s.history[1].IsSlash, "reply should be marked IsSlash")
+	s.LastPoll = 0
+	pollMsg := &dipper.Message{Labels: map[string]string{
+		"resume_key":       "wf.0",
+		"agent_session_id": s.ID,
+	}}
+	emittedBefore := len(store.getEmitted())
+	handled := s.emitPollResponse(pollMsg)
+	assert.True(t, handled, "emitPollResponse should emit the marked reply")
+	emitted := store.getEmitted()
+	require.Greater(t, len(emitted), emittedBefore)
+	lastEmitted := emitted[len(emitted)-1]
+	assert.Equal(t, "agent_response", lastEmitted.Subject)
+	fullMessages, ok := lastEmitted.Payload.(map[string]interface{})["full_messages"].([]map[string]string)
+	require.True(t, ok)
+	require.NotEmpty(t, fullMessages)
+	assert.Contains(t, fullMessages[0]["content"], "/help")
+}
+
+func TestSlash_MarkedMessageVisibleInConvoHistory(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+	s.run()
+
+	// The slash command text and reply are persisted to the shared convo history.
+	require.Len(t, s.history, 2)
+	assert.True(t, s.history[0].IsSlash)
+	assert.True(t, s.history[1].IsSlash)
+
+	// loadConvoHistory must read them back unchanged (UI read path).
+	s2 := &AgentSession{ConvoID: s.ConvoID, store: store}
+	s2.loadConvoHistory()
+	require.Len(t, s2.history, 2)
+	assert.Equal(t, "/help", s2.history[0].Content)
+	assert.True(t, s2.history[0].IsSlash, "slash command text must survive loadConvoHistory")
+	assert.Equal(t, RoleAgent, s2.history[1].Role)
+	assert.True(t, s2.history[1].IsSlash, "slash reply must survive loadConvoHistory")
+}
+
+func TestSlash_TokenCountingSkipsSlashMessages(t *testing.T) {
+	s := makeTokenCountingSession(makeTestAgent())
+	// Reset ContextTokens to known state.
+	cs := &ConvoState{}
+	cs.load(s.ConvoID, s.store)
+	cs.ContextTokens = 0
+	cs.persist(s.store)
+
+	// Append a normal user message -> tokens counted.
+	s.appendConvoHistory(&AgentMessage{Role: RoleUser, Content: "normal long message here"})
+	// Append a slash message -> tokens NOT counted.
+	s.appendConvoHistory(&AgentMessage{Role: RoleUser, Content: "/help", IsSlash: true})
+	// Append a slash reply -> tokens NOT counted.
+	s.appendConvoHistory(&AgentMessage{Role: RoleAgent, Content: "Available commands", IsComplete: true, IsSlash: true})
+
+	// ContextTokens should only reflect the normal message.
+	cs2 := &ConvoState{}
+	cs2.load(s.ConvoID, s.store)
+	assert.True(t, cs2.ContextTokens > 0, "normal message tokens should count")
+	onlyNormal := s.countMessageTokens(AgentMessage{Role: RoleUser, Content: "normal long message here"})
+	assert.Equal(t, onlyNormal, cs2.ContextTokens, "ContextTokens must skip slash messages")
+}
+
+func TestSlash_ShouldCompactIgnoresTrailingSlashUserMessage(t *testing.T) {
+	// Agent with history_len compaction policy, threshold 3.
+	store, s := newChatSlashStore(t, func(cfg *config.Config) {
+		a := cfg.DataSet.Agents["a"]
+		a.CompactionPolicy = &agentpkg.CompactionPolicy{
+			Strategy:      "summarize",
+			ThresholdType: "history_len",
+			Threshold:     3,
+		}
+		cfg.DataSet.Agents["a"] = a
+	})
+	// Point the session at the compaction-enabled agent config.
+	pol := *s.Agent.CompactionPolicy
+	s.Agent = &config.Agent{
+		Name:             s.Agent.Name,
+		Driver:           s.Agent.Driver,
+		Engine:           s.Agent.Engine,
+		SystemPrompt:     s.Agent.SystemPrompt,
+		CompactionPolicy: &pol,
+	}
+
+	// Three normal messages + a trailing slash user message. The threshold (3)
+	// is reached by the normal messages, but the last non-slash message is a
+	// RoleUser so compaction IS due here.
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "m1"},
+		{Role: RoleAgent, Content: "a1", IsComplete: true},
+		{Role: RoleUser, Content: "m2"},
+		{Role: RoleUser, Content: "/model x", IsSlash: true},
+	}
+	assert.True(t, s.shouldCompact(), "normal-user tail triggers compaction when threshold reached")
+
+	// Now make the trailing normal message an agent message, so the last
+	// non-slash message is not a user message and compaction must NOT trigger,
+	// even though a trailing slash user command is present.
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "m1"},
+		{Role: RoleAgent, Content: "a1", IsComplete: true},
+		{Role: RoleAgent, Content: "a2", IsComplete: true},
+		{Role: RoleUser, Content: "/help", IsSlash: true},
+	}
+	assert.False(t, s.shouldCompact(), "trailing slash command must not trigger compaction")
+
+	// With no slash messages at all, the last non-slash user message governs.
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "m1"},
+		{Role: RoleAgent, Content: "a1", IsComplete: true},
+		{Role: RoleAgent, Content: "a2", IsComplete: true},
+		{Role: RoleUser, Content: "real question"},
+	}
+	assert.True(t, s.shouldCompact())
+	_ = store
+}
+
+func TestSlash_MarkersSurvivePersistLoadAndFilterNextTurn(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+	s.run()
+	require.Len(t, s.history, 2)
+
+	// Persist the session; the markers are part of the serialized history.
+	s.persist(false)
+
+	// Restore a fresh session from cache (restore path).
+	restored := &AgentSession{}
+	restored.setup(&dipper.Message{Labels: map[string]string{
+		"agent_session_id": s.ID,
+	}}, store, false)
+	restored.loadConvoHistory()
+	require.Len(t, restored.history, 2)
+	assert.True(t, restored.history[0].IsSlash, "slash marker must survive persist+load")
+	assert.True(t, restored.history[1].IsSlash, "slash reply marker must survive persist+load")
+
+	// Next turn: append a normal user message and send to driver; the slash
+	// messages must still be filtered out.
+	restored.history = append(restored.history, AgentMessage{Role: RoleUser, Content: "next turn"})
+	restored.sendToDriver()
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory, ok := params["history"].([]AgentMessage)
+	require.True(t, ok)
+	expected := []string{"You are helpful.", "next turn"}
+	require.Len(t, driverHistory, len(expected))
+	for i, want := range expected {
+		assert.Equal(t, want, driverHistory[i].Content, "driver history[%d]", i)
+		assert.False(t, driverHistory[i].IsSlash)
+	}
 }

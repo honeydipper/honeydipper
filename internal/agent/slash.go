@@ -88,6 +88,21 @@ func parseSlashCommand(text string) *slashCommand {
 // a potential slash command: it must be a chat-turn (conversation) session and
 // the text must start with '/'. Non-slash chat text and all inference text flow
 // through untouched.
+// recordSlashCommandText appends the raw slash command text itself as a
+// marked RoleUser message (IsSlash: true) so the UI has a complete record of
+// what the user typed. The message is persisted in history but is excluded from
+// the model history by sendToDriver() and from token accounting.
+func (s *AgentSession) recordSlashCommandText() {
+	text, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "text")
+	user, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "user")
+	s.appendConvoHistory(&AgentMessage{
+		Role:    RoleUser,
+		User:    user,
+		Content: text,
+		IsSlash: true,
+	})
+}
+
 func (s *AgentSession) isSlashTurn() bool {
 	if s.Type != AgentSessionTypeChatTurn {
 		return false
@@ -107,6 +122,10 @@ func (s *AgentSession) isSlashTurn() bool {
 // user always gets feedback rather than silence.
 func (s *AgentSession) dispatchSlashCommand() bool {
 	ensureSlashBuiltins()
+	// Persist the raw command text as a marked RoleUser message so the UI has a
+	// complete record of the slash command, independent of any reply. It is
+	// excluded from the model history and token accounting via IsSlash.
+	s.recordSlashCommandText()
 	text, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "text")
 	cmd := parseSlashCommand(text)
 	if cmd == nil {
@@ -142,6 +161,10 @@ func (s *AgentSession) reply(content string) {
 		Role:       RoleAgent,
 		Content:    content,
 		IsComplete: true,
+		// Every reply produced for a slash command is marked IsSlash so it is
+		// treated as slash-origin output: it remains visible to the workflow/UI
+		// return paths but is never sent to the model as context.
+		IsSlash: true,
 	}
 	s.appendConvoHistory(msg)
 	// Do NOT advance LastPoll past the new message: the workflow agent_poll loop
