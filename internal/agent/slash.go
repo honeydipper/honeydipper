@@ -44,10 +44,11 @@ var (
 // registerSlashCommand later without reworking the parse/dispatch plumbing.
 func ensureSlashBuiltins() {
 	slashRegistryOnce.Do(func() {
-		registerSlashCommand("help", "list all available slash commands", slashHelp)
-		registerSlashCommand("refresh", "re-interpolate the agent config and rebuild the system prompt", slashRefresh)
-		registerSlashCommand("model", "set the model (<name> or <driver>:<engine>) for this conversation", slashModel)
-		registerSlashCommand("compact", "force-compact the conversation history", slashCompact)
+		registerSlashCommand("help", "Show this list of commands", slashHelp)
+		registerSlashCommand("refresh", "Rebuild the system prompt from current agent config", slashRefresh)
+		registerSlashCommand("model", "Switch the model for this conversation", slashModel)
+		registerSlashCommand("compact", "Compact the conversation history to save context", slashCompact)
+		registerSlashCommand("retry", "Regenerate the last response", slashRetry)
 	})
 }
 
@@ -193,14 +194,17 @@ func slashHelp(s *AgentSession, _ string) bool {
 }
 
 func buildHelpText() string {
-	lines := make([]string, 0, 1+len(slashRegistry))
-	lines = append(lines, "Available slash commands:")
+	lines := make([]string, 0, 2+len(slashRegistry)+2)
+	lines = append(lines, "**Available commands**")
+	lines = append(lines, "")
 	cmds := make([]slashCmd, len(slashRegistry))
 	copy(cmds, slashRegistry)
 	sort.Slice(cmds, func(i, j int) bool { return cmds[i].name < cmds[j].name })
 	for _, c := range cmds {
-		lines = append(lines, fmt.Sprintf("  /%-10s %s", c.name, c.description))
+		lines = append(lines, fmt.Sprintf("- `/%s` — %s", c.name, c.description))
 	}
+	lines = append(lines, "")
+	lines = append(lines, "Type a command followed by Enter to run it.")
 
 	return strings.Join(lines, "\n")
 }
@@ -281,6 +285,15 @@ func listKnownEngines(s *AgentSession) string {
 	return strings.Join(lines, "\n")
 }
 
+// slashRetry implements /retry. In phase 1 the command is recognized (so it
+// shows in /help) but the regeneration logic is not yet built; it replies with
+// an explanation rather than being unknown.
+func slashRetry(s *AgentSession, _ string) bool {
+	s.reply("Retry is not available yet in this build. Please re-ask your question or use /compact to reset context.")
+
+	return true
+}
+
 // slashCompact implements /compact: force-compacts the conversation history
 // regardless of threshold. When compaction isn't configured or possible it
 // replies with an explanatory message instead.
@@ -291,14 +304,26 @@ func slashCompact(s *AgentSession, _ string) bool {
 		return true
 	}
 
-	// Force compaction regardless of threshold. compactHistory() returns true
-	// when it dispatched the summarizer sub-agent; in that case we return
-	// immediately to the async compaction flow. If it could not run (no
-	// summarization agent, or history too short) we reply with an explanation.
+	// Force compaction regardless of threshold. Mark the session as a
+	// slash-initiated compaction BEFORE dispatching so handleCompactionResult
+	// knows to post the confirmation (and NOT resume the model conversation)
+	// when the summarizer returns. The flag is JSON-serialized with the session
+	// so it survives restore if the summarizer takes a while.
+	s.SlashInitiatedCompaction = true
+
+	// compactHistory() returns true when it dispatched the summarizer
+	// sub-agent; in that case we return immediately to the async compaction
+	// flow — the confirmation is posted by handleCompactionResult after the
+	// summarizer completes (posting it here would be archived away). If it
+	// could not run (no summarization agent, or history too short) we clear the
+	// flag and reply with an explanation; either way we never call sendToDriver
+	// or resume the model conversation.
 	if s.compactHistory() {
 		return true
 	}
 
+	// Compaction could not be dispatched; clear the flag and explain.
+	s.SlashInitiatedCompaction = false
 	s.reply("Compaction could not run: no summarization agent is configured, or the history is too short to compact.")
 
 	return true

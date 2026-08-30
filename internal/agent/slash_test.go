@@ -197,9 +197,27 @@ func TestSlashHelp_ListsAllCommands(t *testing.T) {
 	s.run()
 
 	last := requireLastAgentReply(t, s)
-	for _, cmd := range []string{"/help", "/refresh", "/model", "/compact"} {
+	for _, cmd := range []string{"/help", "/refresh", "/model", "/compact", "/retry"} {
 		assert.Contains(t, last.Content, cmd)
 	}
+}
+
+func TestSlashHelp_IsMarkdown(t *testing.T) {
+	_, s := newChatSlashStore(t, nil)
+	s.run()
+
+	last := requireLastAgentReply(t, s)
+	content := last.Content
+	// The help output is proper markdown: a bold header, blank-line separated
+	// bullet lines, and a trailing instruction line joined with newlines.
+	assert.Contains(t, content, "**Available commands**")
+	assert.Contains(t, content, "\n- `/help`")
+	assert.Contains(t, content, "- `/help` — Show this list of commands")
+	assert.Contains(t, content, "- `/compact` — Compact the conversation history to save context")
+	assert.Contains(t, content, "- `/retry` — Regenerate the last response")
+	assert.Contains(t, content, "- `/refresh` — Rebuild the system prompt from current agent config")
+	assert.Contains(t, content, "- `/model` — Switch the model for this conversation")
+	assert.Contains(t, content, "Type a command followed by Enter to run it.")
 }
 
 // ---------------------------------------------------------------------------
@@ -300,6 +318,7 @@ func TestSlashCompact_NotConfigured_Replies(t *testing.T) {
 	assert.False(t, store.hasCall("driver:openai:send_to_model"))
 	last := requireLastAgentReply(t, s)
 	assert.Contains(t, last.Content, "not configured")
+	assert.False(t, s.SlashInitiatedCompaction, "flag must be cleared when compaction cannot run")
 	assert.Empty(t, store.getEmitted())
 }
 
@@ -344,6 +363,10 @@ func TestSlashCompact_ForceDispatchesSummarizer(t *testing.T) {
 	// compactHistory dispatched a summarizer sub-agent: it returns immediately
 	// to the async compaction flow and never calls sendToDriver or reply().
 	assert.False(t, store.hasCall("driver:openai:send_to_model"))
+	// The session is marked as a slash-initiated compaction so
+	// handleCompactionResult knows to post the confirmation and NOT resume the
+	// model conversation when the summarizer returns.
+	assert.True(t, s.SlashInitiatedCompaction, "slash-initiated compaction flag must be set before dispatch")
 
 	emitted := store.getEmitted()
 	require.NotEmpty(t, emitted, "expected an agent_call to the summarizer")
@@ -616,4 +639,194 @@ func TestSlash_MarkersSurvivePersistLoadAndFilterNextTurn(t *testing.T) {
 		assert.Equal(t, want, driverHistory[i].Content, "driver history[%d]", i)
 		assert.False(t, driverHistory[i].IsSlash)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Finding 2: slash-initiated compaction must NOT resume the model conversation
+// ---------------------------------------------------------------------------
+
+// makeCompactionResultSession builds a session with enough history for
+// handleCompactionResult to run, with or without the slash-initiated flag.
+func makeCompactionResultSession(t *testing.T, slashInitiated bool) (*mockStore, *AgentSession) {
+	t.Helper()
+	store := newMockStore(&config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"summ": {Name: "summ", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+		Drivers:   DriverConfigWithAgentEngines(),
+	}})
+	agentA := config.Agent{
+		Name: "bot", Driver: "openai", Engine: "gpt-4",
+		CompactionPolicy: &agentpkg.CompactionPolicy{
+			Strategy:           agentpkg.CompactionStrategySummarize,
+			PreserveRecent:     2,
+			SummarizationAgent: "summ",
+		},
+	}
+	s := &AgentSession{store: store, Agent: &agentA, ID: "s2", ConvoID: "convo-2"}
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"convo_id": s.ConvoID}}
+	s.SlashInitiatedCompaction = slashInitiated
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "old1"},
+		{Role: RoleUser, Content: "old2"},
+		{Role: RoleUser, Content: "old3"},
+		{Role: RoleUser, Content: "old4"},
+		{Role: RoleUser, Content: "old5"},
+	}
+
+	return store, s
+}
+
+func TestHandleCompactionResult_SlashInitiated_DoesNotSendToDriver(t *testing.T) {
+	store, s := makeCompactionResultSession(t, true)
+
+	call := AgentToolCall{
+		FuncName: "ag__summ",
+		Params: map[string]interface{}{
+			"compaction_id": "convo-2_g1",
+			"preserve":      2,
+		},
+	}
+	got := s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+	assert.True(t, got, "handleCompactionResult must take over the result for a compaction call")
+
+	// The flag is cleared once the result is handled.
+	assert.False(t, s.SlashInitiatedCompaction, "slash-initiated flag must be cleared after handling")
+
+	// The model is NOT resumed: sendToDriver must not be invoked.
+	assert.False(t, store.hasCall("driver:openai:send_to_model"), "slash-initiated compaction must NOT call sendToDriver")
+
+	// The in-memory history is summary system message + preserved tail +
+	// the marked confirmation reply appended by handleCompactionResult.
+	require.GreaterOrEqual(t, len(s.history), 3)
+	// 0: summary system message
+	assert.Equal(t, RoleSystem, s.history[0].Role)
+	assert.Contains(t, s.history[0].Content, "COMPACTED SUMMARY")
+	// 1..2: preserved tail (old3, old4) - the last old5 is the tool-call slot
+	// handled by handleCompactionResult (toolIndex = total-1).
+	assert.Equal(t, "old3", s.history[len(s.history)-3].Content)
+
+	// Last message: the confirmation reply, marked IsSlash + IsComplete.
+	last := s.history[len(s.history)-1]
+	assert.Equal(t, RoleAgent, last.Role)
+	assert.True(t, last.IsSlash, "compaction confirmation reply must be marked IsSlash")
+	assert.True(t, last.IsComplete, "compaction confirmation reply must be complete")
+	assert.Contains(t, last.Content, "Conversation compacted")
+}
+
+func TestHandleCompactionResult_Automatic_StillSendsToDriver(t *testing.T) {
+	store, s := makeCompactionResultSession(t, false)
+
+	call := AgentToolCall{
+		FuncName: "ag__summ",
+		Params: map[string]interface{}{
+			"compaction_id": "convo-2_g1",
+			"preserve":      2,
+		},
+	}
+	got := s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+	assert.True(t, got)
+
+	// Automatic compaction (no slash-initiated flag) still resumes the model
+	// conversation - this is the regression guard for unchanged behavior.
+	assert.True(t, store.hasCall("driver:openai:send_to_model"), "automatic compaction must still call sendToDriver")
+	assert.False(t, s.SlashInitiatedCompaction)
+}
+
+func TestSlashCompact_Confirmation_ObservableViaHistoryAndPoll(t *testing.T) {
+	store, s := makeCompactionResultSession(t, true)
+
+	// Simulate the full slash flow: dispatch /compact (sets the flag), then the
+	// summarizer returns and handleCompactionResult posts the confirmation.
+	call := AgentToolCall{
+		FuncName: "ag__summ",
+		Params: map[string]interface{}{
+			"compaction_id": "convo-2_g1",
+			"preserve":      2,
+		},
+	}
+	s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+
+	// The confirmation is returned via the poll/emitPollResponse path.
+	s.LastPoll = 0
+	pollMsg := &dipper.Message{Labels: map[string]string{
+		"resume_key":       "wf.0",
+		"agent_session_id": s.ID,
+	}}
+	emittedBefore := len(store.getEmitted())
+	handled := s.emitPollResponse(pollMsg)
+	assert.True(t, handled, "emitPollResponse should emit the compaction confirmation")
+	emitted := store.getEmitted()
+	require.Greater(t, len(emitted), emittedBefore)
+	lastEmitted := emitted[len(emitted)-1]
+	assert.Equal(t, "agent_response", lastEmitted.Subject)
+	fullMessages, ok := lastEmitted.Payload.(map[string]interface{})["full_messages"].([]map[string]string)
+	require.True(t, ok, "expected full_messages in poll response")
+	require.NotEmpty(t, fullMessages)
+	assert.Contains(t, fullMessages[0]["content"], "Conversation compacted")
+}
+
+func TestSlashCompact_HandlerDispatchesWithoutSendToDriver(t *testing.T) {
+	store := newMockStore(&config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"a": {
+				Name:   "a",
+				Driver: "openai",
+				Engine: "gpt-4",
+				CompactionPolicy: &agentpkg.CompactionPolicy{
+					Strategy:           "summarize",
+					SummarizationAgent: "summ",
+					PreserveRecent:     2,
+				},
+			},
+			"summ": {Name: "summ", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+		Drivers:   DriverConfigWithAgentEngines(),
+	}})
+
+	msg := &dipper.Message{
+		Labels: map[string]string{"agent_name": "a"},
+		Payload: map[string]interface{}{
+			"convo_id": "convo-compact2",
+			"text":     "/compact",
+		},
+	}
+	s := &AgentSession{}
+	s.setup(msg, store, false)
+	// Seed a history long enough to compact.
+	s.history = make([]AgentMessage, 12)
+	for i := range s.history {
+		s.history[i] = AgentMessage{Role: RoleUser, Content: "m" + string(rune('a'+i))}
+	}
+
+	// Invoke the slash handler directly (not via run, so we can observe the
+	// return value and the emitted agent_call).
+	ok := slashCompact(s, "")
+	assert.True(t, ok)
+	assert.True(t, s.SlashInitiatedCompaction, "flag set when compaction dispatched")
+	// Dispatches the summarizer without any model invocation.
+	assert.False(t, store.hasCall("driver:openai:send_to_model"), "compact handler must not call sendToDriver")
+	emitted := store.getEmitted()
+	require.NotEmpty(t, emitted)
+	assert.Equal(t, "agent_call", emitted[0].Subject)
+	// No reply posted at dispatch time (confirmation comes from the result path).
+	last := s.history[len(s.history)-1]
+	assert.Equal(t, RoleAgent, last.Role)
+	assert.NotEmpty(t, last.ToolCalls)
+}
+
+func TestSlashCompact_HandlerNoPolicy_RepliesNoModel(t *testing.T) {
+	store, s := newChatSlashStore(t, nil) // no compaction policy
+	setChatText(s, AgentSessionTypeChatTurn, "/compact")
+
+	s.run()
+
+	assert.False(t, store.hasCall("driver:openai:send_to_model"), "no model call when compaction not configured")
+	last := requireLastAgentReply(t, s)
+	assert.Contains(t, last.Content, "not configured")
+	assert.Empty(t, store.getEmitted())
 }

@@ -164,11 +164,32 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 	s.CurrentCall = 0
 	s.ToolResults = nil
 
+	// Persist the compacted session (with any pending SlashInitiatedCompaction
+	// flag) before branching. This also makes the flag durable across a restore
+	// in case the confirmation reply is processed after a reload.
 	s.persist(false)
 
-	// After successful compaction, resume the conversation by sending the
-	// updated history to the configured driver so the model can continue.
-	// This keeps the compaction flow inline with mid-conversation triggers.
+	// Resume the conversation only when compaction was NOT slash-initiated.
+	// - Automatic compaction runs mid-turn from shouldCompact()/sendToDriver()
+	//   where there is a real pending user message, so we send the compacted
+	//   history to the model to continue the turn.
+	// - A /compact slash command has NO pending user message; resuming the
+	//   model here would produce a spurious continuation. Instead we post the
+	//   confirmation as a marked IsSlash reply (persisted + returned to the
+	//   workflow/UI, but never sent to the model) and leave the conversation
+	//   idle for the next real user turn.
+	if s.SlashInitiatedCompaction {
+		s.SlashInitiatedCompaction = false
+		s.reply("\u2705 Conversation compacted. The history has been summarized; older turns are archived.")
+		if log := s.log(); log != nil {
+			log.Infof("[agent] session [%s] slash-initiated compaction complete; new_history_len=%d", s.ID, len(s.history))
+		}
+
+		return true
+	}
+
+	// Automatic compaction: resume the conversation by sending the updated
+	// history to the configured driver so the model can continue.
 	s.sendToDriver()
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] compaction complete; new_history_len=%d", s.ID, len(s.history))

@@ -71,6 +71,16 @@ type AgentSession struct {
 	// The lock prevents concurrent sessions from modifying the same conversation.
 	TurnLockKey string
 
+	// SlashInitiatedCompaction is set when a /compact slash command dispatches
+	// the summarization sub-agent. It is JSON-serialized with the session so it
+	// survives session restore. When handleCompactionResult completes a
+	// slash-initiated compaction it posts the confirmation reply (IsSlash) and
+	// does NOT resume the model conversation (no pending user turn to continue);
+	// automatic compaction (triggered mid-turn by shouldCompact) has a real
+	// pending user message and DOES sendToDriver after compaction. Cleared once
+	// the compaction result has been handled.
+	SlashInitiatedCompaction bool
+
 	store AgentStore
 }
 
