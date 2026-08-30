@@ -403,12 +403,37 @@ LOOKUP[<driver>,<path>][:<printf_pattern>]
 3. Fallback to auth provider driver (`auth_web_request` RPC) → on success, issue `X-Honeydipper-JWT` header
 4. All fail → 401
 
+### 11.2.1 Server-Side Session Engine
+
+Login sessions are enforced server-side via a Redis-backed session store keyed
+by a daemon-minted opaque UUID `sid` (stable across token rotation). See
+`internal/api/session/`.
+
+- `auth.session.*` daemon config controls the policy: `enabled`, `idleTimeout`,
+  `maxLifetime` (optional absolute cap, default off), `tokenGracePeriod`
+  (roll-out grace for pre-upgrade sid-less tokens), `cacheTTL`, and `redis`
+  connection settings. Env-var overrides follow the `HD_SESSION_*` convention.
+- Provider tiers: IAP takes creds directly from the IAP JWT (no session store);
+  GitHub/SAML check the session in Redis; auth-simple is also stored so
+  logout/revoke and idle tracking work.
+- Idle timeout is a provider re-vouch trigger, not a hard logout. An idle
+  GitHub session is silently renewed (same sid) when the provider is alive,
+  otherwise the user re-authenticates (new sid). An idle SAML/auth-simple
+  session requires re-authentication. `maxLifetime`-exceeded is always a hard
+  re-auth (never silently re-vouched).
+- `POST /auth/logout` revokes the current sid (or all sessions for the subject
+  via `?all=true`), correct cross-node through the shared Redis store.
+- All expiry modes set the `X-Honeydipper-Session-Expired` response header
+  (exposed via `Access-Control-Expose-Headers`) and return a consistent
+  "re-authenticate" 401.
+
 ### 11.3 Registered Routes
 
 | Path | Service | Notes |
 |---|---|---|
 | `/auth/saml/*` | Local | SAML SP login/metadata/ACS callback |
 | `/auth/github/callback` | Local | GitHub OAuth |
+| `/auth/logout` | Local | Revoke current session (or all for subject) |
 | `/user/profile` | Local | Current user profile |
 | `/events/*` | Engine | CRUD + long-poll wait |
 | `/gh/events/*` | Engine | GitHub-scoped (with entitlement) |

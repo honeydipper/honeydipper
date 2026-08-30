@@ -20,6 +20,11 @@ var (
 	ErrMissingJWTSigningKey = errors.New("missing JWT signing key in config")
 )
 
+// SIDClaim is the JWT claim name carrying the daemon-minted opaque session
+// identifier (sid). The sid is stable across token rotation and is the primary
+// key of the server-side session store.
+const SIDClaim = "sid"
+
 type JWTConfig struct {
 	SigningKey []byte
 	Issuer     string
@@ -30,6 +35,7 @@ type PrincipalClaims struct {
 	Subject     string                 `json:"sub"`
 	ProfileName string                 `json:"profile_name"`
 	Provider    string                 `json:"provider"`
+	SID         string                 `json:"sid,omitempty"`
 	Data        map[string]interface{} `json:"data"`
 	jwt.RegisteredClaims
 }
@@ -51,11 +57,15 @@ func getJWTConfig() (*JWTConfig, error) {
 	}, nil
 }
 
+// SignPrincipalJWT signs a daemon JWT for the given principal. The principal's
+// SID (if set) is embedded in the token and preserved verbatim so rotation
+// never regenerates the session identity.
 func SignPrincipalJWT(principal Principal, cfg *JWTConfig) (string, error) {
 	claims := PrincipalClaims{
 		Subject:     principal.Subject,
 		ProfileName: principal.ProfileName,
 		Provider:    principal.Provider,
+		SID:         principal.SID,
 		Data:        principal.Data,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    cfg.Issuer,
@@ -89,6 +99,7 @@ func ParsePrincipalJWT(tokenString string, cfg *JWTConfig) (*Principal, error) {
 		Subject:     claims.Subject,
 		ProfileName: claims.ProfileName,
 		Provider:    claims.Provider,
+		SID:         claims.SID,
 		Data:        claims.Data,
 	}, nil
 }

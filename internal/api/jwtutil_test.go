@@ -100,3 +100,37 @@ func TestParsePrincipalJWT_NonHDJWTRejected(t *testing.T) {
 		t.Fatal("expected SAML session JWT to be rejected by middleware, got nil error")
 	}
 }
+
+func TestSignPrincipalJWTEmbedsAndPreservesSID(t *testing.T) {
+	principal := Principal{Subject: "alice", ProfileName: "Alice", Provider: "test", SID: "stable-sid-123"}
+	token, err := SignPrincipalJWT(principal, testJWTCfg)
+	if err != nil {
+		t.Fatalf("SignPrincipalJWT: %v", err)
+	}
+
+	got, err := ParsePrincipalJWT(token, testJWTCfg)
+	if err != nil {
+		t.Fatalf("ParsePrincipalJWT: %v", err)
+	}
+	if got.SID != "stable-sid-123" {
+		t.Fatalf("expected sid embedded and preserved, got %q", got.SID)
+	}
+}
+
+func TestSignPrincipalJWTNoSIDForOlderClients(t *testing.T) {
+	// A principal without a sid produces a token without a sid claim, matching
+	// the pre-upgrade (sid-less) token path.
+	principal := Principal{Subject: "bob", Provider: "test"}
+	token, err := SignPrincipalJWT(principal, testJWTCfg)
+	if err != nil {
+		t.Fatalf("SignPrincipalJWT: %v", err)
+	}
+
+	got, err := ParsePrincipalJWT(token, testJWTCfg)
+	if err != nil {
+		t.Fatalf("ParsePrincipalJWT: %v", err)
+	}
+	if got.SID != "" {
+		t.Fatalf("expected empty sid for sid-less principal, got %q", got.SID)
+	}
+}
