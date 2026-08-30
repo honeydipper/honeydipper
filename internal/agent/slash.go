@@ -48,7 +48,7 @@ func ensureSlashBuiltins() {
 		registerSlashCommand("refresh", "Rebuild the system prompt from current agent config", slashRefresh)
 		registerSlashCommand("model", "Switch the model for this conversation", slashModel)
 		registerSlashCommand("compact", "Compact the conversation history to save context", slashCompact)
-		registerSlashCommand("retry", "Regenerate the last response", slashRetry)
+		registerSlashCommand("retry", "Resume an interrupted turn", slashRetry)
 	})
 }
 
@@ -285,11 +285,65 @@ func listKnownEngines(s *AgentSession) string {
 	return strings.Join(lines, "\n")
 }
 
-// slashRetry implements /retry. In phase 1 the command is recognized (so it
-// shows in /help) but the regeneration logic is not yet built; it replies with
-// an explanation rather than being unknown.
+// lastNonSlashMsg returns the most recent history message that is not marked
+// IsSlash, or nil when history is empty or every message is slash-origin.
+// Marked slash messages (command text and replies) are not part of the real
+// conversation, so they are skipped when deciding whether a turn is interrupted.
+func (s *AgentSession) lastNonSlashMsg() *AgentMessage {
+	for i := len(s.history) - 1; i >= 0; i-- {
+		if !s.history[i].IsSlash {
+			return &s.history[i]
+		}
+	}
+
+	return nil
+}
+
+// hasInterruptedTurn reports whether the last real (non-slash) message marks an
+// interrupted turn — anything that is NOT a complete agent message. A nil last
+// message (empty history) or a complete agent message (Role == RoleAgent &&
+// IsComplete && len(ToolCalls) == 0) is a clean state, so there is nothing to
+// retry. Everything else — a trailing RoleUser, a RoleToolResult, a RoleAgent
+// with pending ToolCalls, or an incomplete RoleAgent — is considered interrupted
+// and can be resumed by /retry.
+func (s *AgentSession) hasInterruptedTurn() bool {
+	m := s.lastNonSlashMsg()
+	if m == nil {
+		return false
+	}
+	if m.Role == RoleAgent && m.IsComplete && len(m.ToolCalls) == 0 {
+		return false
+	}
+
+	return true
+}
+
+// slashRetry implements /retry: resume an interrupted turn. When the last real
+// (non-slash) message is a complete agent message (or history is empty) there is
+// nothing to retry and it replies with an explanation. Otherwise the turn was
+// interrupted (cancelled or errored mid-way) and history already ends at the
+// interruption point: resolveUnresolvedToolCalls clears any hanging tool calls,
+// then sendToDriver() rebuilds the model history from s.history (filtering the
+// marked slash command text) and appends a synthetic "Please continue." only
+// when the trailing role isn't a user — it is never written into s.history, so
+// no "continue" text or duplicate user message pollutes the conversation.
 func slashRetry(s *AgentSession, _ string) bool {
-	s.reply("Retry is not available yet in this build. Please re-ask your question or use /compact to reset context.")
+	if !s.hasInterruptedTurn() {
+		s.reply("Nothing to retry: the last turn already completed.")
+
+		return true
+	}
+
+	// Resolve any hanging tool calls from the interrupted turn so the model gets
+	// a clean continuation point (appends failure RoleToolResult messages).
+	s.resolveUnresolvedToolCalls()
+
+	// History now ends at the interruption point. Point the poll at the tail so
+	// the resumed response (appended when the model returns) is collected as a
+	// new turn, then send to the driver.
+	s.LastPoll = len(s.history)
+	s.sendToDriver()
+	s.persist(false)
 
 	return true
 }
