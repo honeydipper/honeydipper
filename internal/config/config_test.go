@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -99,4 +99,250 @@ func TestLoadInvalidOverrides(t *testing.T) {
 	t.Setenv("REPO_OVERRIDE", "https://test.com/foo/bar.git =>")
 
 	assert.Panics(t, func() { config.loadOverrides() }, "loadOverride shoud panic with invalid definition")
+}
+
+func TestResolveStagedDriverMetaRegistry(t *testing.T) {
+	testCases := map[string]interface{}{
+		"resolve named registry from daemon config": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL":          "https://example.com/registry",
+							"requireSignature": true,
+							"publicKey":        "pubkey",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+					"channel":  "stable",
+				},
+			},
+			"",
+			"https://example.com/registry",
+			true,
+			"pubkey",
+		},
+		"deny direct url by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL": "https://example.com/registry",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+					"url":      "https://override.example.com/driver",
+					"sha256":   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				},
+			},
+			"remote driver source is not allowed by policy: direct",
+		},
+		"allow direct url by policy": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"direct": map[string]interface{}{
+							"enabled": true,
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"url":    "https://override.example.com/driver",
+					"sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				},
+			},
+			"",
+			"",
+			false,
+			"",
+		},
+		"deny local source by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"localPath": "/tmp/hd-driver-local",
+				},
+			},
+			"remote driver source is not allowed by policy: local",
+		},
+		"deny registry by policy": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL": "https://example.com/registry",
+						},
+					},
+					"remoteDriverPolicy": map[string]interface{}{
+						"registry": map[string]interface{}{
+							"enabled": false,
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+				},
+			},
+			"remote driver source is not allowed by policy: registry",
+		},
+		"reject builtin registry override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						BuiltinRemoteRegistryName: map[string]interface{}{
+							"baseURL": "https://malicious.example.com/registry",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": BuiltinRemoteRegistryName,
+				},
+			},
+			"builtin remote registry cannot be overridden",
+		},
+	}
+
+	for msg, tc := range testCases {
+		func(c []interface{}) {
+			resolvedMeta, err := c[0].(*Config).ResolveStagedDriverMeta(c[1].(map[string]interface{}))
+			if len(c[2].(string)) > 0 {
+				if assert.Error(t, err, "should "+msg) {
+					assert.Equal(t, c[2].(string), err.Error()[:len(c[2].(string))], "should "+msg)
+				}
+
+				return
+			}
+
+			if assert.NoError(t, err, "should "+msg) {
+				handlerData := resolvedMeta["handlerData"].(map[string]interface{})
+				if c[3].(string) != "" {
+					assert.Equal(t, c[3].(string), handlerData["registryURL"], "should "+msg)
+				} else {
+					_, ok := handlerData["registryURL"]
+					assert.False(t, ok, "should "+msg)
+				}
+				if len(c) > 4 {
+					if c[4].(bool) {
+						assert.Equal(t, true, handlerData["requireSignature"], "should "+msg)
+					} else {
+						_, ok := handlerData["requireSignature"]
+						assert.False(t, ok, "should "+msg)
+					}
+				}
+				if len(c) > 5 {
+					if c[5].(string) != "" {
+						assert.Equal(t, c[5].(string), handlerData["publicKey"], "should "+msg)
+					}
+				}
+			}
+		}(tc.([]interface{}))
+	}
+}
+
+func TestResolveRemoteSourceType(t *testing.T) {
+	testCases := map[string]interface{}{
+		"registry by name": []interface{}{map[string]interface{}{"registry": "github"}, remoteSourceRegistry},
+		"registry by URL":  []interface{}{map[string]interface{}{"registryURL": "https://example.com"}, remoteSourceRegistry},
+		"direct URL":       []interface{}{map[string]interface{}{"url": "https://example.com/driver"}, remoteSourceDirect},
+		"local file URL":   []interface{}{map[string]interface{}{"url": "file:///tmp/driver"}, remoteSourceLocal},
+		"local abs path":   []interface{}{map[string]interface{}{"url": "/tmp/driver"}, remoteSourceLocal},
+		"local path field": []interface{}{map[string]interface{}{"localPath": "/tmp/driver"}, remoteSourceLocal},
+		"unknown source":   []interface{}{map[string]interface{}{}, remoteSourceUnknown},
+	}
+
+	for msg, tc := range testCases {
+		handlerData := tc.([]interface{})[0].(map[string]interface{})
+		expected := tc.([]interface{})[1].(string)
+		assert.Equal(t, expected, resolveRemoteSourceType(handlerData), "should "+msg)
+	}
+}
+
+func TestEvaluateRemoteSourcePolicy(t *testing.T) {
+	testCases := map[string]interface{}{
+		"registry allowed by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceRegistry,
+			true,
+			remotePolicyReasonDefaultAllowRegistry,
+		},
+		"direct denied by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceDirect,
+			false,
+			remotePolicyReasonDefaultDenySource,
+		},
+		"local denied by override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"local": map[string]interface{}{
+							"enabled": false,
+						},
+					},
+				},
+			}}},
+			remoteSourceLocal,
+			false,
+			remotePolicyReasonPolicyOverrideDeny,
+		},
+		"direct allowed by override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"direct": map[string]interface{}{
+							"enabled": true,
+						},
+					},
+				},
+			}}},
+			remoteSourceDirect,
+			true,
+			remotePolicyReasonPolicyOverrideAllow,
+		},
+		"unknown source denied": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceUnknown,
+			false,
+			remotePolicyReasonUnknownSource,
+		},
+	}
+
+	for msg, tc := range testCases {
+		cfg := tc.([]interface{})[0].(*Config)
+		source := tc.([]interface{})[1].(string)
+		expectedAllowed := tc.([]interface{})[2].(bool)
+		expectedReason := tc.([]interface{})[3].(string)
+
+		allowed, reason := cfg.evaluateRemoteSourcePolicy(source)
+		assert.Equal(t, expectedAllowed, allowed, "should "+msg)
+		assert.Equal(t, expectedReason, reason, "should "+msg)
+	}
 }

@@ -7,18 +7,26 @@ your configuration repo with CI to run config check upon every push or PR.
 
 - [Prefix interpolation](#prefix-interpolation)
   * [*`ENC[driver,ciphertext/base64==]`* Encrypted content](#encdriverciphertextbase64-encrypted-content)
+  * [*`LOOKUP[driver,path]`* Secret Lookup](#lookupdriverpath-secret-lookup)
   * [*:regex:* Regular expression pattern](#regex-regular-expression-pattern)
   * [*:yaml:* Building data structure with yaml](#yaml-building-data-structure-with-yaml)
+  * [*:yaml_safe:* Building data structure with yaml without interpolation](#yaml_safe-building-data-structure-with-yaml-without-interpolation)
+  * [*\\* Backslash escape mechanism](#-backslash-escape-mechanism)
   * [*$* Referencing context data with given path](#-referencing-context-data-with-given-path)
 - [Inline go template](#inline-go-template)
   * [Caveat: What does "inline" mean?](#caveat-what-does-inline-mean)
+  * [Sprig Library](#sprig-library)
   * [go template](#go-template)
-  * [Functions offered by Honeydipper](#functions-offerred-by-honeydipper)
-    + [fromPath](#frompath)
-    + [now](#now)
+  * [Functions offered by Honeydipper](#functions-offered-by-honeydipper)
+    + [return](#return)
     + [duration](#duration)
-    + [ISO8601](#iso8601)
+    + [render](#render)
+    + [fromPath](#frompath)
     + [toYaml](#toyaml)
+    + [now](#now)
+    + [ISO8601](#iso8601)
+    + [cue_validate_error](#cue_validate_error)
+    + [decrypt](#decrypt)
 - [Workflow contextual data](#workflow-contextual-data)
   * [Workflow Interpolation](#workflow-interpolation)
   * [Function Parameters Interpolation](#function-parameters-interpolation)
@@ -36,7 +44,7 @@ When a string value starts with certain prefixes, Honeydipper will transform the
 ### *`ENC[driver,ciphertext/base64==]`* Encrypted content
 
 Encrypted contents are usually kept in system data. The value should be specified in `eyaml` style, start with `ENC[` prefix. Following the
-prefix is the name of the driver that can be used for decrypting the content. Following the driver name is a "," and the base64 encoded
+prefix is the name of the driver that can be used for decrypting the content. Following the driver name is a `,` and the base64 encoded
 ciphertext.
 
 Can be used in system data, event conditions.
@@ -47,6 +55,31 @@ systems:
   kubenetes:
     data:
       service_account: ENC[gcloud-kms,...]
+```
+
+### *`LOOKUP[driver,path]`* Secret Lookup
+
+The `LOOKUP` prefix is used to fetch secrets from a secret store driver (e.g., Vault, AWS Secrets Manager) at runtime. It works similarly to `ENC` but retrieves the secret dynamically rather than decrypting an encrypted value.
+
+Syntax:
+```
+LOOKUP[driver,path][:printf_pattern]
+```
+
+- `driver`: The name of the driver that implements the `lookup` RPC method.
+- `path`: The path or identifier of the secret in the secret store.
+- `printf_pattern` (optional): A printf-style pattern to format the retrieved secret.
+
+You can prefix the path with `?` to make the lookup optional (swallow errors if the secret is not found).
+
+For example:
+```yaml
+systems:
+  myapp:
+    data:
+      api_key: LOOKUP[vault,secret/data/myapp/apikey]
+      optional_setting: LOOKUP[vault,secret/data/myapp/optional]:%s
+      db_password: LOOKUP[aws-secretsmanager,myapp/db_password]
 ```
 
 ### *:regex:* Regular expression pattern
@@ -88,6 +121,34 @@ workflows:
         {{- end }}
 ```
 <!-- {% endraw %} -->
+
+### *:yaml_safe:* Building data structure with yaml without interpolation
+
+The `:yaml_safe:` prefix works similarly to `:yaml:`, but it will parse the string as YAML and return the resulting data structure **without** performing any further Go templating on it. This is useful when the YAML string contains Go template-like syntax that should be preserved as-is.
+
+Can be used in workflow definitions(data, content), workflow condition, function parameters.
+
+For example:
+<!-- {% raw %} -->
+```yaml
+workflows:
+  pass_through:
+    content: |
+      :yaml_safe:
+      - "{{ .some.var }}"
+      - "preserve {{ this }}"
+```
+<!-- {% endraw %} -->
+
+### *\* Backslash escape mechanism
+
+In some cases, you may need to prevent Honeydipper from interpreting special prefixes like `{{` or `$`. You can use a backslash `\` as an escape mechanism. When a string starts with a backslash followed by a prefix, Honeydipper will strip the backslash and return the rest of the string as-is without any interpolation.
+
+For example:
+```yaml
+# This will be rendered as "{{ .ctx.value }}" without being interpolated
+escaped_value: \{{ .ctx.value }}
+```
 
 ### *$* Referencing context data with given path
 
@@ -161,6 +222,20 @@ runtime data to the template when it is executed. However, that also means that 
 tags in templates, unless you store the yaml as text like in the example for `:yaml:` prefix interpolation. Also, you can't use <!-- {% raw %} -->`{{`<!-- {% endraw %} --> at the
 beginning of a string without quoting, because the yaml renderer may treat it as the start of a data structure.
 
+### Sprig Library
+
+Honeydipper includes the full [Sprig library](http://masterminds.github.io/sprig/) of template functions. Sprig provides over 100 template
+functions for string manipulation, math, date handling, data structure manipulation, and more. Some commonly used functions include:
+
+- `trim`, `trimAll`, `trimPrefix`, `trimSuffix`: String trimming
+- `upper`, `lower`, `title`, `untitle`: String case manipulation
+- `replace`: String replacement
+- `split`, `join`: String splitting and joining
+- `b64enc`, `b64dec`: Base64 encoding/decoding
+- `dict`, `list`: Creating maps and lists
+- `merge`, `append`: Data structure manipulation
+- `date`, `now`, `duration`: Date and time functions
+
 ### go template
 
 Here are some available resources for go template:
@@ -168,6 +243,55 @@ Here are some available resources for go template:
  * [sprig functions](http://masterminds.github.io/sprig/)
 
 ### Functions offered by Honeydipper
+
+#### return
+
+The `return` function captures any value and prevents it from being rendered as a string. This is useful when you need to pass a complex
+data structure (map, list, etc.) to a function parameter instead of a string representation.
+
+For example:
+<!-- {% raw %} -->
+```yaml
+workflows:
+  capture_data:
+    steps:
+      - call_workflow: process
+        with:
+          items: '{{ return .ctx.items_list }}'
+```
+<!-- {% endraw %} -->
+
+#### duration
+
+This function parse the duration string and can be used for date time calculation.
+
+<!-- {% raw %} -->
+```yaml
+---
+workflows:
+  do_something:
+    steps:
+      - wait: '{{ duration "1m" }}'
+      - call_workflow: something
+```
+<!-- {% endraw %} -->
+
+#### render
+
+The `render` function allows for recursive nested interpolation. It takes a template string and a data map, and renders the template
+with the provided data. This is useful for dynamically constructing and rendering templates.
+
+For example:
+<!-- {% raw %} -->
+```yaml
+workflows:
+  render_template:
+    steps:
+      - call_workflow: something
+        with:
+          content: '{{ render "Hello, {{ .name }}" .ctx }}'
+```
+<!-- {% endraw %} -->
 
 #### fromPath
 
@@ -204,6 +328,22 @@ rules:
 ```
 <!-- {% endraw %} -->
 
+#### toYaml
+
+This function converts the given data structure into a yaml string
+
+<!-- {% raw %} -->
+```yaml
+---
+workflows:
+  do_something:
+    steps:
+      - call_workflow: something
+        with:
+          yaml_str: '{{ .ctx.parameters | toYaml }}'
+```
+<!-- {% endraw %} -->
+
 #### now
 
 This function returns current timestamps.
@@ -216,21 +356,6 @@ workflows:
     call_workflow: something
     with:
       time: '{{ now | toString }}'
-```
-<!-- {% endraw %} -->
-
-#### duration
-
-This function parse the duration string and can be used for date time calculation.
-
-<!-- {% raw %} -->
-```yaml
----
-workflows:
-  do_something:
-    steps:
-      - wait: '{{ duration "1m" }}'
-      - call_workflow: something
 ```
 <!-- {% endraw %} -->
 
@@ -250,19 +375,38 @@ workflows:
 ```
 <!-- {% endraw %} -->
 
-#### toYaml
+#### cue_validate_error
 
-This function converts the given data structure into a yaml string
+The `cue_validate_error` function validates a YAML content against a CUE schema. It takes three parameters: the schema name, the schema
+definition, and the YAML content to validate. If validation fails, it returns the validation error message; otherwise, it returns an
+empty string.
 
+For example:
 <!-- {% raw %} -->
 ```yaml
----
 workflows:
-  do_something:
+  validate_config:
     steps:
       - call_workflow: something
         with:
-          yaml_str: '{{ .ctx.parameters | toYaml }}'
+          validation_error: '{{ cue_validate_error "myschema" .sysData.myschema .ctx.yaml_content }}'
+```
+<!-- {% endraw %} -->
+
+#### decrypt
+
+The `decrypt` function is injected by the operator for secret decryption. It can be used in templates to decrypt values that were
+encrypted using the `ENC[...]` prefix. This function is typically used internally by Honeydipper but is available for advanced use cases.
+
+For example:
+<!-- {% raw %} -->
+```yaml
+workflows:
+  use_secret:
+    steps:
+      - call_workflow: something
+        with:
+          secret: '{{ decrypt .ctx.encrypted_value }}'
 ```
 <!-- {% endraw %} -->
 

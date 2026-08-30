@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper/mock_dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper/mock_dipper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -54,10 +54,9 @@ func responseTest(t *testing.T, c *ResponseTestCase) {
 
 	if c.shouldLock {
 		mockRPCCaller.EXPECT().Call(gomock.Eq("locker"), gomock.Eq("lock"), gomock.Eq(map[string]interface{}{
-			"name":       fmt.Sprintf("api_candidate:%s", c.msg.Labels["uuid"]),
-			"attempt_ms": 10,
-			"expire":     "1000ms",
-		})).Return(nil, c.lockingError)
+			"name":   fmt.Sprintf("api_candidate:%s", c.msg.Labels["uuid"]),
+			"expire": "1000ms",
+		}), "timeout", "20ms").Return(nil, c.lockingError)
 	}
 
 	factory := NewResponseFactory()

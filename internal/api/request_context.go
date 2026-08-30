@@ -10,17 +10,20 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // RequestContext includes all functions store requires to work with a HttpRequest.
 type RequestContext interface {
 	AbortWithStatusJSON(int, interface{})
 	IndentedJSON(int, interface{})
+	Data(int, string, []byte)
+	Redirect(int, string)
 	ContentType() string
 	Get(string) (interface{}, bool)
 	Set(string, interface{})
 	GetPath() string
+	GetParam(string) string
 	GetPayload(method string) map[string]interface{}
 }
 
@@ -37,6 +40,16 @@ func (rc *GinRequestContext) AbortWithStatusJSON(code int, content interface{}) 
 // IndentedJSON finishes the request with given code and content.
 func (rc *GinRequestContext) IndentedJSON(code int, content interface{}) {
 	rc.gin.IndentedJSON(code, content)
+}
+
+// Data finishes the request with given code, content type, and raw bytes.
+func (rc *GinRequestContext) Data(code int, contentType string, body []byte) {
+	rc.gin.Data(code, contentType, body)
+}
+
+// Redirect sends an HTTP redirect response.
+func (rc *GinRequestContext) Redirect(code int, url string) {
+	rc.gin.Redirect(code, url)
 }
 
 // ContentType returns the content type of the request.
@@ -59,6 +72,16 @@ func (rc *GinRequestContext) GetPath() string {
 	return rc.gin.Request.URL.Path
 }
 
+// GetParam returns the query parameters from the request.
+func (rc *GinRequestContext) GetParam(key string) string {
+	param := rc.gin.Query(key)
+	if param == "" {
+		param = rc.gin.Param(key)
+	}
+
+	return param
+}
+
 // GetPayload returns the query parameters from the request.
 func (rc *GinRequestContext) GetPayload(method string) map[string]interface{} {
 	payload := map[string]interface{}{}
@@ -67,7 +90,14 @@ func (rc *GinRequestContext) GetPayload(method string) map[string]interface{} {
 	}
 
 	if method == http.MethodPost || method == http.MethodPut {
-		payload["body"] = string(dipper.Must(rc.gin.GetRawData()).([]byte))
+		ct := rc.gin.ContentType()
+		if ct == "application/x-www-form-urlencoded" || ct == "multipart/form-data" {
+			// ParseForm reads and caches the body, then populates Request.Form.
+			// We do this before GetRawData so form values are accessible via the loop below.
+			_ = rc.gin.Request.ParseForm()
+		} else {
+			payload["body"] = string(dipper.Must(rc.gin.GetRawData()).([]byte))
+		}
 	}
 
 	for k, varr := range rc.gin.Request.Form {

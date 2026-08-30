@@ -9,12 +9,13 @@ package api
 import (
 	"fmt"
 	"strconv"
+	"sync"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
-// DefaultAPILockAttemptMS is the time for attempting to acquire a lock.
-const DefaultAPILockAttemptMS = 10
+// DefaultAPILockAttempt is the time for attempting to acquire a lock.
+const DefaultAPILockAttempt = "20ms"
 
 // DefaultAPILockExpireMS is the API candidate lock to expire.
 const DefaultAPILockExpireMS = 1000
@@ -24,6 +25,8 @@ type Response struct {
 	EventBus dipper.MessageReceiver
 	Request  *dipper.Message
 	Acked    bool
+
+	Factrory *ResponseFactory
 }
 
 // Ack acks a call.
@@ -42,6 +45,7 @@ func (resp *Response) Ack() {
 
 // Return returns data to api service.
 func (resp *Response) Return(data interface{}) {
+	_, isRaw := data.([]byte)
 	resp.EventBus.SendMessage(&dipper.Message{
 		Channel: "eventbus",
 		Subject: "api",
@@ -50,8 +54,10 @@ func (resp *Response) Return(data interface{}) {
 			"uuid": resp.Request.Labels["uuid"],
 			"from": resp.Request.Labels["from"],
 		},
+		IsRaw:   isRaw,
 		Payload: data,
 	})
+	resp.Factrory.Live.Done()
 }
 
 // ReturnError returns an error to the API service.
@@ -66,15 +72,15 @@ func (resp *Response) ReturnError(err error) {
 			"error": err.Error(),
 		},
 	})
+	resp.Factrory.Live.Done()
 }
 
 // Lock is to compete for the right to handle a API call.
 func (resp *Response) Lock(caller dipper.RPCCaller, def Def) bool {
 	_, err := caller.Call("locker", "lock", map[string]interface{}{
-		"name":       fmt.Sprintf("api_candidate:%s", resp.Request.Labels["uuid"]),
-		"attempt_ms": DefaultAPILockAttemptMS,
-		"expire":     strconv.Itoa(DefaultAPILockExpireMS) + "ms",
-	})
+		"name":   fmt.Sprintf("api_candidate:%s", resp.Request.Labels["uuid"]),
+		"expire": strconv.Itoa(DefaultAPILockExpireMS) + "ms",
+	}, "timeout", DefaultAPILockAttempt)
 
 	return err == nil
 }
@@ -82,6 +88,7 @@ func (resp *Response) Lock(caller dipper.RPCCaller, def Def) bool {
 // ResponseFactory provides functions to create new api Response.
 type ResponseFactory struct {
 	DefsByName map[string]Def
+	Live       sync.WaitGroup
 }
 
 // NewResponseFactory creates a new response factory.
@@ -97,6 +104,7 @@ func (rf *ResponseFactory) NewResponse(caller dipper.RPCCaller, eventbus dipper.
 	resp := &Response{
 		EventBus: eventbus,
 		Request:  m,
+		Factrory: rf,
 	}
 
 	method := m.Labels["fn"]
@@ -119,6 +127,8 @@ func (rf *ResponseFactory) NewResponse(caller dipper.RPCCaller, eventbus dipper.
 	case TypeMatch:
 		// leave it to the function to send ack
 	}
+
+	rf.Live.Add(1)
 
 	return resp
 }

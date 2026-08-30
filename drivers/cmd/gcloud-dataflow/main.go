@@ -17,16 +17,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 	dataflow "google.golang.org/api/dataflow/v1b3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
-)
-
-const (
-	// DefaultJobWaitTimeout is the default timeout in seconds for waiting for a job to finish.
-	DefaultJobWaitTimeout time.Duration = 1800
 )
 
 var (
@@ -58,7 +53,8 @@ func main() {
 
 	driver = dipper.NewDriver(os.Args[1], "gcloud-dataflow")
 	driver.Commands["createJob"] = createJob
-	driver.Commands["waitForJob"] = waitForJob
+	driver.Commands["waitForJob|interruptible"] = waitForJob
+	driver.DefaultTimeout["waitForJob"] = "30m"
 	driver.Commands["getJob"] = getJob
 	driver.Commands["findJobByName"] = findJobByName
 	driver.Commands["updateJob"] = updateJob
@@ -66,18 +62,13 @@ func main() {
 	driver.Run()
 }
 
-func getDataflowService(serviceAccountBytes string) *dataflow.Service {
-	var (
-		dataflowService *dataflow.Service
-		err             error
-	)
+func getDataflowService(ctx context.Context, serviceAccountBytes string) *dataflow.Service {
+	var dataflowService *dataflow.Service
 	if len(serviceAccountBytes) > 0 {
-		dataflowService, err = dataflow.NewService(context.Background(), option.WithCredentialsJSON([]byte(serviceAccountBytes)))
+		dataflowService = dipper.Must(dataflow.NewService(ctx, option.WithAuthCredentialsJSON(
+			option.ServiceAccount, []byte(serviceAccountBytes)))).(*dataflow.Service)
 	} else {
-		dataflowService, err = dataflow.NewService(context.Background())
-	}
-	if err != nil {
-		panic(err)
+		dataflowService = dipper.Must(dataflow.NewService(ctx)).(*dataflow.Service)
 	}
 
 	return dataflowService
@@ -112,23 +103,21 @@ func createJob(msg *dipper.Message) {
 	var jobSpec dataflow.CreateJobFromTemplateRequest
 	dipper.Must(mapstructure.Decode(job, &jobSpec))
 
-	dataflowService := getDataflowService(serviceAccountBytes)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+	dataflowService := getDataflowService(ctx, serviceAccountBytes)
 
-	result := getExistingJob(project, location, "^"+jobSpec.JobName+"$", dataflowService)
+	result := getExistingJob(ctx, project, location, "^"+jobSpec.JobName+"$", dataflowService)
 	if result == nil {
-		execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
-		func() {
-			defer cancel()
-			if len(location) == 0 {
-				result = dipper.Must(
-					dataflowService.Projects.Templates.Create(project, &jobSpec).Context(execContext).Do(),
-				).(*dataflow.Job)
-			} else {
-				result = dipper.Must(
-					dataflowService.Projects.Locations.Templates.Create(project, location, &jobSpec).Context(execContext).Do(),
-				).(*dataflow.Job)
-			}
-		}()
+		if len(location) == 0 {
+			result = dipper.Must(
+				dataflowService.Projects.Templates.Create(project, &jobSpec).Context(ctx).Do(),
+			).(*dataflow.Job)
+		} else {
+			result = dipper.Must(
+				dataflowService.Projects.Locations.Templates.Create(project, location, &jobSpec).Context(ctx).Do(),
+			).(*dataflow.Job)
+		}
 	}
 
 	msg.Reply <- dipper.Message{
@@ -155,41 +144,33 @@ func getJob(msg *dipper.Message) {
 		}
 	}
 
-	dataflowService := getDataflowService(serviceAccountBytes)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+	dataflowService := getDataflowService(ctx, serviceAccountBytes)
 
-	var (
-		result *dataflow.Job
-		err    error
-	)
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
-	func() {
-		defer cancel()
-		if len(location) == 0 {
-			getCall := dataflowService.Projects.Jobs.Get(project, jobID)
-			if len(fieldList) > 0 {
-				getCall = getCall.Fields(fieldList...)
-			}
-			result, err = getCall.Context(execContext).Do()
-		} else {
-			getCall := dataflowService.Projects.Locations.Jobs.Get(project, location, jobID)
-			if len(fieldList) > 0 {
-				getCall = getCall.Fields(fieldList...)
-			}
-			result, err = getCall.Context(execContext).Do()
+	var result any
+	if len(location) == 0 {
+		getCall := dataflowService.Projects.Jobs.Get(project, jobID)
+		if len(fieldList) > 0 {
+			getCall = getCall.Fields(fieldList...)
 		}
-	}()
-	if err != nil {
-		panic(err)
+		result = dipper.Must(getCall.Context(ctx).Do())
+	} else {
+		getCall := dataflowService.Projects.Locations.Jobs.Get(project, location, jobID)
+		if len(fieldList) > 0 {
+			getCall = getCall.Fields(fieldList...)
+		}
+		result = dipper.Must(getCall.Context(ctx).Do())
 	}
 
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
-			"job": *result,
+			"job": result,
 		},
 	}
 }
 
-func getExistingJob(project, location, jobName string, dataflowService *dataflow.Service) *dataflow.Job {
+func getExistingJob(ctx context.Context, project, location, jobName string, dataflowService *dataflow.Service) *dataflow.Job {
 	pattern := regexp.MustCompile(jobName)
 
 	listJobCall := dataflowService.Projects.Jobs.List(project)
@@ -210,11 +191,7 @@ func getExistingJob(project, location, jobName string, dataflowService *dataflow
 
 found:
 	for job == nil {
-		execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
-		func() {
-			defer cancel()
-			result = dipper.Must(listJobCall.Context(execContext).Do()).(*dataflow.ListJobsResponse)
-		}()
+		result = dipper.Must(listJobCall.Context(ctx).Do()).(*dataflow.ListJobsResponse)
 
 		if len(result.Jobs) > 0 {
 			for _, j := range result.Jobs {
@@ -244,9 +221,12 @@ func findJobByName(msg *dipper.Message) {
 	if !ok {
 		panic(ErrMissingName)
 	}
-	dataflowService := getDataflowService(serviceAccountBytes)
 
-	job := getExistingJob(project, location, jobName, dataflowService)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+	dataflowService := getDataflowService(ctx, serviceAccountBytes)
+
+	job := getExistingJob(ctx, project, location, jobName, dataflowService)
 
 	if job != nil {
 		msg.Reply <- dipper.Message{
@@ -273,14 +253,10 @@ func waitForJob(msg *dipper.Message) {
 	if ok {
 		interval, _ = strconv.Atoi(intervalStr)
 	}
-	timeout := DefaultJobWaitTimeout
-	timeoutStr, ok := msg.Labels["timeout"]
-	if ok {
-		timeoutInt, _ := strconv.Atoi(timeoutStr)
-		timeout = time.Duration(timeoutInt)
-	}
 
-	dataflowService := getDataflowService(serviceAccountBytes)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+	dataflowService := getDataflowService(ctx, serviceAccountBytes)
 
 	terminatedStates := map[string]string{
 		"JOB_STATE_DONE":      "success",
@@ -290,55 +266,29 @@ func waitForJob(msg *dipper.Message) {
 		"JOB_STATE_DRAINED":   "success",
 	}
 
-	expired := time.NewTimer(timeout * time.Second)
-	defer expired.Stop()
+	var result *dataflow.Job
 
-	var (
-		result *dataflow.Job
-		err    error
-	)
-
-loop:
 	for {
-		select {
-		case <-expired.C:
-			break loop
-		default:
-			func() {
-				execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
-				defer cancel()
-				if len(location) == 0 {
-					result, err = dataflowService.Projects.Jobs.Get(project, jobID).Context(execContext).Do()
-				} else {
-					result, err = dataflowService.Projects.Locations.Jobs.Get(project, location, jobID).Context(execContext).Do()
-				}
-			}()
-
-			if err != nil {
-				msg.Reply <- dipper.Message{
-					Labels: map[string]string{
-						"error": fmt.Sprintf("failed to call polling method: %+v", err),
-					},
-				}
-
-				break loop
-			}
-
-			if status, ok := terminatedStates[result.CurrentState]; ok {
-				msg.Reply <- dipper.Message{
-					Payload: map[string]interface{}{
-						"job": *result,
-					},
-					Labels: map[string]string{
-						"status": status,
-						"reason": result.CurrentState,
-					},
-				}
-
-				break loop
-			}
-			time.Sleep(time.Duration(interval) * time.Second)
+		if len(location) == 0 {
+			result = dipper.Must(dataflowService.Projects.Jobs.Get(project, jobID).Context(ctx).Do()).(*dataflow.Job)
+		} else {
+			result = dipper.Must(dataflowService.Projects.Locations.Jobs.Get(project, location, jobID).Context(ctx).Do()).(*dataflow.Job)
 		}
+
+		if status, ok := terminatedStates[result.CurrentState]; ok {
+			msg.Reply <- dipper.Message{
+				Payload: map[string]interface{}{
+					"job": *result,
+				},
+				Labels: map[string]string{
+					"status": status,
+					"reason": result.CurrentState,
+				},
+			}
+
+			return
+		}
+		time.Sleep(time.Duration(interval) * time.Second)
 	}
 }
 
@@ -347,32 +297,25 @@ func updateJob(msg *dipper.Message) {
 	params := msg.Payload
 	serviceAccountBytes, project, location := getCommonParams(params)
 
+	jobID := dipper.MustGetMapDataStr(params, "jobID")
 	job, ok := dipper.GetMapData(params, "jobSpec")
 	if !ok {
 		panic(ErrMissingJobSpec)
 	}
 	var jobSpec dataflow.Job
-	err := mapstructure.Decode(job, &jobSpec)
-	if err != nil {
-		panic(err)
-	}
-	jobID := dipper.MustGetMapDataStr(params, "jobID")
+	dipper.Must(mapstructure.Decode(job, &jobSpec))
 
-	dataflowService := getDataflowService(serviceAccountBytes)
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+	dataflowService := getDataflowService(ctx, serviceAccountBytes)
 
-	execContext, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
 	var result *dataflow.Job
-	func() {
-		defer cancel()
-		if len(location) == 0 {
-			result, err = dataflowService.Projects.Jobs.Update(project, jobID, &jobSpec).Context(execContext).Do()
-		} else {
-			result, err = dataflowService.Projects.Locations.Jobs.Update(project, location, jobID, &jobSpec).Context(execContext).Do()
-		}
-	}()
-	if err != nil {
-		panic(err)
+	if len(location) == 0 {
+		result = dipper.Must(dataflowService.Projects.Jobs.Update(project, jobID, &jobSpec).Context(ctx).Do()).(*dataflow.Job)
+	} else {
+		result = dipper.Must(dataflowService.Projects.Locations.Jobs.Update(project, location, jobID, &jobSpec).Context(ctx).Do()).(*dataflow.Job)
 	}
+
 	msg.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
 			"job": *result,

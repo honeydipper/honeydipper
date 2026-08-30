@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"google.golang.org/api/idtoken"
 )
 
@@ -40,14 +40,21 @@ func main() {
 func authWebRequest(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	driver.GetLogger().Debugf("payloads are: %+v", m.Payload)
-	token := dipper.InterpolateStr("$headers.X-Goog-Iap-Jwt-Assertion.0,headers.x-goog-iap-jwt-assertion.0", m.Payload)
+	token := dipper.InterpolateStr("auth-gcp-iap", "$headers.X-Goog-Iap-Jwt-Assertion.0,headers.x-goog-iap-jwt-assertion.0", m.Payload)
 	audience := dipper.MustGetMapDataStr(driver.Options, "data.audience")
 
 	payload := dipper.Must(idtoken.Validate(context.Background(), token, audience)).(*idtoken.Payload)
 	driver.GetLogger().Debugf("claims are: %+v", payload.Claims)
 	subject := dipper.MustGetMapDataStr(payload.Claims, "email")
+	profileName := subject
+	if name, ok := dipper.GetMapDataStr(payload.Claims, "name"); ok && name != "" {
+		profileName = name
+	}
 
 	m.Reply <- dipper.Message{
-		Payload: subject,
+		Payload: map[string]interface{}{
+			"Subject":     subject,
+			"ProfileName": profileName,
+		},
 	}
 }

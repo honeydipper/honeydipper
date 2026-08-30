@@ -66,6 +66,18 @@ func (mr *MockRequestContextMockRecorder) ContentType() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ContentType", reflect.TypeOf((*MockRequestContext)(nil).ContentType))
 }
 
+// Data mocks base method.
+func (m *MockRequestContext) Data(arg0 int, arg1 string, arg2 []byte) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Data", arg0, arg1, arg2)
+}
+
+// Data indicates an expected call of Data.
+func (mr *MockRequestContextMockRecorder) Data(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Data", reflect.TypeOf((*MockRequestContext)(nil).Data), arg0, arg1, arg2)
+}
+
 // Get mocks base method.
 func (m *MockRequestContext) Get(arg0 string) (interface{}, bool) {
 	m.ctrl.T.Helper()
@@ -95,6 +107,20 @@ func (mr *MockRequestContextMockRecorder) GetPath() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPath", reflect.TypeOf((*MockRequestContext)(nil).GetPath))
 }
 
+// GetParam mocks base method.
+func (m *MockRequestContext) GetParam(arg0 string) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetParam", arg0)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetParam indicates an expected call of GetParam.
+func (mr *MockRequestContextMockRecorder) GetParam(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetParam", reflect.TypeOf((*MockRequestContext)(nil).GetParam), arg0)
+}
+
 // GetPayload mocks base method.
 func (m *MockRequestContext) GetPayload(method string) map[string]interface{} {
 	m.ctrl.T.Helper()
@@ -119,6 +145,18 @@ func (m *MockRequestContext) IndentedJSON(arg0 int, arg1 interface{}) {
 func (mr *MockRequestContextMockRecorder) IndentedJSON(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IndentedJSON", reflect.TypeOf((*MockRequestContext)(nil).IndentedJSON), arg0, arg1)
+}
+
+// Redirect mocks base method.
+func (m *MockRequestContext) Redirect(arg0 int, arg1 string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Redirect", arg0, arg1)
+}
+
+// Redirect indicates an expected call of Redirect.
+func (mr *MockRequestContextMockRecorder) Redirect(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Redirect", reflect.TypeOf((*MockRequestContext)(nil).Redirect), arg0, arg1)
 }
 
 // Set mocks base method.

@@ -388,17 +388,26 @@ func CombineMap(dst map[string]interface{}, src interface{}) map[string]interfac
 	return dst
 }
 
-func mergeModifier(dst map[string]interface{}) {
-	for k, v := range dst {
+func MergeModifier(dst map[string]interface{}, src map[string]interface{}) {
+	originalKeys := make([]string, len(src))
+	numKeys := 0
+	for k, v := range src {
 		if k[len(k)-1] == '-' { // set default
 			if ev, ok := dst[k[:len(k)-1]]; !ok || ev == nil {
 				dst[k[:len(k)-1]] = v
 			}
 			delete(dst, k)
+		} else {
+			originalKeys[numKeys] = k
+			numKeys++
 		}
 	}
 
-	for k, v := range dst {
+	for i, k := range originalKeys {
+		if i >= numKeys {
+			break
+		}
+		v := src[originalKeys[i]]
 		vmap, ok := v.(map[string]interface{})
 
 		switch {
@@ -418,7 +427,7 @@ func mergeModifier(dst map[string]interface{}) {
 			dst[k[:len(k)-1]] = v
 			delete(dst, k)
 		case ok:
-			mergeModifier(vmap)
+			MergeModifier(dst[k].(map[string]interface{}), vmap)
 		}
 	}
 }
@@ -427,7 +436,51 @@ func mergeModifier(dst map[string]interface{}) {
 func MergeMap(dst map[string]interface{}, src interface{}) map[string]interface{} {
 	dst = CombineMap(dst, src)
 
-	mergeModifier(dst)
+	if srcmap, ok := src.(map[string]interface{}); ok {
+		MergeModifier(dst, srcmap)
+	}
 
 	return dst
+}
+
+// MapSet : set the value in the map using the dot notation.
+func MapSet(dst interface{}, path string, value interface{}) {
+	components := strings.Split(path, ".")
+	last := len(components) - 1
+	current := dst.(map[string]interface{})
+	for i, component := range components {
+		if i == last {
+			current[component] = value
+		} else {
+			next, ok := current[component]
+			if !ok {
+				next = map[string]interface{}{}
+				current[component] = next
+			}
+			current = next.(map[string]interface{})
+		}
+	}
+}
+
+// MapAppend : append the value to a list in the map.
+func MapAppend(dst interface{}, path string, value interface{}) {
+	components := strings.Split(path, ".")
+	last := len(components) - 1
+	current := dst.(map[string]interface{})
+	for i, component := range components {
+		if i == last {
+			if current[component] == nil {
+				current[component] = []interface{}{value}
+			} else {
+				current[component] = append(current[component].([]interface{}), value)
+			}
+		} else {
+			next, ok := current[component]
+			if !ok {
+				next = map[string]interface{}{}
+				current[component] = next
+			}
+			current = next.(map[string]interface{})
+		}
+	}
 }

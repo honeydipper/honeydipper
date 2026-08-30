@@ -1,0 +1,70 @@
+# Driver metadata for the redis-cache driver.
+#
+# The redis-cache driver provides the `cache` feature consumed by the
+# workflow engine for workflow data caching (including the `#` hash-key
+# syntax documented in docs/workflow.md). This file documents the driver's
+# configuration options and the RPCs it exposes through the `cache` feature.
+meta:
+  description:
+    - The redis-cache driver uses Redis as an external, temporary cache store.
+      It backs the `cache` feature used for workflow data caching, including
+      plain keys and Redis hashes (the `#` cache-key syntax).
+  configurations:
+    - name: per_field_expiration
+      description: >
+        Boolean. When true, each field of a Redis hash written by the `hset`
+        RPC is given its own expiration via Redis HEXPIRE, which requires
+        Redis >= 7.4. When false (the default), the whole hash key receives a
+        single shared TTL via EXPIRE, which is compatible with Redis versions
+        older than 7.4. Plain (non-#) cache keys are always stored as whole
+        keys and are unaffected by this option.
+  RPCs:
+    - name: load
+      description:
+        - Read a whole plain cache key (the legacy, non-# path).
+      parameters:
+        - name: key
+          description: The cache key.
+      returns:
+        - name: value
+          description: The raw cached value (empty on a miss).
+    - name: save
+      description:
+        - Write a whole plain cache key (the legacy, non-# path).
+      parameters:
+        - name: key
+          description: The cache key.
+        - name: value
+          description: The value to store.
+        - name: ttl
+          description: Optional TTL (duration string or seconds).
+    - name: hget
+      description:
+        - HGET key field. Returns the raw value of a single hash field, or an empty payload on a miss. Used by the name#field cache path.
+      parameters:
+        - name: key
+          description: The Redis hash key (workflow-cache/<name>).
+        - name: field
+          description: The hash field to read.
+      returns:
+        - name: value
+          description: The raw field value (empty on a miss).
+    - name: hgetall
+      description:
+        - HGETALL key. Returns a map of field -> value for the entire hash, or an empty payload on a miss. Used by the name# whole-hash read-only cache path.
+      parameters:
+        - name: key
+          description: The Redis hash key (workflow-cache/<name>).
+      returns:
+        - name: fields
+          description: A map[string]any of field -> value for the whole hash.
+    - name: hset
+      description:
+        - Write one or more hash fields with a TTL, applying per-field HEXPIRE or whole-hash EXPIRE according to the per_field_expiration option. Used by the name#field cache path.
+      parameters:
+        - name: key
+          description: The Redis hash key (workflow-cache/<name>).
+        - name: value
+          description: A map of field -> value to write.
+        - name: ttl
+          description: Optional TTL (duration string or seconds).

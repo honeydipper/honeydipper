@@ -8,16 +8,15 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	secureexec "github.com/honeydipper/honeydipper/v4/pkg/secure-exec"
 )
 
 // ErrKeyNameMissing means the key used for decrypting is not configured.
@@ -31,13 +30,13 @@ func initFlags() {
 	}
 }
 
-var driver *dipper.Driver
+var driver *secureexec.SecureExec
 
 func main() {
 	initFlags()
 	flag.Parse()
 
-	driver = dipper.NewDriver(os.Args[1], "kms")
+	driver = secureexec.NewDriver(os.Args[1], "kms")
 	driver.RPCHandlers["decrypt"] = decrypt
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
@@ -48,7 +47,7 @@ func decrypt(msg *dipper.Message) {
 	if !ok {
 		panic(ErrKeyNameMissing)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*driver.APITimeout)
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
 	req := &kmspb.DecryptRequest{
 		Name:       name,

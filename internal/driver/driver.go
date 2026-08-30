@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/honeydipper/honeydipper/v3/internal/daemon"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/daemon"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -61,6 +61,8 @@ func NewDriver(feature string, metaData map[string]interface{}, driverData inter
 	switch meta.Type {
 	case "builtin":
 		dh = NewBuiltinDriver(&meta)
+	case "remote":
+		dh = NewRemoteDriver(&meta)
 	case "null":
 		dh = NewNullDriver(&meta)
 	default:
@@ -110,7 +112,7 @@ func (runtime *Runtime) SendOptions() {
 // SendMessage sends a dipper message to the driver child process.
 func (runtime *Runtime) SendMessage(msg *dipper.Message) {
 	if runtime.Feature != "emitter" {
-		if emitter, ok := daemon.Emitters[runtime.Service]; ok {
+		if emitter, ok := daemon.GetEmitter(runtime.Service); ok {
 			emitter.CounterIncr("honey.honeydipper.local.message", []string{
 				"service:" + runtime.Service,
 				"driver:" + runtime.Handler.Meta().Name,

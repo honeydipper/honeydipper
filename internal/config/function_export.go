@@ -8,8 +8,9 @@ package config
 
 import (
 	"strings"
+	"text/template"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // ExportFunctionContext create a context data structure based on the collapsed function exports.
@@ -74,28 +75,33 @@ func ExportFunctionContext(f *Function, envData map[string]interface{}, cfg *Con
 		// once, in the inner most function. After that, the parameters can be used for export in all outer
 		// layers.
 		squashedParams := envData["params"]
-		envData["params"] = dipper.Interpolate(squashedParams, envData)
+		envData["params"] = dipper.Interpolate("export", squashedParams, envData, template.FuncMap{
+			"decrypt": func(v string) string {
+				return ""
+			},
+		})
 	}
 
 	// here we abandon the squashed sysData after it is consumed, and use a clean sysData for
 	// interpolating the exported data.
 	envData["sysData"] = sysData
+	funcMap := GetInterpolationFuncMap(cfg)
 	var newCtx map[string]interface{}
 
 	if newCtxData, ok := envData["ctx"]; ok && newCtxData != nil {
 		newCtx = newCtxData.(map[string]interface{})
 	}
 
-	delta := dipper.Interpolate(f.Export, envData)
+	delta := dipper.Interpolate("export", f.Export, envData, funcMap)
 	exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 	newCtx = dipper.MergeMap(newCtx, delta)
 	switch status {
 	case "success":
-		delta := dipper.Interpolate(f.ExportOnSuccess, envData)
+		delta := dipper.Interpolate("export", f.ExportOnSuccess, envData, funcMap)
 		exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 		newCtx = dipper.MergeMap(newCtx, delta)
 	case "failure":
-		delta := dipper.Interpolate(f.ExportOnFailure, envData)
+		delta := dipper.Interpolate("export", f.ExportOnFailure, envData, funcMap)
 		exported = dipper.MergeMap(exported, dipper.MustDeepCopy(delta))
 		newCtx = dipper.MergeMap(newCtx, delta)
 	}

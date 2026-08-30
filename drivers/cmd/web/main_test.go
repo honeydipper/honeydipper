@@ -11,12 +11,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"flag"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/h2non/gock.v1"
 )
@@ -56,6 +58,86 @@ func TestSendRequest(t *testing.T) {
 	assert.NotContains(t, response.Labels, "error")
 	mapKey := response.Payload.(map[string]interface{})["json"].(map[string]interface{})["foo"]
 	assert.Equal(t, "bar", mapKey, "JSON data miss-match")
+}
+
+func TestSendRequestTokenSourceParamsInstallationIDOverride(t *testing.T) {
+	defer gock.Off()
+
+	keyb64 := dipper.Must(ioutil.ReadFile("test_fixtures/testkey")).([]byte)
+	keybytes := dipper.Must(base64.StdEncoding.DecodeString(string(keyb64))).([]byte)
+
+	driver.Options = map[string]interface{}{
+		"data": map[string]interface{}{
+			"token_sources": map[string]interface{}{
+				"gh": map[string]interface{}{
+					"type":            "github",
+					"app_id":          "345",
+					"installation_id": "123",
+					"key":             string(keybytes),
+					"permissions": map[string]interface{}{
+						"content": "write",
+					},
+				},
+			},
+		},
+	}
+
+	gock.New("https://api.github.com").
+		Post("/app/installations/456/access_tokens").
+		Reply(201).
+		JSON(map[string]string{"token": "override-token"})
+
+	gock.New("http://example.com").
+		Get("/secure").
+		MatchHeader("Authorization", "Bearer override-token").
+		Reply(200).
+		JSON(map[string]string{"ok": "true"})
+
+	request := &dipper.Message{
+		Channel: "event",
+		Subject: "command",
+		Payload: map[string]interface{}{
+			"URL":         "http://example.com/secure",
+			"tokenSource": "gh",
+			"tokenSourceParams": map[string]interface{}{
+				"installation_id": "456",
+			},
+		},
+		Reply: make(chan dipper.Message, 1),
+	}
+
+	sendRequest(request)
+	response := <-request.Reply
+	assert.Equal(t, "200", response.Payload.(map[string]interface{})["status_code"])
+	assert.NotContains(t, response.Labels, "error")
+	assert.True(t, gock.IsDone(), "all expected HTTP calls should be consumed")
+}
+
+func TestParseCLICommand(t *testing.T) {
+	t.Run("valid token command", func(t *testing.T) {
+		cmd, tokenType, err := parseCLICommand([]string{"web", "cli", "token", "github"})
+		assert.NoError(t, err)
+		assert.Equal(t, "token", cmd)
+		assert.Equal(t, "github", tokenType)
+	})
+
+	t.Run("missing command", func(t *testing.T) {
+		_, _, err := parseCLICommand([]string{"web", "cli"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing command")
+	})
+
+	t.Run("missing token source type", func(t *testing.T) {
+		_, _, err := parseCLICommand([]string{"web", "cli", "token"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing token source type")
+	})
+
+	t.Run("unknown command", func(t *testing.T) {
+		_, _, err := parseCLICommand([]string{"web", "cli", "bogus"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown command")
+	})
 }
 
 func TestReceiveListJson(t *testing.T) {

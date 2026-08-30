@@ -14,7 +14,7 @@ import (
 	"strconv"
 
 	"github.com/DataDog/datadog-go/statsd"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/mitchellh/mapstructure"
 	"github.com/op/go-logging"
 )
@@ -95,9 +95,8 @@ func counterIncr(msg *dipper.Message) {
 	params := msg.Payload.(map[string]interface{})
 	name := params["name"].(string)
 	tagsObj := params["tags"].([]interface{})
-	tags := []string{
-		"daemon-id:" + daemonID,
-	}
+	tags := make([]string, 0, 1+len(tagsObj))
+	tags = append(tags, "daemon-id:"+daemonID)
 	for _, tag := range tagsObj {
 		tags = append(tags, tag.(string))
 	}
@@ -117,9 +116,8 @@ func gaugeSet(msg *dipper.Message) {
 		panic(err)
 	}
 	tagsObj := params["tags"].([]interface{})
-	tags := []string{
-		"daemon-id:" + daemonID,
-	}
+	tags := make([]string, 0, 1+len(tagsObj))
+	tags = append(tags, "daemon-id:"+daemonID)
 	for _, tag := range tagsObj {
 		tags = append(tags, tag.(string))
 	}

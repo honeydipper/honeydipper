@@ -14,12 +14,15 @@ import (
 	"log"
 	"os"
 	"path"
+	"slices"
 
-	"github.com/honeydipper/honeydipper/v3/internal/config"
-	"github.com/honeydipper/honeydipper/v3/internal/daemon"
-	"github.com/honeydipper/honeydipper/v3/internal/service"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/internal/daemon"
+	"github.com/honeydipper/honeydipper/v4/internal/service"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
+
+var _honeydipperVersion string
 
 var cfg config.Config
 
@@ -30,7 +33,7 @@ Usage:  %v [ -h ] service1 service2 ...
 
   -h            print this help message and quit
 
-Supported services include engine, receiver, operator, docgen and configcheck.
+Supported services include engine, receiver, operator, agent, docgen and configcheck.
 Docgen and configcheck are auxiliary services used for helping users managing their
 Honeydipper configurations. They can not be combined, and Honeydipper exits after
 completing the desired auxiliary tasks instead of running as a daemon.
@@ -61,9 +64,19 @@ DOCDST:         defaults to docs/dst, specify the directory to store generated f
 func initEnv() {
 	initFlags()
 	flag.Parse()
+	if _honeydipperVersion == "" {
+		_honeydipperVersion = "dev"
+	}
+
+	if len(flag.Args()) == 1 && flag.Args()[0] == "version" {
+		fmt.Println(_honeydipperVersion)
+		os.Exit(0)
+	}
+
+	config.SetVersion(_honeydipperVersion)
 	cfg = config.Config{InitRepo: config.RepoInfo{}, Services: flag.Args()}
 	if len(cfg.Services) == 0 {
-		cfg.Services = []string{"engine", "receiver", "operator", "api"}
+		cfg.Services = []string{"engine", "receiver", "operator", "api", "agent"}
 	}
 
 loop:
@@ -94,7 +107,15 @@ loop:
 			break loop
 		case "job":
 			cfg.IsJobMode = true
-			cfg.Services = []string{"engine", "operator"}
+			if !slices.Contains(cfg.Services, "engine") {
+				cfg.Services = append(cfg.Services, "engine")
+			}
+			if !slices.Contains(cfg.Services, "operator") {
+				cfg.Services = append(cfg.Services, "operator")
+			}
+
+			pos := slices.Index(cfg.Services, "job")
+			cfg.Services = slices.Delete(cfg.Services, pos, pos+1)
 
 			break loop
 		}
@@ -125,6 +146,10 @@ loop:
 		}
 		cfg.InitRepo.Branch, _ = os.LookupEnv("BRANCH")
 		cfg.InitRepo.InitFile, _ = os.LookupEnv("BOOTSTRAP_FILE")
+
+		cfg.InitRepo.PassEnv, _ = os.LookupEnv("GIT_PASS_ENV")
+		cfg.InitRepo.Username, _ = os.LookupEnv("GIT_USER_NAME")
+		cfg.InitRepo.TokenSource, _ = os.LookupEnv("GIT_TOKEN_SOURCE")
 	}
 }
 
@@ -142,6 +167,8 @@ func start() {
 			service.StartOperator(&cfg)
 		case "api":
 			service.StartAPI(&cfg)
+		case "agent":
+			service.StartAgent(&cfg)
 		default:
 			dipper.Logger.Fatalf("'%v' service is not implemented", s)
 		}
@@ -165,7 +192,6 @@ func getLogger() {
 	dipper.Logger = nil
 	if cfg.IsConfigCheck {
 		// suppress logging for less cluttered output for configcheck
-		//nolint:gomnd
 		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
 		dipper.GetLogger("daemon", levelstr, f, f)
 	} else {

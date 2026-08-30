@@ -246,3 +246,125 @@ func TestGetMapDataInt(t *testing.T) {
 	assert.Panics(t, func() { v = MustGetMapDataInt(data, "nonint") }, "panic when getting non-int with must prefix")
 	assert.Panics(t, func() { v = MustGetMapDataInt(data, "non-exist") }, "panic when getting non-exist with must prefix")
 }
+
+func TestMapSet(t *testing.T) {
+	// Test setting top-level key
+	dst := map[string]interface{}{}
+	MapSet(dst, "key", "value")
+	expected := map[string]interface{}{"key": "value"}
+	assert.Equal(t, expected, dst, "set top-level key")
+
+	// Test setting nested key where intermediate exists
+	dst = map[string]interface{}{
+		"a": map[string]interface{}{},
+	}
+	MapSet(dst, "a.b", "value")
+	expected = map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": "value",
+		},
+	}
+	assert.Equal(t, expected, dst, "set nested key with existing intermediate")
+
+	// Test setting nested key where intermediate needs creation
+	dst = map[string]interface{}{}
+	MapSet(dst, "a.b", "value")
+	expected = map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": "value",
+		},
+	}
+	assert.Equal(t, expected, dst, "set nested key creating intermediate")
+
+	// Test deeper nesting
+	dst = map[string]interface{}{}
+	MapSet(dst, "a.b.c.d", 42)
+	expected = map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": map[string]interface{}{
+				"c": map[string]interface{}{
+					"d": 42,
+				},
+			},
+		},
+	}
+	assert.Equal(t, expected, dst, "set deep nested key")
+
+	// Test overwriting existing value
+	dst = map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": "old",
+		},
+	}
+	MapSet(dst, "a.b", "new")
+	expected = map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": "new",
+		},
+	}
+	assert.Equal(t, expected, dst, "overwrite existing value")
+
+	// Test setting different types
+	dst = map[string]interface{}{}
+	MapSet(dst, "int", 123)
+	MapSet(dst, "bool", true)
+	MapSet(dst, "slice", []int{1, 2, 3})
+	MapSet(dst, "map", map[string]interface{}{"nested": "value"})
+	expected = map[string]interface{}{
+		"int":   123,
+		"bool":  true,
+		"slice": []int{1, 2, 3},
+		"map":   map[string]interface{}{"nested": "value"},
+	}
+	assert.Equal(t, expected, dst, "set different value types")
+}
+
+func TestMapAppend(t *testing.T) {
+	// Test appending to non-existing path (creates new list)
+	dst := map[string]interface{}{}
+	MapAppend(dst, "list", "item1")
+	expected := map[string]interface{}{
+		"list": []interface{}{"item1"},
+	}
+	assert.Equal(t, expected, dst, "append to non-existing path")
+
+	// Test appending to existing list
+	MapAppend(dst, "list", "item2")
+	expected = map[string]interface{}{
+		"list": []interface{}{"item1", "item2"},
+	}
+	assert.Equal(t, expected, dst, "append to existing list")
+
+	// Test appending with intermediate map creation
+	dst = map[string]interface{}{}
+	MapAppend(dst, "a.b.c", 42)
+	expected = map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": map[string]interface{}{
+				"c": []interface{}{42},
+			},
+		},
+	}
+	assert.Equal(t, expected, dst, "append with intermediate map creation")
+
+	// Test appending multiple times to nested path
+	MapAppend(dst, "a.b.c", "hello")
+	expected = map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": map[string]interface{}{
+				"c": []interface{}{42, "hello"},
+			},
+		},
+	}
+	assert.Equal(t, expected, dst, "append multiple to nested path")
+
+	// Test appending different types
+	dst = map[string]interface{}{}
+	MapAppend(dst, "mixed", "string")
+	MapAppend(dst, "mixed", 123)
+	MapAppend(dst, "mixed", true)
+	expected = map[string]interface{}{
+		"mixed": []interface{}{"string", 123, true},
+	}
+	assert.Equal(t, expected, dst, "append different value types")
+}

@@ -13,11 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeydipper/honeydipper/v3/internal/api"
-	"github.com/honeydipper/honeydipper/v3/internal/config"
-	"github.com/honeydipper/honeydipper/v3/internal/daemon"
-	"github.com/honeydipper/honeydipper/v3/internal/driver"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/api"
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/internal/driver"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 const (
@@ -46,7 +45,14 @@ func StartAPI(cfg *config.Config) {
 	API.DiscoverFeatures = APIFeatures
 	API.addResponder("eventbus:api", handleAPIMessage)
 	APIRequestStore = api.NewStore(API)
+	API.Drain = shutdownAPI
 	API.start()
+}
+
+func shutdownAPI() {
+	ctx, cancel := context.WithTimeout(context.Background(), APIServerGracefulTimeout*time.Second)
+	defer cancel()
+	_ = APIServer.Shutdown(ctx)
 }
 
 // loadAPIConfig loads the API config and returns true if changed.
@@ -92,7 +98,7 @@ func startAPIListener() {
 	go func() {
 		dipper.Logger.Infof("[api] start listening for webhook requests")
 		dipper.Logger.Warningf("[api] listener stopped: %+v", APIServer.ListenAndServe())
-		if !daemon.ShuttingDown {
+		if API.drainingGroup == nil {
 			startAPIListener()
 		}
 	}()
@@ -104,9 +110,7 @@ func reloadAPI(cfg *config.Config) {
 		if APIServer == nil {
 			startAPIListener()
 		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), APIServerGracefulTimeout*time.Second)
-			defer cancel()
-			_ = APIServer.Shutdown(ctx)
+			shutdownAPI()
 		}
 	}
 }

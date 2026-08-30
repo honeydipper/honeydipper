@@ -16,7 +16,7 @@ import (
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/logging"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"google.golang.org/api/option"
 )
 
@@ -55,9 +55,7 @@ func getGCPLogger(loggerPath string) *logging.Logger {
 	l, ok := driver.GetOption("_runtime.loggers." + loggerPath)
 	if !ok {
 		var loggerName, parent string
-		//nolint:gomnd
 		parts := strings.SplitN(loggerPath, "|", 2)
-		//nolint:gomnd
 		if len(parts) < 2 {
 			loggerName = strings.TrimSpace(parts[0])
 			parent, _ = metadata.ProjectIDWithContext(context.Background())
@@ -68,7 +66,7 @@ func getGCPLogger(loggerPath string) *logging.Logger {
 		options := []option.ClientOption{}
 		serviceAccount, _ := driver.GetOptionStr("loggers." + loggerPath + ".service_account")
 		if serviceAccount != "" {
-			options = append(options, option.WithCredentialsJSON([]byte(serviceAccount)))
+			options = append(options, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccount)))
 		}
 		client := dipper.Must(logging.NewClient(context.Background(), parent, options...)).(*logging.Client)
 		l = client.Logger(loggerName)
