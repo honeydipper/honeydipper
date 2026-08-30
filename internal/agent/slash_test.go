@@ -830,3 +830,153 @@ func TestSlashCompact_HandlerNoPolicy_RepliesNoModel(t *testing.T) {
 	assert.Contains(t, last.Content, "not configured")
 	assert.Empty(t, store.getEmitted())
 }
+
+// ---------------------------------------------------------------------------
+// /retry
+// ---------------------------------------------------------------------------
+
+func TestSlashRetry_RegeneratesPreviousResponse(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+	// Seed a conversation with a real user turn and its assistant response.
+	s.history = []AgentMessage{
+		{Role: RoleUser, User: "u", Content: "hello"},
+		{Role: RoleAgent, Content: "hi there", IsComplete: true},
+	}
+	setChatText(s, AgentSessionTypeChatTurn, "/retry")
+
+	s.run()
+
+	// The model is invoked to regenerate the response.
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params, "sendToDriver must be invoked for /retry")
+	driverHistory, ok := params["history"].([]AgentMessage)
+	require.True(t, ok)
+
+	// The history is rewound: the previous assistant response is dropped and the
+	// previous real user message is re-sent. The /retry command text must NOT be
+	// what is sent to the model.
+	expected := []string{"You are helpful.", "hello"}
+	require.Len(t, driverHistory, len(expected))
+	for i, want := range expected {
+		assert.Equal(t, want, driverHistory[i].Content, "driver history[%d]", i)
+		assert.False(t, driverHistory[i].IsSlash)
+	}
+
+	// The in-memory history after the rewind holds the previous user message
+	// (now the re-appended normal RoleUser) plus the preserved /retry marker.
+	require.NotEmpty(t, s.history)
+	assert.Equal(t, RoleUser, s.history[0].Role)
+	assert.Equal(t, "hello", s.history[0].Content)
+	assert.False(t, s.history[0].IsSlash, "re-appended user message must not be marked slash")
+}
+
+func TestSlashRetry_SkipsTrailingSlashMessagesToFindRealUserTurn(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+	// A real conversation followed by a separate slash turn (e.g. /help). The
+	// slash-origin messages must not be mistaken for the previous user turn.
+	s.history = []AgentMessage{
+		{Role: RoleUser, User: "u", Content: "hello"},
+		{Role: RoleAgent, Content: "hi there", IsComplete: true},
+		{Role: RoleUser, Content: "/help", IsSlash: true},
+		{Role: RoleAgent, Content: "Available commands...", IsComplete: true, IsSlash: true},
+	}
+	setChatText(s, AgentSessionTypeChatTurn, "/retry")
+
+	s.run()
+
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params)
+	driverHistory, ok := params["history"].([]AgentMessage)
+	require.True(t, ok)
+	expected := []string{"You are helpful.", "hello"}
+	require.Len(t, driverHistory, len(expected))
+	for i, want := range expected {
+		assert.Equal(t, want, driverHistory[i].Content, "driver history[%d]", i)
+		assert.False(t, driverHistory[i].IsSlash)
+	}
+}
+
+func TestSlashRetry_NoPriorUserMessage_RepliesErrorNoModel(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+	// No real user message in history (only slash-origin entries).
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "/help", IsSlash: true},
+	}
+	setChatText(s, AgentSessionTypeChatTurn, "/retry")
+
+	s.run()
+
+	// No model invocation; a helpful marked error reply is produced instead.
+	assert.False(t, store.hasCall("driver:openai:send_to_model"), "no model call when there is nothing to retry")
+	last := requireLastAgentReply(t, s)
+	assert.Contains(t, last.Content, "No previous user message")
+}
+
+func TestSlashRetry_EmptyHistory_RepliesErrorNoModel(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+	s.history = nil
+	setChatText(s, AgentSessionTypeChatTurn, "/retry")
+
+	s.run()
+
+	assert.False(t, store.hasCall("driver:openai:send_to_model"), "no model call on empty history")
+	last := requireLastAgentReply(t, s)
+	assert.Contains(t, last.Content, "No previous user message")
+}
+
+func TestSlashRetry_WorkflowChatTurn_RegeneratedResponseObservableViaPoll(t *testing.T) {
+	store, s := newChatSlashStore(t, nil)
+	s.history = []AgentMessage{
+		{Role: RoleUser, User: "u", Content: "hello"},
+		{Role: RoleAgent, Content: "old response", IsComplete: true},
+	}
+	setChatText(s, AgentSessionTypeChatTurn, "/retry")
+
+	// Workflow-originated path: runTurn -> run() dispatches /retry which calls
+	// sendToDriver(). No entry-specific code is required.
+	s.run()
+	params := store.getNoWaitParams("driver:openai:send_to_model")
+	require.NotNil(t, params, "regeneration dispatched for /retry")
+	driverHistory, _ := params["history"].([]AgentMessage)
+	require.Len(t, driverHistory, 2)
+	assert.Equal(t, "hello", driverHistory[1].Content)
+
+	// Simulate the model returning the regenerated response (ReceiveInference ->
+	// processAgentResponse -> processAgentMessage appends to history).
+	respMsg := &dipper.Message{
+		Labels: map[string]string{"agent_session_id": s.ID, "status": "success"},
+		Payload: map[string]interface{}{
+			"message": map[string]interface{}{
+				"Role":       RoleAgent,
+				"Content":    "regenerated response",
+				"IsComplete": true,
+			},
+		},
+	}
+	s.processAgentResponse(respMsg)
+
+	// The regenerated response is appended to the history.
+	require.NotEmpty(t, s.history)
+	last := s.history[len(s.history)-1]
+	assert.Equal(t, RoleAgent, last.Role)
+	assert.Equal(t, "regenerated response", last.Content)
+
+	// The workflow poll path (PollInference -> emitPollResponse) surfaces the
+	// regenerated response as the new agent_response. After the rewind,
+	// LastPoll pointed just before the regenerated response.
+	pollMsg := &dipper.Message{Labels: map[string]string{
+		"resume_key":       "wf.0",
+		"agent_session_id": s.ID,
+	}}
+	emittedBefore := len(store.getEmitted())
+	handled := s.emitPollResponse(pollMsg)
+	assert.True(t, handled, "emitPollResponse should emit the regenerated response")
+	emitted := store.getEmitted()
+	require.Greater(t, len(emitted), emittedBefore)
+	lastEmitted := emitted[len(emitted)-1]
+	assert.Equal(t, "agent_response", lastEmitted.Subject)
+	fullMessages, ok := lastEmitted.Payload.(map[string]interface{})["full_messages"].([]map[string]string)
+	require.True(t, ok, "expected full_messages in poll response")
+	require.NotEmpty(t, fullMessages)
+	assert.Contains(t, fullMessages[0]["content"], "regenerated response")
+}
