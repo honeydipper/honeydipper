@@ -59,8 +59,30 @@ func getJWTConfig() (*JWTConfig, error) {
 
 // SignPrincipalJWT signs a daemon JWT for the given principal. The principal's
 // SID (if set) is embedded in the token and preserved verbatim so rotation
-// never regenerates the session identity.
+// never regenerates the session identity. The token exp is the configured
+// ExpiresIn unless a session cap is applied via SignPrincipalJWTSession.
 func SignPrincipalJWT(principal Principal, cfg *JWTConfig) (string, error) {
+	return signPrincipalJWTWithExp(principal, cfg, time.Now().Add(cfg.ExpiresIn))
+}
+
+// SignPrincipalJWTSession signs a daemon JWT whose expiry is bound to the
+// session's absolute cap when one is configured and the session issuance time
+// is known. This keeps the JWT exp from disagreeing with the sid-based
+// maxLifetime cap (the token does not outlive the session). When maxLifetime
+// is <= 0 or issuedAt is unknown, the configured ExpiresIn is used unchanged.
+func SignPrincipalJWTSession(principal Principal, cfg *JWTConfig, issuedAt int64, maxLifetime time.Duration) (string, error) {
+	exp := time.Now().Add(cfg.ExpiresIn)
+	if maxLifetime > 0 && issuedAt > 0 {
+		sessionExp := time.Unix(issuedAt, 0).Add(maxLifetime)
+		if sessionExp.Before(exp) {
+			exp = sessionExp
+		}
+	}
+
+	return signPrincipalJWTWithExp(principal, cfg, exp)
+}
+
+func signPrincipalJWTWithExp(principal Principal, cfg *JWTConfig, exp time.Time) (string, error) {
 	claims := PrincipalClaims{
 		Subject:     principal.Subject,
 		ProfileName: principal.ProfileName,
@@ -69,7 +91,7 @@ func SignPrincipalJWT(principal Principal, cfg *JWTConfig) (string, error) {
 		Data:        principal.Data,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    cfg.Issuer,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cfg.ExpiresIn)),
+			ExpiresAt: jwt.NewNumericDate(exp),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -95,11 +117,17 @@ func ParsePrincipalJWT(tokenString string, cfg *JWTConfig) (*Principal, error) {
 		return nil, ErrInvalidJWT
 	}
 
+	issuedAt := int64(0)
+	if claims.IssuedAt != nil {
+		issuedAt = claims.IssuedAt.Unix()
+	}
+
 	return &Principal{
 		Subject:     claims.Subject,
 		ProfileName: claims.ProfileName,
 		Provider:    claims.Provider,
 		SID:         claims.SID,
+		IssuedAt:    issuedAt,
 		Data:        claims.Data,
 	}, nil
 }

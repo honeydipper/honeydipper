@@ -122,6 +122,25 @@ func (m *MemoryStore) RevokeAllForSubject(ctx context.Context, subject string) (
 	return revoked, nil
 }
 
+// PruneSubject removes sids from the per-subject index whose session records
+// are no longer present (already GC'd). This keeps the index from growing
+// without bound for long-lived subjects.
+func (m *MemoryStore) PruneSubject(ctx context.Context, subject string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	index := m.subjectTo[subject]
+	for sid := range index {
+		if _, ok := m.records[sid]; !ok {
+			delete(index, sid)
+		}
+	}
+	if len(index) == 0 {
+		delete(m.subjectTo, subject)
+	}
+
+	return nil
+}
+
 // Snapshot returns a shallow copy of all records (test helper).
 func (m *MemoryStore) Snapshot() map[string]Record {
 	m.mu.RLock()

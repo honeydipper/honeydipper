@@ -22,6 +22,12 @@ import (
 // cache and a revoked record is cached that overrides any earlier positive
 // entry for the TTL. Cross-node revocation propagation therefore lags by at
 // most the cache TTL on nodes that did not observe the revoke call directly.
+//
+// The cache also throttles last_seen write amplification: Touch refreshes the
+// in-memory LastSeen on every call but only writes through to the underlying
+// store at most once per cache TTL. This bounds per-node Redis writes for a
+// busy deployment while keeping idle-timeout semantics within the throttle
+// window (negligible compared to typical idle timeouts of minutes/hours).
 type Cache struct {
 	store Store
 	ttl   time.Duration
@@ -33,6 +39,9 @@ type cacheEntry struct {
 	record  Record
 	unknown bool
 	expires time.Time
+	// lastStoreWrite is when the underlying store was last written for this
+	// sid, used to throttle last_seen write amplification.
+	lastStoreWrite time.Time
 }
 
 // NewCache wraps store with an in-memory validation cache with the given TTL.
@@ -49,18 +58,52 @@ func (c *Cache) Register(ctx context.Context, r Record) error {
 	if err := c.store.Register(ctx, r); err != nil {
 		return fmt.Errorf("%w", err)
 	}
-	c.put(r.SID, cacheEntry{record: r, expires: time.Now().Add(c.ttl)})
+	c.put(r.SID, cacheEntry{record: r, expires: time.Now().Add(c.ttl), lastStoreWrite: time.Now()})
 
 	return nil
 }
 
-// Touch delegates to the underlying store and warms the local cache.
+// Touch refreshes LastSeen, lazily creating the session if the sid is unknown.
+//
+// Known, active sids have their LastSeen refreshed in the local cache on every
+// call, but the underlying store is only written at most once per cache TTL to
+// avoid write amplification on a busy multi-node deployment. Unknown/revoked
+// sids always fall through to the store.
 func (c *Cache) Touch(ctx context.Context, sid, subject, provider string, issuedAt int64) (Record, error) {
+	now := time.Now()
+	c.mu.Lock()
+	e, ok := c.state[sid]
+	if ok && !e.unknown && !e.record.Revoked && now.Before(e.expires) {
+		// Refresh last_seen locally.
+		e.record.LastSeen = now.Unix()
+		throttled := now.Sub(e.lastStoreWrite) < c.ttl
+		c.state[sid] = e
+		c.mu.Unlock()
+		if throttled {
+			// No store write this time; the in-memory value is current enough
+			// for idle semantics within the throttle window.
+			return e.record, nil
+		}
+		// Bounded write-through: refresh the store, then warm the cache from
+		// the authoritative result.
+		r, err := c.store.Touch(ctx, sid, subject, provider, issuedAt)
+		if err != nil {
+			return r, fmt.Errorf("%w", err)
+		}
+		r.LastSeen = now.Unix()
+		c.put(sid, cacheEntry{record: r, expires: now.Add(c.ttl), lastStoreWrite: now})
+
+		return r, nil
+	}
+	c.mu.Unlock()
+
+	// Unknown or revoked sid (or cache expired): write through to the store so
+	// lazy registration / revocation handling stays correct.
 	r, err := c.store.Touch(ctx, sid, subject, provider, issuedAt)
 	if err != nil {
 		return r, fmt.Errorf("%w", err)
 	}
-	c.put(sid, cacheEntry{record: r, expires: time.Now().Add(c.ttl)})
+	c.put(sid, cacheEntry{record: r, expires: now.Add(c.ttl), lastStoreWrite: now})
 
 	return r, nil
 }
@@ -118,6 +161,16 @@ func (c *Cache) RevokeAllForSubject(ctx context.Context, subject string) ([]stri
 	}
 
 	return sids, nil
+}
+
+// PruneSubject delegates pruning of the per-subject index to the underlying
+// store so expired/GC'd sids stop accumulating in the index.
+func (c *Cache) PruneSubject(ctx context.Context, subject string) error {
+	if err := c.store.PruneSubject(ctx, subject); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	return nil
 }
 
 func (c *Cache) revokeTTL() time.Duration {

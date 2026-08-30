@@ -92,4 +92,8 @@ type Store interface {
 	// RevokeAllForSubject revokes every session belonging to subject (incident
 	// response) and returns the revoked sids for local cache invalidation.
 	RevokeAllForSubject(ctx context.Context, subject string) ([]string, error)
+	// PruneSubject removes stale sids from the per-subject index whose session
+	// records have already expired/been GC'd, so the index does not grow
+	// without bound.
+	PruneSubject(ctx context.Context, subject string) error
 }

@@ -89,8 +89,12 @@ type Principal struct {
 	Provider    string
 	// SID is the daemon-minted opaque session identifier, stable across token
 	// rotation, and used as the primary key of the server-side session store.
-	SID  string
-	Data map[string]interface{}
+	SID string
+	// IssuedAt is the unix-seconds issuance time of the underlying token/session.
+	// It is surfaced so lazy session registration anchors the absolute cap to
+	// the real issuance time rather than first-seen.
+	IssuedAt int64
+	Data     map[string]interface{}
 }
 
 // HandleAPIACK handles the call ACK from the eventbus.
@@ -223,8 +227,13 @@ func githubOAuthCallbackHandler(r *Request) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	// Register the session eagerly now that the callback succeeded.
+	// Register the session eagerly now that the callback succeeded. The driver
+	// returns the GitHub login as "subject" (newer) and "username" (legacy); read
+	// subject first and fall back to username so eager registration always fires.
 	subject, _ := result["subject"].(string)
+	if subject == "" {
+		subject, _ = result["username"].(string)
+	}
 	if subject != "" {
 		r.store.RegisterEagerSession(Principal{
 			Subject:  subject,
@@ -328,12 +337,15 @@ func samlACSCallbackHandler(r *Request) (map[string]interface{}, error) {
 	// Fall back to the driver's own session token for backwards compatibility.
 	tokenSet := false
 	if subject != "" {
-		// The daemon mints the session id and registers it eagerly at login.
+		// The daemon mints the session id and registers it eagerly at login. The
+		// session was just minted now, so its issuance time anchors the JWT exp
+		// to the absolute maxLifetime cap when one is configured (F6).
 		sid := r.store.newSID()
-		principal := Principal{Subject: subject, ProfileName: profileName, Provider: "auth-saml", Data: data, SID: sid}
+		issuedAt := time.Now().Unix()
+		principal := Principal{Subject: subject, ProfileName: profileName, Provider: "auth-saml", Data: data, SID: sid, IssuedAt: issuedAt}
 		r.store.RegisterEagerSession(principal)
 		if jwtCfg, err := getJWTConfig(); err == nil {
-			if hdToken, err := SignPrincipalJWT(principal, jwtCfg); err == nil {
+			if hdToken, err := SignPrincipalJWTSession(principal, jwtCfg, issuedAt, r.store.sessionMaxLifetime()); err == nil {
 				query.Set("token", hdToken)
 				tokenSet = true
 			}
@@ -496,9 +508,10 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 					principal = l.ensureSIDForPrincipal(effPrincipal)
 					l.applyRotatedJWTHeader(c, principal)
 					c.Set("principal", principal)
-					// Issue a new JWT for the principal if possible
+					// Issue a new JWT for the principal if possible, binding the token
+					// exp to the session's absolute cap when one is configured (F6).
 					if jwtErr == nil {
-						if token, err := SignPrincipalJWT(principal, jwtCfg); err == nil {
+						if token, err := SignPrincipalJWTSession(principal, jwtCfg, principal.IssuedAt, l.sessionMaxLifetime()); err == nil {
 							c.Header("X-Honeydipper-JWT", token)
 							// Optionally, set as cookie here if desired
 						}

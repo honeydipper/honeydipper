@@ -195,6 +195,10 @@ func (f *failingStore) RevokeAllForSubject(ctx context.Context, subject string) 
 	return nil, ErrUnavailable
 }
 
+func (f *failingStore) PruneSubject(ctx context.Context, subject string) error {
+	return ErrUnavailable
+}
+
 func TestManagerCheckNoSIDGrace(t *testing.T) {
 	store := NewMemoryStore()
 	// Within grace.
@@ -229,5 +233,99 @@ func TestCacheRevokeImmediatelyInvalidatesPositiveEntry(t *testing.T) {
 	}
 	if !r.Revoked {
 		t.Fatalf("expected cached record to be revoked")
+	}
+}
+
+// TestManagerCheckPopulatesIssuedAt verifies Check returns the authoritative
+// session issuance time (F2) for both an existing and a lazily-registered sid.
+func TestManagerCheckPopulatesIssuedAt(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now().Unix()
+	store.Register(context.Background(), Record{SID: "s", Subject: "alice", IssuedAt: now - 3600, LastSeen: now})
+
+	mgr := NewManager(store, Policy{}, 0)
+	res := mgr.Check(context.Background(), "s", "alice", "auth-github", 0)
+	if !res.OK {
+		t.Fatalf("expected OK, got %+v", res)
+	}
+	if res.IssuedAt != now-3600 {
+		t.Fatalf("expected IssuedAt from store (%d), got %d", now-3600, res.IssuedAt)
+	}
+}
+
+// TestManagerCheckLazyRegistrationAnchorsIssuedAt verifies that lazy
+// registration stores the provided real issuance time (not first-seen) so the
+// absolute maxLifetime cap is measured from actual token issuance (F2).
+func TestManagerCheckLazyRegistrationAnchorsIssuedAt(t *testing.T) {
+	store := NewMemoryStore()
+	mgr := NewManager(store, Policy{}, 0)
+	issuedAt := time.Now().Add(-20 * time.Hour).Unix()
+
+	res := mgr.Check(context.Background(), "unknown-sid", "alice", "auth-github", issuedAt)
+	if !res.OK || !res.Unknown {
+		t.Fatalf("expected lazy-accepted unknown sid, got %+v", res)
+	}
+	if res.IssuedAt != issuedAt {
+		t.Fatalf("expected lazy registration IssuedAt anchored to %d, got %d", issuedAt, res.IssuedAt)
+	}
+	r, _ := store.Get(context.Background(), "unknown-sid")
+	if r.IssuedAt != issuedAt {
+		t.Fatalf("expected store record IssuedAt %d, got %d", issuedAt, r.IssuedAt)
+	}
+}
+
+// TestCacheTouchThrottlesWrites verifies the cache only writes through to the
+// store at most once per cache TTL (F3).
+func TestCacheTouchThrottlesWrites(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now().Unix()
+	store.Register(context.Background(), Record{SID: "s", Subject: "alice", IssuedAt: now, LastSeen: now})
+
+	cache := NewCache(store, time.Hour)
+
+	// First Touch writes through.
+	if _, err := cache.Touch(context.Background(), "s", "alice", "auth-github", now); err != nil {
+		t.Fatalf("Touch: %v", err)
+	}
+	firstOnDisk := store.Snapshot()["s"].LastSeen
+
+	// A second Touch within the TTL must NOT write through: the underlying
+	// store's record is untouched, only the in-memory cache value changes.
+	time.Sleep(5 * time.Millisecond)
+	if _, err := cache.Touch(context.Background(), "s", "alice", "auth-github", now); err != nil {
+		t.Fatalf("Touch (throttled): %v", err)
+	}
+	secondOnDisk := store.Snapshot()["s"].LastSeen
+	if secondOnDisk != firstOnDisk {
+		t.Fatalf("expected throttled Touch not to write through, disk last_seen changed %d -> %d", firstOnDisk, secondOnDisk)
+	}
+}
+
+// TestMemoryStorePruneSubject verifies PruneSubject removes stale sids from the
+// per-subject index whose records are gone (F4).
+func TestMemoryStorePruneSubject(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now().Unix()
+	store.Register(context.Background(), Record{SID: "s1", Subject: "alice", IssuedAt: now, LastSeen: now})
+	store.Register(context.Background(), Record{SID: "s2", Subject: "alice", IssuedAt: now, LastSeen: now})
+
+	// Simulate GC: remove s1's record entirely (as if it expired).
+	// Use a helper via the internal map through Snapshot-free path: delete directly.
+	store.mu.Lock()
+	delete(store.records, "s1")
+	store.mu.Unlock()
+
+	if err := store.PruneSubject(context.Background(), "alice"); err != nil {
+		t.Fatalf("PruneSubject: %v", err)
+	}
+
+	// s2 remains, s1 pruned from the index.
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if _, ok := store.subjectTo["alice"]["s1"]; ok {
+		t.Fatalf("expected s1 pruned from alice index")
+	}
+	if !store.subjectTo["alice"]["s2"] {
+		t.Fatalf("expected s2 to remain in alice index")
 	}
 }

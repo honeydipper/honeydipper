@@ -37,6 +37,10 @@ type CheckResult struct {
 	// Unknown is true when the sid was not previously known and was lazily
 	// registered (safety net / backfill).
 	Unknown bool
+	// IssuedAt is the authoritative session issuance time (unix seconds)
+	// resolved from the store. It lets callers anchor token expirations to the
+	// session's absolute cap even when the sid was lazily registered.
+	IssuedAt int64
 }
 
 // Manager evaluates sessions against a session store and the daemon policy.
@@ -95,13 +99,13 @@ func (m *Manager) Check(ctx context.Context, sid, subject, provider string, issu
 				IssuedAt: issuedAt, LastSeen: now,
 			})
 
-			return CheckResult{Sid: sid, Subject: subject, OK: true, Unknown: true}
+			return CheckResult{Sid: sid, Subject: subject, OK: true, Unknown: true, IssuedAt: issuedAt}
 		}
 
 		return CheckResult{Sid: sid, StoreDown: true}
 	}
 
-	res := CheckResult{Sid: sid, Subject: rec.Subject, Revoked: rec.Revoked}
+	res := CheckResult{Sid: sid, Subject: rec.Subject, Revoked: rec.Revoked, IssuedAt: rec.IssuedAt}
 	if res.Revoked {
 		return res
 	}

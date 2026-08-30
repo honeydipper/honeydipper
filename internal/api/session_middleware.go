@@ -9,6 +9,7 @@ package api
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -78,7 +79,11 @@ func (l *Store) enforceSession(c *gin.Context, principal Principal, engine *sess
 		return false, principal
 	}
 
-	res := engine.manager.Check(sessionCtx, sid, principal.Subject, principal.Provider, 0)
+	// Anchor lazy registration to the token's real issuance time (if known) so
+	// the absolute maxLifetime cap is measured from actual issuance, not from
+	// first-seen. principal.IssuedAt is populated from the daemon JWT iat and
+	// from the GitHub driver's principal reply when the daemon mints the JWT.
+	res := engine.manager.Check(sessionCtx, sid, principal.Subject, principal.Provider, principal.IssuedAt)
 	if res.StoreDown || res.Revoked {
 		l.markSessionExpired(c)
 
@@ -97,6 +102,12 @@ func (l *Store) enforceSession(c *gin.Context, principal Principal, engine *sess
 	// Accepted: any authenticated request reaching an API route is activity
 	// (idle definition).
 	_ = engine.manager.Refresh(sessionCtx, sid)
+
+	// Propagate the authoritative session issuance time so a daemon JWT minted
+	// for this request can bind its exp to the session's absolute cap (F6).
+	if res.IssuedAt > 0 {
+		principal.IssuedAt = res.IssuedAt
+	}
 
 	return true, principal
 }
@@ -177,4 +188,15 @@ func abortSessionExpired(c *gin.Context) {
 		"reAuth":  true,
 		"expired": true,
 	})
+}
+
+// sessionMaxLifetime returns the configured absolute session lifetime cap, or 0
+// when sessions are disabled/not configured. Used to bind daemon JWT expiries
+// to the session cap (F6).
+func (l *Store) sessionMaxLifetime() time.Duration {
+	if l.sessionEngine == nil {
+		return 0
+	}
+
+	return l.sessionEngine.maxLifetime
 }

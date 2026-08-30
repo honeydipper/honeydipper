@@ -179,18 +179,107 @@ func (s *RedisStore) RevokeAllForSubject(ctx context.Context, subject string) ([
 	if err != nil {
 		return nil, MapErr(err)
 	}
-	revoked := make([]string, 0, len(sids))
-	pipe := s.client.TxPipeline()
-	for _, sid := range sids {
-		pipe.HSet(ctx, sidKey(sid), "revoked", "1")
-		pipe.Expire(ctx, sidKey(sid), s.policy.RecordTTL())
-		revoked = append(revoked, sid)
+
+	// Determine which indexed sids still have a live session record. Sid entries
+	// whose record was already GC'd (TTL expiry) are pruned from the index so it
+	// does not grow without bound and so we do not resurrect bare tombstones.
+	live, stale, err := s.partitionLiveSids(ctx, sids)
+	if err != nil {
+		return nil, err
 	}
-	if _, err := pipe.Exec(ctx); err != nil {
-		return nil, MapErr(err)
+	if len(stale) > 0 {
+		if err := MapErr(s.client.SRem(ctx, key, stale).Err()); err != nil {
+			return nil, err
+		}
+	}
+
+	revoked := make([]string, 0, len(live))
+	if len(live) > 0 {
+		pipe := s.client.TxPipeline()
+		for _, sid := range live {
+			pipe.HSet(ctx, sidKey(sid), "revoked", "1")
+			pipe.Expire(ctx, sidKey(sid), s.policy.RecordTTL())
+			revoked = append(revoked, sid)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return nil, MapErr(err)
+		}
+	}
+
+	// Drop the subject key entirely once the index is empty.
+	if len(sids) == len(stale) {
+		if err := MapErr(s.client.Del(ctx, key).Err()); err != nil {
+			return nil, err
+		}
 	}
 
 	return revoked, nil
+}
+
+// partitionLiveSids splits a list of indexed sids into those that still have a
+// live session record and those whose record has been GC'd. It returns an
+// error when the live-ness probe fails (fail closed).
+func (s *RedisStore) partitionLiveSids(ctx context.Context, sids []string) (live, stale []string, err error) {
+	if len(sids) == 0 {
+		return nil, nil, nil
+	}
+	pipe := s.client.TxPipeline()
+	for _, sid := range sids {
+		pipe.HExists(ctx, sidKey(sid), "subject")
+	}
+	cmders, err := pipe.Exec(ctx)
+	if err != nil {
+		return nil, nil, MapErr(err)
+	}
+	live = make([]string, 0, len(sids))
+	stale = make([]string, 0, len(sids))
+	for i, cmd := range cmders {
+		exists, ok := cmd.(*redis.BoolCmd)
+		if !ok {
+			return nil, nil, ErrUnavailable
+		}
+		if !exists.Val() {
+			stale = append(stale, sids[i])
+		} else {
+			live = append(live, sids[i])
+		}
+	}
+
+	return live, stale, nil
+}
+
+// PruneSubject removes stale sids from the per-subject index whose session
+// records have already been GC'd (TTL expiry). Called as part of normal GC so
+// the subject index does not grow without bound.
+func (s *RedisStore) PruneSubject(ctx context.Context, subject string) error {
+	key := subjectKey(subject)
+	sids, err := s.client.SMembers(ctx, key).Result()
+	if err != nil {
+		return MapErr(err)
+	}
+	if len(sids) == 0 {
+		return nil
+	}
+
+	_, stale, err := s.partitionLiveSids(ctx, sids)
+	if err != nil {
+		return err
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+
+	if err := MapErr(s.client.SRem(ctx, key, stale).Err()); err != nil {
+		return err
+	}
+	// Drop the subject key entirely once the index is empty.
+	if len(sids) == len(stale) {
+		if err := MapErr(s.client.Del(ctx, key).Err()); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func decodeRecord(vals map[string]string) Record {

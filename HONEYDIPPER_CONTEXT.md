@@ -421,6 +421,21 @@ by a daemon-minted opaque UUID `sid` (stable across token rotation). See
   otherwise the user re-authenticates (new sid). An idle SAML/auth-simple
   session requires re-authentication. `maxLifetime`-exceeded is always a hard
   re-auth (never silently re-vouched).
+- Sessions are registered eagerly at login: the GitHub OAuth callback reads the
+  driver-returned login as `subject` (with a `username` fallback) and registers
+  the daemon-minted `sid` immediately; SAML ACS does the same. Unknown-but-valid
+  sids are lazily registered as a rollout safety net, anchored to the token's
+  real issuance time (`iat`) so the absolute `maxLifetime` cap is measured from
+  actual issuance, not first-seen.
+- `last_seen` writes are throttled: the short-TTL cache refreshes `last_seen` in
+  memory on every request but writes through to Redis at most once per
+  `cacheTTL`, bounding write amplification on busy multi-node deployments. The
+  per-subject Redis index (`hd-auth-sessions:subject:*`) is pruned of stale sids
+  (whose records were GC'd) on revoke-all and via `PruneSubject`, so it does not
+  grow without bound.
+- Daemon JWTs minted for an authenticated principal have their `exp` bound to
+  the session's absolute `maxLifetime` cap (via `SignPrincipalJWTSession`) when
+  one is configured, so the JWT exp never disagrees with the sid-based cap.
 - `POST /auth/logout` revokes the current sid (or all sessions for the subject
   via `?all=true`), correct cross-node through the shared Redis store.
 - All expiry modes set the `X-Honeydipper-Session-Expired` response header
