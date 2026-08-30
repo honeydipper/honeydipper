@@ -55,6 +55,9 @@ type mockStore struct {
 	noWaitLabels map[string][]string
 	callParams   map[string]map[string]interface{}
 	uiURL        string
+	// lists holds per-key rpush'd values so cache:lrange returns the persisted
+	// conversation history the same way the real Redis-backed store does.
+	lists map[string][]string
 }
 
 func newMockStore(cfg *config.Config) *mockStore {
@@ -129,6 +132,29 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 					m.mu.Lock()
 					m.resp["cache:load:"+k] = []byte(val)
 					m.mu.Unlock()
+				}
+			}
+			if base == "cache:rpush" {
+				if val, okv := p["value"].(string); okv {
+					m.mu.Lock()
+					if m.lists == nil {
+						m.lists = map[string][]string{}
+					}
+					m.lists[k] = append(m.lists[k], val)
+					m.mu.Unlock()
+				}
+				m.record(base)
+
+				return []byte("null"), nil
+			}
+			if base == "cache:lrange" {
+				m.mu.Lock()
+				vals, hasList := m.lists[k]
+				m.mu.Unlock()
+				if hasList {
+					m.record(base)
+
+					return []byte("[" + strings.Join(vals, ",") + "]"), nil
 				}
 			}
 			if v, ok3 := m.resp[full]; ok3 {

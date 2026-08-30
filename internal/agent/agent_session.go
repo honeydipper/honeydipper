@@ -71,6 +71,16 @@ type AgentSession struct {
 	// The lock prevents concurrent sessions from modifying the same conversation.
 	TurnLockKey string
 
+	// SlashInitiatedCompaction is set when a /compact slash command dispatches
+	// the summarization sub-agent. It is JSON-serialized with the session so it
+	// survives session restore. When handleCompactionResult completes a
+	// slash-initiated compaction it posts the confirmation reply (IsSlash) and
+	// does NOT resume the model conversation (no pending user turn to continue);
+	// automatic compaction (triggered mid-turn by shouldCompact) has a real
+	// pending user message and DOES sendToDriver after compaction. Cleared once
+	// the compaction result has been handled.
+	SlashInitiatedCompaction bool
+
 	store AgentStore
 }
 
@@ -491,7 +501,10 @@ func (s *AgentSession) appendConvoHistory(msg *AgentMessage) {
 
 	// Count message tokens and add to ContextTokens when TokenCounter is active.
 	// This ensures ContextTokens = sum of all history message tokens by construction.
-	if s.TokenCounter != nil {
+	// Slash-origin messages (IsSlash) are excluded: they are never part of the
+	// model context, so counting them would inflate ContextTokens and skew the
+	// compaction threshold.
+	if s.TokenCounter != nil && !msg.IsSlash {
 		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 			msg.InputTokens = cs.ContextTokens
 			msg.OutputTokens = s.countMessageTokens(*msg)
@@ -520,6 +533,17 @@ func (s *AgentSession) appendConvoHistory(msg *AgentMessage) {
 
 // run appends the current user message and dispatches the conversation to the AI driver.
 func (s *AgentSession) run() {
+	// Slash commands are intercepted in chat-turn (conversation) sessions before
+	// the user message is appended or sent to the driver. Non-turn commands
+	// mutate state and call reply(); run() returns without sendToDriver() so the
+	// existing agent_poll/emitPollResponse loop and UI convoHistory read both
+	// observe the complete agent message. Slash command text is NOT recorded as
+	// a user message.
+	if s.isSlashTurn() {
+		if s.dispatchSlashCommand() {
+			return
+		}
+	}
 	if s.loadPreContextAndSkills() {
 		return
 	}
@@ -626,9 +650,17 @@ func (s *AgentSession) sendToDriver() {
 
 	// Prepend the system prompt ephemerally; filter any legacy persisted system
 	// messages so the driver always sees exactly one, up-to-date system entry.
+	// Slash-origin messages (IsSlash), including the slash command text and its
+	// reply, are NEVER sent to the model as context, so they are filtered out
+	// here before any driver serialization.
 	history := make([]AgentMessage, 0, len(s.history)+1)
 	history = append(history, AgentMessage{Role: RoleSystem, Content: systemPrompt})
-	history = append(history, s.history...)
+	for _, m := range s.history {
+		if m.IsSlash {
+			continue
+		}
+		history = append(history, m)
+	}
 
 	// Ensure the last message is a user message to avoid "assistant message prefill not supported" errors.
 	// Some models reject requests where the last message is from the assistant (agent), tool, or system.

@@ -22,8 +22,11 @@ func (s *AgentSession) shouldCompact() bool {
 	if s.Agent == nil || s.Agent.CompactionPolicy == nil {
 		return false
 	}
-	if len(s.history) == 0 || s.history[len(s.history)-1].Role != RoleUser {
-		// only trigger compaction on user messages.
+	// Only trigger compaction on user messages. A trailing marked slash
+	// command (IsSlash) should never trigger compaction, so find the last
+	// non-slash message and use its role.
+	last := s.lastNonSlashMessage()
+	if last == -1 || s.history[last].Role != RoleUser {
 		return false
 	}
 	switch s.Agent.CompactionPolicy.ThresholdType {
@@ -34,6 +37,21 @@ func (s *AgentSession) shouldCompact() bool {
 	}
 
 	return false
+}
+
+// lastNonSlashMessage returns the index of the last history message whose
+// IsSlash marker is false, or -1 if every message is slash-origin. Marked slash
+// messages (command text and replies) are never part of the model context, so
+// they must not influence decisions (such as compaction triggering) that depend
+// on the shape of the real conversation.
+func (s *AgentSession) lastNonSlashMessage() int {
+	for i := len(s.history) - 1; i >= 0; i-- {
+		if !s.history[i].IsSlash {
+			return i
+		}
+	}
+
+	return -1
 }
 
 // handleCompactionResult performs the archive-and-replace flow when a compaction
@@ -136,6 +154,9 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 			cs.ContextTokens = s.countSystemPromptTokens()
 			for _, msg := range s.history {
+				if msg.IsSlash {
+					continue
+				}
 				cs.ContextTokens += s.countMessageTokens(msg)
 			}
 		})
@@ -143,11 +164,32 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 	s.CurrentCall = 0
 	s.ToolResults = nil
 
+	// Persist the compacted session (with any pending SlashInitiatedCompaction
+	// flag) before branching. This also makes the flag durable across a restore
+	// in case the confirmation reply is processed after a reload.
 	s.persist(false)
 
-	// After successful compaction, resume the conversation by sending the
-	// updated history to the configured driver so the model can continue.
-	// This keeps the compaction flow inline with mid-conversation triggers.
+	// Resume the conversation only when compaction was NOT slash-initiated.
+	// - Automatic compaction runs mid-turn from shouldCompact()/sendToDriver()
+	//   where there is a real pending user message, so we send the compacted
+	//   history to the model to continue the turn.
+	// - A /compact slash command has NO pending user message; resuming the
+	//   model here would produce a spurious continuation. Instead we post the
+	//   confirmation as a marked IsSlash reply (persisted + returned to the
+	//   workflow/UI, but never sent to the model) and leave the conversation
+	//   idle for the next real user turn.
+	if s.SlashInitiatedCompaction {
+		s.SlashInitiatedCompaction = false
+		s.reply("\u2705 Conversation compacted. The history has been summarized; older turns are archived.")
+		if log := s.log(); log != nil {
+			log.Infof("[agent] session [%s] slash-initiated compaction complete; new_history_len=%d", s.ID, len(s.history))
+		}
+
+		return true
+	}
+
+	// Automatic compaction: resume the conversation by sending the updated
+	// history to the configured driver so the model can continue.
 	s.sendToDriver()
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] compaction complete; new_history_len=%d", s.ID, len(s.history))

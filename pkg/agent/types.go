@@ -35,6 +35,13 @@ type Message struct {
 	IsChunk      bool                     `json:"is_chunk" mapstructure:"is_chunk"` // true when the message is a streaming chunk
 	InputTokens  int                      `json:"input_tokens" mapstructure:"input_tokens"`
 	OutputTokens int                      `json:"output_tokens" mapstructure:"output_tokens"`
+
+	// IsSlash marks a message that originated from a slash command (the command
+	// text itself or its reply). Slash-origin messages are persisted in the
+	// conversation history so the workflow/UI return paths can observe them, but
+	// they are NEVER sent to the model as context. This field is persisted to
+	// Redis as part of the serialized message so markers survive session restore.
+	IsSlash bool `json:"is_slash,omitempty" mapstructure:"is_slash"`
 }
 
 // Tool describes a callable tool exposed to the model.
