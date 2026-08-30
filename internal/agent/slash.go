@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
@@ -49,7 +48,7 @@ func ensureSlashBuiltins() {
 		registerSlashCommand("refresh", "Rebuild the system prompt from current agent config", slashRefresh)
 		registerSlashCommand("model", "Switch the model for this conversation", slashModel)
 		registerSlashCommand("compact", "Compact the conversation history to save context", slashCompact)
-		registerSlashCommand("retry", "Regenerate the last response", slashRetry)
+		registerSlashCommand("retry", "Resume an interrupted turn", slashRetry)
 	})
 }
 
@@ -286,114 +285,65 @@ func listKnownEngines(s *AgentSession) string {
 	return strings.Join(lines, "\n")
 }
 
-// rewindToPreviousUserTurn locates the last real (non-slash) user message that
-// has content, walking backwards past any trailing assistant, tool, or tool
-// result turns as well as any slash-origin messages (e.g. the /retry command
-// text itself, which is recorded as a marked IsSlash RoleUser message by
-// recordSlashCommandText and must never be mistaken for the previous user
-// turn). It returns the index of that user message, or -1 when no such message
-// exists.
-func (s *AgentSession) rewindToPreviousUserTurn() int {
+// lastNonSlashMsg returns the most recent history message that is not marked
+// IsSlash, or nil when history is empty or every message is slash-origin.
+// Marked slash messages (command text and replies) are not part of the real
+// conversation, so they are skipped when deciding whether a turn is interrupted.
+func (s *AgentSession) lastNonSlashMsg() *AgentMessage {
 	for i := len(s.history) - 1; i >= 0; i-- {
-		m := s.history[i]
-		if m.IsSlash {
-			continue
-		}
-		if m.Role == RoleUser && m.Content != "" {
-			return i
+		if !s.history[i].IsSlash {
+			return &s.history[i]
 		}
 	}
 
-	return -1
+	return nil
 }
 
-// persistConvoHistory rewrites the persisted conversation history in the cache
-// to exactly match the session's in-memory history. It is used by /retry after
-// rewinding the conversation so the stored history (and therefore the UI read
-// path and any subsequent model round-trip) reflects the truncation.
-func (s *AgentSession) persistConvoHistory() {
-	if s.ConvoID == "" {
-		return
+// hasInterruptedTurn reports whether the last real (non-slash) message marks an
+// interrupted turn — anything that is NOT a complete agent message. A nil last
+// message (empty history) or a complete agent message (Role == RoleAgent &&
+// IsComplete && len(ToolCalls) == 0) is a clean state, so there is nothing to
+// retry. Everything else — a trailing RoleUser, a RoleToolResult, a RoleAgent
+// with pending ToolCalls, or an incomplete RoleAgent — is considered interrupted
+// and can be resumed by /retry.
+func (s *AgentSession) hasInterruptedTurn() bool {
+	m := s.lastNonSlashMsg()
+	if m == nil {
+		return false
 	}
-	_, _ = s.store.Call("cache", "del", map[string]interface{}{"key": ConvoHistoryKeyPrefix + s.ConvoID})
-	convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
-	fullKey := ConvoHistoryKeyPrefix + s.ConvoID
-	for _, m := range s.history {
-		_, _ = s.store.Call("cache", "rpush", map[string]interface{}{
-			"key":   fullKey,
-			"value": string(dipper.SerializeContent(m)),
-			"ttl":   float64(convoTTL),
-		})
+	if m.Role == RoleAgent && m.IsComplete && len(m.ToolCalls) == 0 {
+		return false
 	}
+
+	return true
 }
 
-// slashRetry implements /retry: re-send the previous real user message to
-// regenerate the last response. It locates the last non-slash user message
-// that has content, truncates the history back to just before it (dropping the
-// assistant/tool messages it already answered), re-appends that user message
-// as a normal, non-slash RoleUser message, and sends it to the driver so the
-// response is regenerated through the normal model round-trip. When there is
-// no prior user message with content it replies with a helpful error and does
-// NOT send to the model.
+// slashRetry implements /retry: resume an interrupted turn. When the last real
+// (non-slash) message is a complete agent message (or history is empty) there is
+// nothing to retry and it replies with an explanation. Otherwise the turn was
+// interrupted (cancelled or errored mid-way) and history already ends at the
+// interruption point: resolveUnresolvedToolCalls clears any hanging tool calls,
+// then sendToDriver() rebuilds the model history from s.history (filtering the
+// marked slash command text) and appends a synthetic "Please continue." only
+// when the trailing role isn't a user — it is never written into s.history, so
+// no "continue" text or duplicate user message pollutes the conversation.
 func slashRetry(s *AgentSession, _ string) bool {
-	idx := s.rewindToPreviousUserTurn()
-	if idx < 0 {
-		s.reply("No previous user message to retry. Please send a new message to continue the conversation or use /help for other commands.")
+	if !s.hasInterruptedTurn() {
+		s.reply("Nothing to retry: the last turn already completed.")
 
 		return true
 	}
 
-	user, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "user")
-	msg := s.history[idx]
-	msg.Role = RoleUser
-	msg.User = user
-	msg.IsSlash = false
+	// Resolve any hanging tool calls from the interrupted turn so the model gets
+	// a clean continuation point (appends failure RoleToolResult messages).
+	s.resolveUnresolvedToolCalls()
 
-	// Preserve any trailing slash-origin messages (in practice the /retry
-	// command text recorded by recordSlashCommandText) so the UI keeps a
-	// complete record of what the user typed. They are excluded from the model
-	// context via their IsSlash marker and must not be mistaken for the
-	// previous real user turn.
-	var trailing []AgentMessage
-	for _, m := range s.history[idx+1:] {
-		if m.IsSlash {
-			trailing = append(trailing, m)
-		}
-	}
-
-	// Truncate back to just before the previous user turn (dropping the
-	// assistant/tool messages it already answered) and re-append that user
-	// message (with the session user) as a normal, non-slash RoleUser message,
-	// followed by the preserved slash-origin markers.
-	s.history = append(make([]AgentMessage, 0, idx+1+len(trailing)), s.history[:idx]...)
-	s.history = append(s.history, msg)
-	s.history = append(s.history, trailing...)
-
-	// Persist the rewound history so both the UI read path and any subsequent
-	// poll/history return observe the regenerated conversation.
-	s.persistConvoHistory()
-
-	// Recalculate ContextTokens from the rewound history since messages were
-	// dropped; the re-appended user message must not be double counted.
-	if s.TokenCounter != nil {
-		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
-			cs.ContextTokens = s.countSystemPromptTokens()
-			for _, m := range s.history {
-				if m.IsSlash {
-					continue
-				}
-				cs.ContextTokens += s.countMessageTokens(m)
-			}
-		})
-	}
-
-	// Point the poll at the tail of the rewound history so the regenerated
-	// response (appended when the model returns) is collected as a new turn.
+	// History now ends at the interruption point. Point the poll at the tail so
+	// the resumed response (appended when the model returns) is collected as a
+	// new turn, then send to the driver.
 	s.LastPoll = len(s.history)
-
-	// Regenerate the response through the normal model round-trip
-	// (ReceiveInference -> processAgentMessage -> history/poll return).
 	s.sendToDriver()
+	s.persist(false)
 
 	return true
 }

@@ -961,10 +961,14 @@ func (s *AgentSession) resolveUnresolvedToolCalls() {
 		return
 	}
 
-	// Check if the last message has unresolved tool calls
-	// Unresolved tool calls means: the last message has ToolCalls populated,
-	// but there is no subsequent RoleToolResult message with the results.
-	lastMsg := s.history[len(s.history)-1]
+	// Look at the last non-slash message. A trailing marked slash command (e.g.
+	// the /retry command text recorded by recordSlashCommandText) is not part of
+	// the real conversation and must not hide an unresolved tool call from the
+	// interrupted turn sitting just below it.
+	lastMsg := s.lastNonSlashMsg()
+	if lastMsg == nil {
+		return
+	}
 
 	// If the last message doesn't have tool calls, nothing to resolve
 	if len(lastMsg.ToolCalls) == 0 {
