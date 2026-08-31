@@ -1,6 +1,6 @@
 module github.com/honeydipper/honeydipper/v3
 
-go 1.24.1
+go 1.25.0
 
 require (
 	cloud.google.com/go v0.120.1 // indirect
@@ -29,12 +29,12 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/qiangmzsx/string-adapter/v2 v2.2.0
-	github.com/stretchr/testify v1.10.0
-	golang.org/x/crypto v0.45.0
-	golang.org/x/net v0.47.0 // indirect
+	github.com/stretchr/testify v1.11.1
+	golang.org/x/crypto v0.53.0
+	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.29.0
-	golang.org/x/term v0.37.0
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/term v0.44.0
+	golang.org/x/text v0.39.0 // indirect
 	google.golang.org/api v0.231.0
 	google.golang.org/genproto v0.0.0-20250428153025-10db94c68c34
 	gopkg.in/h2non/gock.v1 v1.0.15
@@ -100,7 +100,7 @@ require (
 	cloud.google.com/go/logging v1.13.0
 	dario.cat/mergo v1.0.2
 	github.com/Masterminds/sprig/v3 v3.2.3
-	github.com/go-git/go-git/v5 v5.16.5
+	github.com/go-git/go-git/v5 v5.19.2
 	github.com/go-redis/redismock/v8 v8.0.6
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/hashicorp/vault/api v1.15.0
@@ -108,7 +108,7 @@ require (
 	github.com/ollama/ollama v0.6.6
 	github.com/openai/openai-go/v3 v3.8.1
 	github.com/qdrant/go-client v1.14.0
-	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
 	google.golang.org/genai v1.1.0
 )
 
@@ -127,11 +127,11 @@ require (
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/casbin/govaluate v1.1.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cloudflare/circl v1.6.1 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20250121191232-2f005788dc42 // indirect
-	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
+	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.2 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
@@ -139,7 +139,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.6.2 // indirect
+	github.com/go-git/go-billy/v5 v5.9.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
@@ -157,10 +157,10 @@ require (
 	github.com/hashicorp/go-secure-stdlib/strutil v0.1.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.2 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
-	github.com/pjbgf/sha1cd v0.3.2 // indirect
+	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
@@ -183,8 +183,8 @@ require (
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.35.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250428153025-10db94c68c34 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250428153025-10db94c68c34 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
