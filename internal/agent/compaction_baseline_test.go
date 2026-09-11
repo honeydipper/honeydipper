@@ -538,3 +538,132 @@ func TestRunTurn_NoPriorAgentMessage_NoCompaction(t *testing.T) {
 	}
 	assert.True(t, helper.hasCall("driver:openai:send_to_model"), "brand-new first turn must send to the model")
 }
+
+// ---------------------------------------------------------------------------
+// cross-turn marker persistence (Issue 1: marker must survive across turns)
+// ---------------------------------------------------------------------------
+
+// TestHandleCompactionResult_PersistsMarkerToConvoState verifies that
+// handleCompactionResult records the compaction boundary marker in ConvoState,
+// not just on the in-memory session, so it can be re-seeded by the fresh
+// AgentSession created for the next real user turn.
+func TestHandleCompactionResult_PersistsMarkerToConvoState(t *testing.T) {
+	store, s := makeCompactionResultSession(t, false)
+	call := AgentToolCall{
+		FuncName: "ag__summ",
+		Params: map[string]interface{}{
+			"compaction_id": "convo-2_g1",
+			"preserve":      2,
+		},
+	}
+	require.True(t, s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}}))
+	marker := s.CompactionHistoryIdx
+	require.Greater(t, marker, 0, "compaction must set a non-zero boundary marker")
+
+	// The marker must be persisted in ConvoState (handleCompactionResult runs
+	// lockedConvoStateUpdate).
+	cs := &ConvoState{}
+	cs.load("convo-2", store)
+	require.Equal(t, marker, cs.LastCompactionHistoryLen,
+		"compaction boundary marker must be persisted in ConvoState")
+}
+
+// TestCrossTurn_NewSessionSeedsMarkerFromConvoState verifies the core Issue 1
+// fix: a brand-new AgentSession (created for each real user message, labelID
+// == "") seeds its CompactionHistoryIdx from the persisted ConvoState marker
+// instead of defaulting to 0. After a compaction whose post-compaction resume
+// produced no fresh agent message, the next turn must NOT re-derive a stale
+// baseline from the preserved tail's pre-compaction (large) tokens.
+func TestCrossTurn_NewSessionSeedsMarkerFromConvoState(t *testing.T) {
+	store := newMockStore(&config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+		Drivers:   DriverConfigWithAgentEngines(),
+	}})
+
+	// Simulate the persisted state after Turn N's compaction: compacted history
+	// = [summary system, preserved tail...] where the preserved agent message
+	// still carries pre-compaction (large) tokens, and ConvoState records the
+	// compaction boundary marker (= length of the compacted history).
+	const marker = 3
+	seedMockHistory(store, "convo-cross", []AgentMessage{
+		{Role: RoleSystem, Content: "Here is a summary of the conversation so far:\n..."},
+		{Role: RoleUser, Content: "old-q"},
+		{Role: RoleAgent, Content: "preserved-large", IsComplete: true, InputTokens: 5000, OutputTokens: 1000},
+	})
+	lockedConvoStateUpdate("convo-cross", store, func(cs *ConvoState) {
+		cs.LastCompactionHistoryLen = marker
+	})
+
+	// Turn N+1: a brand-new session (fresh AgentSession) must seed its marker
+	// from ConvoState.LastCompactionHistoryLen.
+	s := &AgentSession{}
+	s.setup(&dipper.Message{
+		Labels: map[string]string{"agent_name": "bot"},
+		Payload: map[string]interface{}{
+			"convo_id": "convo-cross",
+			"text":     "next question",
+		},
+	}, store, false)
+
+	assert.Equal(t, marker, s.CompactionHistoryIdx,
+		"new session must seed its compaction marker from ConvoState, not default to 0")
+	assert.False(t, s.refreshContextSize(),
+		"preserved-tail pre-compaction tokens must not re-establish a baseline across turns")
+	assert.Equal(t, 0, s.PrevContextSize)
+}
+
+// TestRunTurn_CrossTurn_MarkerPreventsRetrigger exercises the full runTurn path
+// for the edge case the fix addresses: Turn N compacted, the post-compaction
+// resume failed before producing a fresh agent message, and history still holds
+// a preserved-tail agent message with pre-compaction tokens. Turn N+1 creates a
+// brand-new session; because the marker is persisted in ConvoState and re-seeded
+// on the new session, compaction must NOT re-trigger on this turn.
+func TestRunTurn_CrossTurn_MarkerPreventsRetrigger(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents: map[string]config.Agent{
+			"bot": {
+				Name: "bot", Driver: "openai", Engine: "gpt-4", SystemPrompt: "You are helpful.",
+				CompactionPolicy: &agentpkg.CompactionPolicy{
+					Strategy: "summarize", Threshold: 500, ThresholdType: "total_tokens",
+					PreserveRecent: 1, SummarizationAgent: "summ",
+				},
+			},
+			"summ": {Name: "summ", Driver: "openai", Engine: "gpt-4"},
+		},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+		Drivers:   DriverConfigWithAgentEngines(),
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	convoID := "convo-cross-turn"
+	// Persisted state after Turn N's compaction: compacted history length 3,
+	// with the preserved agent message carrying 6000 pre-compaction tokens.
+	seedMockHistory(&helper.mockStore, convoID, []AgentMessage{
+		{Role: RoleSystem, Content: "Here is a summary of the conversation so far:\n..."},
+		{Role: RoleUser, Content: "old-q"},
+		{Role: RoleAgent, Content: "preserved-large", IsComplete: true, InputTokens: 5000, OutputTokens: 1000},
+	})
+	lockedConvoStateUpdate(convoID, store, func(cs *ConvoState) {
+		cs.LastCompactionHistoryLen = 3
+	})
+
+	// Turn N+1 with a new user message. Without the cross-turn marker fix this
+	// would re-derive a baseline of 6000 (>= threshold 500) and dispatch
+	// compaction; with the marker seeded the baseline stays 0 and the turn goes
+	// straight to the model.
+	store.runTurn("bot", convoID, "hello", "user1", "", "")
+
+	emitted := helper.getEmitted()
+	for _, m := range emitted {
+		assert.NotEqual(t, "agent_call", m.Subject,
+			"cross-turn preserved-tail tokens must not re-trigger compaction")
+	}
+	assert.True(t, helper.hasCall("driver:openai:send_to_model"),
+		"the new turn must be sent to the model, not compacted")
+}

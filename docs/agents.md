@@ -182,14 +182,17 @@ type CompactionPolicy struct {
 
 When `ThresholdType` is `"history_len"`, compaction triggers when `len(history) >= Threshold`.
 
-When `ThresholdType` is `"total_tokens"`, compaction triggers when the **driver-reported context size
-of the latest model call** `>= Threshold`. That value is `InputTokens + OutputTokens` of the most recent
-complete agent message in the conversation history (the exact token unit the user observes — populated by
-`hd-driver-openai` from `msg.Usage.PromptTokens` / `msg.Usage.CompletionTokens`). The baseline is derived
-from persisted history, refreshed once per turn under the turn lock, and maintained incrementally as new
-complete agent messages arrive, so it stays accurate even after interrupted, cancelled, or errored turns.
-This is a comparison against the driver-reported context size; it does **not** mutate the conversation's
-`ConvoState.total_tokens` accounting field.
+When `ThresholdType` is `"total_tokens"`, compaction triggers when the **context size of the latest
+model call** `>= Threshold`. That value is `InputTokens + OutputTokens` of the most recent complete agent
+message in the conversation history. In the default mode (`token_counter` unset) these are
+**driver-reported** counts — the exact token unit the user observes, populated by `hd-driver-openai` from
+`msg.Usage.PromptTokens` / `msg.Usage.CompletionTokens`. Under `token_counter: simple` the baseline is
+instead **heuristic**: `appendConvoHistory` overwrites each message's `InputTokens`/`OutputTokens` with
+simple character-based counts before persistence, so the baseline reflects those heuristic values rather
+than driver-reported usage. The baseline is derived from persisted history, refreshed once per turn under
+the turn lock, and maintained incrementally as new complete agent messages arrive, so it stays accurate
+even after interrupted, cancelled, or errored turns. This is a comparison against that context size; it
+does **not** mutate the conversation's `ConvoState.total_tokens` accounting field.
 
 The default `PreserveRecent` is 10 messages. The default summarization prompt is:
 
@@ -325,14 +328,25 @@ When conversation history grows too long, the agent system automatically compact
 6. The conversation resumes with the compacted history.
 
 **Key constraints:**
-- Compaction only triggers on **user messages** (not tool results).
-- For `threshold_type: total_tokens`, the metric compared against `Threshold` is the driver-reported
-  context size of the latest model call: `InputTokens + OutputTokens` of the most recent complete,
-  non-slash agent message in the conversation history. This baseline is derived from persisted history
-  (so existing long conversations get a correct baseline automatically on upgrade), refreshed under the
-  turn lock after a fresh history load, and kept up to date as complete agent messages arrive — even when
-  a prior turn was interrupted, cancelled, or errored. Compaction fires at most once per real user turn,
-  and after compaction the baseline self-heals from the next agent reply.
+- Compaction only triggers on **user messages** (not tool results), and fires at most once per real user
+  turn. This once-per-turn guard applies to **both** `threshold_type` values (`history_len` and
+  `total_tokens`); it is effectively a no-op for `history_len` in normal operation because compaction
+  shrinks history back below threshold, but it guarantees `total_tokens` never loops within a single turn.
+- For `threshold_type: total_tokens`, the metric compared against `Threshold` is the context size of the
+  latest model call: `InputTokens + OutputTokens` of the most recent complete, non-slash agent message in
+  the conversation history. In the default mode (`token_counter` unset) these are **driver-reported**
+  counts; under `token_counter: simple` the baseline is heuristic (character-based counts written by
+  `appendConvoHistory`). This baseline is derived from persisted history (so existing long conversations
+  get a correct baseline automatically on upgrade), refreshed under the turn lock after a fresh history
+  load, and kept up to date as complete agent messages arrive — even when a prior turn was interrupted,
+  cancelled, or errored. The compaction boundary marker is persisted in `ConvoState` and re-seeded on each
+  new user turn so a preserved-tail agent message carrying pre-compaction tokens cannot re-trigger
+  compaction when the post-compaction resume produced no new agent reply. After compaction the baseline
+  self-heals from the next agent reply.
+- **Behavior note:** because the baseline self-heals to the actual compacted context size (rather than
+  resetting to zero), if the configured `Threshold` is set below roughly `(summary + preserve-window)`
+  tokens, compaction will re-trigger on every subsequent user turn. Set `Threshold` comfortably above the
+  expected post-compaction baseline to avoid re-firing on each turn.
 - The summarization agent must be configured and reference a valid driver.
 - Archived generations are discoverable: `convo_history:<ConvoID>_g1`, `_g2`, etc.
 

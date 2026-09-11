@@ -67,10 +67,18 @@ type ConvoState struct {
 	TotalTokens int `json:"total_tokens,omitempty"`
 	// ContextTokens tracks the token count of the current history including
 	// system message, persisted for incremental counting across round trips.
-	ContextTokens  int      `json:"context_tokens,omitempty"`
-	Generation     int      `json:"generation"`
-	ArchivedConvos []string `json:"archived_convos,omitempty"`
-	TTL            string   `json:"ttl"`
+	ContextTokens int `json:"context_tokens,omitempty"`
+	// LastCompactionHistoryLen is the conversation-history length at the moment
+	// of the most recent compaction. It survives across user turns so a fresh
+	// AgentSession (created for each real user message) can seed its
+	// CompactionHistoryIdx and avoid re-triggering total_tokens compaction from
+	// preserved-tail messages that still carry pre-compaction (large) tokens
+	// when the post-compaction resume produced no new agent message. 0 means no
+	// compaction has occurred yet.
+	LastCompactionHistoryLen int      `json:"last_compaction_history_len,omitempty"`
+	Generation               int      `json:"generation"`
+	ArchivedConvos           []string `json:"archived_convos,omitempty"`
+	TTL                      string   `json:"ttl"`
 
 	Agent  *config.Agent     `json:"agent,omitempty"`
 	Skills map[string]string `json:"skills,omitempty"`

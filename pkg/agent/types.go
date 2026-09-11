@@ -80,7 +80,16 @@ const (
 
 // CompactionPolicy configures the automatic compaction behavior for an agent's
 // conversation history. Compaction is triggered lazily before sending history
-// to the model when the threshold is exceeded.
+// to the model when the threshold is exceeded, and fires at most once per real
+// user turn (a once-per-turn guard applies to both threshold types; it is a
+// no-op for history_len in normal operation but prevents total_tokens from
+// looping within a single turn).
+//
+// Behavior note: because the total_tokens baseline self-heals to the actual
+// compacted context size (rather than resetting to zero), setting Threshold
+// below roughly (summary + preserve-window) tokens will re-trigger compaction
+// on every subsequent user turn. Set Threshold comfortably above the expected
+// post-compaction baseline to avoid re-firing each turn.
 type CompactionPolicy struct {
 	// Strategy selects the compaction method. Currently only "summarize" is supported.
 	Strategy CompactionStrategy `json:"strategy" mapstructure:"strategy"`
@@ -93,15 +102,18 @@ type CompactionPolicy struct {
 	// ThresholdType specifies what metric Threshold refers to.
 	// Supported values:
 	//   - "history_len":   number of messages in the conversation history
-	//   - "total_tokens":  the driver-reported context size of the latest
-	//     model call (InputTokens + OutputTokens of the most recent complete
-	//     agent message in the conversation history). This is the exact token
-	//     unit the user observes (agentMsg.InputTokens + OutputTokens,
-	//     populated by hd-driver-openai from msg.Usage.PromptTokens /
-	//     msg.Usage.CompletionTokens). Compaction fires when that value equals
-	//     or exceeds Threshold. This is a comparison against the driver-reported
-	//     context size — it does not mutate the conversation's
-	//     ConvoState.total_tokens accounting field, which is left unchanged.
+	//   - "total_tokens":  the context size of the latest model call
+	//     (InputTokens + OutputTokens of the most recent complete agent message
+	//     in the conversation history), compared against Threshold. In the
+	//     default mode (TokenCounter == nil) these are driver-reported token
+	//     counts — the exact unit the user observes, populated by
+	//     hd-driver-openai from msg.Usage.PromptTokens / msg.Usage.CompletionTokens.
+	//     Under token_counter: "simple" the baseline is instead heuristic:
+	//     appendConvoHistory overwrites each message's InputTokens/OutputTokens
+	//     with simple character-based counts, so the baseline reflects those
+	//     heuristic values rather than driver-reported usage. This comparison
+	//     does not mutate the conversation's ConvoState.total_tokens accounting
+	//     field, which is left unchanged.
 	ThresholdType string `json:"threshold_type" mapstructure:"threshold_type"`
 
 	// PreserveRecent is the number of most recent conversation messages that

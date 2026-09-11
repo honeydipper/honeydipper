@@ -75,7 +75,9 @@ type AgentSession struct {
 	// never re-establish a stale baseline when the post-compaction resume
 	// produced no new agent message (the next user turn must not re-trigger
 	// more than once). JSON-serialized with the session so it survives session
-	// restore.
+	// restore, and seeded on new user turns from
+	// ConvoState.LastCompactionHistoryLen (persisted at compaction time) so the
+	// marker also survives the fresh AgentSession created for each user message.
 	CompactionHistoryIdx int
 	TotalTokens          int
 	InputTokens          int
@@ -375,23 +377,41 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		if cs.FirstTurn == "" && s.Type == AgentSessionTypeChatTurn && firstTurn != "" {
 			cs.FirstTurn = firstTurn
 		}
-		if len(s.history) > 0 {
-			forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
-			if forgetHistory {
-				archivedKey := dipper.Must(cs.archiveConvo(store)).(string)
-				s.history = nil
-				dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
-					"key": ConvoHistoryKeyPrefix + s.ConvoID,
-				}))
-				markerMsg := AgentMessage{Role: RoleSystem, Content: fmt.Sprintf("<!-- archived_convo: %s -->", archivedKey)}
-				s.history = append(s.history, markerMsg)
-				convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
-				dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
-					"key":   ConvoHistoryKeyPrefix + s.ConvoID,
-					"value": string(dipper.SerializeContent(markerMsg)),
-					"ttl":   float64(convoTTL),
-				}))
-			}
+		forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
+		if len(s.history) > 0 && forgetHistory {
+			// forget_history archives and resets the conversation history, so the
+			// persisted compaction boundary marker must be cleared too. Otherwise
+			// a stale marker from a prior compaction would be re-seeded by later
+			// fresh sessions and suppress baseline measurement on the reset
+			// (shorter) history.
+			cs.LastCompactionHistoryLen = 0
+			archivedKey := dipper.Must(cs.archiveConvo(store)).(string)
+			s.history = nil
+			dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
+				"key": ConvoHistoryKeyPrefix + s.ConvoID,
+			}))
+			markerMsg := AgentMessage{Role: RoleSystem, Content: fmt.Sprintf("<!-- archived_convo: %s -->", archivedKey)}
+			s.history = append(s.history, markerMsg)
+			convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
+			dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
+				"key":   ConvoHistoryKeyPrefix + s.ConvoID,
+				"value": string(dipper.SerializeContent(markerMsg)),
+				"ttl":   float64(convoTTL),
+			}))
+		}
+		// Seed the compaction boundary marker across user turns. Every real user
+		// message creates a brand-new AgentSession (labelID == ""), which would
+		// otherwise default CompactionHistoryIdx to 0 and, after a compaction
+		// whose post-compaction resume produced no new agent message, re-scan the
+		// preserved tail's pre-compaction (large) tokens and re-trigger
+		// total_tokens compaction every turn. Reading the marker persisted in
+		// ConvoState.LastCompactionHistoryLen keeps that edge from recurring.
+		// forget_history archives and resets the history, so the marker restarts
+		// at 0 (the fresh history carries no pre-compaction tokens).
+		if forgetHistory {
+			s.CompactionHistoryIdx = 0
+		} else {
+			s.CompactionHistoryIdx = cs.LastCompactionHistoryLen
 		}
 		// NOTE: PrevContextSize (the total_tokens compaction baseline) is NOT
 		// derived here from cs.LastSession. That one-time, pre-lock snapshot was
