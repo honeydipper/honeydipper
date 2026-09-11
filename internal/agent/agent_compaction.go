@@ -29,6 +29,14 @@ func (s *AgentSession) shouldCompact() bool {
 	if last == -1 || s.history[last].Role != RoleUser {
 		return false
 	}
+	// Once-per-user-turn guard: compaction fires at most once per real user
+	// message. The post-compaction model call appends a fresh agent reply
+	// carrying the compacted context's driver-reported tokens (self-healing
+	// baseline); this guard keeps that fresh reply from re-triggering
+	// compaction again within the same turn.
+	if s.CompactedThisTurn {
+		return false
+	}
 	switch s.Agent.CompactionPolicy.ThresholdType {
 	case "history_len":
 		return len(s.history) >= s.Agent.CompactionPolicy.Threshold
@@ -145,6 +153,12 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 
 	// Update in-memory history
 	s.history = newHistory
+	// Record the history length at the compaction boundary. Baseline
+	// measurements (refreshContextSize) only consider agent messages appended
+	// at or after this index, so preserved-tail messages carrying
+	// pre-compaction (large) tokens cannot re-trigger compaction on the next
+	// user turn when the post-compaction resume produced no new agent message.
+	s.CompactionHistoryIdx = len(newHistory)
 	s.PrevContextSize = 0 // reset previous context size since we're starting fresh with the summary as context
 
 	// Recalculate ContextTokens from the new compacted history.
@@ -272,6 +286,11 @@ func (s *AgentSession) compactHistory() bool {
 	// sub-agent and returns via eventbus:agent_continue.
 	agentMsg := AgentMessage{Role: RoleAgent, Content: "", ToolCalls: []AgentToolCall{toolCall}}
 	s.appendConvoHistory(&agentMsg)
+
+	// Mark this real user turn as compacted so compaction cannot re-fire before
+	// the next real user message (once-per-turn guard). Cleared at the start of
+	// each new real user turn in run().
+	s.CompactedThisTurn = true
 
 	// Kick off the tool call from this session.
 	s.CurrentCall = 0

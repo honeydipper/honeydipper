@@ -181,7 +181,15 @@ type CompactionPolicy struct {
 ```
 
 When `ThresholdType` is `"history_len"`, compaction triggers when `len(history) >= Threshold`.
-When `ThresholdType` is `"total_tokens"`, compaction triggers when cumulative tokens `>= Threshold`.
+
+When `ThresholdType` is `"total_tokens"`, compaction triggers when the **driver-reported context size
+of the latest model call** `>= Threshold`. That value is `InputTokens + OutputTokens` of the most recent
+complete agent message in the conversation history (the exact token unit the user observes — populated by
+`hd-driver-openai` from `msg.Usage.PromptTokens` / `msg.Usage.CompletionTokens`). The baseline is derived
+from persisted history, refreshed once per turn under the turn lock, and maintained incrementally as new
+complete agent messages arrive, so it stays accurate even after interrupted, cancelled, or errored turns.
+This is a comparison against the driver-reported context size; it does **not** mutate the conversation's
+`ConvoState.total_tokens` accounting field.
 
 The default `PreserveRecent` is 10 messages. The default summarization prompt is:
 
@@ -318,6 +326,13 @@ When conversation history grows too long, the agent system automatically compact
 
 **Key constraints:**
 - Compaction only triggers on **user messages** (not tool results).
+- For `threshold_type: total_tokens`, the metric compared against `Threshold` is the driver-reported
+  context size of the latest model call: `InputTokens + OutputTokens` of the most recent complete,
+  non-slash agent message in the conversation history. This baseline is derived from persisted history
+  (so existing long conversations get a correct baseline automatically on upgrade), refreshed under the
+  turn lock after a fresh history load, and kept up to date as complete agent messages arrive — even when
+  a prior turn was interrupted, cancelled, or errored. Compaction fires at most once per real user turn,
+  and after compaction the baseline self-heals from the next agent reply.
 - The summarization agent must be configured and reference a valid driver.
 - Archived generations are discoverable: `convo_history:<ConvoID>_g1`, `_g2`, etc.
 

@@ -158,6 +158,12 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	// Resolve any unresolved tool calls from a previous cancelled conversation
 	s.resolveUnresolvedToolCalls()
 
+	// Refresh the compaction baseline under the turn lock from the freshly
+	// loaded history (not the pre-lock snapshot in initNewSession), so
+	// threshold_type: total_tokens fires consistently on the next real user
+	// message even after an interrupted/cancelled/errored prior turn.
+	s.refreshContextSize()
+
 	s.run()
 }
 
@@ -170,6 +176,9 @@ func (p *PersistentAgentStore) ContinueInference(msg *dipper.Message) {
 	s.setup(msg, p, true)
 	// Load history for the restored session.
 	s.loadConvoHistory()
+	// Re-derive the compaction baseline from the restored history so a
+	// mid-turn restore (tool result / recover) keeps PrevContextSize accurate.
+	s.refreshContextSize()
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error in ContinueInference", func(r interface{}) {
 		if s.ErrorReason == "" {
@@ -196,6 +205,8 @@ func (p *PersistentAgentStore) ReceiveInference(msg *dipper.Message) {
 	s.setup(msg, p, true)
 	// Load history for the restored session.
 	s.loadConvoHistory()
+	// Re-derive the compaction baseline from the restored history.
+	s.refreshContextSize()
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error in process agent response", func(r interface{}) {
 		if s.ErrorReason == "" {
@@ -427,6 +438,12 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 	// Resolve any unresolved tool calls from a previous cancelled conversation
 	s.resolveUnresolvedToolCalls()
 
+	// Refresh the compaction baseline under the turn lock from the freshly
+	// loaded history so total_tokens compaction triggers on this user message
+	// when the driver-reported context is over threshold (even after an
+	// interrupted prior turn).
+	s.refreshContextSize()
+
 	defer s.persist(true)
 	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
 		if s.ErrorReason == "" {
@@ -508,6 +525,8 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 	s.setup(subMsg, p, false)
 	// Sub-agents don't use turn locks; load history after setup.
 	s.loadConvoHistory()
+	// Re-derive the compaction baseline from the loaded history.
+	s.refreshContextSize()
 	s.ParentSessionID = msg.Labels["agent_session_id"]
 	s.ParentTurnID = msg.Labels["turn_id"]
 	s.ParentToolCallID = msg.Labels["tool_call_id"]
@@ -592,6 +611,8 @@ func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	s.setup(msg, p, true)
 	// Load history for the restored session.
 	s.loadConvoHistory()
+	// Re-derive the compaction baseline from the restored history.
+	s.refreshContextSize()
 	defer s.persist(true)
 	s.processAgentPoll(msg)
 }

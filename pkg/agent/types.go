@@ -93,7 +93,15 @@ type CompactionPolicy struct {
 	// ThresholdType specifies what metric Threshold refers to.
 	// Supported values:
 	//   - "history_len":   number of messages in the conversation history
-	//   - "total_tokens":  cumulative input + output tokens across the session
+	//   - "total_tokens":  the driver-reported context size of the latest
+	//     model call (InputTokens + OutputTokens of the most recent complete
+	//     agent message in the conversation history). This is the exact token
+	//     unit the user observes (agentMsg.InputTokens + OutputTokens,
+	//     populated by hd-driver-openai from msg.Usage.PromptTokens /
+	//     msg.Usage.CompletionTokens). Compaction fires when that value equals
+	//     or exceeds Threshold. This is a comparison against the driver-reported
+	//     context size — it does not mutate the conversation's
+	//     ConvoState.total_tokens accounting field, which is left unchanged.
 	ThresholdType string `json:"threshold_type" mapstructure:"threshold_type"`
 
 	// PreserveRecent is the number of most recent conversation messages that
