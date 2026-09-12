@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/v3/internal/api"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/api"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 func setupReceiverAPIs() {

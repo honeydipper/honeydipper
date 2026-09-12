@@ -22,13 +22,13 @@ steps:
   - feature: api-broadcast
     method: send
     expectedMessage:
-      broadcastSubject: call
+      subject: call
       labels:
         fn: test_type_match
         uuid: 34ik-ijo3i4jt84932-aiau3kegkjrl
         service: foo
         content-type: application/json
-      data: {}
+      payload: {}
 
 # mock return messages received from services
 returns:

@@ -6,6 +6,8 @@ drivers:
       global:
         eventbus: redisqueue
         api-broadcast: api-broadcast
+        cache: redis-cache
+        locker: redislock
     features:
       global:
         - name: "driver:gcloud-kms"
@@ -13,6 +15,8 @@ drivers:
         - name: "eventbus"
           required: true
         - name: api-broadcast
+        - name: "cache"
+        - name: "locker"
       operator:
         - name: "driver:gcloud-gke"
         - name: "driver:gcloud-dataflow"
@@ -23,6 +27,11 @@ drivers:
         type: builtin
         handlerData:
           shortName: redisqueue
+      redis-cache:
+        name: redis-cache
+        type: builtin
+        handlerData:
+          shortName: redis-cache
       webhook:
         name: webhook
         type: builtin
@@ -58,6 +67,11 @@ drivers:
         type: builtin
         handlerData:
           shortName: redispubsub
+      redislock:
+        name: redislock
+        type: builtin
+        handlerData:
+          shortName: redislock
 
     services:
       api:

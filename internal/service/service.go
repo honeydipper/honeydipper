@@ -7,21 +7,24 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	serrors "github.com/go-errors/errors"
-	"github.com/honeydipper/honeydipper/v3/internal/api"
-	"github.com/honeydipper/honeydipper/v3/internal/config"
-	"github.com/honeydipper/honeydipper/v3/internal/daemon"
-	"github.com/honeydipper/honeydipper/v3/internal/driver"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/api"
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/internal/daemon"
+	"github.com/honeydipper/honeydipper/v4/internal/driver"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // features known to the service for providing some functionalities.
@@ -74,7 +77,15 @@ type Service struct {
 	ResponseFactory    *api.ResponseFactory
 	healthy            bool
 	drainingGroup      *sync.WaitGroup
+	exitingGroup       *sync.WaitGroup
 	daemonID           string
+	ready              chan struct{}
+	context            context.Context
+	cancel             context.CancelFunc
+	sequences          map[string]chan dipper.Message
+	sequenceLock       sync.Mutex
+
+	Drain func()
 }
 
 var (
@@ -97,11 +108,15 @@ func NewService(cfg *config.Config, name string) *Service {
 		driverRuntimes: map[string]*driver.Runtime{},
 		expects:        map[string][]ExpectHandler{},
 		responders:     map[string][]MessageResponder{},
+		sequences:      map[string]chan dipper.Message{},
+		ready:          make(chan struct{}),
 	}
-	svc.RPCCallerBase.Init(svc, "rpc", "call")
+	svc.context, svc.cancel = context.WithCancel(context.Background())
+	svc.Init(svc, "rpc", "call")
 
 	svc.responders["state:cold"] = []MessageResponder{coldReloadDriverRuntime}
-	svc.responders["state:stopped"] = []MessageResponder{handleDriverStop}
+	svc.responders["state:completed"] = []MessageResponder{handleDriverCompleted}
+	svc.responders["state:drained"] = []MessageResponder{handleDriverDrained}
 	svc.responders["rpc:call"] = []MessageResponder{handleRPCCall}
 	svc.responders["rpc:return"] = []MessageResponder{handleRPCReturn}
 	svc.responders["broadcast:reload"] = []MessageResponder{handleReload}
@@ -112,6 +127,15 @@ func NewService(cfg *config.Config, name string) *Service {
 
 	if len(Services) == 0 {
 		masterService = svc
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGTERM, syscall.SIGINT)
+		daemon.Go(func() {
+			select {
+			case <-s:
+				go StopAll()
+			case <-masterService.context.Done():
+			}
+		})
 	}
 	Services[name] = svc
 
@@ -188,7 +212,16 @@ func (s *Service) loadFeature(feature string) (affected bool, driverName string,
 		panic("unable to get driver metadata")
 	}
 
-	driverRuntime := driver.NewDriver(feature, driverMeta.(map[string]interface{}), driverData, dynamicData)
+	resolvedDriverMeta, err := s.config.ResolveStagedDriverMeta(driverMeta.(map[string]interface{}))
+	if err != nil {
+		panic(err)
+	}
+
+	if resolvedDriverMeta["type"] == "null" {
+		return false, driverName, nil
+	}
+
+	driverRuntime := driver.NewDriver(feature, resolvedDriverMeta, driverData, dynamicData)
 	dipper.Logger.Debugf("[%s] driver %s meta %v", s.name, driverName, driverRuntime.Handler.Meta())
 
 	driverMetaUnchanged := oldRuntime != nil && reflect.DeepEqual(*oldRuntime.Handler.Meta(), *driverRuntime.Handler.Meta())
@@ -234,7 +267,7 @@ func (s *Service) coldReload(driverRuntime *driver.Runtime, oldRuntime *driver.R
 		s.checkDeleteDriverRuntime(driverRuntime.Feature, nil)
 		if driverRuntime.Feature == FeatureEmitter {
 			// emitter is being replaced
-			delete(daemon.Emitters, s.name)
+			daemon.DeleteEmitter(s.name)
 		}
 		go func(runtime *driver.Runtime) {
 			defer dipper.SafeExitOnError("[%s] runtime %s being replaced output is already closed", s.name, runtime.Handler.Meta().Name)
@@ -251,7 +284,7 @@ func (s *Service) start() {
 		s.config.AdvanceStage(s.name, config.StageBooting)
 		featureList := s.getFeatureList()
 		s.loadRequiredFeatures(featureList, true)
-		go s.serviceLoop()
+		daemon.Go(s.serviceLoop)
 		time.Sleep(time.Second)
 		s.config.AdvanceStage(s.name, config.StageDiscovering, dipper.GetDecryptFunc(s))
 		s.loadAdditionalFeatures(featureList)
@@ -260,8 +293,9 @@ func (s *Service) start() {
 			s.ServiceReload(s.config)
 		}
 		s.healthy = true
+		close(s.ready)
 		if !s.config.IsJobMode {
-			go s.metricsLoop()
+			daemon.Go(s.metricsLoop)
 		}
 	}()
 }
@@ -270,14 +304,7 @@ func (s *Service) start() {
 func (s *Service) Reload() {
 	defer func() {
 		if r := recover(); r != nil {
-			s.healthy = false
-			if errors.Is(r.(error), config.ErrConfigRollback) {
-				dipper.Logger.Errorf("[%s] reverting config initiated outside of the service", s.name)
-
-				return
-			}
-			dipper.Logger.Errorf("[%s] reverting config due to fatal failure %v", s.name, r)
-			s.config.RollBack()
+			s.recoverReloadPanic(r)
 		}
 	}()
 	dipper.Logger.Infof("[%s] reloading service", s.name)
@@ -292,6 +319,17 @@ func (s *Service) Reload() {
 	}
 	s.healthy = true
 	s.removeUnusedFeatures(featureList)
+}
+
+func (s *Service) recoverReloadPanic(r interface{}) {
+	s.healthy = false
+	if err, ok := r.(error); ok && errors.Is(err, config.ErrConfigRollback) {
+		dipper.Logger.Errorf("[%s] reverting config initiated outside of the service", s.name)
+
+		return
+	}
+	dipper.Logger.Errorf("[%s] reverting config due to fatal failure %v", s.name, r)
+	s.config.RollBack()
 }
 
 func (s *Service) getFeatureList() map[string]bool {
@@ -318,7 +356,7 @@ func (s *Service) removeUnusedFeatures(featureList map[string]bool) {
 		if _, ok := featureList[feature]; !ok {
 			if feature == FeatureEmitter {
 				// emitter is removed
-				delete(daemon.Emitters, s.name)
+				daemon.DeleteEmitter(s.name)
 			}
 			s.checkDeleteDriverRuntime(feature, nil)
 			go func(runtime *driver.Runtime) {
@@ -356,7 +394,7 @@ func (s *Service) loadRequiredFeatures(featureList map[string]bool, boot bool) {
 					s.driverRuntimes[feature].State = driver.DriverAlive
 					if feature == FeatureEmitter {
 						// emitter is loaded
-						daemon.Emitters[s.name] = s
+						daemon.SetEmitter(s.name, s)
 					}
 				},
 				DriverReadyTimeout*time.Second,
@@ -397,7 +435,7 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 							s.driverRuntimes[feature].State = driver.DriverAlive
 							if feature == FeatureEmitter {
 								// emitter is loaded
-								daemon.Emitters[s.name] = s
+								daemon.SetEmitter(s.name, s)
 							}
 						},
 						DriverReadyTimeout*time.Second,
@@ -422,7 +460,7 @@ func (s *Service) serviceLoop() {
 		func() {
 			s.driverLock.Lock()
 			defer s.driverLock.Unlock()
-			cases = []reflect.SelectCase{}
+			cases = make([]reflect.SelectCase, 0, len(s.driverRuntimes))
 			orderedRuntimes = []*driver.Runtime{}
 			for _, runtime := range s.driverRuntimes {
 				if runtime.State != driver.DriverFailed {
@@ -459,7 +497,7 @@ func (s *Service) serviceLoop() {
 				runtime := orderedRuntimes[chosen]
 				msg := value.Interface().(*dipper.Message)
 				if runtime.Feature != FeatureEmitter {
-					if emitter, ok := daemon.Emitters[s.name]; ok {
+					if emitter, ok := daemon.GetEmitter(s.name); ok {
 						emitter.CounterIncr("honey.honeydipper.local.message", []string{
 							"service:" + s.name,
 							"driver:" + runtime.Handler.Meta().Name,
@@ -472,7 +510,7 @@ func (s *Service) serviceLoop() {
 
 				s.driverLock.Lock()
 				defer s.driverLock.Unlock()
-				go s.process(*msg, runtime)
+				s.process(*msg, runtime)
 			}()
 
 		case !ok && chosen < len(orderedRuntimes):
@@ -480,9 +518,9 @@ func (s *Service) serviceLoop() {
 
 			if orderedRuntimes[chosen].Feature == FeatureEmitter {
 				// emitter has crashed
-				delete(daemon.Emitters, s.name)
+				daemon.DeleteEmitter(s.name)
 			}
-			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive {
+			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive && s.drainingGroup == nil {
 				// only reload drivers that used to be in DriveAlive state
 				go loadFailedDriverRuntime(orderedRuntimes[chosen], 0)
 			}
@@ -491,6 +529,8 @@ func (s *Service) serviceLoop() {
 
 	s.healthy = false
 
+	s.driverLock.Lock()
+	defer s.driverLock.Unlock()
 	for fname, runtime := range s.driverRuntimes {
 		func() {
 			defer dipper.SafeExitOnError("[%s] driver runtime for feature %s already closed", s.name, fname)
@@ -498,55 +538,6 @@ func (s *Service) serviceLoop() {
 		}()
 	}
 	dipper.Logger.Warningf("[%s] service closed for business", s.name)
-}
-
-func (s *Service) process(msg dipper.Message, runtime *driver.Runtime) {
-	defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-	expectKey := fmt.Sprintf("%s:%s:%s", msg.Channel, msg.Subject, runtime.Handler.Meta().Name)
-	if expects, ok := s.deleteExpect(expectKey); ok {
-		for _, f := range expects {
-			go func(f ExpectHandler) {
-				defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-				f(&msg)
-			}(f)
-		}
-	}
-
-	key := fmt.Sprintf("%s:%s", msg.Channel, msg.Subject)
-	// responder
-	if responders, ok := s.responders[key]; ok {
-		for _, f := range responders {
-			go func(f MessageResponder) {
-				defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-				f(runtime, &msg)
-			}(f)
-		}
-	}
-
-	go func(msg *dipper.Message) {
-		defer dipper.SafeExitOnError("[%s] continue  message loop", s.name)
-
-		// transformer
-		if transformers, ok := s.transformers[key]; ok {
-			for _, f := range transformers {
-				msg = f(runtime, msg)
-				if msg == nil {
-					break
-				}
-			}
-		}
-
-		if msg != nil && s.Route != nil {
-			// router
-			routedMsgs := s.Route(msg)
-
-			if len(routedMsgs) > 0 {
-				for _, routedMsg := range routedMsgs {
-					routedMsg.driverRuntime.SendMessage(routedMsg.message)
-				}
-			}
-		}
-	}(&msg)
 }
 
 func (s *Service) addResponder(channelSubject string, f MessageResponder) {
@@ -633,7 +624,7 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 	s := Services[d.Service]
 	d.State = driver.DriverFailed
 	driverName := d.Handler.Meta().Name
-	if emitter, ok := daemon.Emitters[s.name]; ok {
+	if emitter, ok := daemon.GetEmitter(s.name); ok {
 		emitter.CounterIncr("honey.honeydipper.driver.recovery_attempt", []string{
 			"service:" + s.name,
 			"driver:" + driverName,
@@ -660,7 +651,7 @@ func loadFailedDriverRuntime(d *driver.Runtime, count int) {
 				s.driverRuntimes[d.Feature].State = driver.DriverAlive
 				if d.Feature == FeatureEmitter {
 					// emitter is loaded
-					daemon.Emitters[s.name] = s
+					daemon.SetEmitter(s.name, s)
 				}
 			},
 			DriverReadyTimeout*time.Second,
@@ -699,7 +690,13 @@ func handleAPI(from *driver.Runtime, m *dipper.Message) {
 	dipper.Logger.Debugf("[%s] handling API [%s]: %+v", s.name, method, m.Labels)
 	if apiFunc, ok := s.APIs[method]; ok {
 		go func() {
-			defer dipper.SafeExitOnError("[%s] api call panic for [%s]", s.name, method)
+			defer dipper.SafeExitOnError("[%s] api call panic for [%s]", s.name, method, func(r any) {
+				err, ok := r.(error)
+				if !ok {
+					err = fmt.Errorf("%w: %+v", ErrServiceError, r)
+				}
+				resp.ReturnError(err)
+			})
 			apiFunc(resp)
 		}()
 	}
@@ -729,7 +726,7 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 	go func() {
 		time.Sleep(time.Second)
 		dipper.Logger.Warningf("[%s] quiting on broadcast force reload message", from.Service)
-		Services[from.Service].Drain()
+		Services[from.Service].WindDown()
 		if from.Service == masterService.name {
 			daemon.ShutDown()
 			os.Exit(0)
@@ -737,10 +734,19 @@ func handleReload(from *driver.Runtime, m *dipper.Message) {
 	}()
 }
 
-func handleDriverStop(from *driver.Runtime, m *dipper.Message) {
+func handleDriverDrained(from *driver.Runtime, m *dipper.Message) {
+	dipper.Logger.Warningf("[%s] driver %s drained received", from.Service, from.Handler.Meta().Name)
+	Services[from.Service].drainingGroup.Done()
+}
+
+func handleDriverCompleted(from *driver.Runtime, m *dipper.Message) {
 	if from.State != driver.DriverStopped {
 		from.State = driver.DriverStopped
-		Services[from.Service].drainingGroup.Done()
+		from.Handler.Close()
+		if g := Services[from.Service].exitingGroup; g != nil {
+			dipper.Logger.Warningf("[%s] driver %s completed", Services[from.Service].name, from.Handler.Meta().Name)
+			Services[from.Service].exitingGroup.Done()
+		}
 	}
 }
 
@@ -796,38 +802,95 @@ func (s *Service) metricsLoop() {
 				s.EmitMetrics()
 			}
 		}()
-		time.Sleep(time.Minute)
+		select {
+		case <-s.context.Done():
+			return
+		case <-time.After(time.Minute):
+		}
 	}
 }
 
-// Drain stops the service from accepting new requests but allow the remaining requests to complete.
-func (s *Service) Drain() {
+// WindDown stops the service from accepting new requests but allow the remaining requests to complete.
+func (s *Service) WindDown() {
 	s.healthy = false
+	s.cancel()
 
-	cnt := 0
 	s.driverLock.Lock()
+	s.drainingGroup = &sync.WaitGroup{}
 	for _, d := range s.driverRuntimes {
 		if d.State != driver.DriverFailed && d.State != driver.DriverStopped {
-			cnt++
+			s.drainingGroup.Add(1)
+			d.SendMessage(&dipper.Message{
+				Channel: "command",
+				Subject: "drain",
+			})
 		}
 	}
 	s.driverLock.Unlock()
 
-	if cnt > 0 {
-		s.drainingGroup = &sync.WaitGroup{}
-		s.drainingGroup.Add(cnt)
+	dipper.WaitGroupWaitTimeout(s.drainingGroup, time.Second*15)
+	dipper.WaitGroupWaitTimeout(&s.ResponseFactory.Live, time.Second*15)
+	dipper.Logger.Warningf("[%s] service no longer accepting new requests", s.name)
 
-		for _, d := range s.driverRuntimes {
-			if d.State != driver.DriverFailed && d.State != driver.DriverStopped {
-				d.SendMessage(&dipper.Message{
-					Channel: "command",
-					Subject: "stop",
-				})
-			}
-		}
-
-		dipper.WaitGroupWaitTimeout(s.drainingGroup, time.Second)
+	if s.Drain != nil {
+		s.Drain()
 	}
 
+	deadline := time.Now().Add(time.Second * 15)
+	for time.Now().Before(deadline) {
+		s.sequenceLock.Lock()
+		empty := len(s.sequences) == 0
+		s.sequenceLock.Unlock()
+		if empty {
+			break
+		}
+		time.Sleep(DriverGracefulTimeout * time.Millisecond)
+	}
+
+	s.driverLock.Lock()
+	s.exitingGroup = &sync.WaitGroup{}
+	for _, d := range s.driverRuntimes {
+		if d.State != driver.DriverFailed && d.State != driver.DriverStopped {
+			s.exitingGroup.Add(1)
+			d.SendMessage(&dipper.Message{
+				Channel: "command",
+				Subject: "stop",
+			})
+		}
+	}
+	s.driverLock.Unlock()
+
+	dipper.WaitGroupWaitTimeout(s.exitingGroup, time.Second*5)
+	dipper.Logger.Warningf("[%s] service drained and stopped", s.name)
+
 	s.config.AdvanceStage(s.name, config.StageDrained)
+}
+
+// StopAll stops all services and the daemon.
+func StopAll() {
+	drained := &sync.WaitGroup{}
+	for _, s := range Services {
+		drained.Add(1)
+		go func(s *Service) {
+			s.WindDown()
+			drained.Done()
+		}(s)
+	}
+	drained.Wait()
+	daemon.ShutDown()
+	os.Exit(0)
+}
+
+func (s *Service) Ready() <-chan struct{} {
+	return s.ready
+}
+
+// GetConfig returns the service's current configuration.
+func (s *Service) GetConfig() *config.Config {
+	return s.config
+}
+
+// EmitMessage emits a message to the service's router.
+func (s *Service) EmitMessage(msg dipper.Message) {
+	s.process(msg, nil)
 }

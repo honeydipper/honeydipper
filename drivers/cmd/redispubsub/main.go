@@ -9,14 +9,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
-	"github.com/go-redis/redis/v8"
-	"github.com/honeydipper/honeydipper/v3/drivers/pkg/redisclient"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v4/internal/daemon"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/mitchellh/mapstructure"
 	"github.com/op/go-logging"
 )
 
@@ -27,7 +31,6 @@ var (
 	broadcastTopic   string
 	broadcastChannel string
 	ok               bool
-	err              error
 )
 
 func initFlags() {
@@ -44,8 +47,11 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "redispubsub")
 	driver.Start = start
 	driver.RPCHandlers["send"] = sendBroadcast
+	driver.RPCHandlers["expect|interruptible"] = expect
 	if driver.Service == "operator" {
-		driver.Commands["send"] = broadcastToRedis
+		driver.Commands["send"] = sendBroadcast
+		driver.Commands["expect|interruptible"] = expect
+		driver.DefaultTimeout["expect"] = "30m"
 	}
 	driver.Run()
 }
@@ -71,51 +77,35 @@ func start(msg *dipper.Message) {
 	go subscribe()
 }
 
-func broadcastToRedis(msg *dipper.Message) {
-	msg = dipper.DeserializePayload(msg)
-	labels := msg.Labels
-	if labels == nil {
-		labels = map[string]string{}
-	}
-	labels["from"] = dipper.GetIP()
-	payload := map[string]interface{}{
-		"labels":           labels,
-		"broadcastSubject": dipper.MustGetMapDataStr(msg.Payload, "broadcastSubject"),
-	}
-	if data, ok := dipper.GetMapData(msg.Payload, "data"); ok && data != nil {
-		payload["data"] = data
-	}
-	buf := dipper.SerializeContent(payload)
-	client := redisclient.NewClient(redisOptions)
-	defer client.Close()
-	ctx, cancel := driver.GetContext()
-	defer cancel()
-	if err := client.Publish(ctx, broadcastTopic, string(buf)).Err(); err != nil {
-		log.Panicf("[%s] redis error: %v", driver.Service, err)
-	}
-	msg.Reply <- dipper.Message{}
-}
-
 func sendBroadcast(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
-	labels, ok := dipper.GetMapData(msg.Payload, "labels")
-	if !ok || labels == nil {
-		labels = map[string]interface{}{}
+
+	labels := map[string]any{}
+	if l, ok := dipper.GetMapData(msg.Payload, "labels"); ok {
+		labels = l.(map[string]interface{})
 	}
-	labels.(map[string]interface{})["from"] = dipper.GetIP()
-	payload := map[string]interface{}{
-		"labels":           labels,
-		"broadcastSubject": dipper.MustGetMapDataStr(msg.Payload, "broadcastSubject"),
+	labels["from"] = dipper.GetIP()
+
+	topic := broadcastTopic
+	if str, ok := dipper.GetMapDataStr(msg.Payload, "topic"); ok {
+		topic = str
 	}
-	if data, ok := dipper.GetMapData(msg.Payload, "data"); ok && data != nil {
-		payload["data"] = data
+
+	rmsg := map[string]interface{}{
+		"labels":  labels,
+		"subject": dipper.MustGetMapDataStr(msg.Payload, "subject"),
 	}
-	buf := dipper.SerializeContent(payload)
+	if data, ok := dipper.GetMapData(msg.Payload, "payload"); ok && data != nil {
+		rmsg["payload"] = data
+	}
+
+	buf := dipper.SerializeContent(rmsg)
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
+	ctx, cancel := driver.GetContext(msg)
 	defer cancel()
-	if err := client.Publish(ctx, broadcastTopic, string(buf)).Err(); err != nil {
+
+	if err := client.Publish(ctx, topic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
 	msg.Reply <- dipper.Message{}
@@ -127,46 +117,130 @@ func subscribe() {
 			defer dipper.SafeExitOnError("[%s] re-subscribing to redis pubsub %s", driver.Service, broadcastTopic)
 			client := redisclient.NewClient(redisOptions)
 			defer client.Close()
-			var pubsub *redis.PubSub
-			ctx, cancel := driver.GetContext()
-			func() {
-				defer cancel()
-				pubsub = client.Subscribe(ctx, broadcastTopic)
-			}()
+			ctx, cancel := driver.GetContext(nil)
+			defer cancel()
+			defer dipper.IgnoreError(context.Canceled)
+			pubsub := client.Subscribe(ctx, broadcastTopic)
 
-			_, err = pubsub.Receive(context.Background())
-			if err != nil {
-				panic(err)
-			}
+			dipper.Must(pubsub.Receive(ctx))
 
 			ch := pubsub.Channel()
-			for msg := range ch {
-				payload := dipper.DeserializeContent([]byte(msg.Payload))
-				labels := map[string]string{}
-				skip := false
-				labelMap, ok := dipper.GetMapData(payload, "labels")
-				if ok {
-					for k, v := range labelMap.(map[string]interface{}) {
-						if k == "service" && v != nil && v.(string) != "" && v.(string) != driver.Service {
-							skip = true
-
-							break
-						}
-						labels[k] = v.(string)
-					}
-					if skip {
-						continue
-					}
+			for rmsg := range ch {
+				msg := &dipper.Message{}
+				dipper.Must(json.Unmarshal([]byte(rmsg.Payload), msg))
+				if msg.Labels != nil && msg.Labels["service"] != "" && msg.Labels["service"] != driver.Service {
+					continue
 				}
-				data, _ := dipper.GetMapData(payload, "data")
-				driver.SendMessage(&dipper.Message{
-					Channel: broadcastChannel,
-					Subject: dipper.MustGetMapDataStr(payload, "broadcastSubject"),
-					Payload: data,
-					Labels:  labels,
-				})
+				if msg.Subject == "" {
+					log.Warningf("[%s] received message without subject %v", driver.Service, msg)
+
+					continue
+				}
+				msg.Channel = broadcastChannel
+				driver.SendMessage(msg)
 			}
 		}()
+		if driver.State != dipper.DriverStateAlive {
+			// gracefully exit if driver is stopping, otherwise keep retrying to subscribe
+			return
+		}
 		time.Sleep(time.Second)
+	}
+}
+
+var (
+	subscriberLock sync.Mutex
+	subscribers    = map[string]map[string]func(map[string]any){}
+	cancelers      = map[string]context.CancelFunc{}
+)
+
+func subscribeOnce(ctx context.Context, topic string, key string, fn func(rpayload map[string]any)) {
+	subscriberLock.Lock()
+	subs := subscribers[topic]
+	if subs == nil {
+		subs = map[string]func(map[string]any){}
+		subscribers[topic] = subs
+	}
+	for _, found := subs[key]; found; _, found = subs[key] {
+		subscriberLock.Unlock()
+		select {
+		case <-ctx.Done():
+			log.Warningf("[%s] key %s busy for expecting messages on topic %s", driver.Service, key, topic)
+
+			return
+		case <-time.After(time.Millisecond * 10):
+		}
+		subscriberLock.Lock()
+	}
+	subs[key] = fn
+	if len(subs) == 1 {
+		daemon.Go(func() {
+			client := redisclient.NewClient(redisOptions)
+			defer client.Close()
+			// the cancel func is managed asynchorizely outside of the go routine.
+			//nolint:gosec
+			subcriberCtx, cancel := context.WithCancel(context.Background())
+			cancelers[topic] = cancel
+			pubsub := client.PSubscribe(subcriberCtx, topic)
+
+			for rmesg := range pubsub.Channel() {
+				if rmesg == nil {
+					return
+				}
+
+				rmsg := dipper.DeserializeContent([]byte(rmesg.Payload)).(map[string]any)
+				subscriberLock.Lock()
+				for _, sub := range subs {
+					go sub(rmsg)
+				}
+				subscriberLock.Unlock()
+			}
+		})
+	}
+	subscriberLock.Unlock()
+
+	<-ctx.Done()
+
+	subscriberLock.Lock()
+	defer subscriberLock.Unlock()
+	delete(subs, key)
+	if len(subs) == 0 {
+		cancelers[topic]()
+		delete(cancelers, topic)
+		delete(subscribers, topic)
+	}
+}
+
+func expect(msg *dipper.Message) {
+	dipper.DeserializePayload(msg)
+	topic := broadcastTopic
+	if str, ok := dipper.GetMapDataStr(msg.Payload, "topic"); ok {
+		topic = str
+	}
+	subject, _ := dipper.GetMapDataStr(msg.Payload, "subject")
+	criteria, _ := dipper.GetMapData(msg.Payload, "match")
+	key := msg.Labels["key"]
+
+	ctx, cancel := driver.GetContext(msg)
+	defer cancel()
+	received := false
+
+	subscribeOnce(ctx, topic, key, func(rmsg map[string]any) {
+		if subject != "" && rmsg["subject"] != subject {
+			return
+		}
+		if dipper.CompareAll(rmsg, criteria) {
+			defer cancel()
+
+			received = true
+			ret := dipper.Message{}
+			dipper.Must(mapstructure.Decode(rmsg, &ret))
+
+			msg.Reply <- ret
+		}
+	})
+
+	if !received && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		panic(ctx.Err())
 	}
 }

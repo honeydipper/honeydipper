@@ -10,10 +10,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"text/template"
 	"time"
 
+	"cuelang.org/go/cue/ast"
+	"cuelang.org/go/cue/cuecontext"
+	cueerrors "cuelang.org/go/cue/errors"
+	cueyaml "cuelang.org/go/encoding/yaml"
 	"github.com/Masterminds/sprig/v3"
 	"github.com/ghodss/yaml"
 )
@@ -25,21 +30,34 @@ var ErrInterpolationError = errors.New("config error")
 var FuncMap = template.FuncMap{
 	"fromPath": MustGetMapData,
 	"now":      time.Now,
-	"duration": time.ParseDuration,
 	"ISO8601":  func(t time.Time) string { return t.Format(time.RFC3339) },
-	"toYaml": func(v interface{}) string {
-		s, err := yaml.Marshal(v)
-		if err != nil {
-			panic(err)
+	"toYaml":   func(v interface{}) string { return string(Must(yaml.Marshal(v)).([]byte)) },
+
+	"cue_validate_error": func(schema, name string, content any) string {
+		cctx := cuecontext.New()
+		s := cctx.CompileString(schema)
+		if e := s.Validate(); e != nil {
+			return fmt.Sprintf("schema: %s", cueerrors.Details(e, nil))
+		}
+		if str, ok := content.(string); ok {
+			c := cctx.BuildExpr(Must(cueyaml.NewDecoder(name, strings.NewReader(str)).Extract()).(ast.Expr))
+			if e := s.Unify(c).Validate(); e != nil {
+				return fmt.Sprintf("%s: %s", name, cueerrors.Details(e, nil))
+			}
+		} else {
+			c := cctx.Encode(content)
+			if e := s.Unify(c).Validate(); e != nil {
+				return fmt.Sprintf("%s: %s", name, cueerrors.Details(e, nil))
+			}
 		}
 
-		return string(s)
+		return ""
 	},
 }
 
 // InterpolateStr : interpolate a string and return a string.
-func InterpolateStr(pattern string, data interface{}) string {
-	ret := Interpolate(pattern, data)
+func InterpolateStr(mode, pattern string, data interface{}) string {
+	ret := Interpolate(mode, pattern, data)
 	if ret != nil {
 		return fmt.Sprintf("%+v", ret)
 	}
@@ -48,23 +66,34 @@ func InterpolateStr(pattern string, data interface{}) string {
 }
 
 // InterpolateGoTemplate : parse the string as go template.
-func InterpolateGoTemplate(isLoading bool, title string, pattern string, data interface{}) interface{} {
+func InterpolateGoTemplate(mode string, title string, pattern string, data interface{}, funcs ...template.FuncMap) interface{} {
 	ldelim := "{{"
 	rdelim := "}}"
-	if isLoading {
+	if mode == "loading" {
 		ldelim = "{%"
 		rdelim = "%}"
 	}
 	if strings.Contains(pattern, ldelim) {
 		var ret interface{}
 		useRet := false
-		returnFuncMap := template.FuncMap{
-			"return": func(v interface{}) string {
+
+		returnFuncMap := template.FuncMap{}
+		if mode != "embedded" && mode != "dollar" {
+			returnFuncMap["duration"] = func(s string) string {
+				ret = Must(time.ParseDuration(s)).(time.Duration)
+				useRet = true
+
+				return ""
+			}
+			returnFuncMap["return"] = func(v interface{}) string {
 				useRet = true
 				ret = v
 
 				return ""
-			},
+			}
+			returnFuncMap["render"] = func(t interface{}, data interface{}) interface{} {
+				return Interpolate("embedded", t, data)
+			}
 		}
 
 		tmpl := template.New(title)
@@ -72,12 +101,15 @@ func InterpolateGoTemplate(isLoading bool, title string, pattern string, data in
 		tmpl = tmpl.Funcs(sprig.TxtFuncMap())
 		tmpl = tmpl.Funcs(returnFuncMap)
 		tmpl = tmpl.Delims(ldelim, rdelim)
+		for _, fm := range funcs {
+			tmpl = tmpl.Funcs(fm)
+		}
 		parsed := template.Must(tmpl.Parse(pattern))
 
 		buf := new(bytes.Buffer)
 		if err := parsed.Execute(buf, data); err != nil {
 			Logger.Warningf("interpolation pattern failed: %+v", pattern)
-			Logger.Panicf("failed to interpolate: %+v", err)
+			panic(fmt.Errorf("failed to interpolate: %w", err))
 		}
 
 		if useRet {
@@ -106,9 +138,9 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 	allowNull := (v[1] == '?')
 	var parsed string
 	if allowNull {
-		parsed = InterpolateStr(v[2:], data)
+		parsed = InterpolateStr("dollar", v[2:], data)
 	} else {
-		parsed = InterpolateStr(v[1:], data)
+		parsed = InterpolateStr("dollar", v[1:], data)
 	}
 
 	quote := strings.IndexAny(parsed, "\"'`")
@@ -128,9 +160,9 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 
 	for _, key := range keys {
 		ret, _ := GetMapData(data, key)
-		if ret != nil {
+		if rv := reflect.ValueOf(ret); rv.IsValid() && !rv.IsZero() {
 			if strings.HasPrefix(key, "sysData.") {
-				return Interpolate(ret, data)
+				return Interpolate("dollar", ret, data)
 			}
 
 			return ret
@@ -152,7 +184,7 @@ func InterpolateDollarStr(v string, data interface{}) interface{} {
 }
 
 // Interpolate : go through the map data structure to find and parse all the templates.
-func Interpolate(source interface{}, data interface{}) interface{} {
+func Interpolate(mode string, source interface{}, data interface{}, funcs ...template.FuncMap) interface{} {
 	switch v := source.(type) {
 	case string:
 		if strings.HasPrefix(v, "$") {
@@ -161,7 +193,7 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 
 		var ret string
 
-		switch retAnything := InterpolateGoTemplate(false, "go", v, data).(type) {
+		switch retAnything := InterpolateGoTemplate(mode, "go", v, data, funcs...).(type) {
 		case *bytes.Buffer:
 			ret = retAnything.String()
 		case string:
@@ -178,28 +210,39 @@ func Interpolate(source interface{}, data interface{}) interface{} {
 				}
 			}()
 
-			return ParseYaml(ret[6:])
+			return Interpolate(mode, ParseYaml(ret[6:]), data, funcs...)
+		}
+
+		if strings.HasPrefix(ret, ":yaml_safe:") {
+			defer func() {
+				if r := recover(); r != nil {
+					Logger.Warningf("loading safe yaml string: %s", ret[11:])
+					panic(r)
+				}
+			}()
+
+			return ParseYaml(ret[11:])
 		}
 
 		return strings.TrimPrefix(ret, "\\")
 	case map[string]interface{}:
 		ret := map[string]interface{}{}
 		for k, val := range v {
-			ret[k] = Interpolate(val, data)
+			ret[k] = Interpolate(mode, val, data, funcs...)
 		}
 
 		return ret
 	case []string:
 		ret := []string{}
 		for _, val := range v {
-			ret = append(ret, InterpolateStr(val, data))
+			ret = append(ret, InterpolateStr(mode, val, data))
 		}
 
 		return ret
 	case []interface{}:
 		ret := []interface{}{}
 		for _, val := range v {
-			ret = append(ret, Interpolate(val, data))
+			ret = append(ret, Interpolate(mode, val, data, funcs...))
 		}
 
 		return ret

@@ -92,61 +92,81 @@ func (m *MockRPCCaller) EXPECT() *MockRPCCallerMockRecorder {
 }
 
 // Call mocks base method.
-func (m *MockRPCCaller) Call(feature, method string, params interface{}) ([]byte, error) {
+func (m *MockRPCCaller) Call(feature, method string, params interface{}, labelsKV ...string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Call", feature, method, params)
+	varargs := []interface{}{feature, method, params}
+	for _, a := range labelsKV {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Call", varargs...)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Call indicates an expected call of Call.
-func (mr *MockRPCCallerMockRecorder) Call(feature, method, params interface{}) *gomock.Call {
+func (mr *MockRPCCallerMockRecorder) Call(feature, method, params interface{}, labelsKV ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockRPCCaller)(nil).Call), feature, method, params)
+	varargs := append([]interface{}{feature, method, params}, labelsKV...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockRPCCaller)(nil).Call), varargs...)
 }
 
 // CallNoWait mocks base method.
-func (m *MockRPCCaller) CallNoWait(feature, method string, params interface{}) error {
+func (m *MockRPCCaller) CallNoWait(feature, method string, params interface{}, labelsKV ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CallNoWait", feature, method, params)
+	varargs := []interface{}{feature, method, params}
+	for _, a := range labelsKV {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CallNoWait", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CallNoWait indicates an expected call of CallNoWait.
-func (mr *MockRPCCallerMockRecorder) CallNoWait(feature, method, params interface{}) *gomock.Call {
+func (mr *MockRPCCallerMockRecorder) CallNoWait(feature, method, params interface{}, labelsKV ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallNoWait", reflect.TypeOf((*MockRPCCaller)(nil).CallNoWait), feature, method, params)
+	varargs := append([]interface{}{feature, method, params}, labelsKV...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallNoWait", reflect.TypeOf((*MockRPCCaller)(nil).CallNoWait), varargs...)
 }
 
 // CallRaw mocks base method.
-func (m *MockRPCCaller) CallRaw(feature, method string, params []byte) ([]byte, error) {
+func (m *MockRPCCaller) CallRaw(feature, method string, params []byte, labelsKV ...string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CallRaw", feature, method, params)
+	varargs := []interface{}{feature, method, params}
+	for _, a := range labelsKV {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CallRaw", varargs...)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CallRaw indicates an expected call of CallRaw.
-func (mr *MockRPCCallerMockRecorder) CallRaw(feature, method, params interface{}) *gomock.Call {
+func (mr *MockRPCCallerMockRecorder) CallRaw(feature, method, params interface{}, labelsKV ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallRaw", reflect.TypeOf((*MockRPCCaller)(nil).CallRaw), feature, method, params)
+	varargs := append([]interface{}{feature, method, params}, labelsKV...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallRaw", reflect.TypeOf((*MockRPCCaller)(nil).CallRaw), varargs...)
 }
 
 // CallRawNoWait mocks base method.
-func (m *MockRPCCaller) CallRawNoWait(feature, method string, params []byte, rpcID string) error {
+func (m *MockRPCCaller) CallRawNoWait(feature, method string, params []byte, rpcID string, labelsKV ...string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CallRawNoWait", feature, method, params, rpcID)
+	varargs := []interface{}{feature, method, params, rpcID}
+	for _, a := range labelsKV {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CallRawNoWait", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CallRawNoWait indicates an expected call of CallRawNoWait.
-func (mr *MockRPCCallerMockRecorder) CallRawNoWait(feature, method, params, rpcID interface{}) *gomock.Call {
+func (mr *MockRPCCallerMockRecorder) CallRawNoWait(feature, method, params, rpcID interface{}, labelsKV ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallRawNoWait", reflect.TypeOf((*MockRPCCaller)(nil).CallRawNoWait), feature, method, params, rpcID)
+	varargs := append([]interface{}{feature, method, params, rpcID}, labelsKV...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallRawNoWait", reflect.TypeOf((*MockRPCCaller)(nil).CallRawNoWait), varargs...)
 }
 
 // GetName mocks base method.
