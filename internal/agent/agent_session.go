@@ -391,7 +391,16 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 			// at PrevContextSize 0 and the marker-only history scan also yields 0).
 			cs.LastCompactionHistoryLen = 0
 			cs.PrevContextSize = 0
-			archivedKey := dipper.Must(cs.archiveConvo(store)).(string)
+			archivedKey := ""
+			if ak, err := cs.archiveConvo(store); err == nil {
+				archivedKey = ak
+			} else if log := store.GetLogger(); log != nil {
+				// Harden the forget_history reset: an archival failure must not
+				// panic the whole turn (the previous dipper.Must would). The user
+				// explicitly asked to forget history, so we still proceed with the
+				// reset and record the failure so the operator can investigate.
+				log.Warningf("[agent] session [%s] forget_history: archival failed, continuing reset: %v", id, err)
+			}
 			s.history = nil
 			dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
 				"key": ConvoHistoryKeyPrefix + s.ConvoID,

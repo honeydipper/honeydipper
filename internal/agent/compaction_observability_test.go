@@ -130,7 +130,7 @@ func TestPrevContextSize_APIExposed_ResetOnCompaction(t *testing.T) {
 			"preserve":      2,
 		},
 	}
-	got := s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+	got := s.handleCompactionResult(call, []map[string]interface{}{{"status": "success", "data": "COMPACTED SUMMARY"}})
 	assert.True(t, got)
 	assert.Equal(t, 0, s.PrevContextSize)
 
@@ -357,7 +357,7 @@ func TestHandleCompactionResult_LogsSummaryLength(t *testing.T) {
 			"preserve":      2,
 		},
 	}
-	got := s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+	got := s.handleCompactionResult(call, []map[string]interface{}{{"status": "success", "data": "COMPACTED SUMMARY"}})
 	assert.True(t, got)
 
 	logText := buf.String()
