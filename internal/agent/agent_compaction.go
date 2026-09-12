@@ -29,6 +29,14 @@ func (s *AgentSession) shouldCompact() bool {
 	if last == -1 || s.history[last].Role != RoleUser {
 		return false
 	}
+	// Once-per-user-turn guard: compaction fires at most once per real user
+	// message. The post-compaction model call appends a fresh agent reply
+	// carrying the compacted context's driver-reported tokens (self-healing
+	// baseline); this guard keeps that fresh reply from re-triggering
+	// compaction again within the same turn.
+	if s.CompactedThisTurn {
+		return false
+	}
 	switch s.Agent.CompactionPolicy.ThresholdType {
 	case "history_len":
 		return len(s.history) >= s.Agent.CompactionPolicy.Threshold
@@ -145,13 +153,26 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 
 	// Update in-memory history
 	s.history = newHistory
+	// Record the history length at the compaction boundary. Baseline
+	// measurements (refreshContextSize) only consider agent messages appended
+	// at or after this index, so preserved-tail messages carrying
+	// pre-compaction (large) tokens cannot re-trigger compaction on the next
+	// user turn when the post-compaction resume produced no new agent message.
+	s.CompactionHistoryIdx = len(newHistory)
 	s.PrevContextSize = 0 // reset previous context size since we're starting fresh with the summary as context
 
-	// Recalculate ContextTokens from the new compacted history.
-	// Since appendConvoHistory counts tokens on append, and compaction replaces
-	// history entirely, we need to recount all tokens in the new history.
-	if s.TokenCounter != nil {
-		lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+	// Persist the compaction marker in ConvoState so it survives across user
+	// turns. Every real user message creates a brand-new AgentSession that
+	// seeds its CompactionHistoryIdx from ConvoState.LastCompactionHistoryLen;
+	// without this persistence the next turn's fresh session would default the
+	// marker to 0, re-scan the preserved tail's pre-compaction (large) tokens,
+	// and re-trigger compaction every turn until a new agent message appears.
+	// Also recalculate ContextTokens from the new compacted history when a
+	// custom token counter is active: since appendConvoHistory counts tokens on
+	// append and compaction replaces history entirely, we recount all tokens.
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.LastCompactionHistoryLen = len(newHistory)
+		if s.TokenCounter != nil {
 			cs.ContextTokens = s.countSystemPromptTokens()
 			for _, msg := range s.history {
 				if msg.IsSlash {
@@ -159,8 +180,8 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 				}
 				cs.ContextTokens += s.countMessageTokens(msg)
 			}
-		})
-	}
+		}
+	})
 	s.CurrentCall = 0
 	s.ToolResults = nil
 
@@ -272,6 +293,11 @@ func (s *AgentSession) compactHistory() bool {
 	// sub-agent and returns via eventbus:agent_continue.
 	agentMsg := AgentMessage{Role: RoleAgent, Content: "", ToolCalls: []AgentToolCall{toolCall}}
 	s.appendConvoHistory(&agentMsg)
+
+	// Mark this real user turn as compacted so compaction cannot re-fire before
+	// the next real user message (once-per-turn guard). Cleared at the start of
+	// each new real user turn in run().
+	s.CompactedThisTurn = true
 
 	// Kick off the tool call from this session.
 	s.CurrentCall = 0

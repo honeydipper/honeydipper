@@ -59,13 +59,33 @@ type AgentSession struct {
 	PendingThoughtsOffset int
 	ErrorReason           string
 	PrevContextSize       int
-	TotalTokens           int
-	InputTokens           int
-	OutputTokens          int
-	TokenCounter          agentpkg.TokenCounter `json:"-"`
-	ParentSessionID       string
-	ParentTurnID          string
-	ParentToolCallID      string
+	// CompactedThisTurn is set when automatic compaction dispatches for the
+	// current real user turn and cleared at the start of the next real user
+	// turn (run()). It guarantees compaction fires at most once per user
+	// message: the post-compaction model call appends a fresh agent reply
+	// carrying the compacted context's driver-reported tokens (self-healing
+	// baseline), and this guard keeps that fresh reply from re-triggering
+	// compaction within the same turn. JSON-serialized with the session so it
+	// survives session restore.
+	CompactedThisTurn bool
+	// CompactionHistoryIdx is the conversation-history length at the moment of
+	// the last compaction. Baseline measurements (refreshContextSize) only
+	// consider agent messages appended at or after this index, so a
+	// preserved-tail agent message carrying pre-compaction (large) tokens can
+	// never re-establish a stale baseline when the post-compaction resume
+	// produced no new agent message (the next user turn must not re-trigger
+	// more than once). JSON-serialized with the session so it survives session
+	// restore, and seeded on new user turns from
+	// ConvoState.LastCompactionHistoryLen (persisted at compaction time) so the
+	// marker also survives the fresh AgentSession created for each user message.
+	CompactionHistoryIdx int
+	TotalTokens          int
+	InputTokens          int
+	OutputTokens         int
+	TokenCounter         agentpkg.TokenCounter `json:"-"`
+	ParentSessionID      string
+	ParentTurnID         string
+	ParentToolCallID     string
 	// TurnLockKey is the distributed lock key for this conversation's turn.
 	// It is set when the turn lock is acquired and cleared when released.
 	// The lock prevents concurrent sessions from modifying the same conversation.
@@ -357,28 +377,50 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		if cs.FirstTurn == "" && s.Type == AgentSessionTypeChatTurn && firstTurn != "" {
 			cs.FirstTurn = firstTurn
 		}
-		if len(s.history) > 0 {
-			forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
-			if forgetHistory {
-				archivedKey := dipper.Must(cs.archiveConvo(store)).(string)
-				s.history = nil
-				dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
-					"key": ConvoHistoryKeyPrefix + s.ConvoID,
-				}))
-				markerMsg := AgentMessage{Role: RoleSystem, Content: fmt.Sprintf("<!-- archived_convo: %s -->", archivedKey)}
-				s.history = append(s.history, markerMsg)
-				convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
-				dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
-					"key":   ConvoHistoryKeyPrefix + s.ConvoID,
-					"value": string(dipper.SerializeContent(markerMsg)),
-					"ttl":   float64(convoTTL),
-				}))
-			}
+		forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
+		if len(s.history) > 0 && forgetHistory {
+			// forget_history archives and resets the conversation history, so the
+			// persisted compaction boundary marker must be cleared too. Otherwise
+			// a stale marker from a prior compaction would be re-seeded by later
+			// fresh sessions and suppress baseline measurement on the reset
+			// (shorter) history.
+			cs.LastCompactionHistoryLen = 0
+			archivedKey := dipper.Must(cs.archiveConvo(store)).(string)
+			s.history = nil
+			dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
+				"key": ConvoHistoryKeyPrefix + s.ConvoID,
+			}))
+			markerMsg := AgentMessage{Role: RoleSystem, Content: fmt.Sprintf("<!-- archived_convo: %s -->", archivedKey)}
+			s.history = append(s.history, markerMsg)
+			convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
+			dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
+				"key":   ConvoHistoryKeyPrefix + s.ConvoID,
+				"value": string(dipper.SerializeContent(markerMsg)),
+				"ttl":   float64(convoTTL),
+			}))
 		}
-		if cs.LastSession != nil {
-			s.PrevContextSize = cs.LastSession.InputTokens + cs.LastSession.OutputTokens
+		// Seed the compaction boundary marker across user turns. Every real user
+		// message creates a brand-new AgentSession (labelID == ""), which would
+		// otherwise default CompactionHistoryIdx to 0 and, after a compaction
+		// whose post-compaction resume produced no new agent message, re-scan the
+		// preserved tail's pre-compaction (large) tokens and re-trigger
+		// total_tokens compaction every turn. Reading the marker persisted in
+		// ConvoState.LastCompactionHistoryLen keeps that edge from recurring.
+		// forget_history archives and resets the history, so the marker restarts
+		// at 0 (the fresh history carries no pre-compaction tokens).
+		if forgetHistory {
+			s.CompactionHistoryIdx = 0
+		} else {
+			s.CompactionHistoryIdx = cs.LastCompactionHistoryLen
 		}
-
+		// NOTE: PrevContextSize (the total_tokens compaction baseline) is NOT
+		// derived here from cs.LastSession. That one-time, pre-lock snapshot was
+		// the root cause of skipped compaction: it was only populated when the
+		// previous session reached a terminal state and synced non-zero tokens,
+		// so interrupted/cancelled/errored turns left it at 0. The baseline is
+		// instead refreshed under the turn lock after a fresh history load (see
+		// refreshContextSize) in StartInference/runTurn, and derived from the
+		// latest complete non-slash agent message's driver-reported tokens.
 		if cs.Agent == nil {
 			cs.Agent = interpolateAgentConfig(s.store, msg.Labels["agent_name"], msg.Payload)
 		}
@@ -494,6 +536,44 @@ func (s *AgentSession) loadConvoHistory() {
 	s.history = history
 }
 
+// refreshContextSize derives the compaction baseline (PrevContextSize) for
+// threshold_type: total_tokens from the persisted conversation history. The
+// canonical metric is the driver-reported context size of the latest model
+// call: the InputTokens + OutputTokens of the latest complete, non-slash agent
+// message that carries driver-reported input tokens (InputTokens > 0).
+//
+// It scans backwards from the end of history so the most recent qualifying
+// message wins, and only considers messages appended at or after the last
+// compaction (CompactionHistoryIdx) so a preserved-tail agent message carrying
+// pre-compaction (large) tokens can never re-establish a stale baseline when
+// the post-compaction resume produced no new agent message.
+//
+// Because the baseline is derived from persisted history (already written by
+// appendConvoHistory on every message), existing long conversations get a
+// correct baseline automatically on upgrade — no separate backfill/migration
+// pass is needed.
+//
+// refreshContextSize is called once per turn under the turn lock after a fresh
+// history load (StartInference/runTurn) and on session restore
+// (ContinueInference/PollInference/ReceiveInference/StartAgentCall); it is
+// maintained incrementally (O(1)) as new complete agent messages arrive in
+// processAgentMessage. It never performs a per-message locked write or a
+// per-check token recount. It returns true when a baseline was found.
+func (s *AgentSession) refreshContextSize() bool {
+	for i := len(s.history) - 1; i >= s.CompactionHistoryIdx; i-- {
+		m := s.history[i]
+		if m.Role == RoleAgent && m.IsComplete && !m.IsChunk && !m.IsSlash && m.InputTokens > 0 {
+			s.PrevContextSize = m.InputTokens + m.OutputTokens
+
+			return true
+		}
+	}
+
+	s.PrevContextSize = 0
+
+	return false
+}
+
 // appendConvoHistory appends a message to the in-memory history and the cache.
 // If the agent has MaxHistoryLen set, older entries beyond that limit are trimmed.
 func (s *AgentSession) appendConvoHistory(msg *AgentMessage) {
@@ -549,6 +629,11 @@ func (s *AgentSession) run() {
 	}
 	text := dipper.MustGetMapDataStr(s.CurrentMsg.Payload, "text")
 	user, _ := dipper.GetMapDataStr(s.CurrentMsg.Payload, "user")
+
+	// A fresh real user message opens a new compaction window: automatic
+	// compaction may fire at most once for this turn (CompactedThisTurn is set
+	// when compaction dispatches and cleared here for the next user turn).
+	s.CompactedThisTurn = false
 
 	s.appendConvoHistory(&AgentMessage{
 		Role:    RoleUser,
@@ -791,6 +876,17 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 		s.InputTokens += agentMsg.InputTokens
 		s.OutputTokens += agentMsg.OutputTokens
 		s.TotalTokens = s.InputTokens + s.OutputTokens
+	}
+
+	// Maintain the compaction baseline incrementally (O(1)): whenever a
+	// complete, non-slash agent message carrying driver-reported input tokens
+	// arrives, it becomes the canonical driver-reported context size for
+	// threshold_type: total_tokens. This overwrites (never accumulates) so the
+	// baseline reflects the latest model call, not the sum of all calls. Chunks
+	// return before this point, so IsChunk is always false here; the guard is
+	// kept for symmetry with refreshContextSize.
+	if agentMsg.Role == RoleAgent && agentMsg.IsComplete && !agentMsg.IsChunk && !agentMsg.IsSlash && agentMsg.InputTokens > 0 {
+		s.PrevContextSize = agentMsg.InputTokens + agentMsg.OutputTokens
 	}
 
 	// Final agent message: the complete message added to the
