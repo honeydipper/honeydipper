@@ -558,20 +558,46 @@ func (s *AgentSession) loadConvoHistory() {
 // (ContinueInference/PollInference/ReceiveInference/StartAgentCall); it is
 // maintained incrementally (O(1)) as new complete agent messages arrive in
 // processAgentMessage. It never performs a per-message locked write or a
-// per-check token recount. It returns true when a baseline was found.
+// per-check token recount. Whenever the derived baseline actually changes it
+// persists a snapshot into ConvoState (syncPrevContextSize) so API consumers
+// can expose the exact metric that drives total_tokens compaction without
+// recomputing it from history per request. It returns true when a baseline was
+// found.
 func (s *AgentSession) refreshContextSize() bool {
+	prev := s.PrevContextSize
 	for i := len(s.history) - 1; i >= s.CompactionHistoryIdx; i-- {
 		m := s.history[i]
 		if m.Role == RoleAgent && m.IsComplete && !m.IsChunk && !m.IsSlash && m.InputTokens > 0 {
 			s.PrevContextSize = m.InputTokens + m.OutputTokens
+			if s.PrevContextSize != prev {
+				s.syncPrevContextSize()
+			}
 
 			return true
 		}
 	}
 
 	s.PrevContextSize = 0
+	if s.PrevContextSize != prev {
+		s.syncPrevContextSize()
+	}
 
 	return false
+}
+
+// syncPrevContextSize persists the session's current compaction baseline
+// (PrevContextSize) into ConvoState. It mirrors how LastCompactionHistoryLen is
+// persisted at compaction time (handleCompactionResult) so API consumers
+// (GET /convos/:convoID and the convo list) can expose the exact metric that
+// drives total_tokens compaction without recomputing it from history per
+// request. It is a no-op when no conversation is associated with the session.
+func (s *AgentSession) syncPrevContextSize() {
+	if s.ConvoID == "" {
+		return
+	}
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.PrevContextSize = s.PrevContextSize
+	})
 }
 
 // appendConvoHistory appends a message to the in-memory history and the cache.
@@ -887,6 +913,7 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	// kept for symmetry with refreshContextSize.
 	if agentMsg.Role == RoleAgent && agentMsg.IsComplete && !agentMsg.IsChunk && !agentMsg.IsSlash && agentMsg.InputTokens > 0 {
 		s.PrevContextSize = agentMsg.InputTokens + agentMsg.OutputTokens
+		s.syncPrevContextSize()
 	}
 
 	// Final agent message: the complete message added to the

@@ -22,11 +22,16 @@ func (s *AgentSession) shouldCompact() bool {
 	if s.Agent == nil || s.Agent.CompactionPolicy == nil {
 		return false
 	}
+	cp := s.Agent.CompactionPolicy
 	// Only trigger compaction on user messages. A trailing marked slash
 	// command (IsSlash) should never trigger compaction, so find the last
 	// non-slash message and use its role.
 	last := s.lastNonSlashMessage()
 	if last == -1 || s.history[last].Role != RoleUser {
+		if log := s.log(); log != nil {
+			log.Debugf("[agent] session [%s] compaction skipped: last non-slash message is not a user message", s.ID)
+		}
+
 		return false
 	}
 	// Once-per-user-turn guard: compaction fires at most once per real user
@@ -35,13 +40,32 @@ func (s *AgentSession) shouldCompact() bool {
 	// baseline); this guard keeps that fresh reply from re-triggering
 	// compaction again within the same turn.
 	if s.CompactedThisTurn {
+		if log := s.log(); log != nil {
+			log.Debugf("[agent] session [%s] compaction skipped: once-per-turn guard already fired", s.ID)
+		}
+
 		return false
 	}
-	switch s.Agent.CompactionPolicy.ThresholdType {
+	switch cp.ThresholdType {
 	case "history_len":
-		return len(s.history) >= s.Agent.CompactionPolicy.Threshold
+		triggered := len(s.history) >= cp.Threshold
+		if log := s.log(); log != nil {
+			log.Debugf("[agent] session [%s] compaction check threshold_type=history_len history_len=%d threshold=%d trigger=%t",
+				s.ID, len(s.history), cp.Threshold, triggered)
+		}
+
+		return triggered
 	case "total_tokens":
-		return s.PrevContextSize >= s.Agent.CompactionPolicy.Threshold
+		triggered := s.PrevContextSize >= cp.Threshold
+		if log := s.log(); log != nil {
+			log.Debugf("[agent] session [%s] compaction check threshold_type=total_tokens context_size=%d threshold=%d trigger=%t",
+				s.ID, s.PrevContextSize, cp.Threshold, triggered)
+		}
+
+		return triggered
+	}
+	if log := s.log(); log != nil {
+		log.Debugf("[agent] session [%s] compaction skipped: unknown threshold_type=%q", s.ID, cp.ThresholdType)
 	}
 
 	return false
@@ -121,6 +145,11 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 		summaryText += fmt.Sprintf("\n<!-- archived_convo: %s -->", compactID)
 	}
 
+	if log := s.log(); log != nil {
+		log.Debugf("[agent] session [%s] compaction result: summary_len=%d preserve=%d history_len=%d",
+			s.ID, len(summaryText), preserve, len(s.history))
+	}
+
 	// Build the new history: summary as a system message, then the preserved tail messages.
 	total := len(s.history)
 	if total == 0 {
@@ -172,6 +201,10 @@ func (s *AgentSession) handleCompactionResult(c AgentToolCall, toolResults []map
 	// append and compaction replaces history entirely, we recount all tokens.
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		cs.LastCompactionHistoryLen = len(newHistory)
+		// Persist the reset baseline (s.PrevContextSize was just zeroed above) so
+		// the API-exposed compaction metric reflects the fresh post-compaction
+		// state instead of the stale pre-compaction context size.
+		cs.PrevContextSize = s.PrevContextSize
 		if s.TokenCounter != nil {
 			cs.ContextTokens = s.countSystemPromptTokens()
 			for _, msg := range s.history {
@@ -234,8 +267,17 @@ func (s *AgentSession) compactHistory() bool {
 		preserve = DefaultCompactionPreserve
 	}
 
+	if log := s.log(); log != nil {
+		log.Debugf("[agent] session [%s] compactHistory threshold_type=%s threshold=%d context_size=%d history_len=%d preserve=%d",
+			s.ID, cp.ThresholdType, cp.Threshold, s.PrevContextSize, len(s.history), preserve)
+	}
+
 	// Nothing to compact if history is shorter than the preserve window.
 	if len(s.history) <= preserve {
+		if log := s.log(); log != nil {
+			log.Debugf("[agent] session [%s] compaction skipped: history_len=%d not above preserve=%d", s.ID, len(s.history), preserve)
+		}
+
 		return false
 	}
 

@@ -302,3 +302,57 @@ func TestHandleConvoTurnAPI_LiveConvo_UsesExisting(t *testing.T) {
 	recreated := helper.hasCache(agent.ConvoStateKeyPrefix + convoID)
 	require.True(t, recreated, "live convo must keep convo_state")
 }
+
+// TestHandleConvoState_ExposesPrevContextSize verifies that GET /convos/:convoID
+// (handleConvoState) exposes the compaction-driving metric prev_context_size
+// ALONGSIDE (not modifying) the cumulative total_tokens, so the metric the user
+// sees matches the metric that drives total_tokens compaction.
+func TestHandleConvoState_ExposesPrevContextSize(t *testing.T) {
+	helper := newRecoveryMemHelper()
+	convoID := "convo-state-metric-svc"
+
+	// Seed a ConvoState with both the cumulative total and the compaction metric.
+	seeded := map[string]interface{}{
+		"convo_id":          convoID,
+		"total_tokens":      5000,
+		"prev_context_size": 1234,
+	}
+	seededBytes, err := json.Marshal(seeded)
+	require.NoError(t, err)
+	helper.cache[agent.ConvoStateKeyPrefix+convoID] = string(seededBytes)
+
+	realStore := agent.NewAgentStore(helper, "")
+	prev := agentStore
+	agentStore = realStore
+	defer func() { agentStore = prev }()
+
+	receiver := &captureReceiver{}
+	resp := &api.Response{
+		EventBus: receiver,
+		Request: &dipper.Message{
+			Labels:  map[string]string{},
+			Payload: map[string]interface{}{"convoID": convoID},
+		},
+		Factrory: api.NewResponseFactory(),
+	}
+	resp.Factrory.Live.Add(1)
+
+	handleConvoState(resp)
+
+	receiver.mu.Lock()
+	captured := receiver.captured
+	receiver.mu.Unlock()
+	require.NotNil(t, captured, "expected handleConvoState to return a result")
+
+	payload, ok := captured.Payload.([]byte)
+	require.True(t, ok, "expected raw byte payload")
+
+	var got map[string]interface{}
+	require.NoError(t, json.Unmarshal(payload, &got))
+	// prev_context_size is exposed alongside, not replacing, total_tokens.
+	require.Equal(t, float64(1234), got["prev_context_size"],
+		"API must expose prev_context_size (the compaction-driving metric)")
+	require.Equal(t, float64(5000), got["total_tokens"],
+		"API must keep total_tokens unchanged")
+	require.NotContains(t, got, "error")
+}
