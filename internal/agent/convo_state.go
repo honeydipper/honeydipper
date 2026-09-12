@@ -75,10 +75,17 @@ type ConvoState struct {
 	// preserved-tail messages that still carry pre-compaction (large) tokens
 	// when the post-compaction resume produced no new agent message. 0 means no
 	// compaction has occurred yet.
-	LastCompactionHistoryLen int      `json:"last_compaction_history_len,omitempty"`
-	Generation               int      `json:"generation"`
-	ArchivedConvos           []string `json:"archived_convos,omitempty"`
-	TTL                      string   `json:"ttl"`
+	LastCompactionHistoryLen int `json:"last_compaction_history_len,omitempty"`
+	// PrevContextSize is the compaction baseline for threshold_type: total_tokens:
+	// the driver-reported context size (InputTokens+OutputTokens) of the latest
+	// complete, non-slash agent message. It is persisted here (mirroring
+	// LastCompactionHistoryLen) so API consumers (GET /convos/:convoID and the
+	// convo list) can expose the exact metric that drives compaction without
+	// recomputing it from history per request. 0 means no baseline yet.
+	PrevContextSize int      `json:"prev_context_size,omitempty"`
+	Generation      int      `json:"generation"`
+	ArchivedConvos  []string `json:"archived_convos,omitempty"`
+	TTL             string   `json:"ttl"`
 
 	Agent  *config.Agent     `json:"agent,omitempty"`
 	Skills map[string]string `json:"skills,omitempty"`

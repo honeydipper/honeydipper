@@ -380,11 +380,17 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
 		if len(s.history) > 0 && forgetHistory {
 			// forget_history archives and resets the conversation history, so the
-			// persisted compaction boundary marker must be cleared too. Otherwise
-			// a stale marker from a prior compaction would be re-seeded by later
-			// fresh sessions and suppress baseline measurement on the reset
-			// (shorter) history.
+			// persisted compaction boundary marker and the compaction baseline
+			// (PrevContextSize) must be cleared too. Otherwise a stale marker from
+			// a prior compaction would be re-seeded by later fresh sessions and
+			// suppress baseline measurement on the reset (shorter) history, and a
+			// stale PrevContextSize would keep the API-exposed metric diverging
+			// from the actual (reset) compaction baseline until the first new
+			// complete agent message arrives (the change-guard in
+			// refreshContextSize masks the reset because the fresh session starts
+			// at PrevContextSize 0 and the marker-only history scan also yields 0).
 			cs.LastCompactionHistoryLen = 0
+			cs.PrevContextSize = 0
 			archivedKey := dipper.Must(cs.archiveConvo(store)).(string)
 			s.history = nil
 			dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
@@ -557,21 +563,77 @@ func (s *AgentSession) loadConvoHistory() {
 // history load (StartInference/runTurn) and on session restore
 // (ContinueInference/PollInference/ReceiveInference/StartAgentCall); it is
 // maintained incrementally (O(1)) as new complete agent messages arrive in
-// processAgentMessage. It never performs a per-message locked write or a
-// per-check token recount. It returns true when a baseline was found.
+// processAgentMessage. Both paths apply the same change-guard: a snapshot is
+// persisted into ConvoState (syncPrevContextSize) only when the derived
+// baseline actually changes, so reprocessed messages do not cause a redundant
+// per-message locked write, and there is never a per-check token recount. This
+// lets API consumers expose the exact metric that drives total_tokens
+// compaction without recomputing it from history per request. It returns true
+// when a baseline was found.
 func (s *AgentSession) refreshContextSize() bool {
+	prev := s.PrevContextSize
 	for i := len(s.history) - 1; i >= s.CompactionHistoryIdx; i-- {
 		m := s.history[i]
 		if m.Role == RoleAgent && m.IsComplete && !m.IsChunk && !m.IsSlash && m.InputTokens > 0 {
 			s.PrevContextSize = m.InputTokens + m.OutputTokens
+			if s.PrevContextSize != prev {
+				s.syncPrevContextSize()
+			}
 
 			return true
 		}
 	}
 
 	s.PrevContextSize = 0
+	if s.PrevContextSize != prev {
+		s.syncPrevContextSize()
+	}
 
 	return false
+}
+
+// syncPrevContextSize persists the session's current compaction baseline
+// (PrevContextSize) into ConvoState. It mirrors how LastCompactionHistoryLen is
+// persisted at compaction time (handleCompactionResult) so API consumers
+// (GET /convos/:convoID and the convo list) can expose the exact metric that
+// drives total_tokens compaction without recomputing it from history per
+// request. It is a no-op when no conversation is associated with the session.
+func (s *AgentSession) syncPrevContextSize() {
+	if s.ConvoID == "" {
+		return
+	}
+	// Skip archived generation keys (e.g. "<ConvoID>_g<N>"). The summarizer
+	// sub-agent runs its session against the archived key during compaction and
+	// calls refreshContextSize, which would otherwise add a locked ConvoState
+	// write plus a convo-stream entry for the archived key on every compaction.
+	// Archived generations are immutable snapshots, never surfaced as a live
+	// conversation, so persisting a baseline for them is both wasteful and
+	// misleading.
+	if isArchivedConvoKey(s.ConvoID) {
+		return
+	}
+	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
+		cs.PrevContextSize = s.PrevContextSize
+	})
+}
+
+// isArchivedConvoKey reports whether convoID is an archived generation key
+// produced by archiveConvo, which follows the pattern "<ConvoID>_g<N>" (N is
+// the incremented generation number). Live conversation IDs are UUIDs or
+// "<parent>-<subagent>" and never carry the "_g<N>" suffix, so a suffix match
+// is a reliable signal.
+func isArchivedConvoKey(convoID string) bool {
+	idx := strings.LastIndex(convoID, "_g")
+	if idx < 0 || idx+2 >= len(convoID) {
+		return false
+	}
+	for _, r := range convoID[idx+2:] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return true
 }
 
 // appendConvoHistory appends a message to the in-memory history and the cache.
@@ -886,7 +948,15 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	// return before this point, so IsChunk is always false here; the guard is
 	// kept for symmetry with refreshContextSize.
 	if agentMsg.Role == RoleAgent && agentMsg.IsComplete && !agentMsg.IsChunk && !agentMsg.IsSlash && agentMsg.InputTokens > 0 {
-		s.PrevContextSize = agentMsg.InputTokens + agentMsg.OutputTokens
+		// Apply the same change-guard as refreshContextSize: persist a snapshot
+		// only when the derived baseline actually changes. This keeps the
+		// API-exposed metric accurate while avoiding a redundant locked ConvoState
+		// write on every complete agent message (e.g. reprocessed/replayed
+		// messages that do not move the baseline).
+		if baseline := agentMsg.InputTokens + agentMsg.OutputTokens; baseline != s.PrevContextSize {
+			s.PrevContextSize = baseline
+			s.syncPrevContextSize()
+		}
 	}
 
 	// Final agent message: the complete message added to the
