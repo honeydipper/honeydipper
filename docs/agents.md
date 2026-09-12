@@ -198,6 +198,15 @@ The default `PreserveRecent` is 10 messages. The default summarization prompt is
 
 > "Summarize the above conversation history, preserving key decisions, context, and any critical information that will be needed to continue the conversation. Be concise but thorough. Explain what is currently happening at the end."
 
+Compaction degrades gracefully on failure: a failed, errored, or empty summarization result is validated
+before anything destructive happens, so the live conversation history is **never truncated or lost**. The
+pre-compaction history (including the triggering user message) was archived to a `<ConvoID>_g<N>` key before
+the summarizer ran, so on failure it is rolled back from that archive when complete (or kept as-is when the
+archive is partial), a `RoleSystem` placeholder noting the failure and archive location is injected, and the
+conversation resumes with the full history (automatic path) or posts a clear failure reply (`/compact` path).
+No compaction boundary or baseline is recorded when no compaction actually completed, and compaction cannot
+re-fire within the same failed turn.
+
 ### AgentToolDef
 
 ```go

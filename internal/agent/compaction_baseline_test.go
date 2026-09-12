@@ -373,7 +373,7 @@ func TestHandleCompactionResult_SetsMarkerAndResetsBaseline(t *testing.T) {
 			"preserve":      2,
 		},
 	}
-	got := s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+	got := s.handleCompactionResult(call, []map[string]interface{}{{"status": "success", "data": "COMPACTED SUMMARY"}})
 	assert.True(t, got)
 	assert.Equal(t, len(s.history), s.CompactionHistoryIdx, "compaction must record the history boundary")
 	assert.Equal(t, 0, s.PrevContextSize, "compaction must reset the baseline")
@@ -556,7 +556,7 @@ func TestHandleCompactionResult_PersistsMarkerToConvoState(t *testing.T) {
 			"preserve":      2,
 		},
 	}
-	require.True(t, s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}}))
+	require.True(t, s.handleCompactionResult(call, []map[string]interface{}{{"status": "success", "data": "COMPACTED SUMMARY"}}))
 	marker := s.CompactionHistoryIdx
 	require.Greater(t, marker, 0, "compaction must set a non-zero boundary marker")
 

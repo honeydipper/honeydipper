@@ -58,6 +58,11 @@ type mockStore struct {
 	// lists holds per-key rpush'd values so cache:lrange returns the persisted
 	// conversation history the same way the real Redis-backed store does.
 	lists map[string][]string
+	// callHook, when non-nil, is invoked at the start of every Call. If it
+	// returns a non-nil error, Call records the call and returns that error.
+	// Tests use it to deterministically fail specific cache/locker calls to
+	// exercise failure paths (archive/rollback/replace).
+	callHook func(feature, method string, params map[string]interface{}) error
 }
 
 func newMockStore(cfg *config.Config) *mockStore {
@@ -108,6 +113,13 @@ func (m *mockStore) getEmitted() []*dipper.Message {
 // Call looks up responses by "feature:method" and optionally "feature:method:key".
 func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ...string) ([]byte, error) {
 	base := feature + ":" + method
+	// Error-injection hook: tests set this to deterministically fail specific
+	// cache/locker calls to exercise failure paths (archive/rollback/replace).
+	if err := m.hookError(feature, method, params); err != nil {
+		m.record(base)
+
+		return nil, err
+	}
 	if p, ok := params.(map[string]interface{}); ok {
 		// Fire any lock trigger registered for this lock name (locks are keyed by
 		// "name"). Tests use this to mutate cache state at the moment a lock is
@@ -146,6 +158,18 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 				m.record(base)
 
 				return []byte("null"), nil
+			}
+			if base == "cache:del" {
+				m.mu.Lock()
+				// delete on a nil map is a no-op, so no nil check is needed.
+				delete(m.lists, k)
+				// Drop any pre-seeded lrange response so a subsequent
+				// cache:lrange returns the post-del state (empty).
+				delete(m.resp, "cache:lrange:"+k)
+				m.mu.Unlock()
+				m.record(base)
+
+				return []byte("1"), nil
 			}
 			if base == "cache:lrange" {
 				m.mu.Lock()
@@ -186,6 +210,20 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 	}
 
 	return []byte("[]"), nil
+}
+
+// hookError invokes the error-injection hook, if set. It returns nil when no
+// hook is configured or the hook allowed the call through.
+func (m *mockStore) hookError(feature, method string, params interface{}) error {
+	m.mu.Lock()
+	hook := m.callHook
+	m.mu.Unlock()
+	if hook == nil {
+		return nil
+	}
+	p, _ := params.(map[string]interface{})
+
+	return hook(feature, method, p)
 }
 
 func (m *mockStore) CallNoWait(feature, method string, params interface{}, labelsKV ...string) error {
