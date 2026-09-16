@@ -689,7 +689,7 @@ func TestHandleCompactionResult_SlashInitiated_DoesNotSendToDriver(t *testing.T)
 			"preserve":      2,
 		},
 	}
-	got := s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+	got := s.handleCompactionResult(call, []map[string]interface{}{{"status": "success", "data": "COMPACTED SUMMARY"}})
 	assert.True(t, got, "handleCompactionResult must take over the result for a compaction call")
 
 	// The flag is cleared once the result is handled.
@@ -726,7 +726,7 @@ func TestHandleCompactionResult_Automatic_StillSendsToDriver(t *testing.T) {
 			"preserve":      2,
 		},
 	}
-	got := s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+	got := s.handleCompactionResult(call, []map[string]interface{}{{"status": "success", "data": "COMPACTED SUMMARY"}})
 	assert.True(t, got)
 
 	// Automatic compaction (no slash-initiated flag) still resumes the model
@@ -747,7 +747,7 @@ func TestSlashCompact_Confirmation_ObservableViaHistoryAndPoll(t *testing.T) {
 			"preserve":      2,
 		},
 	}
-	s.handleCompactionResult(call, []map[string]interface{}{{"data": "COMPACTED SUMMARY"}})
+	s.handleCompactionResult(call, []map[string]interface{}{{"status": "success", "data": "COMPACTED SUMMARY"}})
 
 	// The confirmation is returned via the poll/emitPollResponse path.
 	s.LastPoll = 0
