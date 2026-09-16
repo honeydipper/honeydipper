@@ -499,6 +499,10 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 	if compactID != "" {
 		convoID = compactID
 	}
+	// The compaction summarize_upto boundary: the summarizer sub-agent honors it
+	// in loadConvoHistory so it loads the archived history up to (excluding) the
+	// triggering user message. 0 means "not set" (non-compaction ag__ calls).
+	summarizeUpto, _ := dipper.GetMapDataInt(msg.Payload, "summarize_upto")
 	sessionType, _ := dipper.GetMapDataStr(msg.Payload, "session_type")
 	if sessionType == "" {
 		sessionType = agentpkg.SessionTypeChatTurn
@@ -518,6 +522,7 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 			"convo_id":         convoID,
 			"unified_convo_id": msg.Labels["unified_convo_id"],
 			"forget_history":   forgetHistory,
+			"summarize_upto":   summarizeUpto,
 		},
 	}
 

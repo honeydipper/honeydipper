@@ -79,13 +79,21 @@ type AgentSession struct {
 	// ConvoState.LastCompactionHistoryLen (persisted at compaction time) so the
 	// marker also survives the fresh AgentSession created for each user message.
 	CompactionHistoryIdx int
-	TotalTokens          int
-	InputTokens          int
-	OutputTokens         int
-	TokenCounter         agentpkg.TokenCounter `json:"-"`
-	ParentSessionID      string
-	ParentTurnID         string
-	ParentToolCallID     string
+	// SummarizeUpto is the history boundary a compaction summarizer sub-agent
+	// honors when loading its (archived) conversation history: only messages with
+	// index < SummarizeUpto are loaded, so the triggering user message (which
+	// stays in the preserved tail and the full _gN archive) is excluded from the
+	// summarization input and the model summarizes instead of answering it. 0
+	// means "no boundary set", so non-compaction ag__ sub-agent calls are
+	// completely unaffected.
+	SummarizeUpto    int
+	TotalTokens      int
+	InputTokens      int
+	OutputTokens     int
+	TokenCounter     agentpkg.TokenCounter `json:"-"`
+	ParentSessionID  string
+	ParentTurnID     string
+	ParentToolCallID string
 	// TurnLockKey is the distributed lock key for this conversation's turn.
 	// It is set when the turn lock is acquired and cleared when released.
 	// The lock prevents concurrent sessions from modifying the same conversation.
@@ -344,6 +352,13 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		s.TTL = ttl
 	}
 
+	// Capture the compaction summarize_upto boundary before loadConvoHistory runs
+	// so the summarizer's loaded (archived) history excludes the triggering user
+	// message. 0 means not set (non-compaction sub-agent calls are unaffected).
+	if v, ok := dipper.GetMapDataInt(msg.Payload, "summarize_upto"); ok {
+		s.SummarizeUpto = v
+	}
+
 	if convoID, ok := dipper.GetMapDataStr(msg.Payload, "convo_id"); ok && convoID != "" {
 		s.ConvoID = convoID
 		s.loadConvoHistory()
@@ -548,6 +563,14 @@ func (s *AgentSession) loadConvoHistory() {
 
 	var history []AgentMessage
 	dipper.Must(json.Unmarshal(ret, &history))
+	// Honor the compaction summarize_upto boundary (gated on it being set, > 0):
+	// the summarizer loads the archived history up to (excluding) the triggering
+	// user message so it summarizes instead of answering it. Non-compaction ag__
+	// sub-agent calls have SummarizeUpto == 0 and load their full history, so they
+	// are completely unaffected.
+	if s.SummarizeUpto > 0 && s.SummarizeUpto < len(history) {
+		history = history[:s.SummarizeUpto]
+	}
 	s.history = history
 }
 
