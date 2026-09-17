@@ -16,6 +16,15 @@ const (
 		"context, and any critical information that will be needed to continue the conversation. " +
 		"Be concise but thorough. Explain what is happening currently at the end."
 
+	// compactionSummarizeReminder is always injected (prepended) into the
+	// summarizer prompt — default or custom — so the summarizer reliably produces
+	// a summary instead of answering the triggering user's question. The
+	// triggering user message stays in the preserved tail and the _gN archive,
+	// but is excluded from the summarizer's loaded history via the
+	// summarize_upto boundary; the reminder reinforces that the model must not
+	// attempt to answer it.
+	compactionSummarizeReminder = "You are summarizing conversation history; do NOT answer the user's question; produce a summary only."
+
 	// compactionFailurePlaceholder is injected as a RoleSystem message whenever a
 	// summarization attempt fails, so the failure and the archive location are
 	// visible in history without truncating anything. The %s is the _g<N>
@@ -87,6 +96,22 @@ func (s *AgentSession) shouldCompact() bool {
 func (s *AgentSession) lastNonSlashMessage() int {
 	for i := len(s.history) - 1; i >= 0; i-- {
 		if !s.history[i].IsSlash {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// lastNonSlashUserMessage returns the index of the last non-slash user message
+// in the session history, or -1 if none exists. Compaction triggers on the last
+// non-slash user message (shouldCompact), so this identifies the triggering
+// user message that must be excluded from the summarizer's input via the
+// summarize_upto boundary. Slash-origin messages are never part of the model
+// context, so they are skipped.
+func (s *AgentSession) lastNonSlashUserMessage() int {
+	for i := len(s.history) - 1; i >= 0; i-- {
+		if !s.history[i].IsSlash && s.history[i].Role == RoleUser {
 			return i
 		}
 	}
@@ -465,10 +490,28 @@ func (s *AgentSession) compactHistory() bool {
 		return false
 	}
 
-	// Build the summarization prompt.
+	// Build the summarization prompt (default or custom).
 	prompt := cp.SummarizationPrompt
 	if prompt == "" {
 		prompt = DefaultCompactionPrompt
+	}
+	// ALWAYS inject the "summarize, do not answer" reminder into whichever prompt
+	// is used (default or custom). The summarizer sub-agent is generic: without
+	// this reminder it can drift toward answering the user's question, which
+	// leads to loss of history. The reminder supplements (never replaces) the
+	// summarizer agent's own system prompt.
+	prompt = compactionSummarizeReminder + "\n\n" + prompt
+
+	// Compute the summarize_upto boundary: the summarizer must receive the
+	// archived history up to (but excluding) the triggering user message so it
+	// summarizes instead of answering the question. The triggering user message
+	// stays in the preserved tail and the full _gN archive; only the summarizer's
+	// loaded input excludes it.
+	summarizeUpto := s.lastNonSlashUserMessage()
+	if summarizeUpto < 0 {
+		// Defensive fallback: no user message to exclude, summarize the whole
+		// (archived) history.
+		summarizeUpto = len(s.history)
 	}
 
 	// Resolve the summarization agent config.
@@ -515,9 +558,10 @@ func (s *AgentSession) compactHistory() bool {
 	toolCall := AgentToolCall{
 		FuncName: "ag__" + summAgent.Name,
 		Params: map[string]interface{}{
-			"input":         prompt,
-			"compaction_id": compactID,
-			"preserve":      preserve,
+			"input":          prompt,
+			"compaction_id":  compactID,
+			"preserve":       preserve,
+			"summarize_upto": summarizeUpto,
 		},
 	}
 

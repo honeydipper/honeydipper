@@ -556,6 +556,12 @@ func (s *AgentSession) handleAgentToolCall(c AgentToolCall, unifiedConvoID strin
 	if compactID, ok := dipper.GetMapDataStr(c.Params, "compaction_id"); ok && compactID != "" {
 		m.Payload.(map[string]interface{})["compaction_id"] = compactID
 	}
+	// Forward the compaction summarize_upto boundary (gated on presence) so the
+	// summarizer sub-agent's loadConvoHistory honors it. Non-compaction ag__
+	// calls never carry this param, so they are completely unaffected.
+	if v, ok := dipper.GetMapDataInt(c.Params, "summarize_upto"); ok {
+		m.Payload.(map[string]interface{})["summarize_upto"] = v
+	}
 
 	s.store.EmitMessage(m)
 }

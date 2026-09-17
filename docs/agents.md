@@ -331,10 +331,28 @@ When conversation history grows too long, the agent system automatically compact
 
 1. `shouldCompact()` checks if the threshold is reached.
 2. `compactHistory()` archives the current history under a generation-suffixed key (`convo_history:<ConvoID>_g<N>`).
-3. A summarization sub-agent is invoked with `compaction_id` and `preserve` parameters.
-4. The sub-agent reads the archived history, produces a summary, and returns it via `eventbus:agent_continue`.
+3. A summarization sub-agent is invoked with `compaction_id`, `preserve`, and a `summarize_upto` boundary.
+4. The sub-agent reads the archived history **up to (excluding) the triggering user message** (via the
+   `summarize_upto` boundary), produces a summary, and returns it via `eventbus:agent_continue`.
 5. `handleCompactionResult()` replaces the history with the summary (as a system message) plus the most recent `PreserveRecent` messages.
 6. The conversation resumes with the compacted history.
+
+**Summarizer instruction adherence:** the summarizer sub-agent is generic and would otherwise see the
+triggering user's question as its newest message and frequently answer it instead of summarizing (losing
+history). Two mechanisms guarantee it summarizes instead:
+
+- **`summarize_upto` boundary:** `compactHistory()` passes the index of the last non-slash user message (the
+  triggering user message) as a `summarize_upto` param. The summarizer honors it when loading its archived
+  history (`loadConvoHistory`), so the triggering user message is excluded from its input. The boundary is
+  gated on the param being present, so non-compaction `ag__` sub-agent calls are completely unaffected.
+- **Always-injected reminder:** the "You are summarizing conversation history; do NOT answer the user's
+  question; produce a summary only." reminder is always prepended to the summarizer prompt (default or a
+  custom `SummarizationPrompt`), supplementing (never replacing) the summarizer agent's own system prompt.
+
+The triggering user message **stays** in the preserved tail and the full `_gN` archive (intact for the UI);
+only the summarizer's loaded input excludes it, so the model still answers the user's question post-compaction
+while the compaction-boundary bookkeeping (`CompactionHistoryIdx` / `LastCompactionHistoryLen` /
+`PrevContextSize` / `refreshContextSize()`) is completely unchanged by the exclusion.
 
 **Key constraints:**
 - Compaction only triggers on **user messages** (not tool results), and fires at most once per real user
