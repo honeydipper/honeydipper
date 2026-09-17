@@ -13,11 +13,12 @@ import (
 	"os"
 	"testing"
 
+	secretmanagerpb "cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"github.com/golang/mock/gomock"
-	mock_driver "github.com/honeydipper/honeydipper/v3/drivers/cmd/gcloud-secret/mock_gcloud-secret"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	mock_driver "github.com/honeydipper/honeydipper/v4/drivers/cmd/gcloud-secret/mock_gcloud-secret"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	secureexec "github.com/honeydipper/honeydipper/v4/pkg/secure-exec"
 	"github.com/stretchr/testify/assert"
-	secretmanagerpb "google.golang.org/genproto/googleapis/cloud/secretmanager/v1"
 )
 
 func TestMain(m *testing.M) {
@@ -30,7 +31,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestLookupWithoutName(t *testing.T) {
-	driver = dipper.NewDriver(os.Args[1], "secretmanager")
+	driver = secureexec.NewDriver(os.Args[1], "secretmanager")
 	ctrl := gomock.NewController(t)
 	client := mock_driver.NewMockSecretManagerClient(ctrl)
 	loadOptions(&dipper.Message{})
@@ -43,7 +44,7 @@ func TestLookupWithoutName(t *testing.T) {
 }
 
 func TestLookupWithName(t *testing.T) {
-	driver = dipper.NewDriver(os.Args[1], "secretmanager")
+	driver = secureexec.NewDriver(os.Args[1], "secretmanager")
 	ctrl := gomock.NewController(t)
 	client := mock_driver.NewMockSecretManagerClient(ctrl)
 	loadOptions(&dipper.Message{})
@@ -77,4 +78,29 @@ func TestLookupWithName(t *testing.T) {
 	default:
 		assert.Fail(t, "should receive plain text in reply chan.")
 	}
+}
+
+func TestGetScopedPrefixes(t *testing.T) {
+	t.Setenv("SECRET_PREFIX_ZZZ", "env/zzz")
+	t.Setenv("SECRET_PREFIX_ALPHA", "env/alpha")
+	t.Setenv("SECRET_PREFIX_MID", "env/mid")
+	t.Setenv("UNRELATED_PREFIX_ALPHA", "ignore-me")
+
+	prefixes := getScopedPrefixes()
+	assert.Equal(t, []string{"env/alpha", "env/mid", "env/zzz"}, prefixes)
+}
+
+func TestExpandScopedNames(t *testing.T) {
+	t.Setenv("SECRET_PREFIX_BETA", "apps/beta")
+	t.Setenv("SECRET_PREFIX_ALPHA", "apps/alpha")
+
+	names := expandScopedNames("myproject/{SCOPED}/db-password;myproject/common/db-password")
+	assert.Equal(t,
+		[]string{
+			"myproject/apps/alpha/db-password",
+			"myproject/apps/beta/db-password",
+			"myproject/common/db-password",
+		},
+		names,
+	)
 }

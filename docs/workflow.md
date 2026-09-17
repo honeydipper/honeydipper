@@ -5,10 +5,12 @@
 - [Composing Workflows](#composing-workflows)
   * [Simple Actions](#simple-actions)
   * [Complex Actions](#complex-actions)
+  * [Caching](#caching)
   * [Iterations](#iterations)
   * [Conditions](#conditions)
   * [Looping](#looping)
   * [Hooks](#hooks)
+  * [Export Control](#export-control)
 - [Contextual Data](#contextual-data)
   * [Sources](#sources)
   * [Interpolation](#interpolation)
@@ -77,30 +79,207 @@ rules:
 ```
 
 ### Simple Actions
-There are 4 types of simple actions that a workflow can perform.
+There are several types of simple actions that a workflow can perform. Simple actions cannot be combined with each other.
 
  - `call_workflow`: calling out to another named workflow, taking a string specifying the name of the workflow
- - `call_function`: calling a predefined system function, taking a string in the form of `system.function`
+ - `call_function`: calling a function with an inline function definition (containing `system` and `function` fields) or a string in the form of `system.function`
  - `call_driver`: calling a `rawAction` offered by a driver, taking a string in the form of `driver.rawAction`
+ - `send_event`: send a message to `eventbus:message` so the engine can match it against rules and start new sessions. The value is a map containing an `events` list (event names) and an optional `data` map. A fresh `eventID` is generated automatically.
  - `wait`: wait for the specified amount of time or receive a wake-up request with a matching token. The time should be formatted according to the requirement for function [ParseDuration](https://golang.org/pkg/time/#ParseDuration). A unit suffix is required.
+ - `call_agent`: invoke an AI agent for inference. The value is the agent name. The workflow will wait for the agent response. See [Agents](../configuration.md#agents) for agent configuration.
+ - `wait_agent`: wait for a response from a previously invoked agent session. The value is the agent session ID.
+ - `resume`: resume a paused workflow session by sending a wake-up message. The value is the resume key.
+ - `detach`: fire-and-forget; marks the child session as detached so it runs independently.
 
-They can not be combined.
+A workflow can also have no action at all. `{}` is a perfectly legit no-op workflow.
 
-A function can also have no action at all. `{}` is a perfectly legit no-op workflow.
+Example of `send_event` that fires a synthetic event for the engine to pick up:
+
+```yaml
+---
+workflows:
+  fire_my_event:
+    send_event:
+      events:
+        - mySystem.myTrigger
+      data:
+        key: value
+```
+
+Example of using `call_agent` to invoke an AI agent:
+
+```yaml
+---
+workflows:
+  ask_agent:
+    call_agent: my_agent
+    with:
+      text: "What is the status of the deployment?"
+```
 
 ### Complex Actions
-Complex actions are groups of multiple `workflows` organized together to do some complex work.
+Complex actions are groups of multiple `workflows` organized together to do some complex work. 
 
  - `steps`: an array of child workflows that are executed in sequence
  - `threads`: an array of child workflows that are executed in parallel
- - `switch/cases/default`: taking a piece of contextual data specified in `switch`, chose and execute from a map of child workflows defined in `cases` or execute the child workflow defined in `default` if no branch matches
+ - `switch/cases/default`: taking a piece of contextual data specified in `switch`, choose and execute from a map of child workflows defined in `cases` or execute the child workflow defined in `default` if no branch matches
+ - `iterate`: execute the action multiple times with different values from a list, sequentially
+ - `iterate_parallel`: execute the action multiple times with different values from a list, in parallel (with configurable pool size via `iterate_pool`)
 
 These can not be combined with each other or with any of the simple actions.
 
 When using `steps` or `threads`, you can control the behaviour of the workflow upon `failure` or `error` status through fields `on_failure` or `on_error`.  The allowed values are `continue` and `exit`. By default, `on_failure` is set to `continue` while `on_error` is set to `exit`. When using `threads`, `exit` means that when one thread returns error, the workflow returns without waiting for other threads to return.
 
+#### Switch/Cases/Default
+
+The `switch/cases/default` action provides conditional branching within a workflow. The `switch` field specifies a contextual data path (interpolated at runtime). The `cases` field is a map where keys are possible values of the switch expression, and values are the child workflows to execute. The `default` field specifies the workflow to execute when no case matches.
+
+```yaml
+---
+workflows:
+  route_by_environment:
+    switch: $ctx.environment
+    cases:
+      production:
+        call_workflow: handle_production
+      staging:
+        call_workflow: handle_staging
+      development:
+        call_workflow: handle_development
+    default:
+      call_workflow: handle_unknown
+```
+
+The switch expression supports interpolation, so you can use go templates or path interpolation:
+
+```yaml
+---
+workflows:
+  route_by_severity:
+    switch: '{{ .labels.status }}'
+    cases:
+      critical:
+        steps:
+          - call_workflow: page_oncall
+          - call_workflow: create_incident
+      warning:
+        call_workflow: send_slack_alert
+    default:
+      call_workflow: log_only
+```
+
+You can nest `switch` within `steps` or other complex actions for multi-level branching:
+
+```yaml
+---
+workflows:
+  multi_level_routing:
+    steps:
+      - call_workflow: classify_event
+      - switch: $ctx.classification
+        cases:
+          security:
+            switch: $ctx.severity
+            cases:
+              high:
+                call_workflow: escalate_security
+              low:
+                call_workflow: log_security_event
+          infrastructure:
+            call_workflow: handle_infra
+        default:
+          call_workflow: default_handler
+```
+
+### Caching
+Workflows can cache their results to avoid redundant execution. When a workflow is defined with a `cache_key` and the key is found in the cache, the cached data will be loaded directly without executing the defined work. This is useful for workflows that are expensive or time-consuming.
+
+To enable caching for a workflow:
+
+ - `cache_key`: a string that uniquely identifies the cache entry. This is interpolated at runtime, allowing dynamic cache keys based on contextual data.
+ - `cache_ttl`: an optional duration string specifying how long the cache entry should live. Defaults to 24 hours.
+ - `force-cache-refresh`: set this context variable to `true` to bypass the cache and force execution, refreshing the cache with new results.
+
+**Important**: Only data stored in the `cache-data` context variable will be cached. When a cached workflow executes successfully, the data in `cache-data` is saved to the cache. When loading from cache, the data is exported to the workflow context with the key `cache-data*` (the `*` suffix marks it as cache data).
+
+To cache data from your workflow, you need to explicitly place it in `cache-data`:
+
+```yaml
+---
+workflows:
+  expensive_operation:
+    cache_key: "myapp:deployment:{{ .ctx.environment }}"
+    cache_ttl: "1h"
+    steps:
+      - call_function: kubernetes.get_deployment_status
+      - export:
+          cache-data:
+            deployment_status: $ctx.status
+```
+
+In this example, the `deployment_status` is placed inside `cache-data`, so it will be cached. When the same `cache_key` is requested again within the TTL period, the workflow will return the cached data without executing the `kubernetes.get_deployment_status` function.
+
+To force a cache refresh:
+
+```yaml
+---
+workflows:
+  refresh_deployment_status:
+    with:
+      force-cache-refresh: true
+    call_workflow: expensive_operation
+```
+
+You can also check if a workflow result came from cache by checking the `from_cache` label:
+
+```yaml
+---
+workflows:
+  check_cache_status:
+    if_match:
+      from_cache: "true"
+    steps:
+      - call_workflow: notify_cached_result
+```
+
+#### Hash-based cache keys (Redis)
+
+When the `cache` feature is backed by the `redis-cache` driver, the
+`cache_key` accepts a `#` syntax for storing and reading entries inside a
+single Redis hash. This is handy when several workflows need to share one
+logical cache object whose fields are populated independently.
+
+The caching mode is selected by the presence and position of `#` in the key:
+
+ - **Normal key** (for example `myapp:data:{{ .ctx.key }}` &mdash; no `#`): behaves
+   exactly as described above. The entry is stored and read as a single value
+   via the `cache` `save`/`load` RPCs, and is additionally held in the
+   in-memory memcache. *This mode is unchanged by the hash feature.*
+
+ - **Single hash field** (`name#field`): caches only the field `field` within
+   the Redis hash `name` as an independent, TTL'd entry. It is written via the
+   `cache` `hset` RPC and read via `hget`. Each field carries its own TTL
+   (controlled by the driver's `per_field_expiration` option &mdash; see
+   [Redis cache driver](./configuration.md#redis-cache)). Use this when several
+   workflows contribute different pieces of data to one shared cache object.
+
+ - **Whole hash** (`name#` &mdash; a trailing `#` with an empty field): reads the
+   **entire** Redis hash `name` into `cache-data` as a map of
+   `field -> decoded value`. It is a **read-only aggregate view**: it is read
+   directly from Redis via the `cache` `hgetall` RPC, it does **not** consult
+   or populate the in-memory memcache, and it **never writes back** to Redis or
+   the memcache &mdash; even when `force-cache-refresh` is set or the hash is
+   empty. This makes it ideal for reading a shared cache object that other
+   workflows populate through `name#field` keys.
+
+In every `#` mode the underlying Redis key is `workflow-cache/<name>`, and
+field values are JSON-encoded, so `cache-data` has the same shape regardless of
+which mode populated it.
+
 ### Iterations
 Any of the actions can be combined with an `iterate` or `iterate_parallel` field to be executed multiple times with different values from a list. The current element of the list will be stored in a local contextual data item named `current`. Optionally, you can also customize the name of contextual data item using `iterate_as`. The elements of the lists to be iterated don't have to be simple strings, it can be a map or other complex data structures.
+
+For `iterate_parallel`, you can also specify `iterate_pool` to limit the number of concurrent iterations (defaults to 100).
 
 For example:
 
@@ -124,7 +303,7 @@ workflows:
 We can also specify the conditions that the workflow checks before taking any action.
 
  - `if_match/unless_match`: specify the skeleton data to match the contextual data
- - `if/unless/if_any/unless/unless_all`: specify the list of strings that interpolate to truy/falsy values
+ - `if/unless/if_any/unless/unless_all`: specify the list of strings that interpolate to true/falsy values
 
 Some examples for using skeleton data matching:
 ```yaml
@@ -177,7 +356,6 @@ workflows:
     if_match:
       git_repo: myorg/myrepo
       git_ref!: ":regex:^refs/tags/" # except tags
-    ...
 
   alert_unauthorized_access:
     if_match:
@@ -198,10 +376,10 @@ workflows:
   run_if_all_meets:
     if:
       - $ctx.exits # ctx.exits must not be empty and not one of such strings `false`, `nil`, `{}`, `[]`, `0`. 
-      - $ctx.also  # ctx.also must also be truy
+      - $ctx.also  # ctx.also must also be true
     call_workflow: assert
     with:
-      message: `exits` and `also` are both truy
+      message: `exits` and `also` are both true
 
   run_if_either_meets:
     if_any:
@@ -216,8 +394,8 @@ workflows:
 ### Looping
 We can also repeat the actions in the workflow through looping fields
 
- - `while`: specify a list of strings that interpolate into truy/falsy values
- - `until`: specify a list of strings that interpolate into truy/falsy values
+ - `while`: specify a list of strings that interpolate into true/falsy values
+ - `until`: specify a list of strings that interpolate into true/falsy values
     
 For example:
 
@@ -245,7 +423,7 @@ workflows:
     with:
       success: false
       backoff: 0
-      count-: 2
+      count: 2
     until:
       - $ctx.success
       - $ctx.count
@@ -266,7 +444,7 @@ workflows:
 <!-- {% endraw %} -->
 
 ### Hooks
-Hooks are child workflows executed at a specified moments in the parent workflow's lifecycle. It is a great way to separate auxiliary work, such as sending heartbeat, sending slack messages, making an announcement, clean up, data preparation etc., from the actual work. Hooks are defined through context data, so it can be pulled in through predefined contexts, which makes the actual workflow seems less cluttered.
+Hooks are child workflows executed at specified moments in the parent workflow's lifecycle. They are a great way to separate auxiliary work, such as sending heartbeats, sending slack messages, making announcements, cleanup, data preparation, etc., from the actual work. Hooks are defined through context data, so they can be pulled in through predefined contexts, which makes the actual workflow less cluttered.
 
 For example,
 ```yaml
@@ -299,16 +477,161 @@ rules:
 ```
 In the above example, although not specifically spelled out in the rules, both events will trigger the execution of `workflow_announcement` workflow before executing the first action. And if the workflow responding to the `opsgenie.alert` event is successful, `snooze_alert` workflow will be executed.
 
-The supported hooks:
+#### Supported Hooks
 
- * on_session: when a workflow session is created, even `{}` no-op session will trigger this hook
- * on_first_action: before a workflow performs first simple action
- * on_action: before performs each simple action in `steps`
- * on_item: before execute each iteration
- * on_success: before workflow exit, and when the workflow is successful
- * on_failure: before workflow exit, and when the workflow is failed
- * on_error: before workflow exit, and when the workflow ran into error
- * on_exit: before workflow exit
+| Hook | When It Fires | Notes |
+|---|---|---|
+| `on_session` | When a workflow session is created | Fires even for `{}` no-op sessions |
+| `on_first_round` | Before the first iteration round in a loop | Only fires once at loop start |
+| `on_round` | Before each iteration round in a loop | Fires at the beginning of every round |
+| `on_first_item` | Before the first item in an iteration | Only fires once at iteration start |
+| `on_item` | Before each item in an iteration | Fires for every item |
+| `on_first_action` | Before a workflow performs its first simple action | Commonly used for announcements |
+| `on_action` | Before each simple action in `steps` | Fires for every step |
+| `on_update` | After a workflow state update | Fires after the workflow processes a return message |
+| `on_success` | Before workflow exit, when successful | Workflow completed without errors or failures |
+| `on_failure` | Before workflow exit, when failed | A step or action returned a failure status |
+| `on_error` | Before workflow exit, on error | An unexpected error occurred during execution |
+| `on_exit` | Before workflow exit, regardless of outcome | Always fires last, regardless of success/failure/error |
+
+#### Hook Execution Order
+
+For a typical successful workflow with steps:
+
+```
+on_session → on_first_action → on_action (step 1) → on_action (step 2) → ... → on_success → on_exit
+```
+
+For a looping workflow:
+
+```
+on_session → on_first_round → on_first_item → on_item → on_round → on_item → ... → on_success → on_exit
+```
+
+For a failed workflow:
+
+```
+on_session → on_first_action → on_action (step 1) → on_failure → on_exit
+```
+
+#### Hook Definition Syntax
+
+Hooks can be defined as a single workflow or a list of workflows. When a list is provided, the workflows are executed in order.
+
+```yaml
+contexts:
+  my_context:
+    hooks:
+      - on_first_action: announce_workflow_start
+      - on_success:
+          - send_success_notification
+          - update_dashboard
+      - on_failure:
+          - send_failure_alert
+          - create_incident
+      - on_exit: cleanup_resources
+```
+
+Hooks can also be defined directly in a workflow using the `hooks` field:
+
+```yaml
+---
+workflows:
+  my_workflow:
+    hooks:
+      - on_first_action: log_start
+      - on_success: log_success
+      - on_failure: log_failure
+    steps:
+      - call_function: do_work
+```
+
+#### Hook Context
+
+Hook workflows receive the same contextual data as the parent workflow. They can read and modify the parent's context, but changes are scoped to the current workflow session. Exported data from hooks follows the same export rules as regular workflows.
+
+### Export Control
+
+Workflows can export data back to the parent context or to the triggering event's context. Export control fields allow you to specify exactly what data is exported and under what conditions.
+
+#### Export Fields
+
+| Field | When It Is Evaluated | Description |
+|---|---|---|
+| `export` | Always, at end of workflow | Data listed here is always exported regardless of outcome |
+| `export_on_success` | Only when workflow succeeds | Additional data exported on success |
+| `export_on_failure` | Only when workflow fails | Additional data exported on failure |
+| `export_on_error` | Only on unexpected errors | Additional data exported on error |
+| `no_export` | Always | List of keys to block from export (`"*"` blocks all) |
+
+#### Export Examples
+
+```yaml
+---
+workflows:
+  deploy_with_status:
+    steps:
+      - call_function: kubernetes.deploy
+      - export:
+          deployment_id: $ctx.deployment_id
+          timestamp: '{{ now }}'
+      - export_on_success:
+          status: "deployed"
+          health_check_url: $ctx.health_url
+      - export_on_failure:
+          status: "failed"
+          rollback_available: true
+      - export_on_error:
+          status: "error"
+          error_detail: $ctx.error
+```
+
+#### Blocking Exports
+
+Use `no_export` to prevent sensitive or temporary data from leaking to parent contexts:
+
+```yaml
+---
+workflows:
+  process_secret:
+    steps:
+      - call_function: vault.get_token
+      - export:
+          result: $ctx.result
+      - no_export:
+          - vault_token
+          - temp_credential
+```
+
+Use `no_export: ["*"]` to block all exports from a workflow:
+
+```yaml
+---
+workflows:
+  internal_only:
+    no_export:
+      - "*"
+    steps:
+      - call_function: internal_operation
+```
+
+#### Cache Data Export
+
+The `*` suffix on export keys marks data that should be cached. When a cached workflow executes, data in keys ending with `*` is stored in the cache:
+
+```yaml
+---
+workflows:
+  cached_lookup:
+    cache_key: "myapp:data:{{ .ctx.key }}"
+    cache_ttl: "1h"
+    steps:
+      - call_function: fetch_data
+      - export:
+          result*: $ctx.fetched_data
+```
+
+When the cache is hit, the cached data is exported with the `*` suffix, and the `from_cache` label is set to `"true"`.
 
 ## Contextual Data
 Contextual data is the key to stitch different events, functions, drivers and workflows together.
@@ -324,7 +647,7 @@ Every workflow receives contextual data from a few sources:
 
 Since the data are received in that particular order listed above, the later source can override data from previous sources. Child workflow context data is independent from parent workflow, anything defined in `with` or inherited will only be in effect during the life cycle of current workflow, except the exported data. Once a field is exported, it will be available to all outer workflows. You can override this by specifying the list of fields that you don't want to export.
 
-Pay attention to the example `retry_func_count_with_exp_backoff` in the previous section. In order to not contaminate parent context with temporary fields, we use `no_export` to block the exporting of certain fields. For example
+Pay attention to the example `retry_func_count_with_exp_backoff` in the previous section. In order to not contaminate parent context with temporary fields, we use `no_export` to block the exporting of certain fields. For example,
 
 The `with` field in the workflow can be a map or a list of maps. If it is a map, each key defines a variable. If it is a list of maps, each map is a layer. The layers are processed in the order they appear. The variables defined in previous layer can be used to define values in later layers.
 ```yaml
@@ -390,6 +713,7 @@ workflows
           foo_param: # type inconsistent
             key: val
 ```
+
 After merging with the second step, the final exported data will be like below. Notice the fields that are replaced.
 ```yaml
 data: # final
@@ -603,7 +927,7 @@ workflows:
             - name: REPO
               value: https://github.com/honeydipper/honeydipper
             - name: BRANCH
-              value: DipperCL
+              value: v4
         - ...
 ```
 
@@ -628,6 +952,7 @@ contexts:
           command_prefix: []
           shell_entry: [ "/bin/ash", "-c" ]
 ```
+
 Supported fields in a type:
 
  * `image` - the image to use for this type
@@ -774,6 +1099,7 @@ contexts:
           contexts: # optionally you can run your workflow with these contexts
             - my_context
 ```
+
 Replace the content in `<>` with your own content.
 
 ### Mapping Parameters

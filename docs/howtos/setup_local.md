@@ -11,7 +11,7 @@ cat > .env <<EOF
 REPO=<...>
 BRANCH=<...>
 EOF
-docker-compose up
+docker compose up
 ```
 
 The container will try to use your `SSH_AUTH_SOCK` to clone remote ssh repo if needed. Or you can use `DIPPER_SSH_KEY` environment variable to pass a ssh private key directly into the container. To use a repo on local file system, use `REPO_DIR` instead of `REPO`. You can also specify `DEBUG='*'` or `DEBUG='daemon'` in the `.env` file to increase the log verbosity.
@@ -20,29 +20,30 @@ The container will try to use your `SSH_AUTH_SOCK` to clone remote ssh repo if n
 
 ### Setup Go environment
 
- * Setup a directory as your go work directory and add it to GOPATH. Assuming go 1.13.1 or up is installed, gvm is recommended to manage multiple versions of go. You may want to persist the GOPATH in your bash_profile
+ * Setup a directory as your go work directory. Assuming go 1.25 or up is installed, gvm is recommended to manage multiple versions of go.
 
 ```bash
-mkdir ~/go
-export GOPATH=$GOPATH:$PWD/go
+mkdir -p ~/go
+export GOPATH=$HOME/go
 export PATH=$PATH:$GOPATH/bin
 ```
 
 ### Clone the code
 
 ```bash
-go get github.com/honeydipper/honeydipper
-```
-
-or 
-
-```sh
 git clone https://github.com/honeydipper/honeydipper.git
+cd honeydipper
 ```
 
 ### Build and test
 
  * Build
+
+```bash
+make build
+```
+
+or
 
 ```bash
 go install -v ./...
@@ -72,10 +73,15 @@ make integration-tests
 make clean
 ```
 
+ * For linting
+
+```bash
+make lint
+```
+
  * For pre-commit hooks
 
 ```bash
-curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.15.0
 brew install pre-commit
 pre-commit install --install-hooks
 ```
@@ -97,7 +103,7 @@ drivers:
       Addr: 127.0.0.1:6379
   redispubsub:
     connection:
-      Addr: 127.0.0.1:6379 
+      Addr: 127.0.0.1:6379
 
 rules:
   - when:

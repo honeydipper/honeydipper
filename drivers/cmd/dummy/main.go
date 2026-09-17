@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 func initFlags() {
@@ -38,7 +38,6 @@ func main() {
 
 func waitAndSendDummyEvent(msg *dipper.Message) {
 	go func() {
-		//nolint:gomnd
 		time.Sleep(20 * time.Second)
 		driver.SendMessage(&dipper.Message{
 			Channel: "eventbus",

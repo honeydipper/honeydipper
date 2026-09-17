@@ -9,7 +9,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -19,11 +21,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
-	"github.com/op/go-logging"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
-
-var log *logging.Logger
 
 func initFlags() {
 	flag.Usage = func() {
@@ -35,24 +34,66 @@ func initFlags() {
 
 var driver *dipper.Driver
 
+var (
+	errMissingCLICommand     = errors.New("missing command")
+	errMissingTokenType      = errors.New("missing token source type")
+	errUnknownCLICommandType = errors.New("unknown command")
+)
+
+func parseCLICommand(args []string) (string, string, error) {
+	if len(args) < 3 {
+		return "", "", errMissingCLICommand
+	}
+
+	cmd := args[2]
+	switch cmd {
+	case "token":
+		if len(args) < 4 {
+			return "", "", errMissingTokenType
+		}
+
+		return cmd, args[3], nil
+	default:
+		return "", "", fmt.Errorf("%w: %s", errUnknownCLICommandType, cmd)
+	}
+}
+
 func main() {
 	initFlags()
 	flag.Parse()
 
 	driver = dipper.NewDriver(os.Args[1], "web")
 	if driver.Service == "operator" {
-		driver.Reload = func(*dipper.Message) {
-			log = nil
-		} // allow hot reload
+		driver.Reload = func(*dipper.Message) {} // allow hot reload
 		driver.Commands["request"] = sendRequest
 		driver.Run()
 	}
+
+	if driver.Service == "cli" {
+		cmd, tokenType, err := parseCLICommand(os.Args)
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
+
+		if cmd == "token" {
+			tokenSource := map[string]interface{}{
+				"type": tokenType,
+			}
+			driver.Options = map[string]interface{}{}
+			dipper.MapSet(driver.Options, "data.token_sources.default", tokenSource)
+			token := getToken("default", nil)
+			fmt.Println(token)
+		}
+
+		os.Exit(0)
+	}
 }
 
-func prepareRequest(m *dipper.Message) *http.Request {
+func prepareRequest(ctx context.Context, m *dipper.Message) *http.Request {
 	rurl, ok := dipper.GetMapDataStr(m.Payload, "URL")
 	if !ok {
-		log.Panicf("[%s] URL is required but missing", driver.Service)
+		driver.GetLogger().Panicf("[%s] URL is required but missing", driver.Service)
 	}
 
 	form := url.Values{}
@@ -79,7 +120,14 @@ func prepareRequest(m *dipper.Message) *http.Request {
 	}
 
 	if tokenSource, ok := dipper.GetMapDataStr(m.Payload, "tokenSource"); ok && len(tokenSource) > 0 {
-		token := getToken(tokenSource)
+		var tokenSourceParams map[string]interface{}
+		if params, ok := dipper.GetMapData(m.Payload, "tokenSourceParams"); ok && params != nil {
+			if paramsMap, ok := params.(map[string]interface{}); ok {
+				tokenSourceParams = paramsMap
+			}
+		}
+
+		token := getToken(tokenSource, tokenSourceParams)
 		header.Set("Authorization", "Bearer "+token)
 	}
 
@@ -88,7 +136,7 @@ func prepareRequest(m *dipper.Message) *http.Request {
 		method = "GET"
 	}
 
-	return createRequest(method, rurl, header, form, m)
+	return createRequest(ctx, method, rurl, header, form, m)
 }
 
 func prepareRequestBody(form url.Values, header http.Header, m *dipper.Message) io.Reader {
@@ -121,7 +169,7 @@ func prepareRequestBody(form url.Values, header http.Header, m *dipper.Message) 
 	return buf
 }
 
-func createRequest(method, rurl string, header http.Header, form url.Values, m *dipper.Message) *http.Request {
+func createRequest(ctx context.Context, method, rurl string, header http.Header, form url.Values, m *dipper.Message) *http.Request {
 	var req *http.Request
 
 	switch method {
@@ -131,9 +179,9 @@ func createRequest(method, rurl string, header http.Header, form url.Values, m *
 		fallthrough
 	case "PUT":
 		buf := prepareRequestBody(form, header, m)
-		req = dipper.Must(http.NewRequest(method, rurl, buf)).(*http.Request)
+		req = dipper.Must(http.NewRequestWithContext(ctx, method, rurl, buf)).(*http.Request)
 	default: // GET
-		req = dipper.Must(http.NewRequest(method, rurl, nil)).(*http.Request)
+		req = dipper.Must(http.NewRequestWithContext(ctx, method, rurl, nil)).(*http.Request)
 		if len(req.URL.RawQuery) > 0 {
 			req.URL.RawQuery += "&"
 		}
@@ -146,11 +194,12 @@ func createRequest(method, rurl string, header http.Header, form url.Values, m *
 }
 
 func sendRequest(m *dipper.Message) {
-	if log == nil {
-		log = driver.GetLogger()
-	}
 	m = dipper.DeserializePayload(m)
-	req := prepareRequest(m)
+
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
+
+	req := prepareRequest(ctx, m)
 
 	client := http.Client{}
 	resp, err := client.Do(req)
@@ -179,7 +228,7 @@ func sendRequest(m *dipper.Message) {
 func extractHTTPResponseData(r *http.Response) map[string]interface{} {
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Panicf("[%s] unable to read resp body", driver.Service)
+		driver.GetLogger().Panicf("[%s] unable to read resp body", driver.Service)
 	}
 
 	cookies := map[string]interface{}{}
@@ -199,12 +248,12 @@ func extractHTTPResponseData(r *http.Response) map[string]interface{} {
 		var bodyObj interface{}
 		err := json.Unmarshal(bodyBytes, &bodyObj)
 		if err != nil {
-			log.Panicf("[%s] invalid json in response body", driver.Service)
+			driver.GetLogger().Panicf("[%s] invalid json in response body", driver.Service)
 		}
 		respData["json"] = bodyObj
 	}
 
-	log.Debugf("[%s] web response data: %+v", driver.Service, respData)
+	driver.GetLogger().Debugf("[%s] web response data: %+v", driver.Service, respData)
 
 	return respData
 }

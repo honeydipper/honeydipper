@@ -53,7 +53,7 @@ func TestRollBack(t *testing.T) {
 		Staged:   &DataSet{},
 		LastRunningConfig: struct {
 			DataSet *DataSet
-			Loaded  map[RepoInfo]*Repo
+			Loaded  map[RepoKey]*Repo
 		}{
 			DataSet: &DataSet{
 				Drivers: map[string]interface{}{
@@ -62,7 +62,7 @@ func TestRollBack(t *testing.T) {
 					},
 				},
 			},
-			Loaded: map[RepoInfo]*Repo{},
+			Loaded: map[RepoKey]*Repo{},
 		},
 	}
 	cfg.ResetStage()
