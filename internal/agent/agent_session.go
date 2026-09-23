@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -335,6 +336,27 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] created type=%s agent=%s", s.ID, s.Type, msg.Labels["agent_name"])
 	}
+}
+
+// lockForPoll acquires the session lock within the poll's end-to-end deadline.
+// StartInference can hold this lock while it waits for a prior conversation
+// turn, so using the default RPC timeout here would fail an otherwise healthy
+// queued turn after 10 seconds.
+func (s *AgentSession) lockForPoll(msg *dipper.Message, store AgentStore, deadline time.Time) error {
+	id := msg.Labels["agent_session_id"]
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return dipper.ErrTimeout
+	}
+
+	if _, err := store.Call("locker", "lock", map[string]interface{}{
+		"name":   AgentKeyPrefix + id,
+		"expire": "600s",
+	}, "timeout", remaining.String()); err != nil {
+		return fmt.Errorf("lock agent session for poll: %w", err)
+	}
+
+	return nil
 }
 
 // initNewSession populates a freshly created session from the incoming message.
@@ -1023,7 +1045,35 @@ func (s *AgentSession) processAgentMessage(agentMsg *AgentMessage) {
 	}
 }
 
-func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
+func agentPollTimeout(msg *dipper.Message) time.Duration {
+	timeout := AgentSessionDefaultPollTimeout
+	if value, ok := msg.Labels["timeout"]; ok {
+		timeout = dipper.Must(time.ParseDuration(value)).(time.Duration)
+	}
+
+	return timeout
+}
+
+func emitAgentPollTimeout(store AgentStore, msg *dipper.Message, timeout time.Duration) {
+	labels := make(map[string]string, len(msg.Labels)+2)
+	for key, value := range msg.Labels {
+		labels[key] = value
+	}
+	labels["status"] = "failure"
+	labels["reason"] = "poll timeout after " + timeout.String()
+	store.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "agent_response",
+		Labels:  labels,
+	})
+}
+
+func (s *AgentSession) processAgentPoll(
+	msg *dipper.Message,
+	deadline time.Time,
+	timeout time.Duration,
+	sessionLocked *bool,
+) {
 	log := s.log()
 	if log == nil {
 		log = dipper.GetLogger("agent", "INFO")
@@ -1031,11 +1081,7 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 
 	log.Infof("[agent] session [%s] poll received lastpoll=%d resume_key %s", s.ID, s.LastPoll, msg.Labels["resume_key"])
 
-	timeout := AgentSessionDefaultPollTimeout
-	if t, ok := msg.Labels["timeout"]; ok {
-		timeout = dipper.Must(time.ParseDuration(t)).(time.Duration)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	for {
 		rateLimited := !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
@@ -1044,22 +1090,33 @@ func (s *AgentSession) processAgentPoll(msg *dipper.Message) {
 			select {
 			case <-ctx.Done():
 				log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
-				labels := msg.Labels
-				labels["status"] = "failure"
-				labels["reason"] = "poll timeout after " + timeout.String()
-				s.store.EmitMessage(dipper.Message{
-					Channel: dipper.ChannelEventbus,
-					Subject: "agent_response",
-					Labels:  labels,
-				})
+				emitAgentPollTimeout(s.store, msg, timeout)
 
 				return
 			default:
 			}
 			s.unlock()
+			*sessionLocked = false
 
-			time.Sleep(time.Second)
-			s.setup(msg, s.store, true)
+			select {
+			case <-ctx.Done():
+				log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
+				emitAgentPollTimeout(s.store, msg, timeout)
+
+				return
+			case <-time.After(time.Second):
+			}
+			if err := s.lockForPoll(msg, s.store, deadline); err != nil {
+				if errors.Is(err, dipper.ErrTimeout) {
+					log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
+					emitAgentPollTimeout(s.store, msg, timeout)
+
+					return
+				}
+				panic(err)
+			}
+			*sessionLocked = true
+			s.setup(msg, s.store, false)
 
 			// Check whether the conversation was cancelled while waiting.
 			if s.checkCancelled() {
@@ -1112,9 +1169,11 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 		},
 	}
 
-	last := s.history[len(s.history)-1]
-	live := !last.IsComplete || last.Role != RoleAgent || len(last.ToolCalls) > 0
-	live = live && len(s.ErrorReason) == 0
+	live := len(s.ErrorReason) == 0
+	if len(s.history) > 0 {
+		last := s.history[len(s.history)-1]
+		live = live && (!last.IsComplete || last.Role != RoleAgent || len(last.ToolCalls) > 0)
+	}
 
 	if live && s.NewPendingContent {
 		liveMessage := map[string]string{
