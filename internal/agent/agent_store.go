@@ -612,14 +612,31 @@ func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	})
 	p.Infof("[agent] PollInference session=%s", msg.Labels["agent_session_id"])
 
+	timeout := agentPollTimeout(msg)
+	deadline := time.Now().Add(timeout)
 	s := &AgentSession{}
-	s.setup(msg, p, true)
+	sessionLocked := false
+	defer func() {
+		if sessionLocked {
+			s.persist(true)
+		}
+	}()
+	if err := s.lockForPoll(msg, p, deadline); err != nil {
+		if errors.Is(err, dipper.ErrTimeout) {
+			p.Warningf("[agent] session [%s] poll timeout after %s while acquiring session lock", msg.Labels["agent_session_id"], timeout)
+			emitAgentPollTimeout(p, msg, timeout)
+
+			return
+		}
+		panic(err)
+	}
+	sessionLocked = true
+	s.setup(msg, p, false)
 	// Load history for the restored session.
 	s.loadConvoHistory()
 	// Re-derive the compaction baseline from the restored history.
 	s.refreshContextSize()
-	defer s.persist(true)
-	s.processAgentPoll(msg)
+	s.processAgentPoll(msg, deadline, timeout, &sessionLocked)
 }
 
 // CancelConvo marks the conversation identified by convo_id or unified_convo_id as cancelled.
