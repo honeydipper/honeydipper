@@ -6,6 +6,10 @@
 
 package config
 
+import (
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
+)
+
 // Event is the runtime data representation of an event.
 type Event struct {
 	System  string
@@ -63,6 +67,7 @@ type Workflow struct {
 	Context     string
 	Contexts    interface{}
 	Local       interface{} `json:"with" mapstructure:"with"`
+	Parameters  interface{} `json:"parameters" mapstructure:"parameters"`
 
 	Match       interface{} `json:"if_match" mapstructure:"if_match"`
 	UnlessMatch interface{} `json:"unless_match" mapstructure:"unelss_match"`
@@ -93,14 +98,22 @@ type Workflow struct {
 	Function     Function
 	CallFunction string `json:"call_function" mapstructure:"call_function"`
 	CallDriver   string `json:"call_driver" mapstructure:"call_driver"`
+	CallAgent    string `json:"call_agent" mapstructure:"call_agent"`
+	WaitAgent    string `json:"wait_agent" mapstructure:"wait_agent"`
 	Steps        []Workflow
 	Threads      []Workflow
 	Wait         string
 	Detach       bool
+	Resume       string
+
+	SendEvent interface{} `json:"send_event" mapstructure:"send_event"`
 
 	Switch  string
 	Cases   map[string]interface{}
 	Default interface{}
+
+	CacheKey string `json:"cache_key" mapstructure:"cache_key"`
+	CacheTTL string `json:"cache_ttl" mapstructure:"cache_ttl"`
 
 	Export          map[string]interface{}
 	ExportOnSuccess map[string]interface{} `json:"export_on_success" mapstructure:"export_on_success"`
@@ -115,22 +128,74 @@ type Rule struct {
 	Do   Workflow
 }
 
+// RepoKey holds the identity fields of a RepoInfo and can be used as a map key.
+type RepoKey struct {
+	Repo     string
+	Branch   string
+	Path     string
+	InitFile string
+}
+
 // RepoInfo points to a git repo where config data can be read from.
 type RepoInfo struct {
 	Repo        string
 	Branch      string
 	Path        string
-	InitFile    string
+	InitFile    string `json:"init_file" mapstructure:"init_file"`
 	Name        string
 	Description string
-	KeyFile     string
-	KeyPassEnv  string
+	KeyFile     string `json:"key_file" mapstructure:"key_file"`
+	KeyPassEnv  string `json:"key_pass_env" mapstructure:"key_pass_env"`
+
+	TokenSource string `json:"token_source" mapstructure:"token_source"`
+	Username    string
+	PassEnv     string `json:"pass_env" mapstructure:"pass_env"`
+
+	Options map[string]interface{}
+}
+
+// Key returns the RepoKey (identity fields only) for use as a map key.
+func (r RepoInfo) Key() RepoKey {
+	return RepoKey{Repo: r.Repo, Branch: r.Branch, Path: r.Path, InitFile: r.InitFile}
+}
+
+// AgentToolDef defines if the workflow is a workflow or a system.
+type AgentToolDef struct {
+	Type     string
+	Name     string
+	Only     []string
+	Excludes []string
+}
+
+// Agent is a abstract data structure including AI driver, prompt and tools definitions for an agent session.
+type Agent struct {
+	Name               string
+	Driver             string
+	Engine             string
+	SystemPrompt       string                     `json:"system_prompt" mapstructure:"system_prompt"`
+	InferencePrompt    string                     `json:"inference_prompt" mapstructure:"inference_prompt"`
+	ShouldEmitThoughts bool                       `json:"should_emit_thoughts" mapstructure:"should_emit_thoughts"`
+	ShouldStream       bool                       `json:"should_stream" mapstructure:"should_stream"`
+	MaxHistoryLen      int                        `json:"max_history_len" mapstructure:"max_history_len"`
+	CompactionPolicy   *agentpkg.CompactionPolicy `json:"compaction_policy" mapstructure:"compaction_policy"`
+	Tools              []AgentToolDef
+	ModelData          map[string]interface{} `json:"model_data" mapstructure:"model_data"`
+	AgentSettings      interface{}            `json:"agent_settings" mapstructure:"additional_data"`
+	PreContext         []string               `json:"pre_context" mapstructure:"pre_context"`
+	SkillsPaths        []string               `json:"skills" mapstructure:"skills"`
+	FileTool           string                 `json:"file_tool" mapstructure:"file_tool"`
+	Description        string
+	TokenCounter       string `json:"token_counter" mapstructure:"token_counter"`
+	TurnLockTimeout    string `json:"turn_lock_timeout" mapstructure:"turn_lock_timeout"`
+	DriverCallTimeout  string `json:"driver_call_timeout" mapstructure:"driver_call_timeout"`
+	Meta               interface{}
 }
 
 // DataSet is a subset of configuration that can be assembled to the complete final configuration.
 type DataSet struct {
 	Systems   map[string]System
 	Rules     []Rule
+	Agents    map[string]Agent
 	Drivers   map[string]interface{}
 	Includes  []string
 	Repos     []RepoInfo

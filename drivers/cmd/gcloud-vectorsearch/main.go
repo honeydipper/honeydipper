@@ -9,8 +9,8 @@ import (
 
 	aiplatform "cloud.google.com/go/aiplatform/apiv1beta1"
 	"cloud.google.com/go/aiplatform/apiv1beta1/aiplatformpb"
-	"github.com/honeydipper/honeydipper/v3/drivers/pkg/redisclient"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"google.golang.org/api/option"
 )
 
@@ -56,10 +56,11 @@ func query(m *dipper.Message) {
 	embeddingMethod := dipper.MustGetMapDataStr(driver.Options, "data.knowledge_base."+kb+".embedding_method")
 	embeddingModel, _ := dipper.GetMapDataStr(driver.Options, "data.knowledge_base."+kb+".embedding_model")
 
-	ctx := context.Background()
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
 	var clientOptions []option.ClientOption
 	if len(serviceAccount) > 0 {
-		clientOptions = append(clientOptions, option.WithCredentialsJSON([]byte(serviceAccount)))
+		clientOptions = append(clientOptions, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccount)))
 	}
 
 	// Generate embeddings for the question.

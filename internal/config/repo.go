@@ -17,14 +17,21 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/go-errors/errors"
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // Error represents a configuration error.
 type Error struct {
 	Error error
 	File  string
+}
+
+// _honeydipperVersion represents the version of honeydipper.
+var _honeydipperVersion string
+
+// SetVersion sets the version of the running honeydipper instance.
+func SetVersion(v string) {
+	_honeydipperVersion = v
 }
 
 // Repo contains runtime repo info used to track what has been loaded in a repo.
@@ -35,21 +42,51 @@ type Repo struct {
 	files   map[string]bool
 	root    string
 	Errors  []Error
+	hash    string
 }
 
-func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoInfo]*Repo) (*DataSet, map[RepoInfo]*Repo) {
-	assembledList[*c.repo] = c
+func (c *Repo) assemble(assembled *DataSet, assembledList map[RepoKey]*Repo) (*DataSet, map[RepoKey]*Repo) {
+	assembledList[c.repo.Key()] = c
 	for _, repo := range c.DataSet.Repos {
-		if _, ok := assembledList[repo]; !ok {
-			if repoRuntime, ok := c.parent.Loaded[repo]; ok {
+		if _, ok := assembledList[repo.Key()]; !ok {
+			if repoRuntime, ok := c.parent.Loaded[repo.Key()]; ok {
 				assembled, assembledList = repoRuntime.assemble(assembled, assembledList)
 			}
 		}
 	}
 
 	dipper.Must(mergeDataSet(assembled, c.DataSet))
+	dipper.MergeModifier(assembled.Drivers, c.DataSet.Drivers)
+
+	c.updateBuiltinCtxs(assembled)
 
 	return assembled, assembledList
+}
+
+func (c *Repo) updateBuiltinCtxs(assembled *DataSet) {
+	parts := strings.Split(c.repo.Repo, ":")
+	tail := parts[len(parts)-1]
+	gitRepo := filepath.Base(filepath.Dir(tail)) + "/" + strings.TrimSuffix(filepath.Base(tail), ".git")
+
+	gitRef := "refs/heads/main"
+	if c.repo.Branch != "" {
+		gitRef = "refs/heads/" + c.repo.Branch
+	}
+
+	if assembled.Contexts == nil {
+		assembled.Contexts = map[string]any{}
+	}
+
+	dipper.MapAppend(assembled.Contexts, "_loaded.*.repo_matcher", map[string]any{
+		"git_repo": gitRepo,
+		"git_ref":  gitRef,
+	})
+	dipper.MapAppend(assembled.Contexts, "_loaded.*.loaded_repos", map[string]any{
+		"repo":        c.repo.Repo,
+		"branch":      c.repo.Branch,
+		"path":        c.repo.Path,
+		"commit_hash": c.hash,
+	})
 }
 
 func (c *Repo) isFileLoaded(filename string) bool {
@@ -95,9 +132,17 @@ func (c *Repo) loadFile(filename string) {
 		"env": dipper.Getenv(),
 		"local": map[string]interface{}{
 			"filename": strings.TrimPrefix(filename, c.root),
+			"repo":     c.repo.Repo,
+			"branch":   c.repo.Branch,
 		},
+		"version": _honeydipperVersion,
+		"init": map[string]interface{}{
+			"repo":   c.parent.InitRepo.Repo,
+			"branch": c.parent.InitRepo.Branch,
+		},
+		"options": c.repo.Options,
 	}
-	switch ret := dipper.InterpolateGoTemplate(true, filename, string(yamlFile), envData).(type) {
+	switch ret := dipper.InterpolateGoTemplate("loading", filename, string(yamlFile), envData).(type) {
 	case *bytes.Buffer:
 		yamlFile = ret.Bytes()
 	case string:
@@ -109,7 +154,7 @@ func (c *Repo) loadFile(filename string) {
 		if !c.parent.IsDocGen && (c.parent.CheckRemote || !c.parent.IsConfigCheck) {
 			for _, referredRepo := range content.Repos {
 				if !c.parent.isRepoLoaded(referredRepo) {
-					c.parent.loadRepo(referredRepo)
+					c.parent.loadRepo(c.mergeOptions(referredRepo))
 				}
 			}
 		}
@@ -129,34 +174,46 @@ func (c *Repo) loadFile(filename string) {
 	dipper.Logger.Infof("config file [%v] loaded", filename)
 }
 
-func newRepo(c *Config, repo RepoInfo) *Repo {
-	return &(Repo{c, &repo, DataSet{}, map[string]bool{}, "", []Error{}})
+// mergeOptions returns a copy of the given RepoInfo with options merged from the parent repo.
+// Parent options are the base; child's own declared options take precedence.
+func (c *Repo) mergeOptions(child RepoInfo) RepoInfo {
+	if len(c.repo.Options) == 0 {
+		return child
+	}
+	merged := make(map[string]interface{}, len(c.repo.Options)+len(child.Options))
+	for k, v := range c.repo.Options {
+		merged[k] = v
+	}
+	for k, v := range child.Options {
+		merged[k] = v
+	}
+	child.Options = merged
+
+	return child
 }
 
+func newRepo(c *Config, repo RepoInfo) *Repo {
+	return &(Repo{c, &repo, DataSet{}, map[string]bool{}, "", []Error{}, ""})
+}
+
+// cloneFetchRepo clones and fetches a git repository.
 func (c *Repo) cloneFetchRepo() {
+	c.cloneFetchRepoWithDeps(&DefaultGitClient{}, &DefaultTempDirCreator{}, DefaultHeadGetter)
+}
+
+// cloneFetchRepoWithDeps clones and fetches a git repository with dependency injection for testing.
+func (c *Repo) cloneFetchRepoWithDeps(gitClient GitClient, tempDirCreator TempDirCreator, headGetter func(*git.Repository) string) {
 	dipper.Logger.Infof("cloning repo [%v]", c.repo.Repo)
 	var err error
-	if c.root, err = os.MkdirTemp(c.parent.WorkingDir, "git"); err != nil {
+	if c.root, err = tempDirCreator.MkdirTemp(c.parent.WorkingDir, "git"); err != nil {
 		dipper.Logger.Errorf("%v", err)
 		dipper.Logger.Fatalf("Unable to create subdirectory in %v", c.parent.WorkingDir)
 	}
 
-	branch := plumbing.Main.Short()
-	if c.repo.Branch != "" {
-		branch = c.repo.Branch
-	}
-	opts := &git.CloneOptions{
-		ReferenceName: plumbing.NewBranchReferenceName(branch),
-		URL:           c.repo.Repo,
-	}
-	if strings.HasPrefix(c.repo.Repo, "git@") {
-		if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
-			opts.Auth = auth
-		}
-	}
-
+	opts := BuildCloneOptions(*c.repo)
 	dipper.Logger.Infof("fetching repo [%v]", c.repo.Repo)
-	_ = dipper.Must(git.PlainClone(c.root, false, opts))
+	r := dipper.Must(gitClient.PlainClone(c.root, false, opts)).(*git.Repository)
+	c.hash = headGetter(r)
 }
 
 func (c *Repo) loadRepo() {
@@ -198,25 +255,7 @@ func (c *Repo) refreshRepo() bool {
 	if !overridden && !usingUncommitted {
 		repoObj := dipper.Must(git.PlainOpen(c.root)).(*git.Repository)
 		tree := dipper.Must(repoObj.Worktree()).(*git.Worktree)
-		opts := &git.PullOptions{
-			RemoteName:   "origin",
-			RemoteURL:    c.repo.Repo,
-			Force:        true,
-			SingleBranch: true,
-		}
-
-		switch c.repo.Branch {
-		case "":
-			opts.ReferenceName = plumbing.Main
-		default:
-			opts.ReferenceName = plumbing.NewBranchReferenceName(c.repo.Branch)
-		}
-
-		if strings.HasPrefix(c.repo.Repo, "git@") {
-			if auth := GetGitSSHAuth(c.repo.KeyFile, c.repo.KeyPassEnv); auth != nil {
-				opts.Auth = auth
-			}
-		}
+		opts := BuildPullOptions(*c.repo)
 
 		err := tree.Pull(opts)
 		switch {

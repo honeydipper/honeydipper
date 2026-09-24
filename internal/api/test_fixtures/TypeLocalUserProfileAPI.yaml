@@ -1,0 +1,28 @@
+---
+# mock api definition to be tested
+def:
+  path: /user/profile
+  name: userProfile
+  method: GET
+  # TypeLocal
+  reqType: 3
+  service: api
+  object: everything
+
+# store config
+config:
+  auth:
+    casbin:
+      policies:
+        - |-
+          p, test, everything, GET, auth-simple
+
+# mock incoming call
+path: /user/profile
+
+# expected end result
+expectedCode: 200
+expectedContent:
+  profile_name: test
+  subject: test
+  provider: auth-simple

@@ -14,9 +14,9 @@ import (
 	"strings"
 
 	"github.com/ghodss/yaml"
-	"github.com/honeydipper/honeydipper/v3/internal/api"
-	"github.com/honeydipper/honeydipper/v3/internal/config"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/api"
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/logrusorgru/aurora/v3"
 	"github.com/mitchellh/mapstructure"
 )
@@ -33,6 +33,10 @@ var (
 	ErrorNotAllowed = fmt.Errorf("not allowed without pairing field")
 	// ErrorNotAList is the message when a field is supposed to be a list.
 	ErrorNotAList = fmt.Errorf("must be a list or something interpolated into a list")
+	// ErrInvalidAuthTestSubjectMissingSubject is returned when a subject object in an auth test lacks a Subject field.
+	ErrInvalidAuthTestSubjectMissingSubject = fmt.Errorf("invalid subject object in auth test: missing Subject")
+	// ErrInvalidAuthTestSubjectType is returned when a subject value in an auth test has an unexpected type.
+	ErrInvalidAuthTestSubjectType = fmt.Errorf("invalid subject value in auth test: unexpected type")
 )
 
 type dipperCLError struct {
@@ -130,8 +134,23 @@ func runConfigCheck(cfg *config.Config) int {
 	return ret
 }
 
+type authTest struct {
+	Name     string
+	Subject  interface{}
+	Object   string
+	Action   string
+	Provider string
+	Result   bool
+}
+
+type authTests struct {
+	Models   []interface{}
+	Policies []interface{}
+	Tests    []authTest
+}
+
 func checkAuthRules(cfg *config.Config) int {
-	repo, ok := cfg.Loaded[cfg.InitRepo]
+	repo, ok := cfg.Loaded[cfg.InitRepo.Key()]
 	if !ok {
 		// no init repo during tests
 		return 0
@@ -141,19 +160,7 @@ func checkAuthRules(cfg *config.Config) int {
 		return 0
 	}
 
-	type AuthTests struct {
-		Models   []interface{}
-		Policies []interface{}
-		Tests    []struct {
-			Name     string
-			Subject  string
-			Object   string
-			Action   string
-			Provider string
-			Result   bool
-		}
-	}
-	var tests AuthTests
+	var tests authTests
 	e = yaml.Unmarshal(b, &tests)
 	if e != nil {
 		fmt.Printf("\nFound errors loading authorization tests definition:\n")
@@ -198,10 +205,30 @@ func checkAuthRules(cfg *config.Config) int {
 		return 1
 	}
 
+	return runAuthTests(l, tests.Tests)
+}
+
+func runAuthTests(l *api.Store, tests []authTest) int {
+	var e error
+
 	failedTests := []int{}
 	processed := 0
-	for i, test := range tests.Tests {
-		ok, err := l.Enforce(test.Subject, test.Object, test.Action, test.Provider)
+	usePrincipalObject := l.UsesPrincipalInRequest()
+	for i, test := range tests {
+		subject, principal, err := normalizeAuthTestSubject(test.Subject, test.Provider)
+		if err != nil {
+			e = err
+			processed = i
+
+			break
+		}
+
+		args := []interface{}{subject, test.Object, test.Action, test.Provider}
+		if usePrincipalObject {
+			args = []interface{}{subject, principal, test.Object, test.Action, test.Provider}
+		}
+
+		ok, err := l.Enforce(args...)
 		if err != nil {
 			e = err
 			processed = i
@@ -217,7 +244,7 @@ func checkAuthRules(cfg *config.Config) int {
 		fmt.Printf("\nFound errors running authorization tests:\n")
 		fmt.Println("─────────────────────────────────────────────────────────────")
 		for _, num := range failedTests {
-			test := tests.Tests[num]
+			test := tests[num]
 			fmt.Printf(
 				"%s: Sub: %s, Obj: %s, Act: %s, Provider: %s, Expected: %t, Found: %t\n",
 				aurora.Yellow(test.Name),
@@ -230,7 +257,7 @@ func checkAuthRules(cfg *config.Config) int {
 			)
 		}
 		if e != nil {
-			test := tests.Tests[processed]
+			test := tests[processed]
 			fmt.Printf(
 				"%s: Sub: %s, Obj: %s, Act: %s, Provider: %s, Expected: %t, Error: %+v\n",
 				aurora.Yellow(test.Name),
@@ -248,6 +275,31 @@ func checkAuthRules(cfg *config.Config) int {
 	}
 
 	return 0
+}
+
+func normalizeAuthTestSubject(raw interface{}, provider string) (string, api.Principal, error) {
+	principal := api.Principal{Provider: provider}
+
+	switch subject := raw.(type) {
+	case string:
+		principal.Subject = subject
+
+		return subject, principal, nil
+	case map[string]interface{}:
+		if err := mapstructure.Decode(subject, &principal); err != nil {
+			return "", api.Principal{}, fmt.Errorf("invalid subject object in auth test: %w", err)
+		}
+		if principal.Provider == "" {
+			principal.Provider = provider
+		}
+		if principal.Subject == "" {
+			return "", api.Principal{}, ErrInvalidAuthTestSubjectMissingSubject
+		}
+
+		return principal.Subject, principal, nil
+	default:
+		return "", api.Principal{}, fmt.Errorf("%w: %T", ErrInvalidAuthTestSubjectType, raw)
+	}
 }
 
 func checkContext(cfg *config.Config, ctxWorkflowName string) (msg string) {
@@ -407,7 +459,7 @@ func checkObjectExists(t, name string, m interface{}) {
 func hasLiteral(param string) bool {
 	s := strings.TrimSpace(param)
 
-	return s != "" && s[0] != '$' && !(strings.HasPrefix(s, "{{") && strings.HasSuffix(s, "}}")) && !strings.HasPrefix(s, ":yaml:")
+	return s != "" && s[0] != '$' && (!strings.HasPrefix(s, "{{") || !strings.HasSuffix(s, "}}")) && !strings.HasPrefix(s, ":yaml:")
 }
 
 func hasInterpolation(param string) bool {

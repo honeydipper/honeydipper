@@ -5,6 +5,7 @@
 - [Documenting a Driver](#documenting-a-driver)
 - [Document a System](#document-a-system)
 - [Document a Workflow](#document-a-workflow)
+- [Document an Agent](#document-an-agent)
 - [Formatting](#formatting)
 - [Building](#building)
 - [Publishing](#publishing)
@@ -22,6 +23,7 @@ The meta information are usually recorded using `meta` field, or `description` f
  3. `systems.*.functions.*` - each system function can have its meta information here
  4. `systems.*.triggers.*` - each system triggers can have its meta information here
  5. `workflows.*` - each workflow can have its meta information here
+ 6. `agents.*` - each agent can have its meta information here
 
 The `description` field is usually a simple string that will be a paragraph in the document immediately following the name of the entry.
 The `meta` field is a map of different items based on what entry the meta is for.
@@ -197,6 +199,39 @@ workflows:
 
 ```
 
+## Document an Agent
+
+Following fields are allowed under the `meta` field for an `agent`,
+
+   * `description` - A list of items to be rendered as paragraphs following the top level description
+   * `inputs` - A list of `name`, `description` pairs describing the context variables needed for this agent
+   * `exports` - A list of `name`, `description` pairs describing the context variables exported by this agent
+   * `notes` - A list of items to be rendered as paragraphs following the above items
+   * `tools` - A list of `name`, `description` pairs describing the tools available to this agent
+
+For example, to define the meta information for an agent,
+```yaml
+---
+agents:
+  myagent:
+    meta:
+      description:
+        - ... brief description for the agent ...
+      inputs:
+        - name: key1
+          description: ... brief description for key1 ...
+      exports:
+        - name: key2
+          description: ... brief description for key2 ...
+      tools:
+        - name: tool1
+          description: ... brief description for tool1 ...
+      notes:
+        - ... some notes ...
+        - example: |
+          ... sample in yaml ...
+```
+
 ## Formatting
 
 Both `description` and `notes` fields under `meta` support formatting. They accept a list of items that each
@@ -250,14 +285,14 @@ In order to build the document for local viewing, follow below steps.
  5. generating the source document for sphinx
     ```bash
     cd honeydipper-sphinx
-    docker run -it -v $PWD/docgen:/docgen -v $PWD/source:/source -e DOCSRC=/docgen -e DOCDST=/source honeydipper/honeydipper:1.0.0 docgen
+    docker run -it -v $PWD/docgen:/docgen -v $PWD/source:/source -e DOCSRC=/docgen -e DOCDST=/source honeydipper/honeydipper:latest docgen
     ```
  6. build the documents
     ```bash
     # cd honeydipper-sphinx
     make html
     ```
-  7. view your documents
+ 7. view your documents
 ```bash
 # cd honeydipper-sphinx
 open build/html/index.html
