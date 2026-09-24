@@ -143,6 +143,9 @@ func GetDefs() map[string]map[string]Def {
 		"user/profile": {
 			http.MethodGet: {Object: "user/profile", Name: "userProfile", ReqType: TypeLocal, Local: userProfileHandler, Service: "api"},
 		},
+		"auth/logout": {
+			http.MethodPost: {Object: "auth/logout", Name: "authLogout", ReqType: TypeLocal, Local: logoutHandler, Service: "api"},
+		},
 		"events/:eventID/wait": {
 			http.MethodGet: {Object: "event", Name: "eventWait", ReqType: TypeFirst, Service: "engine", Timeout: InfiniteDuration},
 		},

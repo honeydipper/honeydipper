@@ -77,6 +77,7 @@ type Store struct {
 	enforcer        *casbin.Enforcer
 	apiPrefix       string
 	uiURL           string
+	sessionEngine   *sessionEngine
 
 	writeTimeout time.Duration
 }
@@ -86,7 +87,14 @@ type Principal struct {
 	Subject     string
 	ProfileName string
 	Provider    string
-	Data        map[string]interface{}
+	// SID is the daemon-minted opaque session identifier, stable across token
+	// rotation, and used as the primary key of the server-side session store.
+	SID string
+	// IssuedAt is the unix-seconds issuance time of the underlying token/session.
+	// It is surfaced so lazy session registration anchors the absolute cap to
+	// the real issuance time rather than first-seen.
+	IssuedAt int64
+	Data     map[string]interface{}
 }
 
 // HandleAPIACK handles the call ACK from the eventbus.
@@ -198,8 +206,14 @@ func githubOAuthCallbackHandler(r *Request) (map[string]interface{}, error) {
 		return nil, ErrMissingAuthorizationCode
 	}
 
+	// The daemon is the sole authority for minting the session id. It is passed
+	// to the driver so the driver embeds the same sid in its session token, and
+	// registered eagerly once the callback returns.
+	sid := r.store.newSID()
+
 	answer, err := r.store.caller.Call("driver:auth-github", "github_oauth_callback", map[string]interface{}{
 		"code": code,
+		"sid":  sid,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)
@@ -211,6 +225,22 @@ func githubOAuthCallbackHandler(r *Request) (map[string]interface{}, error) {
 	result := map[string]interface{}{}
 	if err := json.Unmarshal(answer, &result); err != nil {
 		return nil, fmt.Errorf("%w", err)
+	}
+
+	// Register the session eagerly now that the callback succeeded. The driver
+	// returns the GitHub login as "subject" (newer) and "username" (legacy); read
+	// subject first and fall back to username so eager registration always fires.
+	subject, _ := result["subject"].(string)
+	if subject == "" {
+		subject, _ = result["username"].(string)
+	}
+	if subject != "" {
+		r.store.RegisterEagerSession(Principal{
+			Subject:  subject,
+			Provider: "auth-github",
+			SID:      sid,
+			Data:     result,
+		})
 	}
 
 	return result, nil
@@ -307,9 +337,15 @@ func samlACSCallbackHandler(r *Request) (map[string]interface{}, error) {
 	// Fall back to the driver's own session token for backwards compatibility.
 	tokenSet := false
 	if subject != "" {
+		// The daemon mints the session id and registers it eagerly at login. The
+		// session was just minted now, so its issuance time anchors the JWT exp
+		// to the absolute maxLifetime cap when one is configured (F6).
+		sid := r.store.newSID()
+		issuedAt := time.Now().Unix()
+		principal := Principal{Subject: subject, ProfileName: profileName, Provider: "auth-saml", Data: data, SID: sid, IssuedAt: issuedAt}
+		r.store.RegisterEagerSession(principal)
 		if jwtCfg, err := getJWTConfig(); err == nil {
-			principal := Principal{Subject: subject, ProfileName: profileName, Provider: "auth-saml", Data: data}
-			if hdToken, err := SignPrincipalJWT(principal, jwtCfg); err == nil {
+			if hdToken, err := SignPrincipalJWTSession(principal, jwtCfg, issuedAt, r.store.sessionMaxLifetime()); err == nil {
 				query.Set("token", hdToken)
 				tokenSet = true
 			}
@@ -338,6 +374,7 @@ func (l *Store) GetAPIHandler(prefix string, cfg interface{}) http.Handler {
 	gin.DefaultWriter = dipper.LoggingWriter
 	l.config = cfg
 	l.apiPrefix = prefix
+	l.sessionEngine = loadSessionEngine(cfg)
 	l.engine = gin.New()
 	l.engine.Use(gin.Logger())
 	l.engine.Use(gin.Recovery())
@@ -388,6 +425,8 @@ func (l *Store) Enforce(args ...interface{}) (bool, error) {
 }
 
 // AuthMiddleware is a middleware handles auth.
+//
+//nolint:nestif // auth has inherently nested fallback branches
 func (l *Store) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if l.isAnonymousRoute(c) {
@@ -406,8 +445,13 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 			jwtToken = ExtractJWTFromRequest(authHeader)
 			if jwtToken != "" {
 				if p, err := ParsePrincipalJWT(jwtToken, jwtCfg); err == nil && p != nil {
-					c.Set("principal", *p)
-					c.Next()
+					if proceed, effPrincipal := l.enforceSession(c, *p, l.sessionEngine, false); proceed {
+						c.Set("principal", effPrincipal)
+						c.Next()
+
+						return
+					}
+					abortSessionExpired(c)
 
 					return
 				}
@@ -457,16 +501,26 @@ func (l *Store) AuthMiddleware() gin.HandlerFunc {
 				continue
 			} else {
 				principal.Provider = provider
-				l.applyRotatedJWTHeader(c, principal)
-				c.Set("principal", principal)
-				// Issue a new JWT for the principal if possible
-				if jwtErr == nil {
-					if token, err := SignPrincipalJWT(principal, jwtCfg); err == nil {
-						c.Header("X-Honeydipper-JWT", token)
-						// Optionally, set as cookie here if desired
+				// The driver just returned a principal, meaning it vouched for
+				// the session this request (provider alive) - used to support
+				// silent idle renew for GitHub.
+				if proceed, effPrincipal := l.enforceSession(c, principal, l.sessionEngine, true); proceed {
+					principal = l.ensureSIDForPrincipal(effPrincipal)
+					l.applyRotatedJWTHeader(c, principal)
+					c.Set("principal", principal)
+					// Issue a new JWT for the principal if possible, binding the token
+					// exp to the session's absolute cap when one is configured (F6).
+					if jwtErr == nil {
+						if token, err := SignPrincipalJWTSession(principal, jwtCfg, principal.IssuedAt, l.sessionMaxLifetime()); err == nil {
+							c.Header("X-Honeydipper-JWT", token)
+							// Optionally, set as cookie here if desired
+						}
 					}
+					c.Next()
+
+					return
 				}
-				c.Next()
+				abortSessionExpired(c)
 
 				return
 			}
