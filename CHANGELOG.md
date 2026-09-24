@@ -1,3 +1,189 @@
+# [4.0.0-dev.1](https://github.com/honeydipper/honeydipper/compare/v3.10.0...v4.0.0-dev.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* agent tool call defaults to chat turn type ([#753](https://github.com/honeydipper/honeydipper/issues/753)) ([17dde0d](https://github.com/honeydipper/honeydipper/commit/17dde0df18204c89db34620384f2d45cfca6b722))
+* **agent:** coerce JSON-string params to object/array based on tool schema ([#719](https://github.com/honeydipper/honeydipper/issues/719)) ([bd6ff84](https://github.com/honeydipper/honeydipper/commit/bd6ff8428636c5048838910d8f3464f988b60d15))
+* **agent:** correct token count tracking ([#729](https://github.com/honeydipper/honeydipper/issues/729)) ([f50ad51](https://github.com/honeydipper/honeydipper/commit/f50ad5151d8b81442dcb6bdcc0460919266ed34c))
+* **agent:** guard StartTurn against sub-agent overwriting parent agent in ConvoState ([791de9b](https://github.com/honeydipper/honeydipper/commit/791de9b283eb51ceaa12aca41bfcb6481fc6fa5b))
+* **agent:** make total_tokens compaction baseline accurate and consistent ([#816](https://github.com/honeydipper/honeydipper/issues/816)) ([4edac86](https://github.com/honeydipper/honeydipper/commit/4edac86950620eeef18ca91b358130fe5cc6a83d))
+* **agent:** prevent poll races during supervised turns ([2889258](https://github.com/honeydipper/honeydipper/commit/28892585a3e4d4eba177757c7b01a9c8c19b17ac))
+* **agent:** restructure runTurn to call setup before lockTurn ([#791](https://github.com/honeydipper/honeydipper/issues/791)) ([47b217f](https://github.com/honeydipper/honeydipper/commit/47b217f628c6539ea90b7dd4f1554d30c19ebc83)), closes [#790](https://github.com/honeydipper/honeydipper/issues/790) [#790](https://github.com/honeydipper/honeydipper/issues/790)
+* **agent:** revert Phase 3 recovery logic and clean up test artifacts ([#809](https://github.com/honeydipper/honeydipper/issues/809)) ([a7c8e54](https://github.com/honeydipper/honeydipper/commit/a7c8e54871e65c1009dbb7db4d656167c2fde30a))
+* **agent:** sub agent status affecting parent agent convo status ([#728](https://github.com/honeydipper/honeydipper/issues/728)) ([77e78a2](https://github.com/honeydipper/honeydipper/commit/77e78a2d3b945104618120ae6fa932285dcc475a))
+* **agent:** take turn lock before reading history to avoid stale tool_use ([#786](https://github.com/honeydipper/honeydipper/issues/786)) ([9302a0e](https://github.com/honeydipper/honeydipper/commit/9302a0e6974f480eab90c97ed5effc61fa2d8e0a))
+* allow hook to export data into main session ([2168299](https://github.com/honeydipper/honeydipper/commit/2168299896897070b4c454c7bc260b98bdd664ab))
+* allow optional secret values in docker-entrypoint.sh ([ebc002e](https://github.com/honeydipper/honeydipper/commit/ebc002e89c0b557dbf2b979a9be30c6ce805302e))
+* allow yaml to be interpolated before use ([ded7d9b](https://github.com/honeydipper/honeydipper/commit/ded7d9b4436234aa15410a4c05e2a6c3d07c2d08))
+* avoid github expres too far in future error ([5cdf79d](https://github.com/honeydipper/honeydipper/commit/5cdf79d10a323304de24d88cef1821456d175e64))
+* avoid losing details in processing mcp tools ([#738](https://github.com/honeydipper/honeydipper/issues/738)) ([4632260](https://github.com/honeydipper/honeydipper/commit/46322608205328a6727a959b415fba41a41a4f8e))
+* checkCancelled should return true for non-active sessions ([#795](https://github.com/honeydipper/honeydipper/issues/795)) ([a3f9cdd](https://github.com/honeydipper/honeydipper/commit/a3f9cdd6ae123db6e30f90fd87ac8d4f5816f0b1))
+* clear in-memory history after archiving in forget_history block ([#763](https://github.com/honeydipper/honeydipper/issues/763)) ([331f4db](https://github.com/honeydipper/honeydipper/commit/331f4db48043e8a62268deae3d40e8e3cb427920))
+* collecting exported data from detached child ([e8a5972](https://github.com/honeydipper/honeydipper/commit/e8a59725175ffa3281ccfc6badee448d099748c7))
+* **config:** fail config processing on lookup RPC errors ([#769](https://github.com/honeydipper/honeydipper/issues/769)) ([ff5d6c2](https://github.com/honeydipper/honeydipper/commit/ff5d6c2152e34fa0f4814c60fe929af1b9607040))
+* correct routing and exporting of else state ([83c5583](https://github.com/honeydipper/honeydipper/commit/83c55839819e8a9fcf89112432a11c4929e6fc1a))
+* correct timeout handling in ai wrapper ([b87b2ec](https://github.com/honeydipper/honeydipper/commit/b87b2ec9183e0b65c7097735c76c792e855dd797))
+* deactivating signal should be after error handling ([36cf396](https://github.com/honeydipper/honeydipper/commit/36cf3966d87f362b29b0d744f73bdf29c5ea6e20))
+* delayed regex compiling for conditions ([#705](https://github.com/honeydipper/honeydipper/issues/705)) ([1b42c91](https://github.com/honeydipper/honeydipper/commit/1b42c91471ec32fd4949ed5661deaa8a24c5c620))
+* diversifying parallel iteration briefing name ([6be8666](https://github.com/honeydipper/honeydipper/commit/6be8666484acd11b973943d5fa89f38662079a2a))
+* flag no-op sessions intelligently ([993e983](https://github.com/honeydipper/honeydipper/commit/993e983d551bd6a629dfbb29d0a3cf0c7259a64b))
+* gcloud driver upgrade and security improvements ([95e4fc8](https://github.com/honeydipper/honeydipper/commit/95e4fc80160e153167658b9ec8507b51883acd3b))
+* gcloud-secret and iap issues ([#711](https://github.com/honeydipper/honeydipper/issues/711)) ([678d89f](https://github.com/honeydipper/honeydipper/commit/678d89ff24431c1686626d863d219c753e143377))
+* git ssh auth should load ssh bytes from env var ([cfd4fc4](https://github.com/honeydipper/honeydipper/commit/cfd4fc47a307d3dbcda8114760e03671db348215))
+* handle agent message for imcomplete turn ([#747](https://github.com/honeydipper/honeydipper/issues/747)) ([9a71e78](https://github.com/honeydipper/honeydipper/commit/9a71e787e3dd912891a4c74a9e2fce6677d6331d))
+* handle situation when a error has no text ([f099456](https://github.com/honeydipper/honeydipper/commit/f099456654637ef3ab085ec71bec0c9d5758154d))
+* handle stale sessions better ([cd925b9](https://github.com/honeydipper/honeydipper/commit/cd925b9d192decb965ed4f1c91a8ee063479ec0b))
+* handling brief more efficiently ([25cba13](https://github.com/honeydipper/honeydipper/commit/25cba13d4721460e16834a84ce137e9e413c57a4))
+* handling hook lifecycle ([a6aad70](https://github.com/honeydipper/honeydipper/commit/a6aad706d9e8248e7552e9ad50693cfc933c5bf4))
+* harden resume with retry and backoff ([e762f0f](https://github.com/honeydipper/honeydipper/commit/e762f0f932d98839693debf0ec78999dc61d946b))
+* hardening pkg/workflow to avoid crashing and leaking ([5007634](https://github.com/honeydipper/honeydipper/commit/5007634506121e3cd9ab0b5dc0c3387036b4fcf9))
+* hd_load_skill to load skill referenced files ([#764](https://github.com/honeydipper/honeydipper/issues/764)) ([23af5ba](https://github.com/honeydipper/honeydipper/commit/23af5baf8995a94c6220e0349a9a8e707ceef9ec))
+* improving default prompt ([#731](https://github.com/honeydipper/honeydipper/issues/731)) ([a31e9f8](https://github.com/honeydipper/honeydipper/commit/a31e9f8cc6af2fd6fb4b26d8ea750407c21eddce))
+* isolate src in MergeMap and MergeModifier to enable ++ append ([7204eed](https://github.com/honeydipper/honeydipper/commit/7204eed966e9080331f49477f3802bebd082efa1))
+* keep agent session longer ([9e4e2b2](https://github.com/honeydipper/honeydipper/commit/9e4e2b2a268dc361ee1f295b7047f89da804e398))
+* make docker-entrypoint.sh more compatible ([ab47389](https://github.com/honeydipper/honeydipper/commit/ab47389ffe0a1aa962b636cdaa35deb6ab45ccdb))
+* no-longer interpolate Ctx in operator ([cf87d78](https://github.com/honeydipper/honeydipper/commit/cf87d78544ded87744f283f3c7524d13c152da0e))
+* no-op should be treated as successful sessions ([dc2029b](https://github.com/honeydipper/honeydipper/commit/dc2029b503491dc45c96489235509775d1232e51))
+* not inherent on_error on_failure handlers ([d983999](https://github.com/honeydipper/honeydipper/commit/d9839995e33402959d9a54556da362ef68215372))
+* pkg install with sudo for remote driver ([#704](https://github.com/honeydipper/honeydipper/issues/704)) ([d142208](https://github.com/honeydipper/honeydipper/commit/d1422087063a56f9f183658e414d3ed742975d4c))
+* pre_serving pre-context loading order ([#736](https://github.com/honeydipper/honeydipper/issues/736)) ([a2c106c](https://github.com/honeydipper/honeydipper/commit/a2c106c5ac3c5d2139b45523060f1361d7d8c5ca))
+* principal vs subject ([0a1d42c](https://github.com/honeydipper/honeydipper/commit/0a1d42cf139a5a5919080dce4019b8273ea59dba))
+* protect CurrentMsg Labels from concurrent read write ([7258ab1](https://github.com/honeydipper/honeydipper/commit/7258ab1b85268b14434a459cc453b09b374fc29f))
+* protect daemon.Emitters map from concurrent access ([#766](https://github.com/honeydipper/honeydipper/issues/766)) ([bc574c2](https://github.com/honeydipper/honeydipper/commit/bc574c2b02a33c316726586075ff11eafeda1377))
+* recursive decryption should report error ([7a2a143](https://github.com/honeydipper/honeydipper/commit/7a2a143839da67a3212806c8635e9bc8be0546e7))
+* release turn lock when cancelling conversation ([ab05365](https://github.com/honeydipper/honeydipper/commit/ab05365a001bad595a62de0a59fd097ddf71b21f))
+* **release:** match beta branch in CircleCI ([690b473](https://github.com/honeydipper/honeydipper/commit/690b4735a69e99674f250630dc06b54575a1ebfa))
+* **release:** publish beta from exact tag ([9c0f5d9](https://github.com/honeydipper/honeydipper/commit/9c0f5d95e21de08cbdaf5a4ea7f666ea941332fe))
+* remote driver select pkgs based on pkg mgr ([#703](https://github.com/honeydipper/honeydipper/issues/703)) ([f5dccb5](https://github.com/honeydipper/honeydipper/commit/f5dccb589c49eb9a30e75437897454f010788142))
+* rpc client timeout should match provider timeout ([6133d05](https://github.com/honeydipper/honeydipper/commit/6133d0554f98d12b5addba24644ae35eeba23707))
+* sequence error handlers naturally after displaying ([71f7874](https://github.com/honeydipper/honeydipper/commit/71f78741c108d54a47d93b8f5ef8512307d99df7))
+* short curcuit noop workflow to improve efficiency ([d5474bc](https://github.com/honeydipper/honeydipper/commit/d5474bc14ae3b71675dd23b07f6244ee0ed3d83a))
+* simplify event list api ([f77abd9](https://github.com/honeydipper/honeydipper/commit/f77abd924a2177fd1fa852b2f8d4af4b6e392e8b))
+* simplify logging ([80000b0](https://github.com/honeydipper/honeydipper/commit/80000b035c1d58459ad6f12322eeb57a7a4dd616))
+* sporatic go routine panic protection ([1a32a35](https://github.com/honeydipper/honeydipper/commit/1a32a353a048696e39e0084db8c8daf7457265e9))
+* stay with golang 1.25 ([#710](https://github.com/honeydipper/honeydipper/issues/710)) ([bd8d4dd](https://github.com/honeydipper/honeydipper/commit/bd8d4dd672b78f3c0f79314d374342f57fa6ef7f))
+* strict error handling for scheduler to avoid losing errors ([2fedf9e](https://github.com/honeydipper/honeydipper/commit/2fedf9e1ee16a9dc6a64338b107a715c7553af59))
+* support multiple signature secrets for a system ([#788](https://github.com/honeydipper/honeydipper/issues/788)) ([594ec9d](https://github.com/honeydipper/honeydipper/commit/594ec9d31e6b2f6fd5f467c0490401f0ecde7f28))
+* tracking start end time of session with fields instead of labels ([ee673ea](https://github.com/honeydipper/honeydipper/commit/ee673eab2305e7602532959dfe6d37dfc2d9e71c))
+* upgrade golang docker image to avoid CVE-2026-27137 ([614e8e3](https://github.com/honeydipper/honeydipper/commit/614e8e33ce8f0364ada5de119fa0ff3d881f6897))
+* upgrade mcp go-sdk ([#749](https://github.com/honeydipper/honeydipper/issues/749)) ([a9c1f41](https://github.com/honeydipper/honeydipper/commit/a9c1f418af356840f16d77e1963aa129aafe6ede))
+* use synchorinzed progress to avoid abuse of waitgroup ([fe7d83d](https://github.com/honeydipper/honeydipper/commit/fe7d83d0813f5116a391211db3db4161e4d7d116))
+* web driver logger protection during reload ([af8a9d1](https://github.com/honeydipper/honeydipper/commit/af8a9d110d6c02a9fe72976381bfcd19a32e45eb))
+* yaml parser also parse embedded regex ([#702](https://github.com/honeydipper/honeydipper/issues/702)) ([486d5ab](https://github.com/honeydipper/honeydipper/commit/486d5ab9863655b2f99dd97e44907e8ddf2051de))
+
+
+### Features
+
+* add configurable timeout fields for agent sessions ([#790](https://github.com/honeydipper/honeydipper/issues/790)) ([f9dd7a1](https://github.com/honeydipper/honeydipper/commit/f9dd7a1cd1501b3985556a0988d201778aa93b5e))
+* add distributed per-conversation turn-locking to agent store ([#775](https://github.com/honeydipper/honeydipper/issues/775)) ([16ebbab](https://github.com/honeydipper/honeydipper/commit/16ebbabe90a3ce907bf94e73614f80b1d5c99d6f))
+* add exponential backoff for webhook listener bind failures (phase 2) ([#799](https://github.com/honeydipper/honeydipper/issues/799)) ([d4c6e31](https://github.com/honeydipper/honeydipper/commit/d4c6e31acf05f1ad75e7fa3fe36788a6501ccd81))
+* add GET /convos/:convoID endpoint to return ConvoState ([#784](https://github.com/honeydipper/honeydipper/issues/784)) ([3d18cc0](https://github.com/honeydipper/honeydipper/commit/3d18cc0ed25c386948279e6f961dc2b8aa583acb))
+* add interactive session control endpoint ([#708](https://github.com/honeydipper/honeydipper/issues/708)) ([5d0665f](https://github.com/honeydipper/honeydipper/commit/5d0665f84e38f09dce4e43893b3fe707d8bcc117))
+* add Only/Excludes filtering for MCP tool definitions ([#750](https://github.com/honeydipper/honeydipper/issues/750)) ([bc7ebb9](https://github.com/honeydipper/honeydipper/commit/bc7ebb9d84ecb088edbc98e24dd55060a2ea3f3d))
+* add optional engine/driver override parameters to conversation APIs ([#780](https://github.com/honeydipper/honeydipper/issues/780)) ([cb94c5e](https://github.com/honeydipper/honeydipper/commit/cb94c5e3bac7eb0509f4da05a72f6d359cc4ce3f))
+* add resolveUnresolvedToolCalls safeguard to handle cancelled conversations ([#796](https://github.com/honeydipper/honeydipper/issues/796)) ([0e459d7](https://github.com/honeydipper/honeydipper/commit/0e459d70f86b8332ddf44a286a63d17b46ec20a2))
+* add TokenCounter interface and SimpleTokenCounter implementation (Phase 1) ([#770](https://github.com/honeydipper/honeydipper/issues/770)) ([ec0a66e](https://github.com/honeydipper/honeydipper/commit/ec0a66ef5d0bbcf81f554459e1f897b3c0cc8d97))
+* add util__hd_get_convo_url built-in tool for conversation URLs ([#767](https://github.com/honeydipper/honeydipper/issues/767)) ([092a1a5](https://github.com/honeydipper/honeydipper/commit/092a1a507910daa06efb9e56c45592e0baea4a34))
+* add workflow rerun session root support ([31cb9a7](https://github.com/honeydipper/honeydipper/commit/31cb9a747472be0f3873fa8b447e9a402dfa46e1))
+* **agent:** add built-in slash command framework (phase 1) ([#813](https://github.com/honeydipper/honeydipper/issues/813)) ([52caeb4](https://github.com/honeydipper/honeydipper/commit/52caeb46054f45d22830e31126dc975def4f1e48))
+* **agent:** add CompactionPolicy config data model ([#724](https://github.com/honeydipper/honeydipper/issues/724)) ([afe9557](https://github.com/honeydipper/honeydipper/commit/afe95578cc482fc4fd915cc0a48ab9d9fdb99c03))
+* **agent:** add generation tracking and archiveConvo to ConvoState ([#725](https://github.com/honeydipper/honeydipper/issues/725)) ([feb7867](https://github.com/honeydipper/honeydipper/commit/feb786733320ed1423f7ea44837a18f6e97ae876)), closes [#2](https://github.com/honeydipper/honeydipper/issues/2) [#3](https://github.com/honeydipper/honeydipper/issues/3)
+* **agent:** add IsChunk field to Message for explicit streaming chunk protocol ([#797](https://github.com/honeydipper/honeydipper/issues/797)) ([dd986d5](https://github.com/honeydipper/honeydipper/commit/dd986d55b78e5a4b50f27fcb915f3fd105e81962))
+* **agent:** add remote MCP server tool support ([#716](https://github.com/honeydipper/honeydipper/issues/716)) ([eaa6139](https://github.com/honeydipper/honeydipper/commit/eaa6139d5450dcc8c04bb19f17b357fe78a52dc7)), closes [path#key](https://github.com/path/issues/key)
+* **agent:** add StartTurn API for UI-initiated conversation turns ([#717](https://github.com/honeydipper/honeydipper/issues/717)) ([5e5c837](https://github.com/honeydipper/honeydipper/commit/5e5c8378ee21f045f6866e92bcee7b24635053d6))
+* **agent:** cache MCP tool list to improve chat turn performance ([#746](https://github.com/honeydipper/honeydipper/issues/746)) ([8401b2c](https://github.com/honeydipper/honeydipper/commit/8401b2cf5238471f57fff9eff35518cbf3849d6b))
+* **agent:** compact history based on policy ([#727](https://github.com/honeydipper/honeydipper/issues/727)) ([f1aaaad](https://github.com/honeydipper/honeydipper/commit/f1aaaadd815f8f31c87e36eeb2b03c5252d19fc6))
+* **agent:** ensure last message sent to model is always a user message ([#811](https://github.com/honeydipper/honeydipper/issues/811)) ([3e1a5d1](https://github.com/honeydipper/honeydipper/commit/3e1a5d11ec5c53b64ef4b45d985dd4647bff6fad))
+* **agent:** expose agent_name in tool call message labels ([#720](https://github.com/honeydipper/honeydipper/issues/720)) ([7c05546](https://github.com/honeydipper/honeydipper/commit/7c055460c3fe5d3b1e449e075273cf8f96d6bcc9))
+* **agent:** expose compaction-driving PrevContextSize and add compaction observability ([#817](https://github.com/honeydipper/honeydipper/issues/817)) ([ab1811a](https://github.com/honeydipper/honeydipper/commit/ab1811a0dd8fb1e0e57f687697b559796c0cee38))
+* **agent:** graceful degradation for failed compaction (Phase A) ([#818](https://github.com/honeydipper/honeydipper/issues/818)) ([c0217b7](https://github.com/honeydipper/honeydipper/commit/c0217b7acbd43ed9ddabb0c4f1c0d216029089a3))
+* **agent:** implement /retry slash command (phase 2) ([#814](https://github.com/honeydipper/honeydipper/issues/814)) ([897242b](https://github.com/honeydipper/honeydipper/commit/897242b6b60c55327a8ca1e8b7b7bd10c0bf5c31))
+* **agent:** native agent chat support ([#718](https://github.com/honeydipper/honeydipper/issues/718)) ([a9e825a](https://github.com/honeydipper/honeydipper/commit/a9e825afa818e2035c3109d21933c557958de654))
+* **agent:** Phase 1 — pin conversation recovery contract + regression test ([#806](https://github.com/honeydipper/honeydipper/issues/806)) ([56708b9](https://github.com/honeydipper/honeydipper/commit/56708b992b1b88bacb6887594044fc08d0066191))
+* **agent:** Phase 3 — Extend recovery to StartInference (eventbus path) ([#808](https://github.com/honeydipper/honeydipper/issues/808)) ([5afddd3](https://github.com/honeydipper/honeydipper/commit/5afddd3985e741bebf63f3fff452edc1a16b471e))
+* **agent:** summarizer honors summarize_upto boundary and always-injected reminder (Phase B) ([#819](https://github.com/honeydipper/honeydipper/issues/819)) ([e029f74](https://github.com/honeydipper/honeydipper/commit/e029f74444551b2fbf0f09187763da9c6c2716f5))
+* **api:** add gh-scoped workflow controls ([#709](https://github.com/honeydipper/honeydipper/issues/709)) ([47d7a55](https://github.com/honeydipper/honeydipper/commit/47d7a55fd2258e17ee0300cce509fe7f32843e7c)), closes [#scoped](https://github.com/honeydipper/honeydipper/issues/scoped) [#scoped](https://github.com/honeydipper/honeydipper/issues/scoped)
+* bootstrap AI agent feature ([#715](https://github.com/honeydipper/honeydipper/issues/715)) ([88f27b3](https://github.com/honeydipper/honeydipper/commit/88f27b34b651ca97ab06dbbb32b8956a2cb54693))
+* combining conditional check together ([7c35548](https://github.com/honeydipper/honeydipper/commit/7c3554874ec4a739254d6f863683d0ca1bd921bf))
+* **config:** enforce remote driver source policy ([8460e34](https://github.com/honeydipper/honeydipper/commit/8460e344fdd17cc55af0779230c300f65b6f6b10))
+* **config:** support options in repo entries for load-time templates ([58e00ad](https://github.com/honeydipper/honeydipper/commit/58e00ad4b2d2e5bac26528df7d77708794ba257b))
+* **driver:** add cache-first remote driver acquisition ([faec220](https://github.com/honeydipper/honeydipper/commit/faec220c7614f64388b9d7e940bb91f135e0672a))
+* **driver:** resolve remote drivers from registry manifests ([f997aa8](https://github.com/honeydipper/honeydipper/commit/f997aa8e4844f9b8e1514be6730135d87501bb05))
+* **drivers:** add requiredPackages support for remote drivers ([#697](https://github.com/honeydipper/honeydipper/issues/697)) ([95cf5df](https://github.com/honeydipper/honeydipper/commit/95cf5df47eb8524b388b6aeb6bf063f56357b7b9))
+* **drivers:** add SAML SP auth flow and UI callback wiring ([#698](https://github.com/honeydipper/honeydipper/issues/698)) ([3de29ef](https://github.com/honeydipper/honeydipper/commit/3de29ef2be5307f54ca8db80e3a7a7322ab6596f))
+* **driver:** verify signatures for remote drivers ([b5c9087](https://github.com/honeydipper/honeydipper/commit/b5c90874a442b626ef49f97096929210d1349c1b))
+* dump session with is_noop for filtering the results in api ([355b611](https://github.com/honeydipper/honeydipper/commit/355b611103bc15097ef8c62cb0ccc1455acb112d))
+* embed archived conversation ID in compaction summary ([#761](https://github.com/honeydipper/honeydipper/issues/761)) ([43e2e1f](https://github.com/honeydipper/honeydipper/commit/43e2e1fe518c1f14be1def0d0e06253975fea2ed))
+* embed sub-agent convo_id in ToolCall for UI navigation ([#760](https://github.com/honeydipper/honeydipper/issues/760)) ([126e0ab](https://github.com/honeydipper/honeydipper/commit/126e0ab6355806fd443bf6565f91f2b5e0caf2e0))
+* entitlement based authorization and gh events API ([34c3992](https://github.com/honeydipper/honeydipper/commit/34c3992e41aca420b15d0cdfb9584d628a58f723))
+* extend turn lock to cover full turn lifecycle across all entry points ([#785](https://github.com/honeydipper/honeydipper/issues/785)) ([6fb1da1](https://github.com/honeydipper/honeydipper/commit/6fb1da1301ed6b362f09d7fc29a300e983bb80c2))
+* gcloud-pubsub pusher ([#712](https://github.com/honeydipper/honeydipper/issues/712)) ([32361b8](https://github.com/honeydipper/honeydipper/commit/32361b809da3eb052a28991d92aa5296236bbfc1))
+* handle reasoning messages ([#743](https://github.com/honeydipper/honeydipper/issues/743)) ([9fa871b](https://github.com/honeydipper/honeydipper/commit/9fa871ba2788185e82bade9b55b8d974f90961d3))
+* implement robust config reloading and synchronization for webhook driver (phase 1) ([#798](https://github.com/honeydipper/honeydipper/issues/798)) ([ff6e633](https://github.com/honeydipper/honeydipper/commit/ff6e63385f73342eda6afd4f7257470feb45efab))
+* implement StartTurn recovery via shared resolve/recreate helper (Phase 2) ([#807](https://github.com/honeydipper/honeydipper/issues/807)) ([2ae6aae](https://github.com/honeydipper/honeydipper/commit/2ae6aae81a6d5da70dbaf965edd8e1e0399c12b1))
+* integrate custom token counting into AgentSession (Phase 2 - Corrected) ([#773](https://github.com/honeydipper/honeydipper/issues/773)) ([cf571c9](https://github.com/honeydipper/honeydipper/commit/cf571c94e821b9e8d53ad40951d4f5aa6289e47b))
+* k8s exec script in pod containers ([#732](https://github.com/honeydipper/honeydipper/issues/732)) ([3f6bdb3](https://github.com/honeydipper/honeydipper/commit/3f6bdb33b8235cd90f363ca4ade625989a4a7c67))
+* list engines from driver config instead of agent config ([#782](https://github.com/honeydipper/honeydipper/issues/782)) ([550c8a3](https://github.com/honeydipper/honeydipper/commit/550c8a37773d645d5837bb9cfae6e0d25f3f7bd9))
+* load pre-context ahead of user message ([#735](https://github.com/honeydipper/honeydipper/issues/735)) ([257de94](https://github.com/honeydipper/honeydipper/commit/257de943370a794188fd8e961f0b05a25e28e00e))
+* loading skill on-demand ([#737](https://github.com/honeydipper/honeydipper/issues/737)) ([7c5ba60](https://github.com/honeydipper/honeydipper/commit/7c5ba609c1ec09ee341631112039ae8b27e31eae))
+* make stream_hset TTL configurable with default 2 weeks ([#789](https://github.com/honeydipper/honeydipper/issues/789)) ([338c03f](https://github.com/honeydipper/honeydipper/commit/338c03f1fc892db2ee6870a9c0999e10dd56906a))
+* native support for schema validation with cue ([bbbe9f9](https://github.com/honeydipper/honeydipper/commit/bbbe9f9ef96ad3d236322f848a66fd2048ef9475))
+* **observability:** add remote policy decision logs ([d0de56a](https://github.com/honeydipper/honeydipper/commit/d0de56aab365aac58ea8897d957124d0069cbf83))
+* Phase 3 - Comprehensive tests and production code hardening for webhook driver ([#801](https://github.com/honeydipper/honeydipper/issues/801)) ([64f2824](https://github.com/honeydipper/honeydipper/commit/64f2824b2f9763b3519b57fa52861fb616798f44))
+* **redis-cache:** add per-field expiration toggle + hget/hgetall handlers ([#802](https://github.com/honeydipper/honeydipper/issues/802)) ([68b3e73](https://github.com/honeydipper/honeydipper/commit/68b3e732f7879793c987d3462b622d15e173a992))
+* rpc and API supporting secrets webui ([628d703](https://github.com/honeydipper/honeydipper/commit/628d7035a0b56e1eea935d60dc1925566ebe9996))
+* scoped secrets in script and web token in cli ([0235747](https://github.com/honeydipper/honeydipper/commit/02357475fb57f4b91f536681c25fc3b7a6161129))
+* **service:** resolve remote registries from daemon config ([a4f0eb7](https://github.com/honeydipper/honeydipper/commit/a4f0eb7e18b4e2778cea0379d5a406341b2500e1))
+* session control v1 with pause/resume and cancel ([#694](https://github.com/honeydipper/honeydipper/issues/694)) ([52bac81](https://github.com/honeydipper/honeydipper/commit/52bac81b34d227e40dd0678e1f721ab998adddff))
+* stateless workflow engine ([d3aea6b](https://github.com/honeydipper/honeydipper/commit/d3aea6b513d5a8a732e6890057091d23450ea581))
+* support embedded rendering ([#707](https://github.com/honeydipper/honeydipper/issues/707)) ([24cba8e](https://github.com/honeydipper/honeydipper/commit/24cba8efc73770926f0b35629b96f87a1aaf7d74))
+* support more yaml load time interpolation ([5e9f563](https://github.com/honeydipper/honeydipper/commit/5e9f563e4625705c420ea1a2f75c3a0abb9ec5f0))
+* support token and basic GH auth during bootstrap ([0709fb8](https://github.com/honeydipper/honeydipper/commit/0709fb87dac4471800f50d356cec204616e83dd6))
+* tailing kubernetes job log ([#695](https://github.com/honeydipper/honeydipper/issues/695)) ([3d915d2](https://github.com/honeydipper/honeydipper/commit/3d915d2566fb898b53170d7a6e7c79314c974f5d))
+* track error reason in ConvoSessionRef ([#740](https://github.com/honeydipper/honeydipper/issues/740)) ([3cde097](https://github.com/honeydipper/honeydipper/commit/3cde097966cb6fa906eff658d9968fe9de00793f))
+* use builtin contexts to provide system info ([c75b575](https://github.com/honeydipper/honeydipper/commit/c75b575c3815d9ccfdc8abf938dfeddb20198e6b))
+* use secret and decrypt drivers at bootstrap with entrypoint ([9f9aefd](https://github.com/honeydipper/honeydipper/commit/9f9aefd0d21653b83a4a32452cc6899a677818bc))
+* user/profile api ([ea09c41](https://github.com/honeydipper/honeydipper/commit/ea09c418bc1db4617927a5ca36088ddd4e2f39d3))
+* vault driver support approle auth ([18699eb](https://github.com/honeydipper/honeydipper/commit/18699ebf99e3d1330f680c4a96dc765a541b403c))
+* **web:** support per-request github installation override ([fd8b0bf](https://github.com/honeydipper/honeydipper/commit/fd8b0bf95a891ed23d7a9ef73cee1c20ead3d89d))
+* workflow pod log chunk streaming api ([267a3ae](https://github.com/honeydipper/honeydipper/commit/267a3aee674a37a512d6168c73d39bdde5ee82c1))
+* workflow result cache in memory and cache driver ([d1535ca](https://github.com/honeydipper/honeydipper/commit/d1535caa1a7b3ad2d12784d05025dcd4c8935f2e))
+* **workflow:** pass engine/driver overrides from call_agent with block to agent_start payload ([#781](https://github.com/honeydipper/honeydipper/issues/781)) ([d81fef8](https://github.com/honeydipper/honeydipper/commit/d81fef85af0dd607a276bfcb96f8ed3c893eae67))
+* **workflow:** sending pseudo events from workflow ([#701](https://github.com/honeydipper/honeydipper/issues/701)) ([923a919](https://github.com/honeydipper/honeydipper/commit/923a9197e94f6211eac05ed464a23e1e5bd7f43e))
+* **workflow:** support redis hash field caching with # key syntax ([#803](https://github.com/honeydipper/honeydipper/issues/803)) ([5ed35d4](https://github.com/honeydipper/honeydipper/commit/5ed35d4b60e5da213f42f5b949bd38dc18ed8103)), closes [#802](https://github.com/honeydipper/honeydipper/issues/802)
+* **workflow:** support whole-hash read-only cache with trailing # key ([#804](https://github.com/honeydipper/honeydipper/issues/804)) ([4e955fd](https://github.com/honeydipper/honeydipper/commit/4e955fd8ee934a70e459c25ccb1c52eff12cd1ba)), closes [name#field](https://github.com/name/issues/field)
+
+
+### BREAKING CHANGES
+
+* previously the endpoint scanned DataSet.Agents for
+{driver,engine} pairs; now it reads from the driver configuration
+tree, so engines will appear even before an agent references them.
+
+Refactored handleAgentListEnginesAPI into smaller helper functions:
+- isAgentDriver: checks meta.labels for 'agent_drivers'
+- collectEngineEntriesFromDriver: extracts engines from a driver
+- collectDriverEngines: iterates drivers.daemon.drivers
+
+* fix: correct label check from 'agent_drivers' to 'agent_driver'
+
+The label used to mark a driver as an agent driver is 'agent_driver'
+(singular), not 'agent_drivers' (plural). Update the isAgentDriver
+function and all related comments to use the correct label.
+
+* fix: read engines from top-level driver config, not daemon metadata
+
+The config structure has two distinct levels:
+- drivers.daemon.drivers.<name>: daemon metadata (for labels check)
+- drivers.<name>.engines: actual driver config (for engine keys)
+
+The previous code incorrectly looked for engines under the daemon
+metadata level. Now collectDriverEngines uses the driver name to
+look up the top-level driver config (drivers[driverName]) for engines.
+* No longer allowing using .sysData in Ctx values because there is no second round of interpolation of the values.
+* resume message format changed
+
 # [3.10.0](https://github.com/honeydipper/honeydipper/compare/v3.9.2...v3.10.0) (2026-02-15)
 
 
