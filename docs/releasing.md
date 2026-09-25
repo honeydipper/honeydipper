@@ -28,6 +28,11 @@ with `v`. It checks out the exact tag commit, verifies that the corresponding
 GitHub release exists, refuses to overwrite an existing Docker Hub tag, and
 publishes a Linux/amd64 image without the leading `v` in its Docker tag.
 
+The semantic-release commit message deliberately omits `[skip ci]`. CircleCI
+suppresses tag pipelines when the tagged commit contains that directive. The
+tag publisher uses an explicit tag filter because CircleCI ignores tag pushes
+unless at least one workflow job opts into them.
+
 For example, Git tag `v4.0.0-dev.1` publishes:
 
 ```text

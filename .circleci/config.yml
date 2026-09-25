@@ -316,11 +316,17 @@ workflows:
   publish_release_image:
     jobs:
       - publish-image:
+          name: publish-image-tag
+          context: honeydipper
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+      - publish-image:
+          name: publish-image-recovery
           context: honeydipper
           release_tag: << pipeline.parameters.release_tag >>
           filters: |
-            (pipeline.git.tag matches /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/)
-            or (
-              pipeline.parameters.release_tag != ""
-              and (pipeline.git.branch == "dev" or pipeline.git.branch == "main")
-            )
+            pipeline.parameters.release_tag != ""
+            and (pipeline.git.branch == "dev" or pipeline.git.branch == "main")
