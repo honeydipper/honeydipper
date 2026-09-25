@@ -1,3 +1,10 @@
+# [4.0.0-dev.3](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.2...v4.0.0-dev.3) (2026-09-25)
+
+
+### Bug Fixes
+
+* **release:** allow image tag pipelines ([22f06f9](https://github.com/honeydipper/honeydipper/commit/22f06f9c1ffbddd3dc4b99eb00bc07d859ae0cd0))
+
 # [4.0.0-dev.2](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.1...v4.0.0-dev.2) (2026-09-25)
 
 
