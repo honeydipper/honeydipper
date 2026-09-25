@@ -6,6 +6,11 @@ defaults: &defaults
 
 version: 2.1
 
+parameters:
+  release_tag:
+    type: string
+    default: ""
+
 commands:
   setup:
     steps:
@@ -138,6 +143,136 @@ jobs:
           command: npx semantic-release
           environment:
             DEBUG: semantic-release:get-commits
+  publish-image:
+    docker:
+      - image: cimg/base:2026.09
+    resource_class: large
+    parameters:
+      release_tag:
+        type: string
+        default: ""
+    environment:
+      IMAGE_REPOSITORY: honeydipper/honeydipper
+      REQUESTED_RELEASE_TAG: << parameters.release_tag >>
+    steps:
+      - checkout
+      - run:
+          name: Resolve immutable release source
+          command: |
+            set -eu
+
+            release_tag="${REQUESTED_RELEASE_TAG:-${CIRCLE_TAG:-}}"
+            if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+              echo "release_tag must be a semantic version tag prefixed with v" >&2
+              exit 1
+            fi
+
+            git fetch --force --tags origin
+            if ! git show-ref --verify --quiet "refs/tags/$release_tag"; then
+              echo "release tag does not exist: $release_tag" >&2
+              exit 1
+            fi
+
+            release_commit="$(git rev-list -n 1 "refs/tags/$release_tag")"
+            git checkout --detach "$release_commit"
+            test "$(git rev-parse HEAD)" = "$release_commit"
+            curl --fail --silent --show-error \
+              "https://api.github.com/repos/honeydipper/honeydipper/releases/tags/$release_tag" \
+              >/dev/null
+
+            image_tag="${release_tag#v}"
+            printf 'export RELEASE_TAG=%q\n' "$release_tag" >> "$BASH_ENV"
+            printf 'export RELEASE_COMMIT=%q\n' "$release_commit" >> "$BASH_ENV"
+            printf 'export IMAGE_TAG=%q\n' "$image_tag" >> "$BASH_ENV"
+            printf 'export IMAGE_REF=%q\n' "$IMAGE_REPOSITORY:$image_tag" >> "$BASH_ENV"
+      - run:
+          name: Refuse to overwrite a published tag
+          command: |
+            set -eu
+
+            status="$(curl --silent --show-error --output /tmp/dockerhub-tag.json \
+              --write-out '%{http_code}' \
+              "https://hub.docker.com/v2/repositories/$IMAGE_REPOSITORY/tags/$IMAGE_TAG")"
+            case "$status" in
+              404)
+                ;;
+              200)
+                echo "Docker Hub tag already exists: $IMAGE_REF" >&2
+                exit 1
+                ;;
+              *)
+                echo "Docker Hub tag lookup returned HTTP $status" >&2
+                exit 1
+                ;;
+            esac
+      - run:
+          name: Validate Docker Hub credentials
+          command: |
+            set -eu
+            test -n "${DOCKERHUB_ACCOUNT:-}" || {
+              echo "DOCKERHUB_ACCOUNT is not configured" >&2
+              exit 1
+            }
+            test -n "${DOCKERHUB_TOKEN:-}" || {
+              echo "DOCKERHUB_TOKEN is not configured" >&2
+              exit 1
+            }
+      - setup_remote_docker:
+          version: default
+          docker_layer_caching: true
+      - run:
+          name: Build release image
+          no_output_timeout: 60m
+          command: |
+            docker build --progress=plain --platform=linux/amd64 \
+              --build-arg "GOINSTALLOPTS=${GOINSTALLOPTS:-}" \
+              --build-arg "GOGC=${GOGC:-}" \
+              --build-arg "HD_VERSION=$RELEASE_TAG" \
+              --label "org.opencontainers.image.revision=$RELEASE_COMMIT" \
+              --label "org.opencontainers.image.version=$IMAGE_TAG" \
+              --tag "$IMAGE_REF" \
+              --file build/docker/Dockerfile \
+              .
+      - run:
+          name: Publish release image
+          no_output_timeout: 30m
+          command: |
+            set -eu
+            printf '%s' "$DOCKERHUB_TOKEN" | \
+              docker login --username "$DOCKERHUB_ACCOUNT" --password-stdin
+            docker push "$IMAGE_REF"
+      - run:
+          name: Record immutable image evidence
+          command: |
+            set -eu
+            docker pull "$IMAGE_REF"
+            digest="$(docker image inspect --format '{{ index .RepoDigests 0 }}' "$IMAGE_REF")"
+            os="$(docker image inspect --format '{{ .Os }}' "$IMAGE_REF")"
+            architecture="$(docker image inspect --format '{{ .Architecture }}' "$IMAGE_REF")"
+            case "$digest" in
+              "$IMAGE_REPOSITORY@sha256:"*)
+                ;;
+              *)
+                echo "published image has no immutable repository digest" >&2
+                exit 1
+                ;;
+            esac
+
+            mkdir -p /tmp/release-evidence
+            {
+              printf 'release_tag=%s\n' "$RELEASE_TAG"
+              printf 'commit=%s\n' "$RELEASE_COMMIT"
+              printf 'image=%s\n' "$IMAGE_REF"
+              printf 'digest=%s\n' "$digest"
+              printf 'platform=%s/%s\n' "$os" "$architecture"
+            } | tee /tmp/release-evidence/image.txt
+      - run:
+          name: Remove registry credentials
+          when: always
+          command: docker logout || true
+      - store_artifacts:
+          path: /tmp/release-evidence
+          destination: release-evidence
 
 workflows:
   version: 2
@@ -178,3 +313,14 @@ workflows:
               only:
                 - main
                 - dev
+  publish_release_image:
+    jobs:
+      - publish-image:
+          context: honeydipper
+          release_tag: << pipeline.parameters.release_tag >>
+          filters: |
+            (pipeline.git.tag matches /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/)
+            or (
+              pipeline.parameters.release_tag != ""
+              and (pipeline.git.branch == "dev" or pipeline.git.branch == "main")
+            )
