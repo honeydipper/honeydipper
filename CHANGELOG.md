@@ -1,3 +1,10 @@
+# [4.0.0-dev.2](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.1...v4.0.0-dev.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* **release:** publish images with CircleCI ([27c69f4](https://github.com/honeydipper/honeydipper/commit/27c69f48a433695701aea46dc5f6d34aa1019282))
+
 # [4.0.0-dev.1](https://github.com/honeydipper/honeydipper/compare/v3.10.0...v4.0.0-dev.1) (2026-09-24)
 
 
