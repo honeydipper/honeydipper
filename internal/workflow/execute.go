@@ -474,16 +474,22 @@ func (w *Session) executeStep(msg *dipper.Message) {
 
 // executeThreads start all threads of the workflow.
 func (w *Session) executeThreads(msg *dipper.Message) {
+	children := make([]*Session, len(w.workflow.Threads))
+	w.ctxLock.Lock()
+	defer w.ctxLock.Unlock()
+	for i := range w.workflow.Threads {
+		children[i] = w.createChildSession(&w.workflow.Threads[i], msg)
+		children[i].ctx["thread_number"] = i
+		delete(children[i].ctx, "resume_token")
+	}
+
 	for i := range w.workflow.Threads {
 		daemon.Children.Add(1)
 		go func(i int) {
 			defer daemon.Children.Done()
 			defer dipper.SafeExitOnError("Failed in execute child thread with %+v", w.workflow.Threads[i])
 			defer w.onError()
-			child := w.createChildSession(&w.workflow.Threads[i], msg)
-			child.ctx["thread_number"] = i
-			delete(child.ctx, "resume_token")
-			child.execute(msg)
+			children[i].execute(msg)
 		}(i)
 	}
 }

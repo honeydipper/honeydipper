@@ -13,9 +13,12 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/honeydipper/honeydipper/v3/internal/config"
+	"github.com/honeydipper/honeydipper/v3/internal/daemon"
+	"github.com/honeydipper/honeydipper/v3/internal/workflow/mock_workflow"
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 )
 
@@ -413,4 +416,69 @@ func TestWorkflowThreads(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestExecuteThreadsWaitsForContextSnapshotLock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	helper := mock_workflow.NewMockSessionStoreHelper(ctrl)
+	testStore := NewSessionStore(helper)
+	defer delete(dipper.IDMapMetadata, &testStore.sessions)
+
+	helper.EXPECT().GetConfig().AnyTimes().Return(&config.Config{DataSet: &config.DataSet{}})
+	helper.EXPECT().GetDaemonID().AnyTimes().Return("")
+	launched := make(chan struct{}, 2)
+	helper.EXPECT().SendMessage(gomock.Any()).Do(func(*dipper.Message) {
+		launched <- struct{}{}
+	}).Times(2)
+
+	parent := testStore.newSession("", "", &config.Workflow{
+		Threads: []config.Workflow{
+			{CallFunction: "foo_sys.bar_func"},
+			{CallFunction: "foo_sys.bar_func"},
+		},
+	}).(*Session)
+	parent.ID = "parent"
+	parent.ctx = map[string]interface{}{"shared": "value"}
+	parent.event = map[string]interface{}{}
+	msg := &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{}}
+
+	parent.ctxLock.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			parent.ctxLock.Unlock()
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		parent.executeThreads(msg)
+		close(done)
+	}()
+
+	select {
+	case <-launched:
+		t.Fatal("child launched before the parent context snapshot lock was available")
+	case <-done:
+		t.Fatal("thread preparation completed without acquiring the parent context snapshot lock")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	parent.ctxLock.Unlock()
+	locked = false
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("thread preparation did not complete after releasing the context snapshot lock")
+	}
+
+	daemon.Children.Wait()
+	for i := 0; i < 2; i++ {
+		select {
+		case <-launched:
+		case <-time.After(time.Second):
+			t.Fatal("prepared child did not execute")
+		}
+	}
 }
