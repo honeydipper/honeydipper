@@ -1,3 +1,10 @@
+## [3.10.3](https://github.com/honeydipper/honeydipper/compare/v3.10.2...v3.10.3) (2026-09-28)
+
+
+### Bug Fixes
+
+* **release:** build v3 images from exact tag ([dc0c7e3](https://github.com/honeydipper/honeydipper/commit/dc0c7e36200586f262260865964c173d83a93c88))
+
 ## [3.10.2](https://github.com/honeydipper/honeydipper/compare/v3.10.1...v3.10.2) (2026-09-28)
 
 
