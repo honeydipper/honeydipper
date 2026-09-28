@@ -1,3 +1,10 @@
+## [3.10.2](https://github.com/honeydipper/honeydipper/compare/v3.10.1...v3.10.2) (2026-09-28)
+
+
+### Bug Fixes
+
+* **workflow:** synchronize thread context snapshots ([0e59990](https://github.com/honeydipper/honeydipper/commit/0e5999045f2aeceeec215ad26e4cd19df735e87b))
+
 ## [3.10.1](https://github.com/honeydipper/honeydipper/compare/v3.10.0...v3.10.1) (2026-03-19)
 
 
