@@ -1,3 +1,12 @@
+## [3.10.4](https://github.com/honeydipper/honeydipper/compare/v3.10.3...v3.10.4) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** restore Go 1.25 lint compatibility ([4c4f0e0](https://github.com/honeydipper/honeydipper/commit/4c4f0e0185ce2f6ece3e0f6dd29620103b3b45ab))
+* **drivers:** preserve Ollama tool schemas ([d79749a](https://github.com/honeydipper/honeydipper/commit/d79749a09bf96210cfcc1162b9a06bc6f4707341))
+* **security:** remediate v3 image vulnerabilities ([caf8876](https://github.com/honeydipper/honeydipper/commit/caf887644fcdea585c6f58d971cdbd632b2a7deb))
+
 ## [3.10.3](https://github.com/honeydipper/honeydipper/compare/v3.10.2...v3.10.3) (2026-09-28)
 
 
