@@ -32,6 +32,11 @@ func (m *MockOllamaClient) Chat(ctx context.Context, req *api.ChatRequest, fn ap
 func TestNewSession(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
+	properties := api.NewToolPropertiesMap()
+	properties.Set("param1", api.ToolProperty{
+		Type:        api.PropertyType{"string"},
+		Description: "Test parameter",
+	})
 
 	driver := &dipper.Driver{
 		Options: map[string]interface{}{
@@ -48,31 +53,10 @@ func TestNewSession(t *testing.T) {
 						Function: api.ToolFunction{
 							Name:        "test_tool",
 							Description: "A test tool",
-							Parameters: struct {
-								Type       string   `json:"type"`
-								Defs       any      `json:"$defs,omitempty"`
-								Items      any      `json:"items,omitempty"`
-								Required   []string `json:"required"`
-								Properties map[string]struct {
-									Type        api.PropertyType `json:"type"`
-									Items       any              `json:"items,omitempty"`
-									Description string           `json:"description"`
-									Enum        []any            `json:"enum,omitempty"`
-								} `json:"properties"`
-							}{
-								Type: "object",
-								Properties: map[string]struct {
-									Type        api.PropertyType `json:"type"`
-									Items       any              `json:"items,omitempty"`
-									Description string           `json:"description"`
-									Enum        []any            `json:"enum,omitempty"`
-								}{
-									"param1": {
-										Type:        api.PropertyType{"string"},
-										Description: "Test parameter",
-									},
-								},
-								Required: []string{"param1"},
+							Parameters: api.ToolFunctionParameters{
+								Type:       "object",
+								Properties: properties,
+								Required:   []string{"param1"},
 							},
 						},
 					},
@@ -194,13 +178,13 @@ func TestStream(t *testing.T) {
 func TestStreamWithToolCall(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
+	arguments := api.NewToolCallFunctionArguments()
+	arguments.Set("param1", "value")
 
 	toolCall := api.ToolCall{
 		Function: api.ToolCallFunction{
-			Name: "test_function",
-			Arguments: map[string]any{
-				"param1": "value",
-			},
+			Name:      "test_function",
+			Arguments: arguments,
 		},
 	}
 

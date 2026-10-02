@@ -1,7 +1,7 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.24.1-alpine
+    - image: golang:1.26.8-alpine
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 version: 2.1
@@ -41,10 +41,10 @@ jobs:
   golangci-lint:
     <<: *defaults
     resource_class: medium+
-    docker:
-      - image: golangci/golangci-lint:v1.64.8-alpine
     steps:
+      - run: apk add git
       - checkout
+      - run: CGO_ENABLED=0 go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
       - restore_cache:
           keys:
             - v1-buildcache-
@@ -103,7 +103,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.26.0-alpine
+      - image: golang:1.26.8-alpine
       - image: redis:7.0.11-alpine
     steps:
       - attach_workspace:

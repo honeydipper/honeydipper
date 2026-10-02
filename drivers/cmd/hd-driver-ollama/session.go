@@ -129,7 +129,7 @@ func (s *ollamaSession) StreamWithFunctionReturn(
 
 	if toolCallMessage != nil {
 		msg := string(dipper.Must(json.Marshal(toolCallMessage)).([]byte))
-		toolCallHandler(msg, toolCallMessage.ToolCalls[0].Function.Arguments, toolCallMessage.ToolCalls[0].Function.Name, "")
+		toolCallHandler(msg, toolCallMessage.ToolCalls[0].Function.Arguments.ToMap(), toolCallMessage.ToolCalls[0].Function.Name, "")
 	}
 }
 

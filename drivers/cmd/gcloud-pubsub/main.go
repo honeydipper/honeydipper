@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub" //nolint:staticcheck // Pub/Sub v2 migration requires a separate behavioral change.
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"google.golang.org/api/option"
 )
@@ -54,7 +54,7 @@ func getPubsubClient(serviceAccountBytes, project string) *pubsub.Client {
 		err    error
 	)
 	if len(serviceAccountBytes) > 0 {
-		clientOption := option.WithCredentialsJSON([]byte(serviceAccountBytes))
+		clientOption := option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes))
 		client, err = pubsub.NewClient(context.Background(), project, clientOption)
 	} else {
 		client, err = pubsub.NewClient(context.Background(), project)
