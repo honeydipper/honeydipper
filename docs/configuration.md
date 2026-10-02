@@ -382,7 +382,7 @@ agents:
 See the [Workflow Composing Guide](./workflow.md) for details on `call_agent` and `wait_agent` actions. In summary:
 
 * `call_agent: agent_name` — Invokes an agent and **waits** for its response. Use `with:` to pass `text` and other context.
-* `wait_agent: session_id` — Waits for a previously invoked agent session response. Used when the agent was called in a detached context.
+* `wait_agent: session_id` — Waits for a previously invoked agent session response. Used when the agent was called in a detached context. Its default behavior returns the next available response. For terminal supervision, set `with.wait_for_completion: true`, a bounded `with.completion_timeout`, and optionally `with.cancel_on_timeout: true`.
 * `resume: resume_key` — Resumes a paused workflow session (e.g., paused by `wait_agent`).
 
 For example, invoking an agent within a workflow:

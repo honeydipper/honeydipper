@@ -636,7 +636,13 @@ func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	s.loadConvoHistory()
 	// Re-derive the compaction baseline from the restored history.
 	s.refreshContextSize()
-	s.processAgentPoll(msg, deadline, timeout, &sessionLocked)
+	if timedOut := s.processAgentPoll(msg, deadline, timeout, &sessionLocked); timedOut {
+		if agentPollOptionEnabled(msg, "cancel_on_timeout") && s.ConvoID != "" {
+			p.Infof("[agent] session [%s] cancelling conversation after supervised poll timeout", s.ID)
+			p.cancelConversations(s.ConvoID, s.UnifiedConvoID)
+		}
+		emitAgentPollTimeout(p, msg, timeout)
+	}
 }
 
 // CancelConvo marks the conversation identified by convo_id or unified_convo_id as cancelled.
@@ -662,6 +668,10 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 		return
 	}
 
+	p.cancelConversations(convoID, unifiedConvoID)
+}
+
+func (p *PersistentAgentStore) cancelConversations(convoID, unifiedConvoID string) {
 	cancelOne := func(id string) {
 		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
 			now := time.Now()

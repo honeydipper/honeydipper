@@ -87,7 +87,7 @@ There are several types of simple actions that a workflow can perform. Simple ac
  - `send_event`: send a message to `eventbus:message` so the engine can match it against rules and start new sessions. The value is a map containing an `events` list (event names) and an optional `data` map. A fresh `eventID` is generated automatically.
  - `wait`: wait for the specified amount of time or receive a wake-up request with a matching token. The time should be formatted according to the requirement for function [ParseDuration](https://golang.org/pkg/time/#ParseDuration). A unit suffix is required.
  - `call_agent`: invoke an AI agent for inference. The value is the agent name. The workflow will wait for the agent response. See [Agents](../configuration.md#agents) for agent configuration.
- - `wait_agent`: wait for a response from a previously invoked agent session. The value is the agent session ID.
+ - `wait_agent`: wait for a response from a previously invoked agent session. The value is the agent session ID. By default it returns the next available response. Set `with.wait_for_completion: true` to wait for a terminal agent response, `with.completion_timeout` to bound that wait, and `with.cancel_on_timeout: true` to cancel the active conversation turn when the bound expires.
  - `resume`: resume a paused workflow session by sending a wake-up message. The value is the resume key.
  - `detach`: fire-and-forget; marks the child session as detached so it runs independently.
 
