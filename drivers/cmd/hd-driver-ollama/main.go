@@ -9,6 +9,7 @@ package main
 
 // Required imports for the driver functionality.
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"github.com/honeydipper/honeydipper/v3/drivers/pkg/ai"
 	"github.com/honeydipper/honeydipper/v3/internal/config"
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
-	"github.com/mitchellh/mapstructure"
 	"github.com/ollama/ollama/api"
 )
 
@@ -74,9 +74,15 @@ func setup(_ *dipper.Message) {
 	tools := []api.Tool{}
 	// Process each tool specification.
 	for k, v := range toolMap {
+		toolData, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+
 		toolSpec := ToolSpec{}
-		if mapstructure.Decode(v, &toolSpec) == nil {
-			toolMap[k].(map[string]any)["workflow"] = &toolSpec.Workflow
+		encoded, err := json.Marshal(toolData)
+		if err == nil && json.Unmarshal(encoded, &toolSpec) == nil {
+			toolData["workflow"] = &toolSpec.Workflow
 			tools = append(tools, toolSpec.Tool)
 		}
 		dipper.Logger.Debugf("tools loaded: %s", k)

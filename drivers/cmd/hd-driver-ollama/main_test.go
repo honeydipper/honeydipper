@@ -5,9 +5,12 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ghodss/yaml"
+	"github.com/honeydipper/honeydipper/v3/internal/config"
 	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
 	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -19,45 +22,55 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestDriverSetup(t *testing.T) {
-	driver = &dipper.Driver{
-		Options: map[string]interface{}{
-			"data": map[string]interface{}{
-				"tools": map[string]interface{}{
-					"test_tool": map[string]interface{}{
-						"tool": map[string]any{
-							"name":        "test_function",
-							"description": "test function description",
-							"parameters": map[string]any{
-								"type":       "object",
-								"properties": map[string]any{},
-							},
-						},
-						"workflow": map[string]any{
-							"name": "test_workflow",
-							"steps": []map[string]any{
-								{
-									"call_workflow": "test_action",
-								},
-							},
-						},
-					},
-					"invalid_tool": "invalid",
-				},
-			},
-		},
-	}
+func TestDriverSetupPreservesYAMLToolSchema(t *testing.T) {
+	dataSet := config.DataSet{}
+	require.NoError(t, yaml.Unmarshal([]byte(`
+drivers:
+  ollama:
+    tools:
+      test_tool:
+        tool:
+          type: function
+          function:
+            name: test_function
+            description: test function description
+            parameters:
+              type: object
+              properties:
+                query:
+                  type: string
+                  description: query to process
+              required:
+                - query
+        workflow:
+          name: test_workflow
+          steps:
+            - call_workflow: test_action
+      invalid_tool: invalid
+`), &dataSet))
+
+	driver = &dipper.Driver{Options: map[string]interface{}{
+		"data": dataSet.Drivers["ollama"],
+	}}
 
 	setup(nil)
 
-	// Verify tools were processed
 	data, ok := driver.GetOption("data")
-	assert.True(t, ok, "data should exist in driver options")
+	require.True(t, ok, "data should exist in driver options")
 
 	dataMap := data.(map[string]interface{})
 	toolsList, ok := dataMap["tools_list"]
-	assert.True(t, ok, "tools_list should exist in data")
-	assert.Equal(t, 1, len(toolsList.([]api.Tool)), "should have one valid tool")
+	require.True(t, ok, "tools_list should exist in data")
+	tools := toolsList.([]api.Tool)
+	require.Len(t, tools, 1, "should have one valid tool")
+
+	properties := tools[0].Function.Parameters.Properties
+	require.NotNil(t, properties)
+	require.Equal(t, 1, properties.Len())
+	query, ok := properties.Get("query")
+	require.True(t, ok)
+	assert.Equal(t, api.PropertyType{"string"}, query.Type)
+	assert.Equal(t, "query to process", query.Description)
 }
 
 func TestDriverSetupEmptyTools(t *testing.T) {
