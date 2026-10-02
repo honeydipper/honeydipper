@@ -41,10 +41,10 @@ jobs:
   golangci-lint:
     <<: *defaults
     resource_class: medium+
-    docker:
-      - image: golangci/golangci-lint:v1.64.8-alpine
     steps:
+      - run: apk add git
       - checkout
+      - run: CGO_ENABLED=0 go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
       - restore_cache:
           keys:
             - v1-buildcache-

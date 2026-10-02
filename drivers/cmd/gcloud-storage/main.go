@@ -68,7 +68,7 @@ func getStorageClient(serviceAccountBytes string) *storage.Client {
 	)
 	ctx := context.Background()
 	if len(serviceAccountBytes) > 0 {
-		clientOption := option.WithCredentialsJSON([]byte(serviceAccountBytes))
+		clientOption := option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes))
 		client, err = storage.NewClient(ctx, clientOption)
 	} else {
 		client, err = storage.NewClient(ctx)

@@ -72,7 +72,10 @@ func getDataflowService(serviceAccountBytes string) *dataflow.Service {
 		err             error
 	)
 	if len(serviceAccountBytes) > 0 {
-		dataflowService, err = dataflow.NewService(context.Background(), option.WithCredentialsJSON([]byte(serviceAccountBytes)))
+		dataflowService, err = dataflow.NewService(
+			context.Background(),
+			option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes)),
+		)
 	} else {
 		dataflowService, err = dataflow.NewService(context.Background())
 	}
