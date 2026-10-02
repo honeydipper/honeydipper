@@ -185,8 +185,13 @@ func (w *Session) registerSchedulerDue(key string, duration time.Duration, dueMs
 	}))
 }
 
-// agentTimeout returns the configured agent stream chunk timeout duration in string, defaulting to 9 seconds.
+// agentTimeout returns the configured agent wait timeout duration in string, defaulting to 9 seconds.
 func (w *Session) agentTimeout() string {
+	if waitForCompletion, _ := dipper.GetMapDataBool(w.Ctx, "wait_for_completion"); waitForCompletion {
+		if v, _ := dipper.GetMapDataStr(w.Ctx, "completion_timeout"); v != "" {
+			return v
+		}
+	}
 	if v, _ := dipper.GetMapDataStr(w.Ctx, "chunk_timeout"); v != "" {
 		return v
 	}
@@ -367,6 +372,12 @@ func (w *Session) waitAgent() {
 	labels["agent_session_id"] = w.Workflow.WaitAgent
 	labels["resume_key"] = w.ID + "." + w.CurrentMsg.Labels["cursor"]
 	labels["timeout"] = w.agentTimeout()
+	if waitForCompletion, _ := dipper.GetMapDataBool(w.Ctx, "wait_for_completion"); waitForCompletion {
+		labels["wait_for_completion"] = "true"
+	}
+	if cancelOnTimeout, _ := dipper.GetMapDataBool(w.Ctx, "cancel_on_timeout"); cancelOnTimeout {
+		labels["cancel_on_timeout"] = "true"
+	}
 	if resumeKey, _ := dipper.GetMapDataStr(w.Ctx, "resume_key"); resumeKey != "" {
 		labels["resume_key"] = resumeKey
 	}

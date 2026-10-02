@@ -10,6 +10,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -219,4 +220,98 @@ func TestPollInference_SessionLockUsesEndToEndPollTimeout(t *testing.T) {
 	assert.Equal(t, "failure", emitted[0].Labels["status"])
 	assert.Equal(t, "poll timeout after 40ms", emitted[0].Labels["reason"])
 	assert.NotEqual(t, "timeout", emitted[0].Labels["reason"])
+}
+
+func TestPollInference_WaitForCompletionIgnoresIntermediateResponse(t *testing.T) {
+	helper := newMemCacheHelper()
+	seedPollSession(t, helper, "intermediate-session", "intermediate-convo", []AgentMessage{
+		{Role: RoleAgent, Content: "still investigating", IsComplete: false},
+	})
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_session_id":    "intermediate-session",
+			"resume_key":          "workflow.5",
+			"timeout":             "40ms",
+			"wait_for_completion": "true",
+		},
+	}
+
+	store.PollInference(msg)
+
+	emitted := helper.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "failure", emitted[0].Labels["status"])
+	assert.Equal(t, "poll timeout after 40ms", emitted[0].Labels["reason"])
+}
+
+func TestPollInference_WaitForCompletionReturnsTerminalResponse(t *testing.T) {
+	helper := newMemCacheHelper()
+	seedPollSession(t, helper, "terminal-session", "terminal-convo", []AgentMessage{
+		{Role: RoleAgent, Content: "done", IsComplete: true},
+	})
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_session_id":    "terminal-session",
+			"resume_key":          "workflow.6",
+			"timeout":             "250ms",
+			"wait_for_completion": "true",
+		},
+	}
+
+	store.PollInference(msg)
+
+	emitted := helper.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "success", emitted[0].Labels["status"])
+	assert.Equal(t, "workflow.6", emitted[0].Labels["resume_key"])
+	payload := emitted[0].Payload.(map[string]interface{})
+	fullMessages := payload["full_messages"].([]map[string]string)
+	require.Len(t, fullMessages, 1)
+	assert.Equal(t, "done", fullMessages[0]["content"])
+}
+
+func TestPollInference_CancelOnCompletionTimeoutCancelsActiveTurn(t *testing.T) {
+	helper := newMemCacheHelper()
+	convoID := "cancel-timeout-convo"
+	sessionID := "cancel-timeout-session"
+	seedPollSession(t, helper, sessionID, convoID, []AgentMessage{
+		{Role: RoleAgent, Content: "still investigating", IsComplete: false},
+	})
+	ref := &ConvoSessionRef{
+		SessionID: sessionID,
+		AgentName: "test_agent",
+		Type:      AgentSessionTypeChatTurn,
+		Status:    ConvoSessionStatusActive,
+	}
+	helper.cache[ConvoStateKeyPrefix+convoID] = string(dipper.SerializeContent(&ConvoState{
+		ConvoID:       convoID,
+		FirstSession:  ref,
+		LastSession:   ref,
+		ActiveSession: ref,
+		TTL:           ConvoStreamTTL,
+	}))
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_session_id":    sessionID,
+			"resume_key":          "workflow.7",
+			"timeout":             "40ms",
+			"wait_for_completion": "true",
+			"cancel_on_timeout":   "true",
+		},
+	}
+
+	store.PollInference(msg)
+
+	encoded, ok := helper.getCache(ConvoStateKeyPrefix + convoID)
+	require.True(t, ok)
+	var state ConvoState
+	require.NoError(t, json.Unmarshal([]byte(encoded), &state))
+	require.NotNil(t, state.ActiveSession)
+	assert.Equal(t, ConvoSessionStatusCancelled, state.ActiveSession.Status)
+	emitted := helper.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "failure", emitted[0].Labels["status"])
 }
