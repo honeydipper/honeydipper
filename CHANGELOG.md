@@ -1,3 +1,10 @@
+# [4.0.0-dev.4](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.3...v4.0.0-dev.4) (2026-10-07)
+
+
+### Bug Fixes
+
+* **agent:** supervise terminal agent responses ([676d953](https://github.com/honeydipper/honeydipper/commit/676d95362707687532365b70be9984f535dae14a))
+
 # [4.0.0-dev.3](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.2...v4.0.0-dev.3) (2026-09-25)
 
 
