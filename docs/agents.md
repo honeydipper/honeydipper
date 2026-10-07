@@ -453,7 +453,7 @@ description: Read the contents of a file from the workspace.
 | **Streaming** | The driver returns partial chunks. `processAgentMessage()` accumulates content and thoughts. |
 | **Tool Call** | When the model requests tools, `nextToolCall()` dispatches to the appropriate handler. |
 | **Tool Result** | `processToolResult()` collects results. If more tools are pending, dispatches the next. Otherwise, feeds all results back to the model. |
-| **Polling** | `processAgentPoll()` blocks until new content is available or timeout (default 9s). |
+| **Polling** | `processAgentPoll()` blocks until new content is available or timeout (default 9s). Workflows can opt into terminal-response polling with a separate completion timeout and cancellation on timeout. |
 | **Compaction** | Triggered when history exceeds threshold. Archives old history, summarizes, and resumes. |
 | **Completion** | Final agent message is emitted. Session state is synced to `ConvoState`. Lock is released. |
 | **Caching** | `persist()` serializes the session to the distributed cache. Cache TTL defaults to 72 hours. |

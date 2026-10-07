@@ -677,6 +677,42 @@ func TestAgentTimeout_Custom(t *testing.T) {
 	}
 }
 
+func TestAgentTimeout_CompletionTimeout(t *testing.T) {
+	s := makeExecuteSession()
+	s.Ctx["wait_for_completion"] = true
+	s.Ctx["completion_timeout"] = "12m"
+	s.Ctx["chunk_timeout"] = "30s"
+	if s.agentTimeout() != "12m" {
+		t.Errorf("expected completion timeout 12m, got %v", s.agentTimeout())
+	}
+}
+
+func TestWaitAgent_CompletionOptionsAreForwarded(t *testing.T) {
+	s := makeExecuteSession()
+	es := &execTestStore{}
+	s.store = es
+	s.Workflow.WaitAgent = "session-1"
+	s.Ctx["wait_for_completion"] = true
+	s.Ctx["cancel_on_timeout"] = true
+	s.Ctx["completion_timeout"] = "12m"
+
+	s.waitAgent()
+
+	if len(es.lastSentMessages) != 1 {
+		t.Fatalf("expected 1 message sent, got %d", len(es.lastSentMessages))
+	}
+	labels := es.lastSentMessages[0].Labels
+	if labels["wait_for_completion"] != "true" {
+		t.Errorf("expected wait_for_completion=true, got %q", labels["wait_for_completion"])
+	}
+	if labels["cancel_on_timeout"] != "true" {
+		t.Errorf("expected cancel_on_timeout=true, got %q", labels["cancel_on_timeout"])
+	}
+	if labels["timeout"] != "12m" {
+		t.Errorf("expected timeout=12m, got %q", labels["timeout"])
+	}
+}
+
 func TestAgentTimeout_Invalid(t *testing.T) {
 	s := makeExecuteSession()
 	s.Ctx["chunk_timeout"] = "notaduration"

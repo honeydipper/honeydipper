@@ -1068,12 +1068,38 @@ func emitAgentPollTimeout(store AgentStore, msg *dipper.Message, timeout time.Du
 	})
 }
 
+func agentPollOptionEnabled(msg *dipper.Message, option string) bool {
+	enabled, err := strconv.ParseBool(msg.Labels[option])
+
+	return err == nil && enabled
+}
+
+func (s *AgentSession) hasTerminalResponse() bool {
+	if s.ErrorReason != "" {
+		return true
+	}
+	if len(s.history) == 0 {
+		return false
+	}
+	last := s.history[len(s.history)-1]
+
+	return last.Role == RoleAgent && last.IsComplete && len(last.ToolCalls) == 0
+}
+
+func (s *AgentSession) pollShouldWait(msg *dipper.Message) bool {
+	if agentPollOptionEnabled(msg, "wait_for_completion") {
+		return !s.hasTerminalResponse()
+	}
+
+	return !s.NewPendingContent && s.LastPoll == len(s.history) && s.ErrorReason == ""
+}
+
 func (s *AgentSession) processAgentPoll(
 	msg *dipper.Message,
 	deadline time.Time,
 	timeout time.Duration,
 	sessionLocked *bool,
-) {
+) bool {
 	log := s.log()
 	if log == nil {
 		log = dipper.GetLogger("agent", "INFO")
@@ -1086,13 +1112,12 @@ func (s *AgentSession) processAgentPoll(
 	for {
 		rateLimited := !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
 
-		for (!s.NewPendingContent && s.LastPoll == len(s.history) && s.ErrorReason == "") || rateLimited {
+		for s.pollShouldWait(msg) || rateLimited {
 			select {
 			case <-ctx.Done():
 				log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
-				emitAgentPollTimeout(s.store, msg, timeout)
 
-				return
+				return true
 			default:
 			}
 			s.unlock()
@@ -1101,17 +1126,15 @@ func (s *AgentSession) processAgentPoll(
 			select {
 			case <-ctx.Done():
 				log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
-				emitAgentPollTimeout(s.store, msg, timeout)
 
-				return
+				return true
 			case <-time.After(time.Second):
 			}
 			if err := s.lockForPoll(msg, s.store, deadline); err != nil {
 				if errors.Is(err, dipper.ErrTimeout) {
 					log.Warningf("[agent] session [%s] poll timeout after %s", s.ID, timeout)
-					emitAgentPollTimeout(s.store, msg, timeout)
 
-					return
+					return true
 				}
 				panic(err)
 			}
@@ -1128,7 +1151,7 @@ func (s *AgentSession) processAgentPoll(
 		}
 
 		if s.emitPollResponse(msg) {
-			return
+			return false
 		}
 	}
 }
@@ -1197,12 +1220,14 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 
 	if labels["status"] == "success" &&
 		len(fullMessages) == 0 &&
-		!s.NewPendingContent {
+		!s.NewPendingContent &&
+		!agentPollOptionEnabled(msg, "wait_for_completion") {
 		return false
 	}
 
 	s.LastPollTime = time.Now()
 	s.NewPendingContent = false
+	ret.Labels = labels
 	s.store.EmitMessage(ret)
 
 	return true
