@@ -1,3 +1,10 @@
+# [4.0.0-dev.5](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.4...v4.0.0-dev.5) (2026-10-07)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.83.1 [security] ([2a85e36](https://github.com/honeydipper/honeydipper/commit/2a85e362dbe32af62f86405db8cf32e265154923))
+
 # [4.0.0-dev.4](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.3...v4.0.0-dev.4) (2026-10-07)
 
 
