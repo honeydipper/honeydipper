@@ -1,3 +1,10 @@
+# [4.0.0-dev.6](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.5...v4.0.0-dev.6) (2026-10-08)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/crypto to v0.52.0 [security] ([7f29f98](https://github.com/honeydipper/honeydipper/commit/7f29f9805537b4e1072188cddd9da242b9ae6ea4))
+
 # [4.0.0-dev.5](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.4...v4.0.0-dev.5) (2026-10-07)
 
 
