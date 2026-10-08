@@ -109,7 +109,7 @@ jobs:
     <<: *defaults
     docker:
       - image: golang:1.27.1-alpine
-      - image: redis:7.0.11-alpine
+      - image: redis:7.4.11-alpine
     steps:
       - attach_workspace:
           at: /go
