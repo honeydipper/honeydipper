@@ -203,6 +203,9 @@ func (m *mockStore) Call(feature, method string, params interface{}, labelsKV ..
 			m.callParams = map[string]map[string]interface{}{}
 		}
 		m.callParams[base] = p
+		if name, ok := p["name"].(string); ok {
+			m.callParams[base+":"+name] = p
+		}
 		m.mu.Unlock()
 	}
 	if v, ok := m.resp[base]; ok {

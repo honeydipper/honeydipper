@@ -161,6 +161,9 @@ func (s *AgentSession) lockTurn(store AgentStore, convoID string) {
 		"expire": expire,
 		"owner":  s.ID,
 	}, "timeout", "30m"))
+	lockedConvoStateUpdate(convoID, store, func(cs *ConvoState) {
+		cs.LastTurnOwner = s.ID
+	})
 }
 
 // releaseTurnLock releases the distributed turn lock for this session's conversation.

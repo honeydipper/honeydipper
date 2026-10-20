@@ -24,10 +24,11 @@ import (
 // history and released the session lock to wait. No scheduling race is needed.
 type responseDuringPoll struct {
 	*memCacheHelper
-	onUnlock    func()
-	turnOwner   string
-	turnUnlocks []string
-	unlockErr   error
+	onUnlock     func()
+	onTurnUnlock func()
+	turnOwner    string
+	turnUnlocks  []string
+	unlockErr    error
 }
 
 func (h *responseDuringPoll) Call(feature, method string, params interface{}, labels ...string) ([]byte, error) {
@@ -35,6 +36,11 @@ func (h *responseDuringPoll) Call(feature, method string, params interface{}, la
 	if feature == "locker" && method == "unlock" && strings.HasPrefix(p["name"].(string), ConvoTurnLockPrefix) {
 		owner, _ := p["owner"].(string)
 		h.turnUnlocks = append(h.turnUnlocks, owner)
+		if h.onTurnUnlock != nil {
+			callback := h.onTurnUnlock
+			h.onTurnUnlock = nil
+			callback()
+		}
 		if h.unlockErr != nil {
 			return nil, h.unlockErr
 		}
@@ -78,6 +84,7 @@ func TestPollInference_TimeoutCleanupPreservesReasonAndSuccessor(t *testing.T) {
 					helper.onUnlock = func() {
 						lockedConvoStateUpdate("thread", store, func(cs *ConvoState) {
 							cs.registerSession("next-turn", "test_agent", AgentSessionTypeChatTurn, true)
+							cs.LastTurnOwner = "next-turn"
 						})
 					}
 				}
@@ -170,6 +177,90 @@ func TestCancelConvo_ReleasesTerminalOwnerAfterPersistUnlockFailure(t *testing.T
 			helper.turnOwner = "next-turn"
 			store.CancelConvo(&dipper.Message{Labels: map[string]string{"convo_id": "thread"}})
 			assert.Equal(t, "next-turn", helper.turnOwner)
+		})
+	}
+}
+
+func TestCancelConvo_ReleasesRunningOwnerAfterQueuedTurnReplacesRefs(t *testing.T) {
+	for _, scenario := range []string{"cleanup", "retry", "successor"} {
+		t.Run(scenario, func(t *testing.T) {
+			helper := &responseDuringPoll{memCacheHelper: newMemCacheHelper(), turnOwner: "running-turn"}
+			store := NewAgentStore(helper, "").(*PersistentAgentStore)
+			lockedConvoStateUpdate("thread", store, func(cs *ConvoState) {
+				cs.TTL = ConvoStreamTTL
+				cs.FirstSession = &ConvoSessionRef{SessionID: "first-completed", Status: ConvoSessionStatusComplete}
+				cs.registerSession("running-turn", "test_agent", AgentSessionTypeChatTurn, true)
+			})
+			running := &AgentSession{ID: "running-turn", ConvoID: "thread", store: store}
+			running.lockTurn(store, "thread")
+			lockedConvoStateUpdate("thread", store, func(cs *ConvoState) {
+				cs.registerSession("queued-turn", "test_agent", AgentSessionTypeChatTurn, true)
+			})
+			if scenario == "successor" {
+				// A new turn may acquire the key after cancellation snapshots its
+				// targets but before any of their owner-checked unlocks execute.
+				helper.onTurnUnlock = func() {
+					helper.turnOwner = "successor"
+					lockedConvoStateUpdate("thread", store, func(cs *ConvoState) {
+						cs.registerSession("successor", "test_agent", AgentSessionTypeChatTurn, true)
+					})
+					next := &AgentSession{ID: "successor", ConvoID: "thread", store: store}
+					next.lockTurn(store, "thread")
+				}
+			}
+			if scenario == "retry" {
+				helper.unlockErr = errors.New("transient locker failure")
+				store.CancelConvo(&dipper.Message{Labels: map[string]string{"convo_id": "thread"}})
+				require.Equal(t, "running-turn", helper.turnOwner)
+				helper.unlockErr = nil
+			}
+			store.CancelConvo(&dipper.Message{Labels: map[string]string{"convo_id": "thread"}})
+			state := &ConvoState{}
+			state.load("thread", store)
+			assert.Equal(t, ConvoSessionStatusComplete, state.FirstSession.Status)
+			assert.Contains(t, helper.turnUnlocks, "running-turn")
+			if scenario == "successor" {
+				assert.Equal(t, "successor", helper.turnOwner)
+				assert.Equal(t, "successor", state.ActiveSession.SessionID)
+				assert.Equal(t, ConvoSessionStatusActive, state.ActiveSession.Status)
+			} else {
+				assert.Empty(t, helper.turnOwner)
+				assert.Equal(t, "queued-turn", state.ActiveSession.SessionID)
+				assert.Equal(t, ConvoSessionStatusCancelled, state.ActiveSession.Status)
+			}
+		})
+	}
+}
+
+func TestCancelledQueuedTurn_DoesNotRunAfterAcquiringLock(t *testing.T) {
+	for _, entry := range []string{"StartInference", "runTurn"} {
+		t.Run(entry, func(t *testing.T) {
+			helper := &mockStoreHelper{mockStore: *newMockStore(newMemCacheHelper().cfg)}
+			store := NewAgentStore(helper, "").(*PersistentAgentStore)
+			helper.lockTriggers = map[string]func(){
+				ConvoTurnLockPrefix + "thread": func() {
+					store.CancelConvo(&dipper.Message{Labels: map[string]string{"convo_id": "thread"}})
+				},
+			}
+			if entry == "StartInference" {
+				store.StartInference(&dipper.Message{
+					Labels:  map[string]string{"agent_name": "test_agent", "resume_key": "workflow.1"},
+					Payload: map[string]interface{}{"convo_id": "thread", "text": "cancel this queued request"},
+				})
+			} else {
+				store.runTurn("test_agent", "thread", "cancel this queued request", "", "", "")
+			}
+			assert.False(t, helper.hasCall("driver:openai:send_to_model"))
+			state := &ConvoState{}
+			state.load("thread", store)
+			require.NotNil(t, state.ActiveSession)
+			assert.Equal(t, "conversation cancelled", state.ActiveSession.ErrorReason)
+			params := helper.getCallParams("locker:unlock")
+			assert.Equal(t, ConvoTurnLockPrefix+"thread", params["name"])
+			assert.Equal(t, state.ActiveSession.SessionID, params["owner"])
+			session := &AgentSession{}
+			session.load(state.ActiveSession.SessionID, store)
+			assert.Equal(t, "conversation cancelled", session.ErrorReason)
 		})
 	}
 }

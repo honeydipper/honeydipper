@@ -150,6 +150,11 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 
 	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
 	s.lockTurn(p, convoID)
+	if s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+
+		return
+	}
 
 	// Load history under the turn lock to avoid stale snapshots from
 	// in-flight prior turns.
@@ -427,8 +432,20 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 	// parameter), so setup will adopt it and load the agent config.
 	s.setup(msg, p, true)
 
+	defer s.persist(true)
+	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = fmt.Sprintf("%v", r)
+		}
+	})
+
 	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
 	s.lockTurn(p, convoID)
+	if s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+
+		return
+	}
 
 	// Reload conversation history under the turn lock to avoid starting from a
 	// stale snapshot when a previous turn for the same conversation is still
@@ -444,12 +461,6 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 	// interrupted prior turn).
 	s.refreshContextSize()
 
-	defer s.persist(true)
-	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
-		if s.ErrorReason == "" {
-			s.ErrorReason = fmt.Sprintf("%v", r)
-		}
-	})
 	s.run()
 }
 
@@ -690,6 +701,9 @@ func (p *PersistentAgentStore) cancelConversations(convoID, unifiedConvoID, sess
 			owners[sessionID] = true
 		}
 		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
+			if sessionID == "" && cs.LastTurnOwner != "" {
+				owners[cs.LastTurnOwner] = true
+			}
 			now := time.Now()
 			for _, sr := range []*ConvoSessionRef{cs.FirstSession, cs.LastSession, cs.ActiveSession} {
 				if sr == nil || (sessionID != "" && sr.SessionID != sessionID) {

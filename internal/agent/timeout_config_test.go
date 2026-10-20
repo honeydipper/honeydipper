@@ -199,7 +199,7 @@ func TestLockTurn_UsesAgentTurnLockTimeout(t *testing.T) {
 	s.lockTurn(store, "test-convo")
 
 	// Verify the lock call was made with the custom timeout
-	params := store.getCallParams("locker:lock")
+	params := store.getCallParams("locker:lock:" + ConvoTurnLockPrefix + "test-convo")
 
 	require.NotNil(t, params)
 	assert.Equal(t, "45m", params["expire"])
@@ -225,7 +225,7 @@ func TestLockTurn_UsesDefaultWhenAgentTurnLockTimeoutEmpty(t *testing.T) {
 
 	s.lockTurn(store, "test-convo")
 
-	params := store.getCallParams("locker:lock")
+	params := store.getCallParams("locker:lock:" + ConvoTurnLockPrefix + "test-convo")
 	require.NotNil(t, params)
 	assert.Equal(t, AgentSessionDefaultTurnLockExpire, params["expire"])
 }
@@ -257,7 +257,7 @@ func TestLockTurn_MessageLabelTimeoutNotUsed(t *testing.T) {
 
 	s.lockTurn(store, "test-convo")
 
-	params := store.getCallParams("locker:lock")
+	params := store.getCallParams("locker:lock:" + ConvoTurnLockPrefix + "test-convo")
 	require.NotNil(t, params)
 	// Should use Agent.TurnLockTimeout (30m), NOT message label timeout (10m)
 	assert.Equal(t, "30m", params["expire"])
@@ -275,7 +275,7 @@ func TestLockTurn_WithNilAgentUsesDefault(t *testing.T) {
 
 	s.lockTurn(store, "test-convo")
 
-	params := store.getCallParams("locker:lock")
+	params := store.getCallParams("locker:lock:" + ConvoTurnLockPrefix + "test-convo")
 	require.NotNil(t, params)
 	assert.Equal(t, AgentSessionDefaultTurnLockExpire, params["expire"])
 }
