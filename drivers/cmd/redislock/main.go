@@ -23,6 +23,14 @@ import (
 // DefaultPrefix is the prefix used for naming the locking topic.
 const DefaultPrefix = "lock:"
 
+// Compare and delete atomically so an expired owner's cleanup cannot remove a
+// successor's lock. Missing and already-released locks are successful no-ops.
+const unlockOwnedScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("DEL", KEYS[1])
+end
+return 0`
+
 var (
 	// ErrFailToLock means not being able to acquire the lock.
 	ErrFailToLock = errors.New("fail to lock")
@@ -99,6 +107,10 @@ func (l *Locker) lock(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	expire := dipper.Must(time.ParseDuration(dipper.MustGetMapDataStr(msg.Payload, "expire"))).(time.Duration)
 	name := dipper.MustGetMapDataStr(msg.Payload, "name")
+	owner, _ := dipper.GetMapDataStr(msg.Payload, "owner")
+	if owner == "" {
+		owner = l.nodeID
+	}
 	sq, hasSq := dipper.GetMapDataInt(msg.Payload, "sq")
 	strict, _ := dipper.GetMapDataBool(msg.Payload, "strict")
 
@@ -122,7 +134,7 @@ func (l *Locker) lock(msg *dipper.Message) {
 		}
 	}
 
-	for !dipper.Must(client.SetNX(ctx, l.prefix+name, l.nodeID, expire).Result()).(bool) {
+	for !dipper.Must(client.SetNX(ctx, l.prefix+name, owner, expire).Result()).(bool) {
 		select {
 		case <-ctx.Done():
 			return
@@ -146,6 +158,13 @@ func (l *Locker) unlock(msg *dipper.Message) {
 
 	client := redisclient.NewClient(l.redisOptions)
 	defer client.Close()
+
+	if owner, _ := dipper.GetMapDataStr(msg.Payload, "owner"); owner != "" {
+		dipper.Must(client.Eval(ctx, unlockOwnedScript, []string{l.prefix + name}, owner).Result())
+		msg.Reply <- dipper.Message{}
+
+		return
+	}
 
 	ok := dipper.Must(client.Del(ctx, l.prefix+name).Result()).(int64) > 0
 	if !ok {

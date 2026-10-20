@@ -99,6 +99,9 @@ type AgentSession struct {
 	// It is set when the turn lock is acquired and cleared when released.
 	// The lock prevents concurrent sessions from modifying the same conversation.
 	TurnLockKey string
+	// CompletedHistoryLen records this session's terminal history boundary so
+	// a later turn cannot hide its completion or supply its poll response.
+	CompletedHistoryLen int
 
 	// SlashInitiatedCompaction is set when a /compact slash command dispatches
 	// the summarization sub-agent. It is JSON-serialized with the session so it
@@ -149,6 +152,7 @@ func (s *AgentSession) lockTurn(store AgentStore, convoID string) {
 	dipper.Must(store.Call("locker", "lock", map[string]interface{}{
 		"name":   s.TurnLockKey,
 		"expire": expire,
+		"owner":  s.ID,
 	}, "timeout", "30m"))
 }
 
@@ -162,7 +166,8 @@ func (s *AgentSession) releaseTurnLock() {
 		log.Debugf("[agent] session [%s] releasing turn lock %q", s.ID, s.TurnLockKey)
 	}
 	dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
-		"name": s.TurnLockKey,
+		"name":  s.TurnLockKey,
+		"owner": s.ID,
 	}, "timeout", "30s"))
 	s.TurnLockKey = ""
 }
@@ -184,6 +189,9 @@ func (s *AgentSession) buildConvoURLs() (string, string, error) {
 // When unlocking is true the session lock is released and, if the session
 // has reached a terminal state, the shared ConvoState is updated too.
 func (s *AgentSession) persist(unlocking bool) {
+	if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.hasTerminalResponse() {
+		s.CompletedHistoryLen = len(s.history)
+	}
 	if log := s.log(); log != nil {
 		log.Debugf("[agent] session [%s] persisting to cache", s.ID)
 	}
@@ -210,8 +218,7 @@ func (s *AgentSession) syncConvoStateStatus() {
 	switch {
 	case s.ErrorReason != "":
 		status = ConvoSessionStatusFailed
-	case len(s.history) > 0 && s.history[len(s.history)-1].IsComplete &&
-		len(s.history[len(s.history)-1].ToolCalls) == 0:
+	case s.hasTerminalResponse():
 		status = ConvoSessionStatusComplete
 	default:
 		return // not yet terminal
@@ -592,6 +599,9 @@ func (s *AgentSession) loadConvoHistory() {
 	// are completely unaffected.
 	if s.SummarizeUpto > 0 && s.SummarizeUpto < len(history) {
 		history = history[:s.SummarizeUpto]
+	}
+	if s.CompletedHistoryLen > 0 && s.CompletedHistoryLen < len(history) {
+		history = history[:s.CompletedHistoryLen]
 	}
 	s.history = history
 }
@@ -1075,7 +1085,7 @@ func agentPollOptionEnabled(msg *dipper.Message, option string) bool {
 }
 
 func (s *AgentSession) hasTerminalResponse() bool {
-	if s.ErrorReason != "" {
+	if s.ErrorReason != "" || s.CompletedHistoryLen > 0 {
 		return true
 	}
 	if len(s.history) == 0 {
@@ -1110,7 +1120,7 @@ func (s *AgentSession) processAgentPoll(
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	for {
-		rateLimited := !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
+		rateLimited := !s.hasTerminalResponse() && !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
 
 		for s.pollShouldWait(msg) || rateLimited {
 			select {
@@ -1140,14 +1150,15 @@ func (s *AgentSession) processAgentPoll(
 			}
 			*sessionLocked = true
 			s.setup(msg, s.store, false)
+			s.loadConvoHistory()
 
 			// Check whether the conversation was cancelled while waiting.
-			if s.checkCancelled() {
+			if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.checkCancelled() {
 				s.ErrorReason = "conversation cancelled"
 
 				break
 			}
-			rateLimited = !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
+			rateLimited = !s.hasTerminalResponse() && !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
 		}
 
 		if s.emitPollResponse(msg) {
@@ -1192,11 +1203,7 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 		},
 	}
 
-	live := len(s.ErrorReason) == 0
-	if len(s.history) > 0 {
-		last := s.history[len(s.history)-1]
-		live = live && (!last.IsComplete || last.Role != RoleAgent || len(last.ToolCalls) > 0)
-	}
+	live := !s.hasTerminalResponse()
 
 	if live && s.NewPendingContent {
 		liveMessage := map[string]string{
