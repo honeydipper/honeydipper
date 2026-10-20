@@ -323,9 +323,10 @@ The polling mechanism includes:
 
 Completion-only polls (`wait_for_completion: true`) finish on a complete assistant
 response without tool calls, including an empty response after a successful tool
-call. Each wait cycle reloads persisted history. A session retains its terminal
-history boundary so a subsequent turn cannot turn that success into a stale
-cancellation warning. A Slack delivery tool result alone is not turn completion.
+call. Each active wait cycle reloads persisted history. A completed session retains
+its unread response independently of conversation trimming, compaction, or reset,
+so a subsequent turn cannot replace its answer or produce a stale cancellation
+warning. A Slack delivery tool result alone is not turn completion.
 
 With `cancel_on_timeout: true`, cleanup cancels only the polled session and retains
 the original timeout reason if cleanup fails. Conversation turn locks use the

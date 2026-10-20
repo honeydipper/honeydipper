@@ -11,6 +11,7 @@ package agent
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -94,7 +95,7 @@ func TestPollInference_TimeoutCleanupPreservesReasonAndSuccessor(t *testing.T) {
 				if lockOwner == "next-turn" {
 					assert.Equal(t, ConvoSessionStatusActive, state.ActiveSession.Status)
 					assert.Equal(t, "next-turn", helper.turnOwner)
-					assert.Empty(t, helper.turnUnlocks)
+					assert.Equal(t, []string{"turn"}, helper.turnUnlocks)
 				} else {
 					assert.Equal(t, ConvoSessionStatusCancelled, state.ActiveSession.Status)
 					assert.Equal(t, []string{"turn"}, helper.turnUnlocks)
@@ -112,6 +113,57 @@ func TestReleaseTurnLock_CannotReleaseSuccessor(t *testing.T) {
 	session.releaseTurnLock()
 	assert.Equal(t, "next-turn", helper.turnOwner)
 	assert.Equal(t, []string{"turn"}, helper.turnUnlocks)
+}
+
+func TestCancelConversations_RetriesOwnerAfterUnlockFailure(t *testing.T) {
+	for _, scoped := range []bool{false, true} {
+		t.Run(fmt.Sprint(scoped), func(t *testing.T) {
+			helper := &responseDuringPoll{memCacheHelper: newMemCacheHelper(), turnOwner: "turn"}
+			seedPollSession(t, helper.memCacheHelper, "turn", "thread", nil)
+			store := NewAgentStore(helper, "").(*PersistentAgentStore)
+			sessionID := ""
+			if scoped {
+				sessionID = "turn"
+			}
+			helper.unlockErr = errors.New("transient locker failure")
+			store.cancelConversations("thread", "", sessionID)
+			assert.Equal(t, "turn", helper.turnOwner)
+			helper.unlockErr = nil
+			store.cancelConversations("thread", "", sessionID)
+			assert.Empty(t, helper.turnOwner)
+			// Retrying after a successor acquired the key must leave it intact.
+			helper.turnOwner = "next-turn"
+			store.cancelConversations("thread", "", sessionID)
+			assert.Equal(t, "next-turn", helper.turnOwner)
+		})
+	}
+}
+
+func TestPollInference_TimeoutReleasesOwnerAfterQueuedTurnReplacesRefs(t *testing.T) {
+	helper := &responseDuringPoll{memCacheHelper: newMemCacheHelper(), turnOwner: "turn"}
+	seedPollSession(t, helper.memCacheHelper, "turn", "thread", []AgentMessage{{Role: RoleUser, Content: "unfinished"}})
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+	lockedConvoStateUpdate("thread", store, func(cs *ConvoState) {
+		cs.FirstSession = &ConvoSessionRef{SessionID: "first-completed", Status: ConvoSessionStatusComplete}
+	})
+	helper.onUnlock = func() {
+		lockedConvoStateUpdate("thread", store, func(cs *ConvoState) {
+			cs.registerSession("queued-turn", "test_agent", AgentSessionTypeChatTurn, true)
+		})
+	}
+	store.PollInference(&dipper.Message{Labels: map[string]string{
+		"agent_session_id": "turn", "resume_key": "workflow.1", "timeout": "20ms",
+		"wait_for_completion": "true", "cancel_on_timeout": "true",
+	}})
+	emitted := helper.getEmitted()
+	require.Len(t, emitted, 1)
+	assert.Equal(t, "failure", emitted[0].Labels["status"])
+	assert.Equal(t, "poll timeout after 20ms", emitted[0].Labels["reason"])
+	assert.Empty(t, helper.turnOwner)
+	state := &ConvoState{}
+	state.load("thread", store)
+	assert.Equal(t, "queued-turn", state.ActiveSession.SessionID)
+	assert.Equal(t, ConvoSessionStatusActive, state.ActiveSession.Status)
 }
 
 func TestPollInference_ObservesFinalResponseAfterSlackDelivery(t *testing.T) {

@@ -632,10 +632,11 @@ func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	}
 	sessionLocked = true
 	s.setup(msg, p, false)
-	// Load history for the restored session.
-	s.loadConvoHistory()
-	// Re-derive the compaction baseline from the restored history.
-	s.refreshContextSize()
+	// Completed polls use their retained response, not mutable conversation history.
+	if s.CompletedResponse == nil {
+		s.loadConvoHistory()
+		s.refreshContextSize()
+	}
 	if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.checkCancelled() {
 		s.ErrorReason = "conversation cancelled"
 	}
@@ -683,13 +684,23 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 func (p *PersistentAgentStore) cancelConversations(convoID, unifiedConvoID, sessionID string) {
 	cancelOne := func(id string) {
 		owners := map[string]bool{}
+		if sessionID != "" {
+			// The target may no longer have a ConvoState reference after a queued
+			// turn registers. Owner-checked cleanup remains safe and retryable.
+			owners[sessionID] = true
+		}
 		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
 			now := time.Now()
 			for _, sr := range []*ConvoSessionRef{cs.FirstSession, cs.LastSession, cs.ActiveSession} {
-				if sr != nil && sr.Status == ConvoSessionStatusActive && (sessionID == "" || sr.SessionID == sessionID) {
-					sr.Status = ConvoSessionStatusCancelled
-					sr.UpdatedAt = now
+				if sr == nil || (sessionID != "" && sr.SessionID != sessionID) {
+					continue
+				}
+				if sr.Status == ConvoSessionStatusActive || sr.Status == ConvoSessionStatusCancelled {
 					owners[sr.SessionID] = true
+					if sr.Status == ConvoSessionStatusActive {
+						sr.Status = ConvoSessionStatusCancelled
+						sr.UpdatedAt = now
+					}
 				}
 			}
 		})

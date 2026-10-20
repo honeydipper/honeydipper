@@ -99,9 +99,11 @@ type AgentSession struct {
 	// It is set when the turn lock is acquired and cleared when released.
 	// The lock prevents concurrent sessions from modifying the same conversation.
 	TurnLockKey string
-	// CompletedHistoryLen records this session's terminal history boundary so
-	// a later turn cannot hide its completion or supply its poll response.
+	// CompletedHistoryLen records this session's terminal history length.
 	CompletedHistoryLen int
+	// CompletedResponse retains only the unread response suffix, independently
+	// of later conversation trimming, compaction, or reset.
+	CompletedResponse *completedAgentResponse
 
 	// SlashInitiatedCompaction is set when a /compact slash command dispatches
 	// the summarization sub-agent. It is JSON-serialized with the session so it
@@ -114,6 +116,11 @@ type AgentSession struct {
 	SlashInitiatedCompaction bool
 
 	store AgentStore
+}
+
+type completedAgentResponse struct {
+	Start    int
+	Messages []AgentMessage
 }
 
 // Type aliases so internal code can use the short names unchanged.
@@ -191,6 +198,11 @@ func (s *AgentSession) buildConvoURLs() (string, string, error) {
 func (s *AgentSession) persist(unlocking bool) {
 	if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.hasTerminalResponse() {
 		s.CompletedHistoryLen = len(s.history)
+		start := min(s.LastPoll, len(s.history))
+		s.CompletedResponse = &completedAgentResponse{
+			Start:    start,
+			Messages: append([]AgentMessage(nil), s.history[start:]...),
+		}
 	}
 	if log := s.log(); log != nil {
 		log.Debugf("[agent] session [%s] persisting to cache", s.ID)
@@ -599,9 +611,6 @@ func (s *AgentSession) loadConvoHistory() {
 	// are completely unaffected.
 	if s.SummarizeUpto > 0 && s.SummarizeUpto < len(history) {
 		history = history[:s.SummarizeUpto]
-	}
-	if s.CompletedHistoryLen > 0 && s.CompletedHistoryLen < len(history) {
-		history = history[:s.CompletedHistoryLen]
 	}
 	s.history = history
 }
@@ -1101,7 +1110,17 @@ func (s *AgentSession) pollShouldWait(msg *dipper.Message) bool {
 		return !s.hasTerminalResponse()
 	}
 
-	return !s.NewPendingContent && s.LastPoll == len(s.history) && s.ErrorReason == ""
+	history, start := s.pollHistory()
+
+	return !s.NewPendingContent && s.LastPoll == start+len(history) && s.ErrorReason == ""
+}
+
+func (s *AgentSession) pollHistory() ([]AgentMessage, int) {
+	if s.CompletedResponse != nil {
+		return s.CompletedResponse.Messages, s.CompletedResponse.Start
+	}
+
+	return s.history, 0
 }
 
 func (s *AgentSession) processAgentPoll(
@@ -1150,7 +1169,9 @@ func (s *AgentSession) processAgentPoll(
 			}
 			*sessionLocked = true
 			s.setup(msg, s.store, false)
-			s.loadConvoHistory()
+			if s.CompletedResponse == nil {
+				s.loadConvoHistory()
+			}
 
 			// Check whether the conversation was cancelled while waiting.
 			if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.checkCancelled() {
@@ -1169,8 +1190,10 @@ func (s *AgentSession) processAgentPoll(
 
 func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 	fullMessages := []map[string]string{}
-	for ; s.LastPoll < len(s.history); s.LastPoll++ {
-		am := s.history[s.LastPoll]
+	history, start := s.pollHistory()
+	historyLen := start + len(history)
+	for ; s.LastPoll < historyLen; s.LastPoll++ {
+		am := history[s.LastPoll-start]
 		if am.Role != RoleAgent {
 			continue
 		}
@@ -1196,7 +1219,7 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 		Payload: map[string]interface{}{
 			"full_messages": fullMessages,
 			"state": AgentState{
-				HistoryLen:  len(s.history),
+				HistoryLen:  historyLen,
 				TotalTokens: s.TotalTokens,
 				ConvoID:     s.ConvoID,
 			},
