@@ -139,6 +139,41 @@ func TestCancelConversations_RetriesOwnerAfterUnlockFailure(t *testing.T) {
 	}
 }
 
+func TestCancelConvo_ReleasesTerminalOwnerAfterPersistUnlockFailure(t *testing.T) {
+	for _, status := range []string{ConvoSessionStatusComplete, ConvoSessionStatusFailed} {
+		t.Run(status, func(t *testing.T) {
+			helper := &responseDuringPoll{memCacheHelper: newMemCacheHelper(), turnOwner: "turn"}
+			seedPollSession(t, helper.memCacheHelper, "turn", "thread", []AgentMessage{
+				{Role: RoleAgent, Content: "final answer", IsComplete: true},
+			})
+			store := NewAgentStore(helper, "").(*PersistentAgentStore)
+			session := &AgentSession{}
+			session.setup(&dipper.Message{Labels: map[string]string{"agent_session_id": "turn"}}, store, false)
+			session.loadConvoHistory()
+			session.TurnLockKey = ConvoTurnLockPrefix + "thread"
+			if status == ConvoSessionStatusFailed {
+				session.ErrorReason = "driver failure"
+			}
+			helper.unlockErr = errors.New("transient terminal unlock failure")
+			require.Panics(t, func() { session.persist(true) })
+			before := &ConvoState{}
+			before.load("thread", store)
+			require.Equal(t, status, before.ActiveSession.Status)
+			require.Equal(t, "turn", helper.turnOwner)
+			helper.unlockErr = nil
+			store.CancelConvo(&dipper.Message{Labels: map[string]string{"convo_id": "thread"}})
+			assert.Empty(t, helper.turnOwner)
+			after := &ConvoState{}
+			after.load("thread", store)
+			assert.Equal(t, before, after, "cleanup must preserve terminal status and failure evidence")
+			// Retrying terminal cleanup cannot delete a successor's lock.
+			helper.turnOwner = "next-turn"
+			store.CancelConvo(&dipper.Message{Labels: map[string]string{"convo_id": "thread"}})
+			assert.Equal(t, "next-turn", helper.turnOwner)
+		})
+	}
+}
+
 func TestPollInference_TimeoutReleasesOwnerAfterQueuedTurnReplacesRefs(t *testing.T) {
 	helper := &responseDuringPoll{memCacheHelper: newMemCacheHelper(), turnOwner: "turn"}
 	seedPollSession(t, helper.memCacheHelper, "turn", "thread", []AgentMessage{{Role: RoleUser, Content: "unfinished"}})

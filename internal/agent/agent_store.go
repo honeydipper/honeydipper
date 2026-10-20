@@ -695,12 +695,10 @@ func (p *PersistentAgentStore) cancelConversations(convoID, unifiedConvoID, sess
 				if sr == nil || (sessionID != "" && sr.SessionID != sessionID) {
 					continue
 				}
-				if sr.Status == ConvoSessionStatusActive || sr.Status == ConvoSessionStatusCancelled {
-					owners[sr.SessionID] = true
-					if sr.Status == ConvoSessionStatusActive {
-						sr.Status = ConvoSessionStatusCancelled
-						sr.UpdatedAt = now
-					}
+				owners[sr.SessionID] = true
+				if sr.Status == ConvoSessionStatusActive {
+					sr.Status = ConvoSessionStatusCancelled
+					sr.UpdatedAt = now
 				}
 			}
 		})
