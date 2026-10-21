@@ -149,6 +149,7 @@ func (w *Session) injectCTXs() {
 	w.Workflow.Contexts = dipper.Interpolate("context", w.Workflow.Contexts, envdata)
 
 	if w.Workflow.Context != "" {
+		//nolint:govet // inline analyzer cannot inline generic funcs like slices.Contains (Go 1.27 limitation)
 		if !slices.Contains(w.LoadedContexts, w.Workflow.Context) {
 			w.injectNamedCTX(w.Workflow.Context, true)
 			w.LoadedContexts = append(w.LoadedContexts, w.Workflow.Context)
@@ -168,6 +169,7 @@ func (w *Session) injectCTXs() {
 				continue
 			}
 
+			//nolint:govet // inline analyzer cannot inline generic funcs like slices.Contains (Go 1.27 limitation)
 			if !slices.Contains(w.LoadedContexts, name) {
 				w.injectNamedCTX(name, true)
 				w.LoadedContexts = append(w.LoadedContexts, name)

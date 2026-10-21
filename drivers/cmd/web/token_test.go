@@ -11,7 +11,7 @@ package main
 
 import (
 	"encoding/base64"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -28,7 +28,7 @@ func TestGetToken(t *testing.T) {
 		Reply(201).
 		JSON(map[string]string{"token": "foobar"})
 
-	keyb64 := dipper.Must(ioutil.ReadFile("test_fixtures/testkey")).([]byte)
+	keyb64 := dipper.Must(os.ReadFile("test_fixtures/testkey")).([]byte)
 	keybytes := dipper.Must(base64.StdEncoding.DecodeString(string(keyb64))).([]byte)
 
 	githubSource := map[string]interface{}{
@@ -88,7 +88,7 @@ func TestGetTokenInstallationIDOverride(t *testing.T) {
 		Reply(201).
 		JSON(map[string]string{"token": "override-token"})
 
-	keyb64 := dipper.Must(ioutil.ReadFile("test_fixtures/testkey")).([]byte)
+	keyb64 := dipper.Must(os.ReadFile("test_fixtures/testkey")).([]byte)
 	keybytes := dipper.Must(base64.StdEncoding.DecodeString(string(keyb64))).([]byte)
 
 	githubSource := map[string]interface{}{

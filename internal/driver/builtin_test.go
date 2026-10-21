@@ -108,7 +108,7 @@ func TestBuiltinPrepare(t *testing.T) {
 						assert.Fail(t, "should "+msg)
 					} else {
 						assert.Equal(t, c[2].(int), len(c[0].(*BuiltinDriver).meta.Arguments), "should "+msg)
-						if (len(c[0].(*BuiltinDriver).meta.Arguments)) > 0 {
+						if len(c[0].(*BuiltinDriver).meta.Arguments) > 0 {
 							assert.Equal(t, c[3].(string), strings.Join(c[0].(*BuiltinDriver).meta.Arguments, " "), "should "+msg)
 						}
 					}

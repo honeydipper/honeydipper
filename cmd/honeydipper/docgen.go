@@ -169,6 +169,10 @@ func ensureDirExists(file string) {
 
 func readFile(root string, file string) string {
 	cwd := path.Dir(file)
+	// docgen is a local-only tool; the file path comes from the user's own
+	// config repo templates, not from untrusted input, so path traversal
+	// is not a concern here.
+	//nolint:gosec // G703: local docgen tool; paths come from user's own config templates
 	tmpl, err := os.ReadFile(path.Join(root, file))
 	if err != nil {
 		panic(err)

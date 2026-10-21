@@ -309,7 +309,6 @@ func (d *Driver) EmitEvent(payload map[string]interface{}) string {
 func (d *Driver) GetContext(m *Message) (context.Context, context.CancelFunc) {
 	if m == nil {
 		// this is a wrapper func
-		//nolint:gosec
 		return context.WithCancel(d.ctx)
 	}
 
@@ -329,12 +328,10 @@ func (d *Driver) GetContext(m *Message) (context.Context, context.CancelFunc) {
 
 	if timeout == 0 {
 		// this is a wrapper func
-		//nolint:gosec
 		return context.WithCancel(sourceCtx)
 	}
 
 	// this is a wrapper func
-	//nolint:gosec
 	return context.WithTimeout(sourceCtx, timeout)
 }
 

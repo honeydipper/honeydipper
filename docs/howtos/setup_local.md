@@ -20,7 +20,7 @@ The container will try to use your `SSH_AUTH_SOCK` to clone remote ssh repo if n
 
 ### Setup Go environment
 
- * Setup a directory as your go work directory. Assuming go 1.25 or up is installed, gvm is recommended to manage multiple versions of go.
+ * Setup a directory as your go work directory. Assuming go 1.27.3 or up is installed, gvm is recommended to manage multiple versions of go.
 
 ```bash
 mkdir -p ~/go

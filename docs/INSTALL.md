@@ -162,7 +162,7 @@ Replace the repo URL with your own, and specify the private key for accessing th
 
 #### Prerequisites:
 
-* **Go >= 1.25** — required (module path is `github.com/honeydipper/honeydipper/v4`)
+* **Go >= 1.27.3** — required (module path is `github.com/honeydipper/honeydipper/v4`)
 * Git
 * POSIX compliant shell
 
