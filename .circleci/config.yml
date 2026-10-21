@@ -105,7 +105,7 @@ jobs:
           name: qlty-coverage-publish
           command: >
             $HOME/.qlty/bin/qlty coverage publish
-            --strip-prefix="$(head -n 1 go.mod |cut -d'/' -f4)"
+            --strip-prefix="$(head -n 1 go.mod |cut -d " " -f2)"
             --format coverprofile
             c.out
   integration:
