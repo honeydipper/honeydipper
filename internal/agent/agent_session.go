@@ -99,6 +99,11 @@ type AgentSession struct {
 	// It is set when the turn lock is acquired and cleared when released.
 	// The lock prevents concurrent sessions from modifying the same conversation.
 	TurnLockKey string
+	// CompletedHistoryLen records this session's terminal history length.
+	CompletedHistoryLen int
+	// CompletedResponse retains only the unread response suffix, independently
+	// of later conversation trimming, compaction, or reset.
+	CompletedResponse *completedAgentResponse
 
 	// SlashInitiatedCompaction is set when a /compact slash command dispatches
 	// the summarization sub-agent. It is JSON-serialized with the session so it
@@ -111,6 +116,11 @@ type AgentSession struct {
 	SlashInitiatedCompaction bool
 
 	store AgentStore
+}
+
+type completedAgentResponse struct {
+	Start    int
+	Messages []AgentMessage
 }
 
 // Type aliases so internal code can use the short names unchanged.
@@ -149,7 +159,11 @@ func (s *AgentSession) lockTurn(store AgentStore, convoID string) {
 	dipper.Must(store.Call("locker", "lock", map[string]interface{}{
 		"name":   s.TurnLockKey,
 		"expire": expire,
+		"owner":  s.ID,
 	}, "timeout", "30m"))
+	lockedConvoStateUpdate(convoID, store, func(cs *ConvoState) {
+		cs.LastTurnOwner = s.ID
+	})
 }
 
 // releaseTurnLock releases the distributed turn lock for this session's conversation.
@@ -162,7 +176,8 @@ func (s *AgentSession) releaseTurnLock() {
 		log.Debugf("[agent] session [%s] releasing turn lock %q", s.ID, s.TurnLockKey)
 	}
 	dipper.Must(s.store.Call("locker", "unlock", map[string]interface{}{
-		"name": s.TurnLockKey,
+		"name":  s.TurnLockKey,
+		"owner": s.ID,
 	}, "timeout", "30s"))
 	s.TurnLockKey = ""
 }
@@ -184,6 +199,14 @@ func (s *AgentSession) buildConvoURLs() (string, string, error) {
 // When unlocking is true the session lock is released and, if the session
 // has reached a terminal state, the shared ConvoState is updated too.
 func (s *AgentSession) persist(unlocking bool) {
+	if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.hasTerminalResponse() {
+		s.CompletedHistoryLen = len(s.history)
+		start := min(s.LastPoll, len(s.history))
+		s.CompletedResponse = &completedAgentResponse{
+			Start:    start,
+			Messages: append([]AgentMessage(nil), s.history[start:]...),
+		}
+	}
 	if log := s.log(); log != nil {
 		log.Debugf("[agent] session [%s] persisting to cache", s.ID)
 	}
@@ -210,8 +233,7 @@ func (s *AgentSession) syncConvoStateStatus() {
 	switch {
 	case s.ErrorReason != "":
 		status = ConvoSessionStatusFailed
-	case len(s.history) > 0 && s.history[len(s.history)-1].IsComplete &&
-		len(s.history[len(s.history)-1].ToolCalls) == 0:
+	case s.hasTerminalResponse():
 		status = ConvoSessionStatusComplete
 	default:
 		return // not yet terminal
@@ -1075,7 +1097,7 @@ func agentPollOptionEnabled(msg *dipper.Message, option string) bool {
 }
 
 func (s *AgentSession) hasTerminalResponse() bool {
-	if s.ErrorReason != "" {
+	if s.ErrorReason != "" || s.CompletedHistoryLen > 0 {
 		return true
 	}
 	if len(s.history) == 0 {
@@ -1091,7 +1113,17 @@ func (s *AgentSession) pollShouldWait(msg *dipper.Message) bool {
 		return !s.hasTerminalResponse()
 	}
 
-	return !s.NewPendingContent && s.LastPoll == len(s.history) && s.ErrorReason == ""
+	history, start := s.pollHistory()
+
+	return !s.NewPendingContent && s.LastPoll == start+len(history) && s.ErrorReason == ""
+}
+
+func (s *AgentSession) pollHistory() ([]AgentMessage, int) {
+	if s.CompletedResponse != nil {
+		return s.CompletedResponse.Messages, s.CompletedResponse.Start
+	}
+
+	return s.history, 0
 }
 
 func (s *AgentSession) processAgentPoll(
@@ -1110,7 +1142,7 @@ func (s *AgentSession) processAgentPoll(
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	for {
-		rateLimited := !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
+		rateLimited := !s.hasTerminalResponse() && !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
 
 		for s.pollShouldWait(msg) || rateLimited {
 			select {
@@ -1140,14 +1172,17 @@ func (s *AgentSession) processAgentPoll(
 			}
 			*sessionLocked = true
 			s.setup(msg, s.store, false)
+			if s.CompletedResponse == nil {
+				s.loadConvoHistory()
+			}
 
 			// Check whether the conversation was cancelled while waiting.
-			if s.checkCancelled() {
+			if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.checkCancelled() {
 				s.ErrorReason = "conversation cancelled"
 
 				break
 			}
-			rateLimited = !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
+			rateLimited = !s.hasTerminalResponse() && !s.LastPollTime.IsZero() && time.Since(s.LastPollTime) < MinPollInterval
 		}
 
 		if s.emitPollResponse(msg) {
@@ -1158,8 +1193,10 @@ func (s *AgentSession) processAgentPoll(
 
 func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 	fullMessages := []map[string]string{}
-	for ; s.LastPoll < len(s.history); s.LastPoll++ {
-		am := s.history[s.LastPoll]
+	history, start := s.pollHistory()
+	historyLen := start + len(history)
+	for ; s.LastPoll < historyLen; s.LastPoll++ {
+		am := history[s.LastPoll-start]
 		if am.Role != RoleAgent {
 			continue
 		}
@@ -1185,18 +1222,14 @@ func (s *AgentSession) emitPollResponse(msg *dipper.Message) bool {
 		Payload: map[string]interface{}{
 			"full_messages": fullMessages,
 			"state": AgentState{
-				HistoryLen:  len(s.history),
+				HistoryLen:  historyLen,
 				TotalTokens: s.TotalTokens,
 				ConvoID:     s.ConvoID,
 			},
 		},
 	}
 
-	live := len(s.ErrorReason) == 0
-	if len(s.history) > 0 {
-		last := s.history[len(s.history)-1]
-		live = live && (!last.IsComplete || last.Role != RoleAgent || len(last.ToolCalls) > 0)
-	}
+	live := !s.hasTerminalResponse()
 
 	if live && s.NewPendingContent {
 		liveMessage := map[string]string{

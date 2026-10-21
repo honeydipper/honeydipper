@@ -87,6 +87,10 @@ func seedPollSession(t *testing.T, helper *memCacheHelper, sessionID, convoID st
 	}
 	helper.cache[AgentKeyPrefix+sessionID] = string(dipper.SerializeContent(session))
 	helper.cache[ConvoHistoryKeyPrefix+convoID] = string(dipper.SerializeContent(history))
+	ref := &ConvoSessionRef{SessionID: sessionID, Status: ConvoSessionStatusActive}
+	helper.cache[ConvoStateKeyPrefix+convoID] = string(dipper.SerializeContent(&ConvoState{
+		ConvoID: convoID, FirstSession: ref, LastSession: ref, ActiveSession: ref, TTL: ConvoStreamTTL,
+	}))
 }
 
 func TestEmitPollResponse_EmptyHistorySupportsPendingAndTerminalResponses(t *testing.T) {

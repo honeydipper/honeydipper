@@ -321,6 +321,22 @@ The polling mechanism includes:
 - **Cancellation checking**: Each poll cycle checks whether the conversation has been cancelled.
 - **Streaming chunk accumulation**: Partial model outputs (`PendingContent`, `PendingThoughts`) are accumulated and flushed on poll.
 
+Completion-only polls (`wait_for_completion: true`) finish on a complete assistant
+response without tool calls, including an empty response after a successful tool
+call. Each active wait cycle reloads persisted history. A completed session retains
+its unread response independently of conversation trimming, compaction, or reset,
+so a subsequent turn cannot replace its answer or produce a stale cancellation
+warning. A Slack delivery tool result alone is not turn completion.
+
+With `cancel_on_timeout: true`, cleanup cancels only the polled session and retains
+the original timeout reason if cleanup fails. Conversation turn locks use the
+session ID as the Redis lock's optional `owner`; release atomically compares that
+owner before deleting. Missing, expired, already-released, or successor-owned
+locks are safe no-ops. Calls without `owner` retain the legacy locker behavior.
+Deploy the core and bundled `redislock` driver together and drain existing turns
+before upgrading: locks acquired by older code lack session ownership and are
+left to expire rather than being deleted by owner-checked cleanup.
+
 ---
 
 ## Compaction Policies

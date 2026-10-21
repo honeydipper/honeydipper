@@ -150,6 +150,11 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 
 	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
 	s.lockTurn(p, convoID)
+	if s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+
+		return
+	}
 
 	// Load history under the turn lock to avoid stale snapshots from
 	// in-flight prior turns.
@@ -427,8 +432,20 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 	// parameter), so setup will adopt it and load the agent config.
 	s.setup(msg, p, true)
 
+	defer s.persist(true)
+	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = fmt.Sprintf("%v", r)
+		}
+	})
+
 	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
 	s.lockTurn(p, convoID)
+	if s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+
+		return
+	}
 
 	// Reload conversation history under the turn lock to avoid starting from a
 	// stale snapshot when a previous turn for the same conversation is still
@@ -444,12 +461,6 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 	// interrupted prior turn).
 	s.refreshContextSize()
 
-	defer s.persist(true)
-	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
-		if s.ErrorReason == "" {
-			s.ErrorReason = fmt.Sprintf("%v", r)
-		}
-	})
 	s.run()
 }
 
@@ -632,14 +643,22 @@ func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
 	}
 	sessionLocked = true
 	s.setup(msg, p, false)
-	// Load history for the restored session.
-	s.loadConvoHistory()
-	// Re-derive the compaction baseline from the restored history.
-	s.refreshContextSize()
+	// Completed polls use their retained response, not mutable conversation history.
+	if s.CompletedResponse == nil {
+		s.loadConvoHistory()
+		s.refreshContextSize()
+	}
+	if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+	}
 	if timedOut := s.processAgentPoll(msg, deadline, timeout, &sessionLocked); timedOut {
 		if agentPollOptionEnabled(msg, "cancel_on_timeout") && s.ConvoID != "" {
 			p.Infof("[agent] session [%s] cancelling conversation after supervised poll timeout", s.ID)
-			p.cancelConversations(s.ConvoID, s.UnifiedConvoID)
+			func() {
+				// Cleanup failures must not replace the original timeout response.
+				defer dipper.SafeExitOnError("[agent] error cancelling timed-out session %s", s.ID)
+				p.cancelConversations(s.ConvoID, s.UnifiedConvoID, s.ID)
+			}()
 		}
 		emitAgentPollTimeout(p, msg, timeout)
 	}
@@ -668,25 +687,42 @@ func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
 		return
 	}
 
-	p.cancelConversations(convoID, unifiedConvoID)
+	p.cancelConversations(convoID, unifiedConvoID, "")
 }
 
-func (p *PersistentAgentStore) cancelConversations(convoID, unifiedConvoID string) {
+// sessionID scopes supervisor cleanup to its own turn. An empty ID retains the
+// explicit CancelConvo operation's conversation-wide cancellation behavior.
+func (p *PersistentAgentStore) cancelConversations(convoID, unifiedConvoID, sessionID string) {
 	cancelOne := func(id string) {
+		owners := map[string]bool{}
+		if sessionID != "" {
+			// The target may no longer have a ConvoState reference after a queued
+			// turn registers. Owner-checked cleanup remains safe and retryable.
+			owners[sessionID] = true
+		}
 		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
+			if sessionID == "" && cs.LastTurnOwner != "" {
+				owners[cs.LastTurnOwner] = true
+			}
 			now := time.Now()
 			for _, sr := range []*ConvoSessionRef{cs.FirstSession, cs.LastSession, cs.ActiveSession} {
-				if sr != nil && sr.Status == ConvoSessionStatusActive {
+				if sr == nil || (sessionID != "" && sr.SessionID != sessionID) {
+					continue
+				}
+				owners[sr.SessionID] = true
+				if sr.Status == ConvoSessionStatusActive {
 					sr.Status = ConvoSessionStatusCancelled
 					sr.UpdatedAt = now
 				}
 			}
 		})
-		// Release the turn lock for this conversation
-		lockKey := ConvoTurnLockPrefix + id
-		dipper.Must(p.Call("locker", "unlock", map[string]interface{}{
-			"name": lockKey,
-		}, "timeout", "30s"))
+		for owner := range owners {
+			if _, err := p.Call("locker", "unlock", map[string]interface{}{
+				"name": ConvoTurnLockPrefix + id, "owner": owner,
+			}, "timeout", "30s"); err != nil {
+				p.Warningf("[agent] session [%s] turn lock cleanup failed: %v", owner, err)
+			}
+		}
 	}
 
 	if convoID != "" {

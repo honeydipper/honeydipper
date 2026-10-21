@@ -62,6 +62,9 @@ type ConvoState struct {
 	LastSession    *ConvoSessionRef `json:"last_session,omitempty"`
 	ActiveSession  *ConvoSessionRef `json:"active_session,omitempty"`
 	Cancelled      bool             `json:"cancelled"`
+	// LastTurnOwner survives queued-session registration and is retained after
+	// release so cancellation can retry cleanup using the exact lock owner.
+	LastTurnOwner string `json:"last_turn_owner,omitempty"`
 	// TotalTokens accumulates the sum of input+output tokens for
 	// completed/failed sessions that belonged to this conversation.
 	TotalTokens int `json:"total_tokens,omitempty"`
