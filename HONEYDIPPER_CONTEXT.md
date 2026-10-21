@@ -5,7 +5,7 @@
 Honeydipper is an event-driven orchestration platform written in Go. It listens for events from various sources (webhooks, pub/sub, schedulers, etc.), matches them against configurable rules, and executes workflows — sequences of function calls, AI agent interactions, sub-workflows, and data transformations.
 
 **Module path**: `github.com/honeydipper/honeydipper/v4`
-**Go version**: 1.25.0
+**Go version**: 1.27.1
 
 ---
 
