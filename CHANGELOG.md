@@ -1,3 +1,10 @@
+# [4.0.0-dev.8](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.7...v4.0.0-dev.8) (2026-10-21)
+
+
+### Bug Fixes
+
+* cut a release ([#840](https://github.com/honeydipper/honeydipper/issues/840)) ([13b1ec3](https://github.com/honeydipper/honeydipper/commit/13b1ec303a457a2d07002c88d0db9a07c0a6ff31))
+
 # [4.0.0-dev.7](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.6...v4.0.0-dev.7) (2026-10-21)
 
 
