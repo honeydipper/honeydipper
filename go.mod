@@ -1,6 +1,6 @@
 module github.com/honeydipper/honeydipper/v4
 
-go 1.27.1
+go 1.27.3
 
 require (
 	cloud.google.com/go/aiplatform v1.117.0
