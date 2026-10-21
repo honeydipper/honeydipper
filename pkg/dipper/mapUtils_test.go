@@ -91,7 +91,7 @@ func TestRecursive(t *testing.T) {
 	for i := 0; i < len(testCases); i++ {
 		testValue := testCases[i]
 		Recursive(testValue, process)
-		if reflect.ValueOf(testValue).Kind() == reflect.Ptr {
+		if reflect.ValueOf(testValue).Kind() == reflect.Pointer {
 			testValue = reflect.ValueOf(testValue).Elem().Interface()
 		}
 		assert.Equal(t, testExpects[i], testValue, "recursive test case %v failed", i)

@@ -203,7 +203,7 @@ func RecursiveWithPrefix(
 		for i := 0; i < vfrom.Len(); i++ {
 			RecursiveWithPrefix(from, newPrefixes, i, vfrom.Index(i).Interface(), process)
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		vfrom = vfrom.Elem()
 		switch vfrom.Kind() {
 		case reflect.Struct:
@@ -229,7 +229,7 @@ func RecursiveWithPrefix(
 				vparent.SetMapIndex(reflect.ValueOf(key), vval)
 			case reflect.Slice, reflect.Array:
 				vparent.Index(key.(int)).Set(vval)
-			case reflect.Ptr:
+			case reflect.Pointer:
 				vparent = vparent.Elem()
 				if vparent.Kind() == reflect.Struct {
 					vparent.Field(key.(int)).Set(vval)

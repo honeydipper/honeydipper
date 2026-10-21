@@ -272,6 +272,7 @@ func TestInjectCTXs_ContextAndListAndPanic(t *testing.T) {
 	s.Workflow.Context = "foo"
 	store.cfg.DataSet.Contexts = map[string]interface{}{"foo": nil}
 	s.injectCTXs()
+	//nolint:govet // inline analyzer cannot inline generic funcs like slices.Contains (Go 1.27 limitation)
 	if !slices.Contains(s.LoadedContexts, "foo") {
 		t.Fatal("expected foo added to loaded contexts")
 	}

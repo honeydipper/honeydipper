@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"flag"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"testing"
@@ -63,7 +62,7 @@ func TestSendRequest(t *testing.T) {
 func TestSendRequestTokenSourceParamsInstallationIDOverride(t *testing.T) {
 	defer gock.Off()
 
-	keyb64 := dipper.Must(ioutil.ReadFile("test_fixtures/testkey")).([]byte)
+	keyb64 := dipper.Must(os.ReadFile("test_fixtures/testkey")).([]byte)
 	keybytes := dipper.Must(base64.StdEncoding.DecodeString(string(keyb64))).([]byte)
 
 	driver.Options = map[string]interface{}{
