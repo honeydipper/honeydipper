@@ -103,8 +103,11 @@ jobs:
             $HOME/.qlty/bin/qlty --version
       - run:
           name: qlty-coverage-publish
-          command: |
-            $HOME/.qlty/bin/qlty coverage publish --format coverprofile c.out
+          command: >
+            $HOME/.qlty/bin/qlty coverage publish
+              --strip-prefix="$(head -n 1 go.mod |cut -d'/' -f4)"
+              --format coverprofile
+              c.out
   integration:
     <<: *defaults
     docker:
