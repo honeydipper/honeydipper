@@ -1,3 +1,10 @@
+# [4.0.0-dev.7](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.6...v4.0.0-dev.7) (2026-10-21)
+
+
+### Bug Fixes
+
+* **agent:** finish supervised turns and scope timeout cleanup ([#838](https://github.com/honeydipper/honeydipper/issues/838)) ([e807402](https://github.com/honeydipper/honeydipper/commit/e80740245a45c365c223231ba811c0d110eabfcf))
+
 # [4.0.0-dev.6](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.5...v4.0.0-dev.6) (2026-10-08)
 
 
