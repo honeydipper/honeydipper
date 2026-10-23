@@ -31,6 +31,15 @@ const (
 	// archive key holding the preserved full history.
 	compactionFailurePlaceholder = "Summary unavailable (compaction failed); the full conversation history " +
 		"has been preserved and archived at `%s`."
+
+	// compactionSkipPlaceholder is injected as a RoleSystem message whenever
+	// automatic compaction is skipped because the configured summarization agent
+	// is missing or unusable (no driver/engine), so the skip is visible in
+	// history without truncating anything. It is symmetric with
+	// compactionFailurePlaceholder. The %s is the configured summarization
+	// agent name.
+	compactionSkipPlaceholder = "Compaction skipped: summarization agent %q was not found or is not usable; " +
+		"the full conversation history has been preserved."
 )
 
 // shouldCompact returns true when the agent's compaction policy is configured
@@ -514,8 +523,15 @@ func (s *AgentSession) compactHistory() bool {
 		summarizeUpto = len(s.history)
 	}
 
-	// Resolve the summarization agent config.
+	// Resolve the summarization agent config. The CONFIGURED name
+	// (cp.SummarizationAgent) is the map key used downstream by
+	// handleAgentToolCall -> GetAgent(sub_agent_name), so it must drive the
+	// FuncName below even when the resolved agent's own Name field is empty.
+	// The looked-up summAgent is used only for validation + logging.
 	if cp.SummarizationAgent == "" {
+		// No summarizer configured: compaction is simply disabled. This is a
+		// graceful Info (not a Warning/placeholder) and matches the config-time
+		// validation, which intentionally does not flag an empty string.
 		if log := s.log(); log != nil {
 			log.Infof("[agent] session [%s] compaction configured but no summarization_agent set", s.ID)
 		}
@@ -525,7 +541,33 @@ func (s *AgentSession) compactHistory() bool {
 	summAgent := s.store.GetAgent(cp.SummarizationAgent)
 	if summAgent == nil {
 		if log := s.log(); log != nil {
-			log.Errorf("[agent] session [%s] summarization agent %q not found", s.ID, cp.SummarizationAgent)
+			log.Warningf("[agent] session [%s] compaction skipped: summarization agent %q not found in config", s.ID, cp.SummarizationAgent)
+		}
+		// Automatic compaction with a missing summarizer: make the skip visible
+		// in history (symmetric with compactionFailurePlaceholder) and let the
+		// caller fall through to sendToDriver with the full history. The slash
+		// /compact path surfaces the same skip via its own explanatory reply.
+		if !s.SlashInitiatedCompaction {
+			s.appendConvoHistory(&AgentMessage{
+				Role:    RoleSystem,
+				Content: fmt.Sprintf(compactionSkipPlaceholder, cp.SummarizationAgent),
+			})
+		}
+
+		return false
+	}
+	if summAgent.Driver == "" || summAgent.Engine == "" {
+		if log := s.log(); log != nil {
+			log.Warningf(
+				"[agent] session [%s] compaction skipped: summarization agent %q has no driver/engine configured",
+				s.ID, cp.SummarizationAgent,
+			)
+		}
+		if !s.SlashInitiatedCompaction {
+			s.appendConvoHistory(&AgentMessage{
+				Role:    RoleSystem,
+				Content: fmt.Sprintf(compactionSkipPlaceholder, cp.SummarizationAgent),
+			})
 		}
 
 		return false
@@ -556,7 +598,7 @@ func (s *AgentSession) compactHistory() bool {
 	// the normal tool-call result path. Mark the call with a "compaction"
 	// flag so the continuation handler can perform the archive/replace.
 	toolCall := AgentToolCall{
-		FuncName: "ag__" + summAgent.Name,
+		FuncName: "ag__" + cp.SummarizationAgent,
 		Params: map[string]interface{}{
 			"input":          prompt,
 			"compaction_id":  compactID,
@@ -567,7 +609,7 @@ func (s *AgentSession) compactHistory() bool {
 
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] running compaction via agent=%s engine=%s history_len=%d preserve=%d",
-			s.ID, summAgent.Name, summAgent.Engine, len(s.history), preserve)
+			s.ID, cp.SummarizationAgent, summAgent.Engine, len(s.history), preserve)
 	}
 
 	// Append a tool-call entry to the conversation history and dispatch it

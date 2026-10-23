@@ -82,6 +82,8 @@ type DataSet struct {
 - **Agent**: `{Driver, Engine, SystemPrompt, InferencePrompt, ShouldEmitThoughts, ShouldStream, MaxHistoryLen, CompactionPolicy, Tools, ModelData}`
 - **RepoInfo**: `{Repo (URL/path), Branch, Path, InitFile, KeyFile (SSH), TokenSource (github), Username/PassEnv}`
 
+**Config-time validation**: on every config load/refresh, `assemble()` runs `ValidateAgentCompactionPolicies`, which warns when an agent's `compaction_policy.summarization_agent` does not match any configured `agents` key (e.g. a `campactor`/`compactor` typo). This surfaces misconfigured summarizers at load time instead of as a confusing empty-agent compaction failure later.
+
 ### 4.3 Config Lifecycle (5 Stages)
 
 ```
@@ -230,6 +232,10 @@ User/Workflow ──► Agent Service ──► AgentSession ──► AI Driver
 - **Tool Building**: 4 sources — `system` (sys_), `workflow` (wf__), `agent` (ag__), `mcp` (mcp__)
 - **Polling**: Busy-wait with 1s sleep, rate-limited, emits `agent_response` with `AgentState` metadata
 - **Default TTL**: 72h, timeout: 1h, poll timeout: 9s
+
+**Store getter nil semantics**: `PersistentAgentStore.GetAgent/GetSystem/GetWorkflow` return `nil` for a missing name (and when the config `DataSet` is not yet available), never a non-nil zero-value pointer. Every call site MUST nil-check before dereferencing. Missing config entities degrade gracefully: tool building skips the tool with a Warning, compaction skips before archiving (emitting a `RoleSystem` skip placeholder for the automatic path), `/refresh` replies instead of persisting a nil agent, and `processToolResult` injects a synthetic failure when a system was removed mid-turn.
+
+**Compaction hardening**: the summarizer tool call is built from the configured `summarization_agent` name (the map key), so a found summarizer without a `Name` field still dispatches `ag__<configured>`. A missing or unusable (no driver/engine) summarizer skips compaction gracefully before `archiveConvo`, and a compaction sub-agent session has its own `CompactionPolicy` cleared (recursion guard) so it cannot re-trigger compaction while summarizing the archive.
 
 ### 6.4 Role Constants
 

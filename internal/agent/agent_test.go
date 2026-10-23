@@ -301,19 +301,37 @@ func (m *mockStore) StartTurn(convoID, text, user, engine, driver, agent string,
 func (m *mockStore) StartNewConvo(agentName, text, user, engine, driver string) string { return "" }
 
 func (m *mockStore) GetAgent(name string) *config.Agent {
-	a := m.cfg.DataSet.Agents[name]
+	if m.cfg == nil || m.cfg.DataSet == nil || m.cfg.DataSet.Agents == nil {
+		return nil
+	}
+	a, ok := m.cfg.DataSet.Agents[name]
+	if !ok {
+		return nil
+	}
 
 	return &a
 }
 
 func (m *mockStore) GetSystem(name string) *config.System {
-	s := m.cfg.DataSet.Systems[name]
+	if m.cfg == nil || m.cfg.DataSet == nil || m.cfg.DataSet.Systems == nil {
+		return nil
+	}
+	s, ok := m.cfg.DataSet.Systems[name]
+	if !ok {
+		return nil
+	}
 
 	return &s
 }
 
 func (m *mockStore) GetWorkflow(name string) *config.Workflow {
-	w := m.cfg.DataSet.Workflows[name]
+	if m.cfg == nil || m.cfg.DataSet == nil || m.cfg.DataSet.Workflows == nil {
+		return nil
+	}
+	w, ok := m.cfg.DataSet.Workflows[name]
+	if !ok {
+		return nil
+	}
 
 	return &w
 }
@@ -3226,4 +3244,68 @@ func TestSendToDriver_EnsuresLastMessageIsUser_EmptyHistory(t *testing.T) {
 	assert.Equal(t, "sys prompt", driverHistory[0].Content)
 	assert.Equal(t, RoleUser, driverHistory[1].Role)
 	assert.Equal(t, "Please continue.", driverHistory[1].Content)
+}
+
+// ---------------------------------------------------------------------------
+// Store getter nil semantics (Phase 1 hardening): GetAgent/GetSystem/GetWorkflow
+// must return nil for missing names and for a nil DataSet, never a non-nil
+// zero-value pointer. These tests activate the previously-dead nil guards.
+// ---------------------------------------------------------------------------
+
+func TestPersistentAgentStore_GetAgent_MissingReturnsNil(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents:    map[string]config.Agent{"bot": {Name: "bot", Driver: "openai"}},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	assert.Nil(t, store.GetAgent("nonexistent"), "missing agent must return nil")
+}
+
+func TestPersistentAgentStore_GetAgent_NilDataSetReturnsNil(t *testing.T) {
+	helper := &mockStoreHelper{mockStore: *newMockStore(&config.Config{})}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	assert.Nil(t, store.GetAgent("bot"), "nil DataSet must return nil")
+}
+
+func TestPersistentAgentStore_GetSystem_MissingReturnsNil(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents:    map[string]config.Agent{},
+		Systems:   map[string]config.System{"s1": makeSystemWithFunc("fn1")},
+		Workflows: map[string]config.Workflow{},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	assert.Nil(t, store.GetSystem("nonexistent"), "missing system must return nil")
+	assert.NotNil(t, store.GetSystem("s1"), "sanity: s1 should exist")
+}
+
+func TestPersistentAgentStore_GetSystem_NilDataSetReturnsNil(t *testing.T) {
+	helper := &mockStoreHelper{mockStore: *newMockStore(&config.Config{})}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	assert.Nil(t, store.GetSystem("s1"), "nil DataSet must return nil")
+}
+
+func TestPersistentAgentStore_GetWorkflow_MissingReturnsNil(t *testing.T) {
+	cfg := &config.Config{DataSet: &config.DataSet{
+		Agents:    map[string]config.Agent{},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{"wf1": makeWorkflow("wf1", "wf1")},
+	}}
+	helper := &mockStoreHelper{mockStore: *newMockStore(cfg)}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	assert.Nil(t, store.GetWorkflow("nonexistent"), "missing workflow must return nil")
+}
+
+func TestPersistentAgentStore_GetWorkflow_NilDataSetReturnsNil(t *testing.T) {
+	helper := &mockStoreHelper{mockStore: *newMockStore(&config.Config{})}
+	store := NewAgentStore(helper, "").(*PersistentAgentStore)
+
+	assert.Nil(t, store.GetWorkflow("wf1"), "nil DataSet must return nil")
 }

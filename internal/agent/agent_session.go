@@ -496,7 +496,12 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		// refreshContextSize) in StartInference/runTurn, and derived from the
 		// latest complete non-slash agent message's driver-reported tokens.
 		if cs.Agent == nil {
-			cs.Agent = interpolateAgentConfig(s.store, msg.Labels["agent_name"], msg.Payload)
+			// A missing main agent is a hard config error for a fresh session;
+			// the helper logs + panics descriptively rather than persisting a
+			// nil agent into ConvoState.Agent (which would leave setup() to
+			// panic with a less actionable message later, or worse dispatch a
+			// broken sendToDriver with an empty driver).
+			cs.Agent = s.interpolateOrPanicAgentConfig(msg.Labels["agent_name"], msg.Payload, id)
 		}
 		// Apply optional engine/driver overrides from the API request payload.
 		// These override the agent config values when non-empty.
@@ -525,6 +530,27 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 }
 
 // interpolateAgentConfig applies template interpolation to the agent's config fields using the current session data.
+// interpolateOrPanicAgentConfig resolves and interpolates the named agent's
+// config for a freshly created session, treating a missing agent as a hard
+// config error (log.Error + descriptive panic). It is used by initNewSession on
+// the main-agent setup path so a config that no longer defines the agent fails
+// loudly and actionably instead of persisting a nil agent into ConvoState.Agent.
+func (s *AgentSession) interpolateOrPanicAgentConfig(agentName string, payload any, sessionID string) *config.Agent {
+	agent := interpolateAgentConfig(s.store, agentName, payload)
+	if agent == nil {
+		if log := s.log(); log != nil {
+			log.Errorf("[agent] session [%s] agent config not found for agent %q", sessionID, agentName)
+		}
+		panic(fmt.Sprintf("agent config not found for agent %q: cannot start session", agentName))
+	}
+
+	return agent
+}
+
+// interpolateAgentConfig applies template interpolation to the agent's config
+// fields using the current session data. It returns nil when the named agent no
+// longer exists in the current config (GetAgent returns nil), so callers MUST
+// nil-check the result before dereferencing it.
 func interpolateAgentConfig(store AgentStore, agentName string, payload any) *config.Agent {
 	data, _ := dipper.GetMapData(payload, "data")
 	if data == nil {
@@ -533,7 +559,11 @@ func interpolateAgentConfig(store AgentStore, agentName string, payload any) *co
 	user, _ := dipper.GetMapDataStr(payload, "user")
 	text := dipper.MustGetMapDataStr(payload, "text")
 
-	agent := *store.GetAgent(agentName)
+	a := store.GetAgent(agentName)
+	if a == nil {
+		return nil
+	}
+	agent := *a
 
 	envData := map[string]any{
 		"agent_name": agent.Name,

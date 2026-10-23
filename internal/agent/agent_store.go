@@ -222,23 +222,55 @@ func (p *PersistentAgentStore) ReceiveInference(msg *dipper.Message) {
 	s.processAgentResponse(msg)
 }
 
-// GetAgent returns the named agent from the current configuration.
+// GetAgent returns the named agent from the current configuration, or nil when
+// the name does not exist in the current config (or the config/DataSet is not
+// yet available, e.g. before StageServing or during a reload race). Callers
+// MUST nil-check the result before dereferencing it.
+//
+// No locking is used here: the unsynchronized map read is pre-existing and
+// benign for map reads given that config refresh swaps in a fresh *DataSet
+// pointer atomically. The nil-DataSet guard is the only protection needed for
+// the window where GetConfig() has been set but DataSet is nil.
 func (p *PersistentAgentStore) GetAgent(name string) *config.Agent {
-	agent := p.GetConfig().DataSet.Agents[name]
+	if p.GetConfig() == nil || p.GetConfig().DataSet == nil {
+		return nil
+	}
+	agent, ok := p.GetConfig().DataSet.Agents[name]
+	if !ok {
+		return nil
+	}
 
 	return &agent
 }
 
-// GetSystem returns the named system from the current configuration.
+// GetSystem returns the named system from the current configuration, or nil
+// when the name does not exist in the current config. Callers MUST nil-check
+// the result before dereferencing it. See GetAgent for the nil-DataSet guard
+// rationale.
 func (p *PersistentAgentStore) GetSystem(name string) *config.System {
-	system := p.GetConfig().DataSet.Systems[name]
+	if p.GetConfig() == nil || p.GetConfig().DataSet == nil {
+		return nil
+	}
+	system, ok := p.GetConfig().DataSet.Systems[name]
+	if !ok {
+		return nil
+	}
 
 	return &system
 }
 
-// GetWorkflow returns the named workflow from the current configuration.
+// GetWorkflow returns the named workflow from the current configuration, or
+// nil when the name does not exist in the current config. Callers MUST
+// nil-check the result before dereferencing it. See GetAgent for the
+// nil-DataSet guard rationale.
 func (p *PersistentAgentStore) GetWorkflow(name string) *config.Workflow {
-	workflow := p.GetConfig().DataSet.Workflows[name]
+	if p.GetConfig() == nil || p.GetConfig().DataSet == nil {
+		return nil
+	}
+	workflow, ok := p.GetConfig().DataSet.Workflows[name]
+	if !ok {
+		return nil
+	}
 
 	return &workflow
 }
@@ -268,6 +300,18 @@ func (p *PersistentAgentStore) Stop() {
 //
 // The returned ConvoState is ready for runTurn (cs.Agent, cs.TTL populated).
 // If created=true, the state has been persisted. The caller should NOT persist again.
+// resolveOrRecreateConvoState loads or recreates the ConvoState for the given
+// conversation.
+//
+// TOCTOU note: agent resolution performs a first lookup here (the
+// GetAgent(...) guard below) and a second lookup later inside
+// interpolateAgentConfig. A config reload can race between the two and remove
+// the agent, making the second lookup return nil; interpolateAgentConfig then
+// returns nil (rather than a zero-value agent) and the recreate path surfaces
+// ErrAgentNotFound, which is the correct degradation for a config that removed
+// the agent mid-flight. The ErrAgentNotFound branch below is now live thanks to
+// GetAgent returning nil for missing keys (previously it returned a non-nil
+// zero-value agent, making the guard dead code).
 func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName string, agentOverride bool) (*ConvoState, bool, error) {
 	cs := &ConvoState{}
 	cs.load(convoID, p)
@@ -539,6 +583,19 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 
 	s := &AgentSession{}
 	s.setup(subMsg, p, false)
+
+	// Compaction recursion guard: when this sub-agent call IS a compaction
+	// (compaction_id present), the summarizer sub-agent must never re-trigger
+	// compaction itself. The summarizer agent's own config could legitimately
+	// carry a compaction_policy (e.g. a generic summarizer reused as a main
+	// agent elsewhere); letting it run would archive/replace the archived
+	// history it is meant to summarize, and could recurse indefinitely. Disable
+	// compaction on the summarizer session so it summarizes the archive and
+	// nothing more.
+	if compactID != "" && s.Agent != nil {
+		s.Agent.CompactionPolicy = nil
+	}
+
 	// Sub-agents don't use turn locks; load history after setup.
 	s.loadConvoHistory()
 	// Re-derive the compaction baseline from the loaded history.

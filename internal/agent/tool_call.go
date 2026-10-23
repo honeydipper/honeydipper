@@ -65,6 +65,16 @@ func (s *AgentSession) addSystemTool(tools map[string]AgentTool, toolDef config.
 	prefix := "sys_" + toolDef.Name + "__"
 
 	sys := s.store.GetSystem(toolDef.Name)
+	if sys == nil {
+		// The referenced system is missing from the current config (or the
+		// config is not yet fully staged). Skip the tool rather than
+		// registering a broken zero-function entry.
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] system %q not found; tool omitted", toolDef.Name)
+		}
+
+		return
+	}
 	for k, f := range sys.Functions {
 		fname := prefix + k
 		if _, exists := tools[fname]; exists {
@@ -118,14 +128,38 @@ func (s *AgentSession) addWorkflowTool(tools map[string]AgentTool, toolDef confi
 	}
 
 	wf := s.store.GetWorkflow(toolDef.Name)
-	meta := wf.Meta.(map[string]interface{})
+	if wf == nil {
+		// The referenced workflow is missing from the current config. Skip the
+		// tool rather than registering a zero-value entry.
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] workflow %q not found; tool omitted", toolDef.Name)
+		}
+
+		return
+	}
+
 	desc := wf.Description
+	params := map[string]interface{}{}
+
+	// Tolerate a nil or non-map Meta: without it there is no per-tool
+	// description/inputs to derive, so fall back to the workflow's own
+	// Description and register the tool with empty params.
+	meta, ok := wf.Meta.(map[string]interface{})
+	if !ok || meta == nil {
+		tools[fname] = AgentTool{
+			Name:        fname,
+			Description: desc,
+			Params:      params,
+		}
+
+		return
+	}
+
 	if desc == "" {
 		if d, ok := meta["description"]; ok {
 			desc = d.(string)
 		}
 	}
-	params := map[string]interface{}{}
 	inputs := meta["inputs"].([]interface{})
 	for _, v := range inputs {
 		def := v.(map[string]interface{})
@@ -158,6 +192,16 @@ func (s *AgentSession) addAgentTool(tools map[string]AgentTool, toolDef config.A
 	}
 
 	ag := s.store.GetAgent(toolDef.Name)
+	if ag == nil {
+		// The referenced agent is missing from the current config. Skip the
+		// tool rather than silently registering a tool for a nonexistent agent
+		// (which would dispatch a broken ag__ call later).
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] agent %q not found; tool omitted", toolDef.Name)
+		}
+
+		return
+	}
 	desc := ag.Description
 	if desc == "" {
 		desc = "Call the " + toolDef.Name + " agent"
@@ -625,19 +669,40 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 	}
 
 	var data interface{}
+	// status/reason default to the operator-reported labels; a sys_ result whose
+	// system was removed from config between dispatch and result overrides them
+	// with a synthetic failure so the model gets a RoleToolResult failure (the
+	// turn continues) instead of stalling on an unresolvable function.
+	resultStatus := msg.Labels["status"]
+	resultReason := msg.Labels["reason"]
 	c := s.ToolCalls[s.CurrentCall]
 	switch {
 	case strings.HasPrefix(c.FuncName, "sys_"):
 		sysName := c.FuncName[len("sys_"):strings.LastIndex(c.FuncName, "__")]
 		fName := c.FuncName[strings.LastIndex(c.FuncName, "__")+2:]
 		sys := s.store.GetSystem(sysName)
-		f := sys.Functions[fName]
+		if sys == nil {
+			// The system was removed from config after the tool call was
+			// dispatched (e.g. a config reload between dispatch and result).
+			// Do NOT dereference sys: inject a synthetic failure result so the
+			// turn does not stall waiting for a result that can never resolve.
+			if log := s.log(); log != nil {
+				log.Warningf("[agent] session [%s] system %q not found while processing tool result; injecting failure", s.ID, sysName)
+			}
+			resultStatus = "failure"
+			resultReason = fmt.Sprintf("system %q no longer exists in config", sysName)
+			data = map[string]interface{}{
+				"error": resultReason,
+			}
+		} else {
+			f := sys.Functions[fName]
 
-		data = config.ExportFunctionContext(&f, map[string]interface{}{
-			"data":   msg.Payload,
-			"ctx":    c.Params,
-			"labels": msg.Labels,
-		}, s.store.GetConfig())
+			data = config.ExportFunctionContext(&f, map[string]interface{}{
+				"data":   msg.Payload,
+				"ctx":    c.Params,
+				"labels": msg.Labels,
+			}, s.store.GetConfig())
+		}
 
 	case strings.HasPrefix(c.FuncName, "wf__") || c.FuncName == "hd_load_skill":
 		data, _ = dipper.GetMapData(msg.Payload, "data.output")
@@ -654,8 +719,8 @@ func (s *AgentSession) processToolResult(msg *dipper.Message) {
 	}
 
 	result := map[string]interface{}{
-		"status":    msg.Labels["status"],
-		"reason":    msg.Labels["reason"],
+		"status":    resultStatus,
+		"reason":    resultReason,
 		"data":      data,
 		"func_name": c.FuncName,
 	}

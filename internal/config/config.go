@@ -243,6 +243,39 @@ func (c *Config) RollBack() {
 
 func (c *Config) assemble() {
 	c.Staged, c.Loaded = c.Loaded[c.InitRepo.Key()].assemble(&(DataSet{}), map[RepoKey]*Repo{})
+	// Emit a load/validate-time warning for compaction policies whose
+	// summarization_agent does not match any configured agents key. This would
+	// have flagged a typo like `campactor` vs `name: compactor` at load time
+	// instead of surfacing later as a confusing empty-agent compaction failure.
+	for _, w := range ValidateAgentCompactionPolicies(c.Staged) {
+		dipper.Logger.Warningf("[config] %s", w)
+	}
+}
+
+// ValidateAgentCompactionPolicies returns a warning message for every agent
+// whose compaction_policy.summarization_agent references an agents key that
+// does not exist in the assembled DataSet. It runs on every config load/refresh
+// (via assemble) so misconfigured summarizers are surfaced early, before they
+// cause a compaction that silently fails. A missing summarization_agent (empty
+// string) is intentionally NOT flagged: it simply disables compaction.
+func ValidateAgentCompactionPolicies(ds *DataSet) []string {
+	if ds == nil || ds.Agents == nil {
+		return nil
+	}
+	warnings := []string{}
+	for name, ag := range ds.Agents {
+		if ag.CompactionPolicy == nil || ag.CompactionPolicy.SummarizationAgent == "" {
+			continue
+		}
+		if _, ok := ds.Agents[ag.CompactionPolicy.SummarizationAgent]; !ok {
+			warnings = append(warnings, fmt.Sprintf(
+				"agent %q compaction_policy.summarization_agent %q does not match any agents key; compaction will fail at runtime",
+				name, ag.CompactionPolicy.SummarizationAgent,
+			))
+		}
+	}
+
+	return warnings
 }
 
 // AdvanceStage processes the config and advances the config into the new stage.

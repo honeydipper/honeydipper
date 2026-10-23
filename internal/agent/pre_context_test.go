@@ -25,6 +25,10 @@ import (
 type FakeStore struct {
 	cache   map[string][]byte
 	lastMsg dipper.Message
+	// cfg optionally backs GetAgent/GetSystem/GetWorkflow so a test can express
+	// "found" vs "missing" config entities. When cfg (or the relevant map) is
+	// nil, the getters return nil (missing semantics), matching the real store.
+	cfg *config.Config
 }
 
 func NewFakeStore() *FakeStore {
@@ -95,14 +99,47 @@ func (f *FakeStore) StartTurn(convoID, text, user, engine, driver, agent string,
 func (f *FakeStore) StartNewConvo(agentName, text, user, engine, driver string) string {
 	return ""
 }
-func (f *FakeStore) GetAgent(name string) *config.Agent       { return &config.Agent{} }
-func (f *FakeStore) GetSystem(name string) *config.System     { return &config.System{} }
-func (f *FakeStore) GetWorkflow(name string) *config.Workflow { return &config.Workflow{} }
-func (f *FakeStore) EmitMessage(msg dipper.Message)           { f.lastMsg = msg }
-func (f *FakeStore) GetConfig() *config.Config                { return &config.Config{} }
-func (f *FakeStore) Stop()                                    {}
-func (f *FakeStore) Wait()                                    {}
-func (f *FakeStore) GetLogger() *logging.Logger               { return nil }
+
+func (f *FakeStore) GetAgent(name string) *config.Agent {
+	if f.cfg == nil || f.cfg.DataSet == nil || f.cfg.DataSet.Agents == nil {
+		return nil
+	}
+	a, ok := f.cfg.DataSet.Agents[name]
+	if !ok {
+		return nil
+	}
+
+	return &a
+}
+
+func (f *FakeStore) GetSystem(name string) *config.System {
+	if f.cfg == nil || f.cfg.DataSet == nil || f.cfg.DataSet.Systems == nil {
+		return nil
+	}
+	s, ok := f.cfg.DataSet.Systems[name]
+	if !ok {
+		return nil
+	}
+
+	return &s
+}
+
+func (f *FakeStore) GetWorkflow(name string) *config.Workflow {
+	if f.cfg == nil || f.cfg.DataSet == nil || f.cfg.DataSet.Workflows == nil {
+		return nil
+	}
+	w, ok := f.cfg.DataSet.Workflows[name]
+	if !ok {
+		return nil
+	}
+
+	return &w
+}
+func (f *FakeStore) EmitMessage(msg dipper.Message) { f.lastMsg = msg }
+func (f *FakeStore) GetConfig() *config.Config      { return &config.Config{} }
+func (f *FakeStore) Stop()                          {}
+func (f *FakeStore) Wait()                          {}
+func (f *FakeStore) GetLogger() *logging.Logger     { return nil }
 
 func (f *FakeStore) GetUIURL() string { return "" }
 func TestHandleLoadSkillToolCall_Success(t *testing.T) {

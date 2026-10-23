@@ -28,6 +28,12 @@ import (
 type mockAgentStore struct {
 	mu    sync.Mutex
 	calls []string
+
+	// Optional config maps backing GetAgent/GetSystem/GetWorkflow so tests can
+	// express found vs missing entities (nil maps => missing).
+	agents    map[string]config.Agent
+	systems   map[string]config.System
+	workflows map[string]config.Workflow
 }
 
 func (m *mockAgentStore) record(s string) {
@@ -71,14 +77,50 @@ func (m *mockAgentStore) StartNewConvo(_, _, _, _, _ string) string {
 func (m *mockAgentStore) Stop() {}
 func (m *mockAgentStore) Wait() {}
 
-func (m *mockAgentStore) GetAgent(_ string) *config.Agent       { return &config.Agent{} }
-func (m *mockAgentStore) GetSystem(_ string) *config.System     { return &config.System{} }
-func (m *mockAgentStore) GetWorkflow(_ string) *config.Workflow { return &config.Workflow{} }
-func (m *mockAgentStore) EmitMessage(_ dipper.Message)          {}
-func (m *mockAgentStore) GetConfig() *config.Config             { return &config.Config{} }
-func (m *mockAgentStore) GetLogger() *logging.Logger            { return nil }
-func (m *mockAgentStore) GetUIURL() string                      { return "" }
-func (m *mockAgentStore) GetName() string                       { return "mock-agent-store" }
+// GetAgent/GetSystem/GetWorkflow return nil (missing semantics) by default so
+// this mock expresses "entity not found", matching the real store's nil-return
+// behavior. Tests that need a found entity can set the corresponding field on
+// the mock and have the getter consult it.
+func (m *mockAgentStore) GetAgent(name string) *config.Agent {
+	if m.agents == nil {
+		return nil
+	}
+	a, ok := m.agents[name]
+	if !ok {
+		return nil
+	}
+
+	return &a
+}
+
+func (m *mockAgentStore) GetSystem(name string) *config.System {
+	if m.systems == nil {
+		return nil
+	}
+	s, ok := m.systems[name]
+	if !ok {
+		return nil
+	}
+
+	return &s
+}
+
+func (m *mockAgentStore) GetWorkflow(name string) *config.Workflow {
+	if m.workflows == nil {
+		return nil
+	}
+	w, ok := m.workflows[name]
+	if !ok {
+		return nil
+	}
+
+	return &w
+}
+func (m *mockAgentStore) EmitMessage(_ dipper.Message) {}
+func (m *mockAgentStore) GetConfig() *config.Config    { return &config.Config{} }
+func (m *mockAgentStore) GetLogger() *logging.Logger   { return nil }
+func (m *mockAgentStore) GetUIURL() string             { return "" }
+func (m *mockAgentStore) GetName() string              { return "mock-agent-store" }
 
 func (m *mockAgentStore) Call(_, _ string, _ interface{}, _ ...string) ([]byte, error) {
 	return nil, nil
@@ -257,4 +299,38 @@ func TestHandleAgentPoll(t *testing.T) {
 	}
 	handleAgentPoll(nil, msg)
 	assert.Eventually(t, func() bool { return mock.hasCall("poll") }, 200*time.Millisecond, 5*time.Millisecond)
+}
+
+// ---------------------------------------------------------------------------
+// mockAgentStore nil semantics
+// ---------------------------------------------------------------------------
+
+// TestMockAgentStore_GetAgent_NilOnMissing verifies the mock expresses the real
+// store's nil-return semantics for missing entities (and returns the entity
+// when the backing map contains it).
+func TestMockAgentStore_GetAgent_NilOnMissing(t *testing.T) {
+	m := &mockAgentStore{}
+	assert.Nil(t, m.GetAgent("anything"), "missing agent must return nil by default")
+
+	m.agents = map[string]config.Agent{"bot": {Name: "bot"}}
+	assert.NotNil(t, m.GetAgent("bot"), "found agent must be returned")
+	assert.Nil(t, m.GetAgent("missing"), "missing agent must return nil even with a backing map")
+}
+
+func TestMockAgentStore_GetSystem_NilOnMissing(t *testing.T) {
+	m := &mockAgentStore{}
+	assert.Nil(t, m.GetSystem("anything"))
+
+	m.systems = map[string]config.System{"s1": {}}
+	assert.NotNil(t, m.GetSystem("s1"))
+	assert.Nil(t, m.GetSystem("missing"))
+}
+
+func TestMockAgentStore_GetWorkflow_NilOnMissing(t *testing.T) {
+	m := &mockAgentStore{}
+	assert.Nil(t, m.GetWorkflow("anything"))
+
+	m.workflows = map[string]config.Workflow{"wf1": {}}
+	assert.NotNil(t, m.GetWorkflow("wf1"))
+	assert.Nil(t, m.GetWorkflow("missing"))
 }

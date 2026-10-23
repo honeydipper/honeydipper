@@ -222,6 +222,18 @@ func slashRefresh(s *AgentSession, _ string) bool {
 	// Re-interpolate from the original agent config using the current session
 	// context so changed config values are picked up.
 	refreshed := interpolateAgentConfig(s.store, agentName, s.CurrentMsg.Payload)
+	if refreshed == nil {
+		// The agent was removed from config between session setup and this
+		// slash command (e.g. a reload). Reply gracefully and DO NOT
+		// setConvoAgent(nil): persisting a nil agent into ConvoState.Agent
+		// would break subsequent turns / sends.
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] /refresh: agent %q no longer found in config", s.ID, agentName)
+		}
+		s.reply("Cannot refresh: agent config no longer found")
+
+		return true
+	}
 	s.setConvoAgent(refreshed)
 
 	s.reply(fmt.Sprintf("Agent config refreshed for %q. The system prompt has been rebuilt.", agentName))
@@ -357,6 +369,28 @@ func slashCompact(s *AgentSession, _ string) bool {
 
 		return true
 	}
+	cp := s.Agent.CompactionPolicy
+
+	// Surface a specific explanation when the configured summarizer is missing
+	// or unusable, symmetric with the automatic path's Warning log + RoleSystem
+	// placeholder. Checking here (instead of relying on compactHistory's
+	// internal bail) lets the reply name the summarizer explicitly.
+	if cp.SummarizationAgent == "" {
+		s.reply("Compaction could not run: no summarization agent is configured.")
+
+		return true
+	}
+	summAgent := s.store.GetAgent(cp.SummarizationAgent)
+	if summAgent == nil {
+		s.reply(fmt.Sprintf("Compaction could not run: summarization agent %q is not defined in the configuration.", cp.SummarizationAgent))
+
+		return true
+	}
+	if summAgent.Driver == "" || summAgent.Engine == "" {
+		s.reply(fmt.Sprintf("Compaction could not run: summarization agent %q has no driver/engine configured.", cp.SummarizationAgent))
+
+		return true
+	}
 
 	// Force compaction regardless of threshold. Mark the session as a
 	// slash-initiated compaction BEFORE dispatching so handleCompactionResult
@@ -369,16 +403,16 @@ func slashCompact(s *AgentSession, _ string) bool {
 	// sub-agent; in that case we return immediately to the async compaction
 	// flow — the confirmation is posted by handleCompactionResult after the
 	// summarizer completes (posting it here would be archived away). If it
-	// could not run (no summarization agent, or history too short) we clear the
-	// flag and reply with an explanation; either way we never call sendToDriver
-	// or resume the model conversation.
+	// could not run (history too short) we clear the flag and reply with an
+	// explanation; either way we never call sendToDriver or resume the model
+	// conversation.
 	if s.compactHistory() {
 		return true
 	}
 
 	// Compaction could not be dispatched; clear the flag and explain.
 	s.SlashInitiatedCompaction = false
-	s.reply("Compaction could not run: no summarization agent is configured, or the history is too short to compact.")
+	s.reply("Compaction could not run: the history is too short to compact.")
 
 	return true
 }
