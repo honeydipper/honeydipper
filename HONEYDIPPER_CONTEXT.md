@@ -82,7 +82,7 @@ type DataSet struct {
 - **Agent**: `{Driver, Engine, SystemPrompt, InferencePrompt, ShouldEmitThoughts, ShouldStream, MaxHistoryLen, CompactionPolicy, Tools, ModelData}`
 - **RepoInfo**: `{Repo (URL/path), Branch, Path, InitFile, KeyFile (SSH), TokenSource (github), Username/PassEnv}`
 
-**Config-time validation**: on every config load/refresh, `assemble()` runs `ValidateAgentCompactionPolicies`, which warns when an agent's `compaction_policy.summarization_agent` does not match any configured `agents` key (e.g. a `campactor`/`compactor` typo). This surfaces misconfigured summarizers at load time instead of as a confusing empty-agent compaction failure later.
+**Config-time validation**: `assemble()` runs `ValidateAgentCompactionPolicies` on every config load/refresh, warning when an agent's `compaction_policy.summarization_agent` matches no configured `agents` key (e.g. a `campactor`/`compactor` typo). See the agent section for the full behavior.
 
 ### 4.3 Config Lifecycle (5 Stages)
 
