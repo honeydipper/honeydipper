@@ -338,13 +338,21 @@ func (s *AgentSession) setup(msg *dipper.Message, store AgentStore, locking bool
 		s.initNewSession(id, msg, store)
 	}
 
-	// Ensure Agent is set. For restored sessions, load from ConvoState.
+	// Ensure Agent is set. For restored sessions, load from ConvoState. When
+	// initNewSession recorded a hard config error (missing main agent) it leaves
+	// Agent nil and sets ErrorReason; the caller observes ErrorReason and skips
+	// the turn, so we must NOT panic here (a panic this early would unwind before
+	// the runTurn/StartInference deferred handlers are registered and lose the
+	// failure record entirely). The panic below remains for restored/corrupt
+	// sessions where a nil agent is genuinely unrecoverable.
 	if s.Agent == nil {
-		cs := &ConvoState{}
-		cs.load(s.ConvoID, store)
-		s.Agent = cs.Agent
-		if s.Agent == nil {
-			panic(fmt.Sprintf("agent config not found for session %s: ConvoState.Agent=nil", s.ID))
+		if s.ErrorReason == "" {
+			cs := &ConvoState{}
+			cs.load(s.ConvoID, store)
+			s.Agent = cs.Agent
+			if s.Agent == nil {
+				panic(fmt.Sprintf("agent config not found for session %s: ConvoState.Agent=nil", s.ID))
+			}
 		}
 	}
 
@@ -428,6 +436,22 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 	if len(firstTurn) > 200 {
 		firstTurn = firstTurn[:200]
 	}
+	// Resolve the main agent config BEFORE the locked ConvoState update so a
+	// missing agent is recorded as a failed session rather than panicking inside
+	// the lock (which would unwind before registerSession/persist and lose the
+	// failure record). Only a fresh conversation (no persisted cs.Agent) needs
+	// interpolation: an existing conversation keeps its persisted agent, so we
+	// pre-check before resolving to avoid interpolating payloads that may lack a
+	// "text" field (interpolateAgentConfig requires it via MustGetMapDataStr) on
+	// a convo that already has an agent.
+	var agentCfg *config.Agent
+	{
+		cs := &ConvoState{}
+		cs.load(s.ConvoID, s.store)
+		if cs.Agent == nil {
+			agentCfg = interpolateAgentConfig(s.store, msg.Labels["agent_name"], msg.Payload)
+		}
+	}
 	lockedConvoStateUpdate(s.ConvoID, s.store, func(cs *ConvoState) {
 		if cs.TTL == "" {
 			cs.TTL = ConvoStreamTTL
@@ -437,42 +461,7 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 			cs.FirstTurn = firstTurn
 		}
 		forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
-		if len(s.history) > 0 && forgetHistory {
-			// forget_history archives and resets the conversation history, so the
-			// persisted compaction boundary marker and the compaction baseline
-			// (PrevContextSize) must be cleared too. Otherwise a stale marker from
-			// a prior compaction would be re-seeded by later fresh sessions and
-			// suppress baseline measurement on the reset (shorter) history, and a
-			// stale PrevContextSize would keep the API-exposed metric diverging
-			// from the actual (reset) compaction baseline until the first new
-			// complete agent message arrives (the change-guard in
-			// refreshContextSize masks the reset because the fresh session starts
-			// at PrevContextSize 0 and the marker-only history scan also yields 0).
-			cs.LastCompactionHistoryLen = 0
-			cs.PrevContextSize = 0
-			archivedKey := ""
-			if ak, err := cs.archiveConvo(store); err == nil {
-				archivedKey = ak
-			} else if log := store.GetLogger(); log != nil {
-				// Harden the forget_history reset: an archival failure must not
-				// panic the whole turn (the previous dipper.Must would). The user
-				// explicitly asked to forget history, so we still proceed with the
-				// reset and record the failure so the operator can investigate.
-				log.Warningf("[agent] session [%s] forget_history: archival failed, continuing reset: %v", id, err)
-			}
-			s.history = nil
-			dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
-				"key": ConvoHistoryKeyPrefix + s.ConvoID,
-			}))
-			markerMsg := AgentMessage{Role: RoleSystem, Content: fmt.Sprintf("<!-- archived_convo: %s -->", archivedKey)}
-			s.history = append(s.history, markerMsg)
-			convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
-			dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
-				"key":   ConvoHistoryKeyPrefix + s.ConvoID,
-				"value": string(dipper.SerializeContent(markerMsg)),
-				"ttl":   float64(convoTTL),
-			}))
-		}
+		s.resetConvoHistoryForForget(cs, store, id, forgetHistory)
 		// Seed the compaction boundary marker across user turns. Every real user
 		// message creates a brand-new AgentSession (labelID == ""), which would
 		// otherwise default CompactionHistoryIdx to 0 and, after a compaction
@@ -495,19 +484,7 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 		// instead refreshed under the turn lock after a fresh history load (see
 		// refreshContextSize) in StartInference/runTurn, and derived from the
 		// latest complete non-slash agent message's driver-reported tokens.
-		if cs.Agent == nil {
-			cs.Agent = interpolateAgentConfig(s.store, msg.Labels["agent_name"], msg.Payload)
-		}
-		// Apply optional engine/driver overrides from the API request payload.
-		// These override the agent config values when non-empty.
-		if engine, ok := dipper.GetMapDataStr(msg.Payload, "engine"); ok && engine != "" {
-			cs.Agent.Engine = engine
-		}
-		if driver, ok := dipper.GetMapDataStr(msg.Payload, "driver"); ok && driver != "" {
-			cs.Agent.Driver = driver
-		}
-		s.Agent = cs.Agent
-		cs.registerSession(s.ID, agentName, s.Type, true)
+		s.applyConvoAgent(cs, agentCfg, msg, agentName, id)
 	})
 	// Also register in the unified convo state when it spans multiple convo IDs
 	// (i.e. sub-agent sessions whose convo_id differs from unified_convo_id).
@@ -524,7 +501,88 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 	}
 }
 
-// interpolateAgentConfig applies template interpolation to the agent's config fields using the current session data.
+// resetConvoHistoryForForget implements the forget_history archival + reset
+// inside initNewSession's locked ConvoState update. forget_history archives and
+// resets the conversation history, so the persisted compaction boundary marker
+// and the compaction baseline (PrevContextSize) must be cleared too. Otherwise a
+// stale marker from a prior compaction would be re-seeded by later fresh
+// sessions and suppress baseline measurement on the reset (shorter) history,
+// and a stale PrevContextSize would keep the API-exposed metric diverging from
+// the actual (reset) compaction baseline until the first new complete agent
+// message arrives. An archival failure is tolerated (logged, never a panic): the
+// user explicitly asked to forget history, so we still proceed with the reset.
+func (s *AgentSession) resetConvoHistoryForForget(cs *ConvoState, store AgentStore, id string, forgetHistory bool) {
+	if !forgetHistory || len(s.history) == 0 {
+		return
+	}
+	cs.LastCompactionHistoryLen = 0
+	cs.PrevContextSize = 0
+	archivedKey := ""
+	if ak, err := cs.archiveConvo(store); err == nil {
+		archivedKey = ak
+	} else if log := store.GetLogger(); log != nil {
+		log.Warningf("[agent] session [%s] forget_history: archival failed, continuing reset: %v", id, err)
+	}
+	s.history = nil
+	dipper.Must(s.store.Call("cache", "del", map[string]interface{}{
+		"key": ConvoHistoryKeyPrefix + s.ConvoID,
+	}))
+	markerMsg := AgentMessage{Role: RoleSystem, Content: fmt.Sprintf("<!-- archived_convo: %s -->", archivedKey)}
+	s.history = append(s.history, markerMsg)
+	convoTTL, _ := time.ParseDuration(ConvoStreamTTL)
+	dipper.Must(s.store.Call("cache", "rpush", map[string]interface{}{
+		"key":   ConvoHistoryKeyPrefix + s.ConvoID,
+		"value": string(dipper.SerializeContent(markerMsg)),
+		"ttl":   float64(convoTTL),
+	}))
+}
+
+// applyConvoAgent resolves and applies the main agent config to a fresh
+// conversation's ConvoState inside initNewSession's locked update, or records a
+// failed session when the agent is missing (see below). agentCfg was resolved
+// BEFORE the lock; an existing ConvoState keeps its persisted agent, and only a
+// fresh conversation (cs.Agent == nil) adopts agentCfg.
+//
+// A missing main agent is a hard config error for a fresh session. It is
+// recorded on the session (ErrorReason) instead of panicking inside the lock:
+// the session is still registered and persisted as failed below so the
+// UI/workflow observes the failure, and the caller (runTurn/StartInference/
+// StartAgentCall) skips the turn. Engine/driver overrides from the API request
+// payload are applied when an agent config is present.
+func (s *AgentSession) applyConvoAgent(cs *ConvoState, agentCfg *config.Agent, msg *dipper.Message, agentName string, id string) {
+	if cs.Agent == nil {
+		if agentCfg == nil {
+			s.ErrorReason = fmt.Sprintf("agent config not found: %s", agentName)
+			if log := s.log(); log != nil {
+				log.Errorf("[agent] session [%s] %s", id, s.ErrorReason)
+			}
+		} else {
+			cs.Agent = agentCfg
+		}
+	}
+	if cs.Agent != nil {
+		// Apply optional engine/driver overrides from the API request payload.
+		// These override the agent config values when non-empty.
+		if engine, ok := dipper.GetMapDataStr(msg.Payload, "engine"); ok && engine != "" {
+			cs.Agent.Engine = engine
+		}
+		if driver, ok := dipper.GetMapDataStr(msg.Payload, "driver"); ok && driver != "" {
+			cs.Agent.Driver = driver
+		}
+	}
+	s.Agent = cs.Agent
+	cs.registerSession(s.ID, agentName, s.Type, true)
+	if s.ErrorReason != "" {
+		// Mark the just-registered session as failed in ConvoState so the UI
+		// shows a failed conversation (not a hung active one).
+		cs.updateSessionStatus(s.ID, ConvoSessionStatusFailed, s.ErrorReason, 0, 0, 0)
+	}
+}
+
+// interpolateAgentConfig applies template interpolation to the agent's config
+// fields using the current session data. It returns nil when the named agent no
+// longer exists in the current config (GetAgent returns nil), so callers MUST
+// nil-check the result before dereferencing it.
 func interpolateAgentConfig(store AgentStore, agentName string, payload any) *config.Agent {
 	data, _ := dipper.GetMapData(payload, "data")
 	if data == nil {
@@ -533,7 +591,11 @@ func interpolateAgentConfig(store AgentStore, agentName string, payload any) *co
 	user, _ := dipper.GetMapDataStr(payload, "user")
 	text := dipper.MustGetMapDataStr(payload, "text")
 
-	agent := *store.GetAgent(agentName)
+	a := store.GetAgent(agentName)
+	if a == nil {
+		return nil
+	}
+	agent := *a
 
 	envData := map[string]any{
 		"agent_name": agent.Name,

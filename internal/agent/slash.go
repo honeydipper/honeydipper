@@ -222,6 +222,18 @@ func slashRefresh(s *AgentSession, _ string) bool {
 	// Re-interpolate from the original agent config using the current session
 	// context so changed config values are picked up.
 	refreshed := interpolateAgentConfig(s.store, agentName, s.CurrentMsg.Payload)
+	if refreshed == nil {
+		// The agent was removed from config between session setup and this
+		// slash command (e.g. a reload). Reply gracefully and DO NOT
+		// setConvoAgent(nil): persisting a nil agent into ConvoState.Agent
+		// would break subsequent turns / sends.
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] /refresh: agent %q no longer found in config", s.ID, agentName)
+		}
+		s.reply("Cannot refresh: agent config no longer found")
+
+		return true
+	}
 	s.setConvoAgent(refreshed)
 
 	s.reply(fmt.Sprintf("Agent config refreshed for %q. The system prompt has been rebuilt.", agentName))
@@ -357,6 +369,17 @@ func slashCompact(s *AgentSession, _ string) bool {
 
 		return true
 	}
+	cp := s.Agent.CompactionPolicy
+
+	// Surface a specific explanation when the configured summarizer is missing
+	// or unusable, symmetric with the automatic path's Warning log + RoleSystem
+	// placeholder. The shared helper keeps this in lockstep with
+	// compactHistory's own validation.
+	if reason := summarizerUnusableReason(s.store, cp); reason != "" {
+		s.reply("Compaction could not run: " + reason)
+
+		return true
+	}
 
 	// Force compaction regardless of threshold. Mark the session as a
 	// slash-initiated compaction BEFORE dispatching so handleCompactionResult
@@ -369,16 +392,21 @@ func slashCompact(s *AgentSession, _ string) bool {
 	// sub-agent; in that case we return immediately to the async compaction
 	// flow — the confirmation is posted by handleCompactionResult after the
 	// summarizer completes (posting it here would be archived away). If it
-	// could not run (no summarization agent, or history too short) we clear the
-	// flag and reply with an explanation; either way we never call sendToDriver
-	// or resume the model conversation.
+	// could not run, clear the flag and reply with the real reason: re-check
+	// the summarizer so a narrow reload race between the pre-check above and
+	// compactHistory's own lookup produces an accurate explanation instead of a
+	// misleading "history too short" reply. Otherwise the history was genuinely
+	// too short and we say so.
 	if s.compactHistory() {
 		return true
 	}
-
-	// Compaction could not be dispatched; clear the flag and explain.
 	s.SlashInitiatedCompaction = false
-	s.reply("Compaction could not run: no summarization agent is configured, or the history is too short to compact.")
+	if reason := summarizerUnusableReason(s.store, cp); reason != "" {
+		s.reply("Compaction could not run: " + reason)
+
+		return true
+	}
+	s.reply("Compaction could not run: the history is too short to compact.")
 
 	return true
 }

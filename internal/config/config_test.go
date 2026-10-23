@@ -13,8 +13,10 @@ import (
 	"regexp"
 	"testing"
 
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigGetDriverData(t *testing.T) {
@@ -345,4 +347,58 @@ func TestEvaluateRemoteSourcePolicy(t *testing.T) {
 		assert.Equal(t, expectedAllowed, allowed, "should "+msg)
 		assert.Equal(t, expectedReason, reason, "should "+msg)
 	}
+}
+
+func TestValidateAgentCompactionPolicies_WarnsOnMissingSummarizer(t *testing.T) {
+	ds := &DataSet{
+		Agents: map[string]Agent{
+			// The user's typo scenario: policy references "compactor" but the
+			// agents key is "campactor".
+			"main": {Name: "main", CompactionPolicy: &agentpkg.CompactionPolicy{
+				SummarizationAgent: "compactor",
+			}},
+			"campactor": {Name: "campactor"},
+			"fine": {Name: "fine", CompactionPolicy: &agentpkg.CompactionPolicy{
+				SummarizationAgent: "campactor",
+			}},
+		},
+	}
+
+	warnings := ValidateAgentCompactionPolicies(ds)
+	require.Len(t, warnings, 1, "only the mismatched summarization_agent should be flagged")
+	assert.Contains(t, warnings[0], "main")
+	assert.Contains(t, warnings[0], "compactor")
+	assert.Contains(t, warnings[0], "matches no agents key")
+	assert.Contains(t, warnings[0], "skipped")
+}
+
+func TestValidateAgentCompactionPolicies_NoWarningsWhenMatch(t *testing.T) {
+	ds := &DataSet{
+		Agents: map[string]Agent{
+			"main": {Name: "main", CompactionPolicy: &agentpkg.CompactionPolicy{
+				SummarizationAgent: "summ",
+			}},
+			"summ": {Name: "summ"},
+		},
+	}
+
+	warnings := ValidateAgentCompactionPolicies(ds)
+	assert.Empty(t, warnings, "a matching summarization_agent must not be flagged")
+}
+
+func TestValidateAgentCompactionPolicies_NilDataSet(t *testing.T) {
+	assert.Nil(t, ValidateAgentCompactionPolicies(nil))
+	assert.Nil(t, ValidateAgentCompactionPolicies(&DataSet{}))
+	assert.Nil(t, ValidateAgentCompactionPolicies(&DataSet{Agents: nil}))
+}
+
+func TestValidateAgentCompactionPolicies_EmptyPolicyNoWarning(t *testing.T) {
+	ds := &DataSet{
+		Agents: map[string]Agent{
+			"no-policy": {Name: "no-policy"},
+			"empty-sum": {Name: "empty-sum", CompactionPolicy: &agentpkg.CompactionPolicy{}},
+		},
+	}
+
+	assert.Empty(t, ValidateAgentCompactionPolicies(ds), "no summarization_agent must not be flagged")
 }
