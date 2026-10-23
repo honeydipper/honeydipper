@@ -1,3 +1,10 @@
+# [4.0.0-dev.9](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.8...v4.0.0-dev.9) (2026-10-23)
+
+
+### Bug Fixes
+
+* **agent:** nil-safe store getters and graceful compaction degradation (Phase 1) ([#842](https://github.com/honeydipper/honeydipper/issues/842)) ([0a129c0](https://github.com/honeydipper/honeydipper/commit/0a129c0070801fe4df6310e32aedf101fb83fce4))
+
 # [4.0.0-dev.8](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.7...v4.0.0-dev.8) (2026-10-21)
 
 
