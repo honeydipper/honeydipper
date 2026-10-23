@@ -14,7 +14,9 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -686,4 +688,122 @@ func TestBuildPullOptions(t *testing.T) {
 		opts := BuildPullOptions(repoInfo)
 		assert.Nil(t, opts.Auth, "No auth should be configured when no conditions are met")
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: Agent.Name is populated from the Agents map key during assembly
+// ---------------------------------------------------------------------------
+
+// TestMergeDataSet_AgentNameFromMapKey verifies an agent config WITHOUT a
+// `name:` field resolves Name == map key after assembly.
+func TestMergeDataSet_AgentNameFromMapKey(t *testing.T) {
+	ds := &DataSet{}
+	require.NoError(t, mergeDataSet(ds, DataSet{
+		Agents: map[string]Agent{
+			"bot": {Driver: "openai", Engine: "gpt-4"},
+		},
+	}))
+
+	agent, ok := ds.Agents["bot"]
+	require.True(t, ok, "agent must be present under its map key")
+	assert.Equal(t, "bot", agent.Name, "Name must be populated from the map key when no explicit name is set")
+	assert.Equal(t, "openai", agent.Driver)
+	assert.Equal(t, "gpt-4", agent.Engine)
+}
+
+// TestMergeDataSet_AgentExplicitNameRespected verifies an agent WITH an
+// explicit `name:` keeps the explicit value and the map key is NOT
+// overwritten or re-keyed.
+func TestMergeDataSet_AgentExplicitNameRespected(t *testing.T) {
+	ds := &DataSet{}
+	require.NoError(t, mergeDataSet(ds, DataSet{
+		Agents: map[string]Agent{
+			"campactor": {Name: "compactor", Driver: "openai"},
+		},
+	}))
+
+	agent, ok := ds.Agents["campactor"]
+	require.True(t, ok, "agent must remain under its map key")
+	assert.Equal(t, "compactor", agent.Name, "explicit name must be preserved when it differs from the map key")
+	_, rekeyed := ds.Agents["compactor"]
+	assert.False(t, rekeyed, "agent must NOT be re-keyed to its name field")
+}
+
+// TestMergeDataSet_AgentNameAcrossRepos verifies that merging multiple repos
+// preserves both per-repo keys and explicit names.
+func TestMergeDataSet_AgentNameAcrossRepos(t *testing.T) {
+	ds := &DataSet{}
+	// Repo 1: one key-derived name and one explicit name.
+	require.NoError(t, mergeDataSet(ds, DataSet{
+		Agents: map[string]Agent{
+			"bot":       {Driver: "openai"},
+			"campactor": {Name: "compactor", Driver: "openai"},
+		},
+	}))
+	// Repo 2: overlays with additional agents, mixing both behaviors.
+	require.NoError(t, mergeDataSet(ds, DataSet{
+		Agents: map[string]Agent{
+			"summ":   {Driver: "openai", Engine: "gpt-4"},
+			"helper": {Name: "explicit-helper", Driver: "anthropic"},
+		},
+	}))
+
+	assert.Equal(t, "bot", ds.Agents["bot"].Name, "repo 1 key-derived name must survive the merge")
+	assert.Equal(t, "compactor", ds.Agents["campactor"].Name, "repo 1 explicit name must survive the merge")
+	assert.Equal(t, "summ", ds.Agents["summ"].Name, "repo 2 key-derived name must be populated")
+	assert.Equal(t, "explicit-helper", ds.Agents["helper"].Name, "repo 2 explicit name must be preserved")
+}
+
+// TestMergeDataSet_AgentOverlayKeepsExplicitName verifies that an overlay repo
+// defining the same agent key WITHOUT a name does not clobber an explicit
+// `name:` already present for that key, while the other fields still overlay.
+func TestMergeDataSet_AgentOverlayKeepsExplicitName(t *testing.T) {
+	ds := &DataSet{}
+	require.NoError(t, mergeDataSet(ds, DataSet{
+		Agents: map[string]Agent{
+			"campactor": {Name: "compactor", Driver: "openai", Engine: "gpt-4"},
+		},
+	}))
+	// Overlay the same key with no name, only overriding the driver.
+	require.NoError(t, mergeDataSet(ds, DataSet{
+		Agents: map[string]Agent{
+			"campactor": {Driver: "gemini"},
+		},
+	}))
+
+	assert.Equal(t, "compactor", ds.Agents["campactor"].Name, "explicit name must survive a nameless overlay")
+	assert.Equal(t, "gemini", ds.Agents["campactor"].Driver, "non-name fields still overlay")
+	assert.Equal(t, "gpt-4", ds.Agents["campactor"].Engine, "non-overlaid fields are preserved")
+}
+
+// TestMergeDataSet_AgentNameAndCompactionValidation verifies the assembled
+// campactor/compactor scenario behaves sensibly with the Phase 1 config-time
+// validation: the validation stays key-based (using the map key, not the Name
+// field), so Name population does not change its behavior.
+func TestMergeDataSet_AgentNameAndCompactionValidation(t *testing.T) {
+	ds := &DataSet{}
+	require.NoError(t, mergeDataSet(ds, DataSet{
+		Agents: map[string]Agent{
+			"main": {Name: "main", CompactionPolicy: &agentpkg.CompactionPolicy{
+				SummarizationAgent: "campactor",
+			}},
+			"campactor": {Name: "compactor", Driver: "openai", Engine: "gpt-4"},
+		},
+	}))
+
+	// The summarizer resolves with its explicit name after assembly.
+	assert.Equal(t, "compactor", ds.Agents["campactor"].Name)
+
+	// The summarization_agent references the map key, which exists, so no
+	// warning is emitted.
+	assert.Empty(t, ValidateAgentCompactionPolicies(ds), "a policy matching the agents key must not be flagged")
+
+	// A policy referencing the Name (not the key) matches no agents key and is
+	// flagged — validation remains key-based even after Name population.
+	ds.Agents["main"] = Agent{Name: "main", CompactionPolicy: &agentpkg.CompactionPolicy{
+		SummarizationAgent: "compactor",
+	}}
+	warnings := ValidateAgentCompactionPolicies(ds)
+	require.Len(t, warnings, 1, "a policy referencing the Name (not the key) must be flagged")
+	assert.Contains(t, warnings[0], "compactor")
 }

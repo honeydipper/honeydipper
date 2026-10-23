@@ -79,7 +79,7 @@ type DataSet struct {
 - **Function**: `{Driver, RawAction, Parameters, Target (Action{System,Function}), Export, ExportOnSuccess/Failure}`
 - **System**: `{Data, Triggers map, Functions map (can be nested: "subsys.func"), Extends []string}`
 - **Workflow**: Rich step definition with conditions (`If/IfAny/Unless/UnlessAll/Match/UnlessMatch`), iteration (`Iterate/IterateParallel`), branching (`Switch/Cases/Default`), error handling (`OnError/OnFailure`), caching (`CacheKey/CacheTTL`), exports, sub-workflows, agent calls
-- **Agent**: `{Driver, Engine, SystemPrompt, InferencePrompt, ShouldEmitThoughts, ShouldStream, MaxHistoryLen, CompactionPolicy, Tools, ModelData}`
+- **Agent**: `{Name, Driver, Engine, SystemPrompt, InferencePrompt, ShouldEmitThoughts, ShouldStream, MaxHistoryLen, CompactionPolicy, Tools, ModelData}` — during config assembly (`mergeDataSet`) `Name` is populated from the `Agents` map key unless an explicit `name:` is set, so config-loaded agents always carry a usable name.
 - **RepoInfo**: `{Repo (URL/path), Branch, Path, InitFile, KeyFile (SSH), TokenSource (github), Username/PassEnv}`
 
 **Config-time validation**: `assemble()` runs `ValidateAgentCompactionPolicies` on every config load/refresh, warning when an agent's `compaction_policy.summarization_agent` matches no configured `agents` key (e.g. a `campactor`/`compactor` typo). See the agent section for the full behavior.
@@ -246,6 +246,12 @@ User/Workflow ──► Agent Service ──► AgentSession ──► AI Driver
 **Tool-schema hardening**: `toolParamsFromMeta` (shared by `addSystemTool`/`addWorkflowTool`) is fully comma-ok: a non-map Meta, a missing/non-list `inputs`, non-map entries, or non-string names/types never panic `BuildTools`; malformed entries are skipped.
 
 **Config-time validation**: on every config load/refresh, `assemble()` runs `ValidateAgentCompactionPolicies`, which warns when an agent's `compaction_policy.summarization_agent` matches no configured `agents` key (e.g. a `campactor`/`compactor` typo), noting that compaction will be skipped until the summarizer is configured (post-Phase-1 it degrades gracefully, it does not fail). `assemble()` guards `dipper.Logger` for nil, consistent with `logRemoteMetaDecision`.
+
+**Agent.Name population (Phase 2)**: config assembly (`mergeDataSet` in `internal/config/config.go`) now merges `Agents` per-key (like `Systems`) and populates `Agent.Name` from the `Agents` map key for every config-loaded agent, only when no explicit `name:` is set. An explicit `name:` (even one that differs from the key, e.g. key `campactor` / `name: compactor`) is always respected and is never clobbered by a key-derived Name from an overlay repo. This closes the Phase-1 gap at the source: `summAgent.Name`, `/refresh`, `/model`, tool-call naming, and `ConvoState.Agent.Name` no longer see an empty name for config-loaded agents.
+
+**Behavior change for `$agent_name` interpolation**: `interpolateAgentConfig` builds `envData["agent_name"]` from `agent.Name` — before this change it was always empty in production, so `$agent_name` / `{{ .agent_name }}` in system prompts and `model_data` now resolves to the actual agent name. This is a fix, but any config that (accidentally) relied on the empty value changes behavior.
+
+**Persisted-state caveat**: `ConvoState.Agent` is serialized into Redis with the session TTL (72h default). Conversations created before the fix retain `Agent.Name == ""` and `StartTurn` on them fails with `ErrCannotDetermineAgent` until the entry expires. No migration is needed — the stale entries age out on their own.
 
 ### 6.4 Role Constants
 

@@ -735,8 +735,60 @@ func mergeDataSet(d *DataSet, source DataSet) error {
 	}
 	s.Systems = map[string]System{}
 
+	// Agents are merged per-key (like Systems) so each agent's Name can be
+	// populated from its own map key before the cross-repo/overlay merge. An
+	// explicitly set `name:` is always respected and is never clobbered by a
+	// key-derived Name from an overlay repo. Populating here (rather than as a
+	// post-assembly step) keeps the correct per-repo keys when multiple repos
+	// or overlays define agents for the same key.
+	for name, agent := range s.Agents {
+		if agent.Name == "" {
+			agent.Name = name
+		}
+		exist, ok := d.Agents[name]
+		if ok {
+			dipper.Must(mergeAgent(&exist, agent, name))
+		} else {
+			exist = agent
+		}
+		if d.Agents == nil {
+			d.Agents = map[string]Agent{}
+		}
+		d.Agents[name] = exist
+	}
+	s.Agents = map[string]Agent{}
+
 	if e := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice); e != nil {
 		return fmt.Errorf("merging error: %w", e)
+	}
+
+	return nil
+}
+
+// mergeAgent merges source agent s into destination agent d, keeping the Name
+// field consistent with the map key (key) the agent is stored under. An
+// explicitly set `name:` on either side (a value that differs from the map
+// key) always wins over a key-derived Name, and the source overlay wins when
+// both sides carry an explicit Name. All other fields are merged with the
+// same override/appending semantics as the top-level merge.
+func mergeAgent(d *Agent, s Agent, key string) error {
+	// Determine the winning Name before merging fields so a key-derived Name on
+	// the source cannot clobber an explicit `name:` already present in the
+	// destination.
+	explicit := d.Name
+	if explicit == key {
+		explicit = ""
+	}
+	if s.Name != "" && s.Name != key {
+		explicit = s.Name
+	}
+	if err := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	if explicit != "" {
+		d.Name = explicit
+	} else {
+		d.Name = key
 	}
 
 	return nil
