@@ -130,6 +130,17 @@ func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
 	// Setup first to populate s.Agent (for TurnLockTimeout) and generate s.ID/s.ConvoID.
 	s.setup(msg, p, true)
 
+	// If initNewSession recorded a hard config error (missing main agent), the
+	// session was registered as failed in ConvoState and the deferred persist
+	// above will record it. Emit an error response to the caller (which would
+	// otherwise hang waiting for a session it can never poll) and return without
+	// running the turn.
+	if s.ErrorReason != "" {
+		p.emitErrorResponse(msg, s.ErrorReason)
+
+		return
+	}
+
 	// Emit the session ID to the caller (which polls on it) after setup has
 	// generated the session ID.
 	p.EmitMessage(dipper.Message{
@@ -232,10 +243,11 @@ func (p *PersistentAgentStore) ReceiveInference(msg *dipper.Message) {
 // pointer atomically. The nil-DataSet guard is the only protection needed for
 // the window where GetConfig() has been set but DataSet is nil.
 func (p *PersistentAgentStore) GetAgent(name string) *config.Agent {
-	if p.GetConfig() == nil || p.GetConfig().DataSet == nil {
+	cfg := p.GetConfig()
+	if cfg == nil || cfg.DataSet == nil {
 		return nil
 	}
-	agent, ok := p.GetConfig().DataSet.Agents[name]
+	agent, ok := cfg.DataSet.Agents[name]
 	if !ok {
 		return nil
 	}
@@ -248,10 +260,11 @@ func (p *PersistentAgentStore) GetAgent(name string) *config.Agent {
 // the result before dereferencing it. See GetAgent for the nil-DataSet guard
 // rationale.
 func (p *PersistentAgentStore) GetSystem(name string) *config.System {
-	if p.GetConfig() == nil || p.GetConfig().DataSet == nil {
+	cfg := p.GetConfig()
+	if cfg == nil || cfg.DataSet == nil {
 		return nil
 	}
-	system, ok := p.GetConfig().DataSet.Systems[name]
+	system, ok := cfg.DataSet.Systems[name]
 	if !ok {
 		return nil
 	}
@@ -264,10 +277,11 @@ func (p *PersistentAgentStore) GetSystem(name string) *config.System {
 // nil-check the result before dereferencing it. See GetAgent for the
 // nil-DataSet guard rationale.
 func (p *PersistentAgentStore) GetWorkflow(name string) *config.Workflow {
-	if p.GetConfig() == nil || p.GetConfig().DataSet == nil {
+	cfg := p.GetConfig()
+	if cfg == nil || cfg.DataSet == nil {
 		return nil
 	}
-	workflow, ok := p.GetConfig().DataSet.Workflows[name]
+	workflow, ok := cfg.DataSet.Workflows[name]
 	if !ok {
 		return nil
 	}
@@ -303,15 +317,15 @@ func (p *PersistentAgentStore) Stop() {
 // resolveOrRecreateConvoState loads or recreates the ConvoState for the given
 // conversation.
 //
-// TOCTOU note: agent resolution performs a first lookup here (the
-// GetAgent(...) guard below) and a second lookup later inside
-// interpolateAgentConfig. A config reload can race between the two and remove
-// the agent, making the second lookup return nil; interpolateAgentConfig then
-// returns nil (rather than a zero-value agent) and the recreate path surfaces
-// ErrAgentNotFound, which is the correct degradation for a config that removed
-// the agent mid-flight. The ErrAgentNotFound branch below is now live thanks to
-// GetAgent returning nil for missing keys (previously it returned a non-nil
-// zero-value agent, making the guard dead code).
+// TOCTOU note: agent resolution is a SINGLE lookup — interpolateAgentConfig
+// internally calls GetAgent and returns nil when the agent is absent (a
+// config reload can land at any point and remove the agent). Every recreate
+// path below nil-checks that interpolated result BEFORE persisting, so a
+// reload between name resolution and persist can never poison the ConvoState
+// with a nil Agent (which would send later turns down setup's nil-agent
+// path). The ErrAgentNotFound branch is live because GetAgent returns nil for
+// missing keys (previously it returned a non-nil zero-value agent, making
+// nil-guards dead code).
 func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName string, agentOverride bool) (*ConvoState, bool, error) {
 	cs := &ConvoState{}
 	cs.load(convoID, p)
@@ -329,8 +343,13 @@ func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName st
 	useExisting := csExists && (!agentOverride || agentName == "")
 	if !useExisting {
 		// Case: recreate/overwrite (cs missing with agent, or cs present with agentOverride true)
-		// We need the agent config to populate cs.Agent.
-		agentCfg := p.GetAgent(agentName)
+		// We need the agent config to populate cs.Agent. Interpolate in a single
+		// lookup and nil-check the RESULT: a config reload between an earlier
+		// GetAgent and this interpolation could remove the agent, and persisting
+		// a nil-Agent ConvoState would poison the conversation (later turns hit
+		// setup's nil-agent path). Surfacing ErrAgentNotFound here keeps the
+		// recreate path correct.
+		agentCfg := interpolateAgentConfig(p, agentName, map[string]interface{}{"text": "recovery placeholder"})
 		if agentCfg == nil {
 			return nil, false, fmt.Errorf("%w: %s", ErrAgentNotFound, agentName)
 		}
@@ -339,7 +358,7 @@ func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName st
 		newCS := &ConvoState{
 			ConvoID: convoID,
 			TTL:     ConvoStreamTTL,
-			Agent:   interpolateAgentConfig(p, agentName, map[string]interface{}{"text": "recovery placeholder"}),
+			Agent:   agentCfg,
 		}
 
 		// Persist the new state immediately so it exists before runTurn loads it.
@@ -373,7 +392,9 @@ func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName st
 	}
 
 	// Fall through to recreate if agentName still empty.
-	agentCfg := p.GetAgent(agentName)
+	// Interpolate in a single lookup and nil-check the result (see the
+	// recreate/overwrite branch for the TOCTOU rationale).
+	agentCfg := interpolateAgentConfig(p, agentName, map[string]interface{}{"text": "recovery placeholder"})
 	if agentCfg == nil {
 		return nil, false, fmt.Errorf("%w: %s", ErrAgentNotFound, agentName)
 	}
@@ -382,7 +403,7 @@ func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName st
 	newCS := &ConvoState{
 		ConvoID: convoID,
 		TTL:     ConvoStreamTTL,
-		Agent:   interpolateAgentConfig(p, agentName, map[string]interface{}{"text": "recovery placeholder"}),
+		Agent:   agentCfg,
 	}
 
 	// Persist the new state immediately so it exists before runTurn loads it.
@@ -482,6 +503,15 @@ func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, d
 			s.ErrorReason = fmt.Sprintf("%v", r)
 		}
 	})
+
+	// If initNewSession recorded a hard config error (missing main agent), the
+	// session was registered as failed in ConvoState; the deferred persist above
+	// records it and syncs the failed status. Do not run the turn.
+	if s.ErrorReason != "" {
+		p.Warningf("[agent] runTurn convo=%s skipping turn: %s", convoID, s.ErrorReason)
+
+		return
+	}
 
 	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
 	s.lockTurn(p, convoID)
@@ -583,6 +613,27 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 
 	s := &AgentSession{}
 	s.setup(subMsg, p, false)
+
+	// If initNewSession recorded a hard config error (missing sub-agent), the
+	// session was registered as failed in ConvoState. Emit a failure back to the
+	// parent session (via agent_continue) so its tool call resolves instead of
+	// stalling, and return without running the turn (a nil Agent here would
+	// otherwise panic in sendToDriver with a less actionable message).
+	if s.ErrorReason != "" {
+		p.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusAgentContinue,
+			Labels: map[string]string{
+				"agent_session_id": msg.Labels["agent_session_id"],
+				"turn_id":          msg.Labels["turn_id"],
+				"tool_call_id":     msg.Labels["tool_call_id"],
+				"status":           "failure",
+				"reason":           s.ErrorReason,
+			},
+		})
+
+		return
+	}
 
 	// Compaction recursion guard: when this sub-agent call IS a compaction
 	// (compaction_id present), the summarizer sub-agent must never re-trigger

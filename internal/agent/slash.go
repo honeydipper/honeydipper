@@ -373,21 +373,10 @@ func slashCompact(s *AgentSession, _ string) bool {
 
 	// Surface a specific explanation when the configured summarizer is missing
 	// or unusable, symmetric with the automatic path's Warning log + RoleSystem
-	// placeholder. Checking here (instead of relying on compactHistory's
-	// internal bail) lets the reply name the summarizer explicitly.
-	if cp.SummarizationAgent == "" {
-		s.reply("Compaction could not run: no summarization agent is configured.")
-
-		return true
-	}
-	summAgent := s.store.GetAgent(cp.SummarizationAgent)
-	if summAgent == nil {
-		s.reply(fmt.Sprintf("Compaction could not run: summarization agent %q is not defined in the configuration.", cp.SummarizationAgent))
-
-		return true
-	}
-	if summAgent.Driver == "" || summAgent.Engine == "" {
-		s.reply(fmt.Sprintf("Compaction could not run: summarization agent %q has no driver/engine configured.", cp.SummarizationAgent))
+	// placeholder. The shared helper keeps this in lockstep with
+	// compactHistory's own validation.
+	if reason := summarizerUnusableReason(s.store, cp); reason != "" {
+		s.reply("Compaction could not run: " + reason)
 
 		return true
 	}
@@ -403,15 +392,20 @@ func slashCompact(s *AgentSession, _ string) bool {
 	// sub-agent; in that case we return immediately to the async compaction
 	// flow — the confirmation is posted by handleCompactionResult after the
 	// summarizer completes (posting it here would be archived away). If it
-	// could not run (history too short) we clear the flag and reply with an
-	// explanation; either way we never call sendToDriver or resume the model
-	// conversation.
+	// could not run, clear the flag and reply with the real reason: re-check
+	// the summarizer so a narrow reload race between the pre-check above and
+	// compactHistory's own lookup produces an accurate explanation instead of a
+	// misleading "history too short" reply. Otherwise the history was genuinely
+	// too short and we say so.
 	if s.compactHistory() {
 		return true
 	}
-
-	// Compaction could not be dispatched; clear the flag and explain.
 	s.SlashInitiatedCompaction = false
+	if reason := summarizerUnusableReason(s.store, cp); reason != "" {
+		s.reply("Compaction could not run: " + reason)
+
+		return true
+	}
 	s.reply("Compaction could not run: the history is too short to compact.")
 
 	return true

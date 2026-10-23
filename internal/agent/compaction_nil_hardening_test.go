@@ -11,6 +11,8 @@ package agent
 
 import (
 	"bytes"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/honeydipper/honeydipper/v4/internal/config"
@@ -397,4 +399,146 @@ func TestStartAgentCall_SummarizerRecursionGuard(t *testing.T) {
 	agentCallsAfter := helper.callCount("eventbus:agent_call")
 	assert.Equal(t, agentCallsBefore, agentCallsAfter, "summarizer must not re-trigger compaction (no nested agent_call)")
 	assert.GreaterOrEqual(t, helper.callCount("driver:openai:send_to_model"), 1, "summarizer must send the summary request to the model")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 (review round 2): MUST FIX #1 — missing-agent failure must be
+// recorded, not silently dropped via a panic that unwinds before the deferred
+// handlers are registered.
+// ---------------------------------------------------------------------------
+
+// TestStartNewConvo_MissingAgent_RecordsFailedSession is the regression test
+// for the MUST FIX #1 panic regression. StartNewConvo with an agent that is
+// absent from config must NOT panic-and-silently-disappear; it must register a
+// session in ConvoState and mark it failed so the UI shows a failed
+// conversation instead of an empty one.
+func TestStartNewConvo_MissingAgent_RecordsFailedSession(t *testing.T) {
+	helper := newMemCacheHelper()
+	store := &PersistentAgentStore{
+		StoreHelper: helper,
+		Logger:      newCaptureLogger(&bytes.Buffer{}),
+	}
+
+	convoID := store.StartNewConvo("ghost_agent", "hello", "u", "", "")
+	require.NotEmpty(t, convoID)
+	store.Wait()
+
+	// The ConvoState must have been persisted with a failed session.
+	csData, ok := helper.getCache(ConvoStateKeyPrefix + convoID)
+	require.True(t, ok, "convo_state must be persisted for a failed missing-agent session")
+	var cs ConvoState
+	require.NoError(t, json.Unmarshal([]byte(csData), &cs))
+	require.NotNil(t, cs.LastSession, "a failed session must be registered")
+	assert.Equal(t, ConvoSessionStatusFailed, cs.LastSession.Status)
+	assert.Contains(t, cs.LastSession.ErrorReason, "ghost_agent")
+
+	// The turn was NOT run: no send_to_model call.
+	assert.Zero(t, helper.callCount("driver:openai:send_to_model"), "a missing agent must not dispatch a model call")
+}
+
+// TestStartInference_MissingAgent_EmitsErrorResponse is the workflow-side
+// regression test for MUST FIX #1: StartInference with a missing agent must
+// emit an error response to the workflow caller (which would otherwise hang)
+// instead of panicking before the session-ID ack is emitted.
+func TestStartInference_MissingAgent_EmitsErrorResponse(t *testing.T) {
+	helper := newMemCacheHelper()
+	store := &PersistentAgentStore{
+		StoreHelper: helper,
+		Logger:      newCaptureLogger(&bytes.Buffer{}),
+	}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"resume_key": "rk-1",
+			"agent_name": "ghost_agent",
+		},
+		Payload: map[string]interface{}{
+			"text": "hello",
+		},
+	}
+	store.StartInference(msg)
+	store.Wait()
+
+	emitted := helper.getEmitted()
+	require.NotEmpty(t, emitted, "an agent_response must be emitted so the workflow caller does not hang")
+	var sawError bool
+	for _, e := range emitted {
+		if e.Subject == "agent_response" && e.Labels["resume_key"] == "rk-1" && e.Labels["status"] == "error" {
+			sawError = true
+		}
+	}
+	assert.True(t, sawError, "missing agent must emit an error response for resume_key rk-1")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 (review round 2): MUST FIX #2 — the recreate path must reject a nil
+// interpolated agent BEFORE persisting, so a reload between name resolution and
+// persist can never write a nil-Agent ConvoState.
+// ---------------------------------------------------------------------------
+
+func TestResolveOrRecreateConvoState_MissingAgent_DoesNotPersistNilAgent(t *testing.T) {
+	helper := newMemCacheHelper()
+	store := &PersistentAgentStore{
+		StoreHelper: helper,
+		Logger:      newCaptureLogger(&bytes.Buffer{}),
+	}
+
+	// StartTurn with a nonexistent agent on a nonexistent convo -> recreate path
+	// -> interpolateAgentConfig returns nil -> ErrAgentNotFound BEFORE persist.
+	err := store.StartTurn("ghost-convo", "hi", "u", "", "", "ghost_agent", false)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrAgentNotFound)
+
+	// No convo_state key may have been persisted for the missing agent.
+	_, ok := helper.getCache(ConvoStateKeyPrefix + "ghost-convo")
+	assert.False(t, ok, "a missing agent must not produce a persisted nil-Agent ConvoState")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 (review round 2): SHOULD FIX #3 — the skip placeholder must be
+// deduped so a persistently broken summarizer does not append one "Compaction
+// skipped" system message per user turn.
+// ---------------------------------------------------------------------------
+
+func TestCompactHistory_SkipPlaceholder_DedupedAcrossTurns(t *testing.T) {
+	store := newMockStore(&config.Config{DataSet: &config.DataSet{
+		Agents:    map[string]config.Agent{},
+		Systems:   map[string]config.System{},
+		Workflows: map[string]config.Workflow{},
+		Drivers:   DriverConfigWithAgentEngines(),
+	}})
+	agentA := config.Agent{
+		Name: "bot", Driver: "openai", Engine: "gpt-4",
+		CompactionPolicy: &agentpkg.CompactionPolicy{
+			Strategy:           agentpkg.CompactionStrategySummarize,
+			ThresholdType:      "history_len",
+			Threshold:          3,
+			PreserveRecent:     2,
+			SummarizationAgent: "summ",
+		},
+	}
+	s := &AgentSession{store: store, Agent: &agentA, ID: "s1", ConvoID: "convo-1"}
+	s.CurrentMsg = &dipper.Message{Labels: map[string]string{}, Payload: map[string]interface{}{"convo_id": s.ConvoID}}
+	s.history = []AgentMessage{
+		{Role: RoleUser, Content: "m1"},
+		{Role: RoleUser, Content: "m2"},
+		{Role: RoleUser, Content: "m3"},
+	}
+	seedMockHistory(store, s.ConvoID, s.history)
+
+	// Turn 1: skip appends one placeholder.
+	assert.False(t, s.compactHistory())
+
+	// Turn 2: a new user message arrives while the summarizer is still broken;
+	// the placeholder must NOT be appended a second time.
+	s.history = append(s.history, AgentMessage{Role: RoleUser, Content: "m4"})
+	assert.False(t, s.compactHistory())
+
+	count := 0
+	for _, m := range s.history {
+		if m.Role == RoleSystem && strings.Contains(m.Content, "Compaction skipped") {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "skip placeholder must be deduped across turns")
 }

@@ -248,7 +248,9 @@ func (c *Config) assemble() {
 	// have flagged a typo like `campactor` vs `name: compactor` at load time
 	// instead of surfacing later as a confusing empty-agent compaction failure.
 	for _, w := range ValidateAgentCompactionPolicies(c.Staged) {
-		dipper.Logger.Warningf("[config] %s", w)
+		if dipper.Logger != nil {
+			dipper.Logger.Warningf("[config] %s", w)
+		}
 	}
 }
 
@@ -269,7 +271,7 @@ func ValidateAgentCompactionPolicies(ds *DataSet) []string {
 		}
 		if _, ok := ds.Agents[ag.CompactionPolicy.SummarizationAgent]; !ok {
 			warnings = append(warnings, fmt.Sprintf(
-				"agent %q compaction_policy.summarization_agent %q does not match any agents key; compaction will fail at runtime",
+				"agent %q compaction_policy.summarization_agent %q matches no agents key; compaction will be skipped until the summarizer is configured",
 				name, ag.CompactionPolicy.SummarizationAgent,
 			))
 		}

@@ -1512,6 +1512,11 @@ func TestNextToolCall_AllDone_DoesNothing(t *testing.T) {
 func TestProcessToolResult_WorkflowResult_Advances(t *testing.T) {
 	store := newMockStore(nil)
 	store.cfg.DataSet.Systems["s1"] = makeSystemWithFunc("fn1")
+	// The workflows dispatched after advancing must exist in config for the
+	// dispatch-side nil-guard in handleWorkflowToolCall to emit (a missing
+	// workflow would otherwise be treated as removed and inject a failure).
+	store.cfg.DataSet.Workflows["mywf"] = config.Workflow{Name: "mywf"}
+	store.cfg.DataSet.Workflows["otherwf"] = config.Workflow{Name: "otherwf"}
 
 	s := &AgentSession{
 		store:       store,
@@ -1994,8 +1999,11 @@ func TestPersistentAgentStore_ContinueInference_ProcessResult(t *testing.T) {
 		Agents: map[string]config.Agent{
 			"bot": {Name: "bot", Driver: "openai", Engine: "gpt-4"},
 		},
-		Systems:   map[string]config.System{},
-		Workflows: map[string]config.Workflow{},
+		Systems: map[string]config.System{},
+		Workflows: map[string]config.Workflow{
+			"firststep":  {Name: "firststep"},
+			"secondstep": {Name: "secondstep"},
+		},
 	}}
 
 	// Two tool calls; CurrentCall=0 means we're processing the first result

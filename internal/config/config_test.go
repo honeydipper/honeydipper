@@ -368,7 +368,8 @@ func TestValidateAgentCompactionPolicies_WarnsOnMissingSummarizer(t *testing.T) 
 	require.Len(t, warnings, 1, "only the mismatched summarization_agent should be flagged")
 	assert.Contains(t, warnings[0], "main")
 	assert.Contains(t, warnings[0], "compactor")
-	assert.Contains(t, warnings[0], "does not match any agents key")
+	assert.Contains(t, warnings[0], "matches no agents key")
+	assert.Contains(t, warnings[0], "skipped")
 }
 
 func TestValidateAgentCompactionPolicies_NoWarningsWhenMatch(t *testing.T) {

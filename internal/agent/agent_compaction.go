@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
 	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
@@ -41,6 +42,30 @@ const (
 	compactionSkipPlaceholder = "Compaction skipped: summarization agent %q was not found or is not usable; " +
 		"the full conversation history has been preserved."
 )
+
+// appendCompactionSkipPlaceholder appends the RoleSystem skip placeholder for
+// the given summarizer unless the live history already carries a skip
+// placeholder with the same content. The dedupe matters because a skip leaves
+// CompactedThisTurn false, so every subsequent user turn past the threshold
+// re-enters compactHistory; without it, a persistently broken summarizer would
+// fill the live history (and the model context) with one "Compaction skipped"
+// system message per turn. The whole history is scanned (not just the trailing
+// message) because each new user turn appends its user message after the last
+// placeholder, so the trailing non-slash message is the new user message, not a
+// duplicate placeholder.
+func (s *AgentSession) appendCompactionSkipPlaceholder(summarizer string) {
+	content := fmt.Sprintf(compactionSkipPlaceholder, summarizer)
+	for i := len(s.history) - 1; i >= 0; i-- {
+		m := s.history[i]
+		if m.IsSlash {
+			continue
+		}
+		if m.Role == RoleSystem && m.Content == content {
+			return
+		}
+	}
+	s.appendConvoHistory(&AgentMessage{Role: RoleSystem, Content: content})
+}
 
 // shouldCompact returns true when the agent's compaction policy is configured
 // and the configured threshold has been reached.
@@ -470,6 +495,27 @@ func summaryTextOf(out interface{}) string {
 	return ""
 }
 
+// summarizerUnusableReason returns a human-readable reason why the configured
+// summarization agent cannot be used for compaction, or "" when it can. It is
+// shared by compactHistory (automatic path) and slashCompact (slash path) so the
+// two stay consistent about what makes a summarizer unusable, avoiding the drift
+// and the misleading "history too short" reply that a duplicated check could
+// produce when a reload removes the summarizer mid-flight.
+func summarizerUnusableReason(store AgentStore, cp *agentpkg.CompactionPolicy) string {
+	if cp == nil || cp.SummarizationAgent == "" {
+		return "no summarization agent is configured"
+	}
+	summAgent := store.GetAgent(cp.SummarizationAgent)
+	if summAgent == nil {
+		return fmt.Sprintf("summarization agent %q is not defined in the configuration", cp.SummarizationAgent)
+	}
+	if summAgent.Driver == "" || summAgent.Engine == "" {
+		return fmt.Sprintf("summarization agent %q has no driver/engine configured", cp.SummarizationAgent)
+	}
+
+	return ""
+}
+
 // compactHistory runs the configured summarization agent to produce a
 // condensed summary of older conversation turns, archives the previous
 // history under a generation-suffixed key, and replaces the persisted
@@ -538,36 +584,17 @@ func (s *AgentSession) compactHistory() bool {
 
 		return false
 	}
-	summAgent := s.store.GetAgent(cp.SummarizationAgent)
-	if summAgent == nil {
+	if reason := summarizerUnusableReason(s.store, cp); reason != "" {
 		if log := s.log(); log != nil {
-			log.Warningf("[agent] session [%s] compaction skipped: summarization agent %q not found in config", s.ID, cp.SummarizationAgent)
+			log.Warningf("[agent] session [%s] compaction skipped: %s", s.ID, reason)
 		}
-		// Automatic compaction with a missing summarizer: make the skip visible
-		// in history (symmetric with compactionFailurePlaceholder) and let the
-		// caller fall through to sendToDriver with the full history. The slash
-		// /compact path surfaces the same skip via its own explanatory reply.
+		// Automatic compaction with a missing/unusable summarizer: make the skip
+		// visible in history (symmetric with compactionFailurePlaceholder) and
+		// let the caller fall through to sendToDriver with the full history. The
+		// slash /compact path surfaces the same skip via its own explanatory
+		// reply.
 		if !s.SlashInitiatedCompaction {
-			s.appendConvoHistory(&AgentMessage{
-				Role:    RoleSystem,
-				Content: fmt.Sprintf(compactionSkipPlaceholder, cp.SummarizationAgent),
-			})
-		}
-
-		return false
-	}
-	if summAgent.Driver == "" || summAgent.Engine == "" {
-		if log := s.log(); log != nil {
-			log.Warningf(
-				"[agent] session [%s] compaction skipped: summarization agent %q has no driver/engine configured",
-				s.ID, cp.SummarizationAgent,
-			)
-		}
-		if !s.SlashInitiatedCompaction {
-			s.appendConvoHistory(&AgentMessage{
-				Role:    RoleSystem,
-				Content: fmt.Sprintf(compactionSkipPlaceholder, cp.SummarizationAgent),
-			})
+			s.appendCompactionSkipPlaceholder(cp.SummarizationAgent)
 		}
 
 		return false
@@ -607,6 +634,9 @@ func (s *AgentSession) compactHistory() bool {
 		},
 	}
 
+	// Re-resolve the (validated) summarizer for the "running compaction via" log
+	// engine line; the guard above guaranteed it exists and is usable.
+	summAgent := s.store.GetAgent(cp.SummarizationAgent)
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] running compaction via agent=%s engine=%s history_len=%d preserve=%d",
 			s.ID, cp.SummarizationAgent, summAgent.Engine, len(s.history), preserve)

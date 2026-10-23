@@ -153,6 +153,12 @@ func TestHandleLoadSkillToolCall_Success(t *testing.T) {
 
 	fs := NewFakeStore()
 	fs.cache[ConvoStateKeyPrefix+convoID] = b
+	// The FileTool workflow the skill loader dispatches must exist in config;
+	// the dispatch-side nil-guard in handleWorkflowToolCall would otherwise
+	// treat it as removed and inject a synthetic failure instead of emitting.
+	fs.cfg = &config.Config{DataSet: &config.DataSet{
+		Workflows: map[string]config.Workflow{"read_file": {Name: "read_file"}},
+	}}
 
 	s := &AgentSession{
 		ConvoID: convoID,
@@ -178,6 +184,18 @@ func TestHandleLoadSkillToolCall_Success(t *testing.T) {
 	if fspecs == "" || !strings.Contains(fspecs, skillPath) {
 		t.Fatalf("expected file_specs to include %s, got %s", skillPath, fspecs)
 	}
+}
+
+// newMockStoreWithFileTool returns a mockStore that also registers the
+// read_files workflow backing the agent FileTool (wf__read_files), so
+// pre-context / skill loader dispatches resolve through the dispatch-side
+// nil-guard in handleWorkflowToolCall (a missing FileTool workflow would
+// otherwise be treated as a removed workflow and inject a synthetic failure).
+func newMockStoreWithFileTool() *mockStore {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Workflows["read_files"] = config.Workflow{Name: "read_files"}
+
+	return store
 }
 
 // TestLoadPreContext_HistoryNotEmpty tests that loadPreContext returns false
@@ -236,7 +254,7 @@ func TestLoadPreContext_WithEmptyStringsInPreContext(t *testing.T) {
 // TestLoadPreContext_Success tests that loadPreContextAndSkills correctly creates
 // a tool call when conditions are met.
 func TestLoadPreContext_Success(t *testing.T) {
-	store := newMockStore(nil)
+	store := newMockStoreWithFileTool()
 	session := &AgentSession{
 		ID:      "test-session-5",
 		Agent:   &config.Agent{FileTool: "wf__read_files", PreContext: []string{"file1.md", "file2.md"}},
@@ -268,7 +286,7 @@ func TestLoadPreContext_Success(t *testing.T) {
 // TestLoadPreContext_MixedEmptyAndNonEmptyPreContext tests that loadPreContextAndSkills
 // correctly filters empty strings and processes valid entries.
 func TestLoadPreContext_MixedEmptyAndNonEmptyPreContext(t *testing.T) {
-	store := newMockStore(nil)
+	store := newMockStoreWithFileTool()
 	session := &AgentSession{
 		ID:      "test-session-6",
 		Agent:   &config.Agent{FileTool: "wf__read_files", PreContext: []string{"", "file1.md", "", "file2.md"}},
@@ -632,7 +650,7 @@ func TestHandlePreContextAndSkillsResult_FileContentNotMap(t *testing.T) {
 // TestPreContextWorkflow tests the complete flow of loading and handling
 // pre-context.
 func TestPreContextWorkflow(t *testing.T) {
-	store := newMockStore(nil)
+	store := newMockStoreWithFileTool()
 	session := &AgentSession{
 		ID:      "test-session-workflow",
 		Agent:   &config.Agent{FileTool: "wf__read_files", PreContext: []string{"setup.md", "guide.md"}, SystemPrompt: "You are helpful"},
@@ -677,7 +695,7 @@ func TestPreContextWorkflow(t *testing.T) {
 // TestLoadPreContextAndSkills_WithSkills tests that loadPreContextAndSkills
 // correctly loads both PreContext and SkillsPaths.
 func TestLoadPreContextAndSkills_WithSkills(t *testing.T) {
-	store := newMockStore(nil)
+	store := newMockStoreWithFileTool()
 	session := &AgentSession{
 		ID: "test-session-skills",
 		Agent: &config.Agent{
@@ -717,7 +735,7 @@ func TestLoadPreContextAndSkills_WithSkills(t *testing.T) {
 // TestLoadPreContextAndSkills_DuplicateFiles tests that loadPreContextAndSkills
 // deduplicates files when both PreContext and SkillsPaths contain the same file.
 func TestLoadPreContextAndSkills_DuplicateFiles(t *testing.T) {
-	store := newMockStore(nil)
+	store := newMockStoreWithFileTool()
 	session := &AgentSession{
 		ID: "test-session-dup",
 		Agent: &config.Agent{
@@ -902,7 +920,7 @@ Helper skill content`,
 // TestPreContextAndSkillsWorkflow_Complete tests the complete workflow of
 // loading and handling both precontext and skills.
 func TestPreContextAndSkillsWorkflow_Complete(t *testing.T) {
-	store := newMockStore(nil)
+	store := newMockStoreWithFileTool()
 	session := &AgentSession{
 		ID: "test-session-complete-workflow",
 		Agent: &config.Agent{

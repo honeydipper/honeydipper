@@ -123,6 +123,9 @@ func TestProcessToolResult_SystemRemoved_InjectsFailure(t *testing.T) {
 	store := newMockStore(nil)
 	// The system is NOT in the config (removed after dispatch).
 	store.cfg.DataSet.Systems = map[string]config.System{}
+	// The next pending call (wf__next) must exist for the dispatch-side guard
+	// to emit rather than treat it as removed.
+	store.cfg.DataSet.Workflows["next"] = config.Workflow{Name: "next"}
 
 	toolCalls := []AgentToolCall{
 		{FuncName: "sys_gone__doThing", Params: map[string]interface{}{}},
@@ -172,6 +175,7 @@ func TestProcessToolResult_SystemRemoved_InjectsFailure(t *testing.T) {
 func TestProcessToolResult_SystemPresent_UsesExport(t *testing.T) {
 	store := newMockStore(nil)
 	store.cfg.DataSet.Systems["mysys"] = makeSystemWithFunc("doWork")
+	store.cfg.DataSet.Workflows["next"] = config.Workflow{Name: "next"}
 
 	toolCalls := []AgentToolCall{
 		{FuncName: "sys_mysys__doWork", Params: map[string]interface{}{"param1": "v"}},
@@ -202,4 +206,138 @@ func TestProcessToolResult_SystemPresent_UsesExport(t *testing.T) {
 	require.Len(t, s.ToolResults, 1)
 	assert.Equal(t, "success", s.ToolResults[0]["status"])
 	assert.Equal(t, 1, s.CurrentCall, "turn must advance to the next pending call")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 (review round 2): SHOULD FIX #4 — dispatch-side synthetic failure.
+// When a system/workflow is already gone at dispatch time (a reload landed
+// between BuildTools and nextToolCall), handleSysToolCall / handleWorkflowToolCall
+// must inject a failure result and advance instead of emitting into a
+// nonexistent target (which would stall the turn until timeout).
+// ---------------------------------------------------------------------------
+
+func TestHandleSysToolCall_SystemMissing_InjectFailure(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems = map[string]config.System{}
+	// The next pending call (wf__next) exists so we can verify the turn advances.
+	store.cfg.DataSet.Workflows["next"] = config.Workflow{Name: "next"}
+
+	toolCalls := []AgentToolCall{
+		{FuncName: "sys_gone__doThing", Params: map[string]interface{}{}},
+		{FuncName: "wf__next"},
+	}
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "dispatch-sys-missing",
+		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
+		ToolCalls:   toolCalls,
+		history:     []AgentMessage{{Role: RoleAgent, ToolCalls: toolCalls}},
+	}
+
+	// Dispatch the first (sys) call.
+	assert.NotPanics(t, func() { s.nextToolCall() })
+
+	// A synthetic failure was injected for the missing system, and the turn
+	// advanced to the next (workflow) call instead of stalling.
+	require.Len(t, s.ToolResults, 1)
+	assert.Equal(t, "failure", s.ToolResults[0]["status"])
+	assert.Contains(t, s.ToolResults[0]["reason"], "gone")
+	assert.Equal(t, 1, s.CurrentCall)
+	emitted := store.getEmitted()
+	require.NotEmpty(t, emitted, "the next tool call must be dispatched so the turn continues")
+	assert.Equal(t, "agent_workflow", emitted[0].Subject)
+	assert.Equal(t, "next", emitted[0].Payload.(map[string]interface{})["do"].(map[string]interface{})["call_workflow"])
+}
+
+func TestHandleWorkflowToolCall_WorkflowMissing_InjectFailure(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Workflows = map[string]config.Workflow{}
+	// The next pending call (sys) exists so we can verify the turn advances.
+	store.cfg.DataSet.Systems["mysys"] = makeSystemWithFunc("doWork")
+
+	toolCalls := []AgentToolCall{
+		{FuncName: "wf__gone", Params: map[string]interface{}{}},
+		{FuncName: "sys_mysys__doWork", Params: map[string]interface{}{}},
+	}
+	s := &AgentSession{
+		store:       store,
+		Agent:       &config.Agent{Driver: "openai"},
+		ID:          "dispatch-wf-missing",
+		CurrentCall: 0,
+		CurrentMsg:  &dipper.Message{Labels: map[string]string{}},
+		ToolCalls:   toolCalls,
+		history:     []AgentMessage{{Role: RoleAgent, ToolCalls: toolCalls}},
+	}
+
+	assert.NotPanics(t, func() { s.nextToolCall() })
+
+	require.Len(t, s.ToolResults, 1)
+	assert.Equal(t, "failure", s.ToolResults[0]["status"])
+	assert.Contains(t, s.ToolResults[0]["reason"], "gone")
+	assert.Equal(t, 1, s.CurrentCall)
+	emitted := store.getEmitted()
+	require.NotEmpty(t, emitted, "the next tool call must be dispatched so the turn continues")
+	assert.Equal(t, "agent_command", emitted[0].Subject)
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 (review round 2): SHOULD FIX #5 — addSystemTool hardening aligned
+// with addWorkflowTool: non-map Meta, missing/malformed "inputs" must never
+// panic BuildTools.
+// ---------------------------------------------------------------------------
+
+func TestBuildTools_SystemNonMapMeta_Skips(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["sys1"] = config.System{Functions: map[string]config.Function{
+		"fn1": {Driver: "d", RawAction: "a", Meta: "not-a-map"},
+	}}
+	agentA := config.Agent{Name: "a", Tools: []config.AgentToolDef{{Type: "system", Name: "sys1"}}}
+	store.cfg.DataSet.Agents["a"] = agentA
+	s := &AgentSession{store: store, Agent: &agentA}
+
+	assert.NotPanics(t, func() {
+		tools := s.BuildTools()
+		_, ok := tools["sys_sys1__fn1"]
+		assert.False(t, ok, "function with a non-map Meta must be skipped, not panic")
+	})
+}
+
+func TestBuildTools_SystemMetaMissingInputs_Tolerated(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["sys1"] = config.System{Functions: map[string]config.Function{
+		"fn1": {Driver: "d", RawAction: "a", Meta: map[string]interface{}{"description": "no inputs"}},
+	}}
+	agentA := config.Agent{Name: "a", Tools: []config.AgentToolDef{{Type: "system", Name: "sys1"}}}
+	store.cfg.DataSet.Agents["a"] = agentA
+	s := &AgentSession{store: store, Agent: &agentA}
+
+	assert.NotPanics(t, func() {
+		tools := s.BuildTools()
+		tool, ok := tools["sys_sys1__fn1"]
+		require.True(t, ok, "function with a map Meta but no inputs must still be registered")
+		assert.Empty(t, tool.Params)
+	})
+}
+
+func TestBuildTools_SystemMetaMalformedInputs_Tolerated(t *testing.T) {
+	store := newMockStore(nil)
+	store.cfg.DataSet.Systems["sys1"] = config.System{Functions: map[string]config.Function{
+		"fn1": {Driver: "d", RawAction: "a", Meta: map[string]interface{}{
+			"inputs": []interface{}{
+				"not-a-map",
+				map[string]interface{}{"name": 123, "type": "string"},
+			},
+		}},
+	}}
+	agentA := config.Agent{Name: "a", Tools: []config.AgentToolDef{{Type: "system", Name: "sys1"}}}
+	store.cfg.DataSet.Agents["a"] = agentA
+	s := &AgentSession{store: store, Agent: &agentA}
+
+	assert.NotPanics(t, func() {
+		tools := s.BuildTools()
+		_, ok := tools["sys_sys1__fn1"]
+		require.True(t, ok, "function with malformed inputs must still be registered")
+	})
 }

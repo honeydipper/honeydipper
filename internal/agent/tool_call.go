@@ -60,6 +60,44 @@ func (s *AgentSession) BuildTools() map[string]AgentTool {
 	return tools
 }
 
+// toolParamsFromMeta derives the tool's input-parameter schema from a Meta
+// map's "inputs" list. It is fully defensive (comma-ok everywhere) so a
+// malformed Meta — a non-list "inputs", non-map entries, missing names, or
+// non-string types — never panics BuildTools; malformed entries are skipped.
+func toolParamsFromMeta(meta map[string]interface{}) map[string]interface{} {
+	params := map[string]interface{}{}
+	rawInputs, ok := dipper.GetMapData(meta, "inputs")
+	if !ok {
+		return params
+	}
+	inputs, ok := rawInputs.([]interface{})
+	if !ok {
+		return params
+	}
+	for _, v := range inputs {
+		def, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		pname, _ := dipper.GetMapDataStr(def, "name")
+		if pname == "" {
+			continue
+		}
+		ptype := "string"
+		if t, ok := dipper.GetMapDataStr(def, "type"); ok {
+			ptype = t
+		}
+		pdesc, _ := dipper.GetMapData(def, "description")
+		params[pname] = map[string]interface{}{
+			"name":        pname,
+			"type":        ptype,
+			"description": pdesc,
+		}
+	}
+
+	return params
+}
+
 // addSystemTool exposes each function of a named system as a callable tool.
 func (s *AgentSession) addSystemTool(tools map[string]AgentTool, toolDef config.AgentToolDef) {
 	prefix := "sys_" + toolDef.Name + "__"
@@ -81,41 +119,25 @@ func (s *AgentSession) addSystemTool(tools map[string]AgentTool, toolDef config.
 			continue
 		}
 
-		if f.Meta == nil {
+		meta, ok := f.Meta.(map[string]interface{})
+		if !ok {
+			// A non-map (or nil) Meta carries no tool schema to derive; skip the
+			// function rather than panicking on a type assertion.
 			continue
 		}
-		meta := f.Meta.(map[string]interface{})
 		if skip, ok := dipper.GetMapData(meta, "skip_agent"); ok && dipper.IsTruthy(skip) {
 			continue
 		}
 
 		desc := ""
-		if d, ok := meta["description"]; ok {
-			desc = d.(string)
-		}
-
-		params := map[string]interface{}{}
-		inputs := meta["inputs"].([]interface{})
-		for _, v := range inputs {
-			def := v.(map[string]interface{})
-
-			pname := def["name"].(string)
-			ptype := "string"
-			if t, ok := def["type"]; ok {
-				ptype = t.(string)
-			}
-
-			params[pname] = map[string]interface{}{
-				"name":        pname,
-				"type":        ptype,
-				"description": def["description"],
-			}
+		if d, ok := dipper.GetMapDataStr(meta, "description"); ok {
+			desc = d
 		}
 
 		tools[fname] = AgentTool{
 			Name:        fname,
 			Description: desc,
-			Params:      params,
+			Params:      toolParamsFromMeta(meta),
 		}
 	}
 }
@@ -156,31 +178,15 @@ func (s *AgentSession) addWorkflowTool(tools map[string]AgentTool, toolDef confi
 	}
 
 	if desc == "" {
-		if d, ok := meta["description"]; ok {
-			desc = d.(string)
-		}
-	}
-	inputs := meta["inputs"].([]interface{})
-	for _, v := range inputs {
-		def := v.(map[string]interface{})
-
-		pname := def["name"].(string)
-		ptype := "string"
-		if t, ok := def["type"]; ok {
-			ptype = t.(string)
-		}
-
-		params[pname] = map[string]interface{}{
-			"name":        pname,
-			"type":        ptype,
-			"description": def["description"],
+		if d, ok := dipper.GetMapDataStr(meta, "description"); ok {
+			desc = d
 		}
 	}
 
 	tools[fname] = AgentTool{
 		Name:        fname,
 		Description: desc,
-		Params:      params,
+		Params:      toolParamsFromMeta(meta),
 	}
 }
 
@@ -510,9 +516,58 @@ func (s *AgentSession) handleGetConvoURL(_ AgentToolCall, unifiedConvoID string)
 	})
 }
 
+// syntheticToolFailure records a failure result for the given tool call and
+// advances the turn exactly like processToolResult does on a real failure:
+// it dispatches the next pending call, or feeds all results back to the model
+// when this was the last one. It is used when a tool cannot be dispatched
+// because its target (system/workflow) no longer exists in the current config,
+// so the turn fails gracefully instead of stalling on a message emitted into a
+// nonexistent target.
+func (s *AgentSession) syntheticToolFailure(c AgentToolCall, reason string) {
+	if log := s.log(); log != nil {
+		log.Warningf("[agent] session [%s] tool %q cannot be dispatched: %s", s.ID, c.FuncName, reason)
+	}
+	result := map[string]interface{}{
+		"status":    "failure",
+		"reason":    reason,
+		"data":      map[string]interface{}{"error": reason},
+		"func_name": c.FuncName,
+	}
+	s.ToolResults = append(s.ToolResults, result)
+	s.CurrentCall++
+	if s.CurrentCall < len(s.ToolCalls) {
+		s.nextToolCall()
+
+		return
+	}
+	if s.handleCompactionResult(c, s.ToolResults) {
+		return
+	}
+	if s.handlePreContextAndSkillsResult(c, s.ToolResults) {
+		return
+	}
+	agentMsg := AgentMessage{
+		Role:       RoleToolResult,
+		ToolResult: s.ToolResults,
+	}
+	s.ToolResults = nil
+	s.processAgentMessage(&agentMsg)
+}
+
 func (s *AgentSession) handleSysToolCall(c AgentToolCall, unifiedConvoID string) {
 	sysName := c.FuncName[len("sys_"):strings.LastIndex(c.FuncName, "__")]
 	fName := c.FuncName[strings.LastIndex(c.FuncName, "__")+2:]
+
+	// The system may have been removed from config after BuildTools assembled
+	// the tool map (a reload can land between assembly and dispatch). Emitting
+	// agent_command into a nonexistent system would never be answered and the
+	// turn would stall until the session timeout; inject a synthetic failure and
+	// advance instead (symmetric with the result-side handling).
+	if s.store.GetSystem(sysName) == nil {
+		s.syntheticToolFailure(c, fmt.Sprintf("system %q no longer exists in config", sysName))
+
+		return
+	}
 
 	s.store.EmitMessage(dipper.Message{
 		Channel: "eventbus",
@@ -538,6 +593,15 @@ func (s *AgentSession) handleSysToolCall(c AgentToolCall, unifiedConvoID string)
 
 func (s *AgentSession) handleWorkflowToolCall(c AgentToolCall, unifiedConvoID string) {
 	wfName := c.FuncName[len("wf__"):]
+
+	// Symmetric dispatch-side guard to handleSysToolCall: a workflow removed
+	// after BuildTools would otherwise stall the turn on an unanswered
+	// agent_workflow message.
+	if s.store.GetWorkflow(wfName) == nil {
+		s.syntheticToolFailure(c, fmt.Sprintf("workflow %q no longer exists in config", wfName))
+
+		return
+	}
 
 	s.store.EmitMessage(dipper.Message{
 		Channel: "eventbus",
