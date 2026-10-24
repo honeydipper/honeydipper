@@ -310,12 +310,24 @@ workflows:
   release:
     jobs:
       - semantic-release:
+          name: semantic-release-main
           context: honeydipper
           filters:
             branches:
-              only:
-                - main
-                - dev
+              only: main
+      - approve-dev-release:
+          type: approval
+          filters:
+            branches:
+              only: dev
+      - semantic-release:
+          name: semantic-release-dev
+          context: honeydipper
+          requires:
+            - approve-dev-release
+          filters:
+            branches:
+              only: dev
   publish_release_image:
     jobs:
       - publish-image:

@@ -1,7 +1,9 @@
 # Releasing Honeydipper
 
-`semantic-release` creates GitHub tags and releases from the `main` and `dev`
-branches. CircleCI publishes Docker images from those immutable release tags.
+`semantic-release` creates GitHub tags and releases from the `main` branch
+automatically, and from the `dev` branch only after an approved CircleCI
+approval job. CircleCI publishes Docker images from those immutable release
+tags.
 
 ## Registry credentials
 
