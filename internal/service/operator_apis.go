@@ -141,6 +141,8 @@ func getLogProvider(payload map[string]interface{}) string {
 	switch provider {
 	case "", "podman", "container", "containers":
 		return "podman"
+	case "docker":
+		return "docker"
 	case "k8s":
 		return "kubernetes"
 	case "kubernetes":
