@@ -257,6 +257,11 @@ func TestGetLogProviderMapsKubernetes(t *testing.T) {
 			expected: "podman",
 		},
 		{
+			name:     "docker maps to docker",
+			payload:  map[string]interface{}{"provider": "docker"},
+			expected: "docker",
+		},
+		{
 			name:     "unknown defaults to podman",
 			payload:  map[string]interface{}{"provider": "unknown"},
 			expected: "podman",
@@ -270,6 +275,11 @@ func TestGetLogProviderMapsKubernetes(t *testing.T) {
 			name:     "no provider uses runtime field",
 			payload:  map[string]interface{}{"runtime": "k8s"},
 			expected: "kubernetes",
+		},
+		{
+			name:     "no provider uses docker runtime field",
+			payload:  map[string]interface{}{"runtime": "docker"},
+			expected: "docker",
 		},
 		{
 			name:     "no provider no runtime defaults to podman",
