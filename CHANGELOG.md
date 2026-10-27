@@ -1,3 +1,10 @@
+# [4.0.0-dev.10](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.9...v4.0.0-dev.10) (2026-10-27)
+
+
+### Bug Fixes
+
+* **config:** populate Agent.Name from Agents map key during assembly ([#843](https://github.com/honeydipper/honeydipper/issues/843)) ([f85557b](https://github.com/honeydipper/honeydipper/commit/f85557b0ca0a98a2d6da73d0ef26e844f67ce2e6))
+
 # [4.0.0-dev.9](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.8...v4.0.0-dev.9) (2026-10-23)
 
 
