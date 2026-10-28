@@ -34,6 +34,12 @@ consequence the release commit also starts a `release` workflow on `v3`, which
 waits at `approve-v3-release`. Leave it unapproved, or approve it and
 semantic-release will find nothing to release.
 
+CircleCI also skips any pipeline whose head commit message contains the
+skip-CI directive. When merging a pull request into `v3`, use a merge commit or
+edit the squash message so that no commit message in the body contains that
+text. Otherwise no pipeline runs and no release is offered for approval. If that
+happens, use Trigger Pipeline in CircleCI on the `v3` branch.
+
 ## Image publishing
 
 The `publish_release_image` workflow accepts semantic-version tags beginning
