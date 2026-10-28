@@ -1,7 +1,7 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.26.8-alpine
+    - image: golang:1.27.3-alpine
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 version: 2.1
@@ -40,6 +40,9 @@ jobs:
             - ./src/github.com/honeydipper/honeydipper
   golangci-lint:
     <<: *defaults
+    # golangci-lint v1 cannot read go1.27 export data, keep linting on go1.26 (fixed for CVE-2026-111943)
+    docker:
+      - image: golang:1.26.10-alpine
     resource_class: medium+
     steps:
       - run: apk add git
@@ -103,7 +106,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.26.8-alpine
+      - image: golang:1.27.3-alpine
       - image: redis:7.0.11-alpine
     steps:
       - attach_workspace:
