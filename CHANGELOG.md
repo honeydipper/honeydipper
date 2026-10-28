@@ -1,3 +1,10 @@
+## [3.10.5](https://github.com/honeydipper/honeydipper/compare/v3.10.4...v3.10.5) (2026-10-28)
+
+
+### Bug Fixes
+
+* **deps:** build with Go 1.27.3 to address CVE-2026-111943 ([#847](https://github.com/honeydipper/honeydipper/issues/847)) ([50196a2](https://github.com/honeydipper/honeydipper/commit/50196a202a6841a9b530ae2fb023f668bf1f6f00))
+
 ## [3.10.4](https://github.com/honeydipper/honeydipper/compare/v3.10.3...v3.10.4) (2026-10-02)
 
 
