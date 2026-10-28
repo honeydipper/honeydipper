@@ -330,7 +330,7 @@ func (c *Config) AdvanceStage(service string, stage int, fns ...dipper.ItemProce
 		case StageDiscovering:
 			c.extendAllSystems()
 		case StageServing:
-			c.RecursiveStaged(dipper.RegexParser)
+			c.recursive(dipper.RegexParser, true, true)
 
 			c.DataSet = c.Staged
 		}
@@ -339,7 +339,9 @@ func (c *Config) AdvanceStage(service string, stage int, fns ...dipper.ItemProce
 }
 
 // recursive iterates all items and their children to parse the values with give processor.
-func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
+// With skipRuntime set, workflows, rule actions and contexts are left alone, because they are
+// persisted with the workflow sessions and compiled values would not survive the persistence.
+func (c *Config) recursive(f dipper.ItemProcessor, stage bool, skipRuntime bool) {
 	var processor dipper.ItemProcessor
 	target := c.DataSet
 	if stage {
@@ -356,7 +358,9 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 
 			return f(name, val)
 		case Rule:
-			dipper.Recursive(&v.Do, processor)
+			if !skipRuntime {
+				dipper.Recursive(&v.Do, processor)
+			}
 			dipper.Recursive(&v.When, processor)
 		case Workflow:
 			dipper.Recursive(v.Match, processor)
@@ -379,14 +383,18 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 		return nil, false
 	}
 
-	dipper.Logger.Debugf("[config] recursively processing workflows ...")
-	dipper.Recursive(target.Workflows, processor)
+	if !skipRuntime {
+		dipper.Logger.Debugf("[config] recursively processing workflows ...")
+		dipper.Recursive(target.Workflows, processor)
+	}
 	dipper.Logger.Debugf("[config] recursively processing rules ...")
 	dipper.Recursive(target.Rules, processor)
 	dipper.Logger.Debugf("[config] recursively processing systems ...")
 	dipper.Recursive(target.Systems, processor)
-	dipper.Logger.Debugf("[config] recursively processing contexts ...")
-	dipper.Recursive(target.Contexts, f)
+	if !skipRuntime {
+		dipper.Logger.Debugf("[config] recursively processing contexts ...")
+		dipper.Recursive(target.Contexts, f)
+	}
 	dipper.Logger.Debugf("[config] recursively processing drivers ...")
 	for k, v := range target.Drivers {
 		if k != "daemon" {
@@ -397,7 +405,7 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 
 // RecursiveStaged recursively process staged data.
 func (c *Config) RecursiveStaged(f dipper.ItemProcessor) {
-	c.recursive(f, true)
+	c.recursive(f, true, false)
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
