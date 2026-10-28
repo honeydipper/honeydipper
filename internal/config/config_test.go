@@ -10,6 +10,7 @@
 package config
 
 import (
+	"encoding/json"
 	"regexp"
 	"testing"
 
@@ -83,6 +84,75 @@ func TestRegexParsing(t *testing.T) {
 	assert.IsType(t, &regexp.Regexp{}, config.DataSet.Workflows["test-workflow"].UnlessMatch.(map[string]interface{})["key3"], "workflow unless_match regex should be parsed")
 	assert.Equal(t, "non regex", config.DataSet.Workflows["test-workflow"].UnlessMatch.(map[string]interface{})["key4"], "workflow unless_match non-regex should remain")
 	assert.Equal(t, "non regex", config.DataSet.Rules[0].When.Match["key6"], "rule match non-regex should remain")
+}
+
+func TestRegexParsingSkipsRuntimeData(t *testing.T) {
+	newConfig := func() *Config {
+		return &Config{
+			Staged: &DataSet{
+				Workflows: map[string]Workflow{
+					"test-workflow": {
+						Match:   map[string]interface{}{"key1": ":regex:wf-match"},
+						Iterate: []interface{}{map[string]interface{}{"pattern": ":regex:wf-iterate"}},
+					},
+				},
+				Contexts: map[string]interface{}{
+					"test-context": map[string]interface{}{"key": ":regex:ctx"},
+				},
+				Systems: map[string]System{
+					"test-system": {
+						Data: map[string]interface{}{"key": ":regex:sys-data"},
+					},
+				},
+				Rules: []Rule{
+					{
+						When: Trigger{Match: map[string]interface{}{"key": ":regex:rule-when"}},
+						Do: Workflow{
+							Iterate: []interface{}{
+								map[string]interface{}{"alert_message": ":regex:5xx", "plain": "plain"},
+							},
+							IterateParallel: []interface{}{":regex:parallel"},
+							Match:           map[string]interface{}{"key": ":regex:do-match"},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	config := newConfig()
+	assert.NotPanics(t, func() { config.recursive(dipper.RegexParser, true, true) }, "skipping runtime data should not panic")
+
+	wf := config.Staged.Workflows["test-workflow"]
+	assert.Equal(t, ":regex:wf-match", wf.Match.(map[string]interface{})["key1"], "workflow match should stay a string")
+	assert.Equal(t, ":regex:wf-iterate", wf.Iterate.([]interface{})[0].(map[string]interface{})["pattern"], "workflow iterate should stay a string")
+	assert.Equal(t, ":regex:ctx", config.Staged.Contexts["test-context"].(map[string]interface{})["key"], "context should stay a string")
+
+	do := config.Staged.Rules[0].Do
+	item := do.Iterate.([]interface{})[0].(map[string]interface{})
+	assert.Equal(t, ":regex:5xx", item["alert_message"], "rule do iterate should stay a string")
+	assert.Equal(t, "plain", item["plain"], "non-regex value should remain")
+	assert.Equal(t, ":regex:parallel", do.IterateParallel.([]interface{})[0], "rule do iterate_parallel should stay a string")
+	assert.Equal(t, ":regex:do-match", do.Match.(map[string]interface{})["key"], "rule do match should stay a string")
+
+	assert.IsType(t, &regexp.Regexp{}, config.Staged.Rules[0].When.Match["key"], "rule trigger match should be compiled")
+	assert.IsType(t, &regexp.Regexp{}, config.Staged.Systems["test-system"].Data["key"], "system data should be compiled")
+
+	data, err := json.Marshal(do)
+	assert.NoError(t, err, "marshaling rule do should not fail")
+	var reloaded Workflow
+	assert.NoError(t, json.Unmarshal(data, &reloaded), "unmarshaling rule do should not fail")
+	reloadedItem := reloaded.Iterate.([]interface{})[0].(map[string]interface{})
+	assert.True(t, dipper.CompareAll("a 5xx error", reloadedItem["alert_message"]), "regex should still match after persistence round trip")
+	assert.False(t, dipper.CompareAll("all good", reloadedItem["alert_message"]), "regex should not match unrelated text after persistence round trip")
+
+	compiled := newConfig()
+	compiled.RecursiveStaged(dipper.RegexParser)
+	cdata, err := json.Marshal(compiled.Staged.Rules[0].Do)
+	assert.NoError(t, err)
+	var creloaded Workflow
+	assert.NoError(t, json.Unmarshal(cdata, &creloaded))
+	assert.Equal(t, "5xx", creloaded.Iterate.([]interface{})[0].(map[string]interface{})["alert_message"], "pre-compiled regex loses its prefix when persisted")
 }
 
 func TestLoadValidOverrides(t *testing.T) {
