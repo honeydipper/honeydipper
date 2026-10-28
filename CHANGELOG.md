@@ -1,3 +1,10 @@
+# [4.0.0-dev.11](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.10...v4.0.0-dev.11) (2026-10-28)
+
+
+### Bug Fixes
+
+* **config:** leave regex as strings in workflows, rule actions and contexts ([#846](https://github.com/honeydipper/honeydipper/issues/846)) ([8a7c37a](https://github.com/honeydipper/honeydipper/commit/8a7c37ac12685cceeb51110bb685b7b31a892ea9))
+
 # [4.0.0-dev.10](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.9...v4.0.0-dev.10) (2026-10-27)
 
 
