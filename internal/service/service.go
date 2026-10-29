@@ -428,26 +428,35 @@ func (s *Service) loadAdditionalFeatures(featureList map[string]bool) {
 				dipper.Logger.Warningf("[%s] skip feature %s error %v", s.name, feature, err)
 			}
 			if affected {
-				func(feature string, driverName string) {
-					s.addExpect(
-						"state:alive:"+driverName,
-						func(*dipper.Message) {
-							s.driverRuntimes[feature].State = driver.DriverAlive
-							if feature == FeatureEmitter {
-								// emitter is loaded
-								daemon.SetEmitter(s.name, s)
-							}
-						},
-						DriverReadyTimeout*time.Second,
-						func() {
-							dipper.Logger.Warningf("[%s] failed to start or reload driver %s", s.name, driverName)
-							s.driverRuntimes[feature].State = driver.DriverFailed
-						},
-					)
-				}(feature, driverName)
+				s.expectDriverAlive(feature, driverName, s.getDriverRuntime(feature))
 			}
 		}
 	}
+}
+
+func (s *Service) expectDriverAlive(feature string, driverName string, started *driver.Runtime) {
+	s.addExpect(
+		"state:alive:"+driverName,
+		func(*dipper.Message) {
+			s.driverRuntimes[feature].State = driver.DriverAlive
+			if feature == FeatureEmitter {
+				// emitter is loaded
+				daemon.SetEmitter(s.name, s)
+			}
+		},
+		DriverReadyTimeout*time.Second,
+		func() {
+			dipper.Logger.Warningf("[%s] failed to start or reload driver %s", s.name, driverName)
+			// the runtime may have crashed and been removed from the map already
+			if started == nil {
+				return
+			}
+			started.State = driver.DriverFailed
+			if current := s.getDriverRuntime(feature); (current == nil || current == started) && s.drainingGroup == nil {
+				go loadFailedDriverRuntime(started, 0)
+			}
+		},
+	)
 }
 
 func (s *Service) serviceLoop() {
