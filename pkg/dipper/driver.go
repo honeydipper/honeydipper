@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,9 +54,10 @@ type Driver struct {
 	Stop            MessageHandler
 	Reload          MessageHandler
 	Drain           MessageHandler
-	ReadySignal     chan bool
 	APITimeout      time.Duration
 	JobWaitTimeout  time.Duration
+	optionsMu       sync.Mutex
+	optionsReady    chan struct{}
 	cancel          context.CancelFunc
 	ctx             context.Context
 }
@@ -81,12 +83,12 @@ func DriverWithWriter(w io.Writer) DriverOption {
 // NewDriver : create a blank driver object.
 func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 	driver := Driver{
-		Name:        name,
-		Service:     service,
-		State:       "loaded",
-		In:          os.Stdin,
-		Out:         os.Stdout,
-		ReadySignal: make(chan bool),
+		Name:         name,
+		Service:      service,
+		State:        "loaded",
+		In:           os.Stdin,
+		Out:          os.Stdout,
+		optionsReady: make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -136,6 +138,11 @@ func (d *Driver) Run() {
 			})
 			for d.State != DriverStateCompleted {
 				msg := FetchRawMessage(d.In)
+				if msg.Channel == "command" && msg.Subject == "options" {
+					// messages are handled concurrently, so mark the options as pending before
+					// dispatching, ensuring the following start/reload waits for them to be applied.
+					d.beginOptions()
+				}
 				go func() {
 					defer SafeExitOnError("[%s] Continuing driver message loop", d.Service)
 					if handler, ok := d.MessageHandlers[msg.Channel+":"+msg.Subject]; ok {
@@ -159,12 +166,12 @@ func (d *Driver) Ping(msg *Message) {
 
 // ReceiveOptions : receive options from daemon.
 func (d *Driver) ReceiveOptions(msg *Message) {
+	defer d.finishOptions()
 	msg = DeserializePayload(msg)
 	Recursive(msg.Payload, RegexParser)
 	DecryptAll(d, msg.Payload)
 	d.Options = msg.Payload
-	Logger = nil
-	d.GetLogger()
+	d.resetLogger()
 	d.APITimeout = DefaultAPITimeout
 	apiTimeoutStr, ok := d.GetOptionStr("data.api_timeout")
 	if ok {
@@ -175,16 +182,36 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 			d.APITimeout = time.Duration(apiTimeout)
 		}
 	}
-	if d.ReadySignal != nil {
-		close(d.ReadySignal)
+}
+
+func (d *Driver) beginOptions() {
+	d.optionsMu.Lock()
+	defer d.optionsMu.Unlock()
+	if d.optionsReady == nil {
+		d.optionsReady = make(chan struct{})
+	}
+}
+
+func (d *Driver) finishOptions() {
+	d.optionsMu.Lock()
+	defer d.optionsMu.Unlock()
+	if d.optionsReady != nil {
+		close(d.optionsReady)
+		d.optionsReady = nil
+	}
+}
+
+func (d *Driver) waitOptions() {
+	d.optionsMu.Lock()
+	ready := d.optionsReady
+	d.optionsMu.Unlock()
+	if ready != nil {
+		<-ready
 	}
 }
 
 func (d *Driver) start(msg *Message) {
-	if d.ReadySignal != nil {
-		<-d.ReadySignal
-		d.ReadySignal = nil
-	}
+	d.waitOptions()
 
 	if d.State == DriverStateAlive {
 		if d.Reload != nil {
@@ -260,18 +287,22 @@ func (d *Driver) GetOptionStr(path string) (string, bool) {
 // avoid being closed by garbage collector (runtime.setFinalizer).
 var logFile *os.File
 
+// resetLogger rebuilds the logger from the latest options without exposing a nil Logger to concurrent handlers.
+func (d *Driver) resetLogger() {
+	levelstr, ok := d.GetOptionStr("data.loglevel")
+	if !ok {
+		levelstr = "INFO"
+	}
+	if logFile == nil {
+		logFile = os.NewFile(DriverLogDescriptor, "log")
+	}
+	GetLogger(d.Name, levelstr, logFile)
+}
+
 // GetLogger : getting a logger for the driver.
 func (d *Driver) GetLogger() *logging.Logger {
 	if Logger == nil {
-		levelstr, ok := d.GetOptionStr("data.loglevel")
-		if !ok {
-			levelstr = "INFO"
-		}
-		if logFile == nil {
-			logFile = os.NewFile(DriverLogDescriptor, "log")
-		}
-
-		return GetLogger(d.Name, levelstr, logFile)
+		d.resetLogger()
 	}
 
 	return Logger
