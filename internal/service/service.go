@@ -530,8 +530,11 @@ func (s *Service) serviceLoop() {
 				daemon.DeleteEmitter(s.name)
 			}
 			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive && s.drainingGroup == nil {
-				// only reload drivers that used to be in DriveAlive state
-				go loadFailedDriverRuntime(orderedRuntimes[chosen], 0)
+				// only reload drivers that used to be in DriveAlive state, and are not already replaced,
+				// a crashed runtime may have been removed from the map already.
+				if current := s.getDriverRuntime(d.Feature); current == nil || current == d {
+					go loadFailedDriverRuntime(d, 0)
+				}
 			}
 		}
 	}
