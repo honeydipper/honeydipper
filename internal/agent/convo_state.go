@@ -34,14 +34,16 @@ const (
 
 // ConvoSessionRef is a compact record of an agent session that belongs to a conversation.
 type ConvoSessionRef struct {
-	SessionID    string `json:"session_id"`
-	AgentName    string `json:"agent_name"`
-	Type         string `json:"type"`
-	Status       string `json:"status"`
-	ErrorReason  string `json:"error_reason,omitempty"`
-	InputTokens  int    `json:"input_tokens,omitempty"`
-	OutputTokens int    `json:"output_tokens,omitempty"`
-	TotalTokens  int    `json:"total_tokens,omitempty"`
+	SessionID   string `json:"session_id"`
+	AgentName   string `json:"agent_name"`
+	Type        string `json:"type"`
+	Status      string `json:"status"`
+	ErrorReason string `json:"error_reason,omitempty"`
+	// ParentSessionID is set for sub-agent sessions so the parent is not mistaken for a superseded turn.
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	InputTokens     int    `json:"input_tokens,omitempty"`
+	OutputTokens    int    `json:"output_tokens,omitempty"`
+	TotalTokens     int    `json:"total_tokens,omitempty"`
 	// ContextTokens tracks the token count of the current history including
 	// system message, persisted for incremental counting across round trips.
 	ContextTokens int       `json:"context_tokens,omitempty"`
