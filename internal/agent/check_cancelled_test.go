@@ -99,3 +99,26 @@ func TestCheckCancelled_ExplicitCancelledSession(t *testing.T) {
 	// Should be cancelled (explicitly marked as cancelled)
 	assert.True(t, s.checkCancelled())
 }
+
+// TestCheckCancelled_ActiveSubAgentDoesNotCancelParent verifies that a parent
+// session is not considered cancelled while its own sub-agent is the active session.
+func TestCheckCancelled_ActiveSubAgentDoesNotCancelParent(t *testing.T) {
+	store := newMockStore(nil)
+	cfg := store.GetConfig()
+	cfg.DataSet.Agents["test-agent"] = config.Agent{Name: "test-agent"}
+
+	parent := &ConvoSessionRef{SessionID: "session-1", Status: ConvoSessionStatusActive}
+	cs := &ConvoState{
+		ConvoID:       "convo-1",
+		FirstSession:  parent,
+		LastSession:   parent,
+		ActiveSession: &ConvoSessionRef{SessionID: "child-1", ParentSessionID: "session-1", Status: ConvoSessionStatusActive},
+	}
+	cs.persist(store)
+
+	s := &AgentSession{store: store, Agent: &config.Agent{Name: "test-agent"}, ID: "session-1", ConvoID: "convo-1"}
+	assert.False(t, s.checkCancelled())
+
+	other := &AgentSession{store: store, Agent: &config.Agent{Name: "test-agent"}, ID: "session-0", ConvoID: "convo-1"}
+	assert.True(t, other.checkCancelled(), "an unrelated session must still be treated as superseded")
+}

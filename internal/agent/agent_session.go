@@ -276,7 +276,7 @@ func (s *AgentSession) checkCancelled() bool {
 	// If this session is not the active session, it's considered cancelled.
 	// This handles the case where a new turn has started and the old session
 	// is no longer active.
-	if cs.ActiveSession == nil || cs.ActiveSession.SessionID != s.ID {
+	if cs.ActiveSession == nil || (cs.ActiveSession.SessionID != s.ID && !s.hasActiveDescendant(cs.ActiveSession)) {
 		return true
 	}
 
@@ -290,6 +290,37 @@ func (s *AgentSession) checkCancelled() bool {
 		ucs.load(s.UnifiedConvoID, s.store)
 
 		return ucs.isSessionCancelled(s.ID)
+	}
+
+	return false
+}
+
+// hasActiveDescendant reports whether the active session is a sub-agent running
+// on behalf of this session, in which case this session is still in control.
+func (s *AgentSession) hasActiveDescendant(active *ConvoSessionRef) bool {
+	const maxDepth = 8
+	parent := active.ParentSessionID
+	for range maxDepth {
+		if parent == "" {
+			return false
+		}
+		if parent == s.ID {
+			return true
+		}
+		ancestor := &AgentSession{}
+		if err := func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("%w: %v", ErrToolCall, r)
+				}
+			}()
+			ancestor.load(parent, s.store)
+
+			return nil
+		}(); err != nil {
+			return false
+		}
+		parent = ancestor.ParentSessionID
 	}
 
 	return false
@@ -497,6 +528,7 @@ func (s *AgentSession) initNewSession(id string, msg *dipper.Message, store Agen
 				cs.UnifiedConvoID = s.UnifiedConvoID
 			}
 			cs.registerSession(s.ID, agentName, s.Type, false)
+			cs.ActiveSession.ParentSessionID = s.ParentSessionID
 		})
 	}
 }
