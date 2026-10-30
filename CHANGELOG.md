@@ -1,3 +1,10 @@
+# [4.0.0-dev.13](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.12...v4.0.0-dev.13) (2026-10-30)
+
+
+### Bug Fixes
+
+* **agent:** do not cancel a turn while its own sub-agent is active ([#851](https://github.com/honeydipper/honeydipper/issues/851)) ([cc5d764](https://github.com/honeydipper/honeydipper/commit/cc5d764dc78c1e683dcd5ddc41aaa14b7ee4ce62))
+
 # [4.0.0-dev.12](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.11...v4.0.0-dev.12) (2026-10-30)
 
 
