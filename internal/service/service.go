@@ -529,9 +529,9 @@ func (s *Service) serviceLoop() {
 				// emitter has crashed
 				daemon.DeleteEmitter(s.name)
 			}
-			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive && s.drainingGroup == nil {
-				// only reload drivers that used to be in DriveAlive state
-				go loadFailedDriverRuntime(orderedRuntimes[chosen], 0)
+			if d := orderedRuntimes[chosen]; d.State == driver.DriverAlive && s.drainingGroup == nil && s.getDriverRuntime(d.Feature) == d {
+				// only reload drivers that used to be in DriveAlive state, and are not already replaced
+				go loadFailedDriverRuntime(d, 0)
 			}
 		}
 	}
