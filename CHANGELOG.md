@@ -1,3 +1,11 @@
+# [4.0.0-dev.12](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.11...v4.0.0-dev.12) (2026-10-30)
+
+
+### Bug Fixes
+
+* **daemon:** do not treat a replaced driver runtime as crashed ([#850](https://github.com/honeydipper/honeydipper/issues/850)) ([9f8733b](https://github.com/honeydipper/honeydipper/commit/9f8733bd7b408586f82fb5ae322d5d077f89b02f))
+* **drivers:** retry drivers that fail on reload and fix options/start race ([#849](https://github.com/honeydipper/honeydipper/issues/849)) ([5f0cd9e](https://github.com/honeydipper/honeydipper/commit/5f0cd9e24f6cc63187b289dcef6061e5a54770f7))
+
 # [4.0.0-dev.11](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.10...v4.0.0-dev.11) (2026-10-28)
 
 
