@@ -611,7 +611,10 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 		},
 	}
 
-	s := &AgentSession{}
+	// ParentSessionID must be set before setup() so the session ref registered in
+	// the unified ConvoState carries it; the parent's poll relies on it to avoid
+	// treating its own sub-agent as a superseding turn.
+	s := &AgentSession{ParentSessionID: msg.Labels["agent_session_id"]}
 	s.setup(subMsg, p, false)
 
 	// If initNewSession recorded a hard config error (missing sub-agent), the
@@ -651,7 +654,6 @@ func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
 	s.loadConvoHistory()
 	// Re-derive the compaction baseline from the loaded history.
 	s.refreshContextSize()
-	s.ParentSessionID = msg.Labels["agent_session_id"]
 	s.ParentTurnID = msg.Labels["turn_id"]
 	s.ParentToolCallID = msg.Labels["tool_call_id"]
 
