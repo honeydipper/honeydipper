@@ -1,3 +1,10 @@
+# [4.0.0-dev.14](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.13...v4.0.0-dev.14) (2026-11-06)
+
+
+### Bug Fixes
+
+* **agent:** register sub-agent ParentSessionID before setup ([#854](https://github.com/honeydipper/honeydipper/issues/854)) ([51fac1c](https://github.com/honeydipper/honeydipper/commit/51fac1c7c1f44fcc6bc84e78b5494f6b77e2fea8))
+
 # [4.0.0-dev.13](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.12...v4.0.0-dev.13) (2026-10-30)
 
 
