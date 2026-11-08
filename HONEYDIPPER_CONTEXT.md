@@ -247,6 +247,23 @@ User/Workflow ──► Agent Service ──► AgentSession ──► AI Driver
 
 **Config-time validation**: on every config load/refresh, `assemble()` runs `ValidateAgentCompactionPolicies`, which warns when an agent's `compaction_policy.summarization_agent` matches no configured `agents` key (e.g. a `campactor`/`compactor` typo), noting that compaction will be skipped until the summarizer is configured (post-Phase-1 it degrades gracefully, it does not fail). `assemble()` guards `dipper.Logger` for nil, consistent with `logRemoteMetaDecision`.
 
+**Trailing-turn resume / ContinuePolicy (behavior change)**: `sendToDriver()` no longer fabricates a
+user turn whenever the serialized history's last role is not `user`. It decides on the slash-filtered
+serialized tail via `filteredTail()` (the same shared rule as `lastNonSlashMsg()`): a trailing
+`tool_result` (tool round-trip), `tool`, unknown role, empty, or system-only history is sent **as-is**;
+a trailing `agent` with pending `ToolCalls` logs a **Warning** (unresolved tool calls were not cleaned
+up) and is sent as-is; only an **interrupted agent turn** (trailing `agent` with no `ToolCalls`) gets a
+synthesized resume marker. That marker is marked `Message.IsSynthetic` (the opposite of `IsSlash`:
+write-only in this phase, never persisted to `s.history` / `convo_history:<id>`, never counted in
+`ContextTokens`, never trimmed), is logged at Debug with session id / reason / mode / prompt length, and
+is configurable per agent via `agents.<name>.continue_policy` (`mode: auto` default; `never` is
+RESERVED and degrades to auto with an assembly-time warning; `prompt` overrides the built-in
+`defaultContinuePrompt` and is intentionally not interpolated). `Message.IsSynthetic` exists so tests and
+logs assert provenance now and drivers can act on it later. `/retry` still works: after
+`resolveUnresolvedToolCalls()` the tail is a `tool_result`, a valid continuation for every driver, so no
+marker is synthesized. `ValidateAgentContinuePolicies` warns (never fails assembly) for unknown modes,
+`never`, and empty prompts.
+
 **Agent.Name population (Phase 2)**: config assembly (`mergeDataSet` in `internal/config/config.go`) now merges `Agents` per-key (like `Systems`) and populates `Agent.Name` from the `Agents` map key for every config-loaded agent, only when no explicit `name:` is set. An explicit `name:` (even one that differs from the key, e.g. key `campactor` / `name: compactor`) is always respected and is never clobbered by a key-derived Name from an overlay repo. This closes the Phase-1 gap at the source: `summAgent.Name`, `/refresh`, `/model`, tool-call naming, and `ConvoState.Agent.Name` no longer see an empty name for config-loaded agents.
 
 **Behavior change for `$agent_name` interpolation**: `interpolateAgentConfig` builds `envData["agent_name"]` from `agent.Name` — before this change it was always empty in production, so `$agent_name` / `{{ .agent_name }}` in system prompts and `model_data` now resolves to the actual agent name. This is a fix, but any config that (accidentally) relied on the empty value changes behavior.

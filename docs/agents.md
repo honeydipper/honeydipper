@@ -12,6 +12,7 @@
 - [Configuration](#configuration)
   - [Agent Definition](#agent-definition)
   - [CompactionPolicy](#compactionpolicy)
+  - [ContinuePolicy](#continuepolicy)
   - [AgentToolDef](#agenttooldef)
 - [Tool Building](#tool-building)
   - [System Tools (`sys_` prefix)](#system-tools-sys_-prefix)
@@ -156,6 +157,9 @@ agents:
       preserve_recent: 10
       summarization_agent: fast_summarizer
       summarization_prompt: "Summarize preserving key decisions."
+    continue_policy:
+      mode: auto      # auto = supported; never = RESERVED (not honored in this phase)
+      prompt: ""      # optional; empty/whitespace -> built-in default resume marker
     tools:
       - type: system
         name: kubernetes
@@ -206,6 +210,30 @@ archive is partial), a `RoleSystem` placeholder noting the failure and archive l
 conversation resumes with the full history (automatic path) or posts a clear failure reply (`/compact` path).
 No compaction boundary or baseline is recorded when no compaction actually completed, and compaction cannot
 re-fire within the same failed turn.
+
+### ContinuePolicy
+
+```go
+type ContinuePolicy struct {
+    Mode   string // "auto" (default) or "never" (RESERVED; not honored in this phase)
+    Prompt string // optional override for the resume marker; empty -> built-in default
+}
+```
+
+`continue_policy` controls the **resume marker** the engine may append to the history it sends an AI
+driver when that history would otherwise not end on a user-role message. It follows the same config
+shape and validation style as `compaction_policy`.
+
+- `mode: auto` (default, and the fallback for a nil/unknown mode) synthesizes a marker **only** for an
+  interrupted agent turn.
+- `mode: never` is **RESERVED** for a later phase in which drivers advertise their own
+  `require_trailing_user` handling. It is not honored yet: the daemon emits an assembly-time warning
+  (`mode: never requires driver-side handling; using auto`) and degrades to `auto` at runtime. Config
+  validation never fails assembly.
+- `prompt` overrides the built-in marker text. It is intentionally **not interpolated** — interpolating
+  session data into a user-authority turn is the anti-goal, and the marker must stay byte-stable across
+  turns. An empty or whitespace-only prompt falls back to the built-in default and is never transmitted
+  as empty content (Anthropic and Gemini reject empty content; OpenAI treats it as inert).
 
 ### AgentToolDef
 
@@ -392,6 +420,47 @@ while the compaction-boundary bookkeeping (`CompactionHistoryIdx` / `LastCompact
   expected post-compaction baseline to avoid re-firing on each turn.
 - The summarization agent must be configured and reference a valid driver.
 - Archived generations are discoverable: `convo_history:<ConvoID>_g1`, `_g2`, etc.
+
+---
+
+## Continue Policy (Resume Marker)
+
+Some driver protocols can require the history to end on a user-role message. The engine therefore
+*synthesizes* a trailing user turn only when the serialized history ends on an **interrupted agent
+turn** — a trailing `agent` message with no pending `ToolCalls`. The marker is unambiguous to the model
+(an automatic continuation, not new user input), provenance-marked (`Message.IsSynthetic`), and
+configurable per agent (`agents.<name>.continue_policy`).
+
+**Decision matrix (decided on the slash-filtered serialized history):**
+
+| Trailing real message | Synthesis |
+|---|---|
+| `user` | no — already a user turn |
+| `tool_result` (a tool round-trip) | no — every supported driver terminates correctly on tool results |
+| `agent` with pending `ToolCalls` | no — this means `resolveUnresolvedToolCalls()` did not run; a **Warning** is logged rather than hiding the bug behind a user turn |
+| `agent` without `ToolCalls` (interrupted turn) | **yes** — marked `IsSynthetic` |
+| `tool` (legacy) / unknown role | no — logged at Debug |
+| empty / system-only serialized history | no — logged at Debug (`continue_policy: no actionable turn, sending as-is`) |
+
+Every `sendToDriver()` entry point (`run`, `processToolResult`, `handleCompactionResult`, slash
+`/retry`, and post-restart `recover`) yields a non-empty, non-system tail, so the "no actionable turn"
+case is a defensive no-op, never an injection.
+
+**Invariants:** the synthesized turn is **ephemeral**. It is appended only to the local driver request
+and is never persisted to the conversation history (`s.history` / `convo_history:<id>`), never counted
+in `ContextTokens`, and never subject to `max_history_len` trimming. `Message.IsSynthetic` is the
+**opposite** of `IsSlash`: write-only in this phase — no daemon code reads it back; it exists so tests
+and logs can assert provenance now and drivers can act on it later.
+
+**`/retry`** keeps working: after `resolveUnresolvedToolCalls()` clears a hanging tool call the tail is a
+`tool_result`, which is a valid continuation for every driver, so no marker is synthesized. A `/retry`
+on an interrupted agent turn resumes with the marked marker.
+
+**Driver version compatibility:** the Phase-1 behavior changes require **no minimum `hd-driver-openai`
+version**. The OpenAI driver ignores `is_synthetic` and needs no trailing user turn (a `tool` message is a
+valid terminal message), so removing the old injection after tool round-trips is safe. Drivers that
+consume `is_synthetic` (or honor `mode: never` via a per-engine `require_trailing_user`) are a later
+phase.
 
 ---
 

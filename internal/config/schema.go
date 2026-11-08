@@ -178,6 +178,7 @@ type Agent struct {
 	ShouldStream       bool                       `json:"should_stream" mapstructure:"should_stream"`
 	MaxHistoryLen      int                        `json:"max_history_len" mapstructure:"max_history_len"`
 	CompactionPolicy   *agentpkg.CompactionPolicy `json:"compaction_policy" mapstructure:"compaction_policy"`
+	ContinuePolicy     *agentpkg.ContinuePolicy   `json:"continue_policy" mapstructure:"continue_policy"`
 	Tools              []AgentToolDef
 	ModelData          map[string]interface{} `json:"model_data" mapstructure:"model_data"`
 	AgentSettings      interface{}            `json:"agent_settings" mapstructure:"additional_data"`

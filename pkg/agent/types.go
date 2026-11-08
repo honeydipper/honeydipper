@@ -42,6 +42,16 @@ type Message struct {
 	// they are NEVER sent to the model as context. This field is persisted to
 	// Redis as part of the serialized message so markers survive session restore.
 	IsSlash bool `json:"is_slash,omitempty" mapstructure:"is_slash"`
+
+	// IsSynthetic marks a user-role turn that the daemon fabricated to resume an
+	// interrupted agent turn (see ContinuePolicy). It is the OPPOSITE of IsSlash:
+	// it is write-only in this phase. A synthesized turn is appended to the
+	// driver request only and is NEVER persisted to s.history /
+	// convo_history:<id>, NEVER counted in ContextTokens, and NEVER subject to
+	// max_history_len trimming. No daemon code reads this field back; it exists so
+	// tests and logs can assert provenance now, and so drivers can act on it in a
+	// later phase.
+	IsSynthetic bool `json:"is_synthetic,omitempty" mapstructure:"is_synthetic"`
 }
 
 // Tool describes a callable tool exposed to the model.
@@ -130,6 +140,40 @@ type CompactionPolicy struct {
 	// request. If empty, a sensible default is used.
 	// The template receives the conversation history as formatted text.
 	SummarizationPrompt string `json:"summarization_prompt" mapstructure:"summarization_prompt"`
+}
+
+// DefaultContinuePrompt is the built-in resume marker the daemon synthesizes
+// when an interrupted agent turn needs a trailing user message. It is worded to
+// be unambiguous to the model (an automatic continuation, NOT new user input)
+// and is byte-stable across turns so it can be recognized and deduplicated.
+const DefaultContinuePrompt = "Continue from where you left off — automatic resume of an interrupted turn; " +
+	"this is not new input from the user."
+
+// ContinuePolicy configures how the engine resumes a conversation whose
+// serialized history does not end on a user-role message. It follows the same
+// config shape and validation style as CompactionPolicy.
+//
+// The engine synthesizes a resume marker ONLY when the trailing real message is
+// an interrupted agent turn (a RoleAgent message with no pending ToolCalls).
+// Tool round-trips (trailing RoleToolResult) and every other role are sent
+// as-is because all supported driver protocols terminate correctly there.
+type ContinuePolicy struct {
+	// Mode selects whether the engine may synthesize a resume marker.
+	//   - "" / "auto" (default): synthesize only for an interrupted agent turn.
+	//   - "never": RESERVED. Not honored in this phase; the daemon emits an
+	//     assembly-time warning and degrades to "auto" at runtime. It is reserved
+	//     for drivers that advertise their own require_trailing_user handling.
+	Mode string `json:"mode" mapstructure:"mode"`
+
+	// Prompt overrides the built-in resume marker text (DefaultContinuePrompt).
+	//
+	// It is intentionally NOT interpolated. Interpolating session data into a
+	// user-authority turn is the anti-goal, and the marker must stay byte-stable
+	// across turns so it stays recognizable. An empty or whitespace-only value
+	// falls back to DefaultContinuePrompt; an empty prompt is never transmitted
+	// (Anthropic and Gemini reject empty content with a 400, OpenAI treats it as
+	// inert).
+	Prompt string `json:"prompt" mapstructure:"prompt"`
 }
 
 // TokenCounter is an interface for counting tokens in text.

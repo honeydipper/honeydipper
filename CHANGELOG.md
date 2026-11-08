@@ -1,3 +1,25 @@
+# Unreleased
+
+### Bug Fixes
+
+* **agent:** stop fabricating a user turn after every tool round-trip. The resume marker is now
+  synthesized only for an interrupted agent turn (a trailing `agent` message with no pending
+  `ToolCalls`); tool results, `tool`, unknown roles, and empty/system-only histories are sent as-is.
+  A trailing `agent` with pending `ToolCalls` now logs a Warning instead of being masked by a user turn.
+
+### Features
+
+* **agent:** add a per-agent `continue_policy` (`mode`, `prompt`) and `Message.IsSynthetic` provenance
+  marker. The synthesized resume marker is ephemeral (never persisted, never counted in token
+  accounting) and configurable. `mode: never` is reserved and degrades to `auto` with a warning.
+
+### Release Notes
+
+* **Agent resume prompt text changed:** the ephemeral trailing user turn is no longer the literal
+  `Please continue.`. It now defaults to an unambiguous resume marker
+  (`Continue from where you left off — automatic resume of an interrupted turn; this is not new input
+  from the user.`) and can be overridden per agent via `continue_policy.prompt`.
+
 # [4.0.0-dev.14](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.13...v4.0.0-dev.14) (2026-11-06)
 
 

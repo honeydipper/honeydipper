@@ -3097,13 +3097,14 @@ func TestSendToDriver_EnsuresLastMessageIsUser_AgentLast(t *testing.T) {
 	require.NotNil(t, params)
 	driverHistory := params["history"].([]AgentMessage)
 
-	// History should have: system prompt + user + agent + "Please continue."
+	// History should have: system prompt + user + agent + ephemeral resume marker.
 	require.Len(t, driverHistory, 4)
 	assert.Equal(t, RoleSystem, driverHistory[0].Role)
 	assert.Equal(t, RoleUser, driverHistory[1].Role)
 	assert.Equal(t, RoleAgent, driverHistory[2].Role)
 	assert.Equal(t, RoleUser, driverHistory[3].Role)
-	assert.Equal(t, "Please continue.", driverHistory[3].Content)
+	assert.Equal(t, defaultContinuePrompt, driverHistory[3].Content)
+	assert.True(t, driverHistory[3].IsSynthetic, "the resume marker must be provenance-marked")
 }
 
 func TestSendToDriver_EnsuresLastMessageIsUser_ToolLast(t *testing.T) {
@@ -3135,12 +3136,14 @@ func TestSendToDriver_EnsuresLastMessageIsUser_ToolLast(t *testing.T) {
 	require.NotNil(t, params)
 	driverHistory := params["history"].([]AgentMessage)
 
-	require.Len(t, driverHistory, 4)
+	// A trailing RoleTool needs no resume marker: send it as-is.
+	require.Len(t, driverHistory, 3)
 	assert.Equal(t, RoleSystem, driverHistory[0].Role)
 	assert.Equal(t, RoleUser, driverHistory[1].Role)
 	assert.Equal(t, RoleTool, driverHistory[2].Role)
-	assert.Equal(t, RoleUser, driverHistory[3].Role)
-	assert.Equal(t, "Please continue.", driverHistory[3].Content)
+	for _, m := range driverHistory {
+		assert.False(t, m.IsSynthetic, "no synthetic turn on a tool round-trip")
+	}
 }
 
 func TestSendToDriver_EnsuresLastMessageIsUser_SystemLast(t *testing.T) {
@@ -3172,12 +3175,14 @@ func TestSendToDriver_EnsuresLastMessageIsUser_SystemLast(t *testing.T) {
 	require.NotNil(t, params)
 	driverHistory := params["history"].([]AgentMessage)
 
-	require.Len(t, driverHistory, 4)
+	// A system tail is not actionable: never synthesize onto it, send as-is.
+	require.Len(t, driverHistory, 3)
 	assert.Equal(t, RoleSystem, driverHistory[0].Role)
 	assert.Equal(t, RoleUser, driverHistory[1].Role)
 	assert.Equal(t, RoleSystem, driverHistory[2].Role)
-	assert.Equal(t, RoleUser, driverHistory[3].Role)
-	assert.Equal(t, "Please continue.", driverHistory[3].Content)
+	for _, m := range driverHistory {
+		assert.False(t, m.IsSynthetic, "no synthetic turn on a system-only tail")
+	}
 }
 
 func TestSendToDriver_EnsuresLastMessageIsUser_UserLast_NoExtra(t *testing.T) {
@@ -3245,13 +3250,11 @@ func TestSendToDriver_EnsuresLastMessageIsUser_EmptyHistory(t *testing.T) {
 	require.NotNil(t, params)
 	driverHistory := params["history"].([]AgentMessage)
 
-	// Even with empty history, system prompt is added first, making last message
-	// a system message (not user), so "Please continue." is appended.
-	require.Len(t, driverHistory, 2)
+	// With empty history only the system prompt is sent; an empty/system-only
+	// tail is never an injection point, so nothing is synthesized.
+	require.Len(t, driverHistory, 1)
 	assert.Equal(t, RoleSystem, driverHistory[0].Role)
 	assert.Equal(t, "sys prompt", driverHistory[0].Content)
-	assert.Equal(t, RoleUser, driverHistory[1].Role)
-	assert.Equal(t, "Please continue.", driverHistory[1].Content)
 }
 
 // ---------------------------------------------------------------------------
