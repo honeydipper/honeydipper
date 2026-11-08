@@ -159,7 +159,7 @@ agents:
       summarization_prompt: "Summarize preserving key decisions."
     continue_policy:
       mode: auto      # auto = supported; never = RESERVED (not honored in this phase)
-      prompt: ""      # optional; empty/whitespace -> built-in default resume marker
+      # prompt: "Resume the task exactly where it stopped."   # optional override; omit to use the built-in marker
     tools:
       - type: system
         name: kubernetes
@@ -233,7 +233,10 @@ shape and validation style as `compaction_policy`.
 - `prompt` overrides the built-in marker text. It is intentionally **not interpolated** — interpolating
   session data into a user-authority turn is the anti-goal, and the marker must stay byte-stable across
   turns. An empty or whitespace-only prompt falls back to the built-in default and is never transmitted
-  as empty content (Anthropic and Gemini reject empty content; OpenAI treats it as inert).
+  as empty content (Anthropic and Gemini reject empty content; OpenAI treats it as inert). Omit the key
+  entirely to use the default silently; setting it to an empty string is treated as a likely
+  misconfiguration and logged at assembly time (`agent %q continue_policy: empty prompt; default text
+  will be used`).
 
 ### AgentToolDef
 
@@ -458,9 +461,18 @@ on an interrupted agent turn resumes with the marked marker.
 
 **Driver version compatibility:** the Phase-1 behavior changes require **no minimum `hd-driver-openai`
 version**. The OpenAI driver ignores `is_synthetic` and needs no trailing user turn (a `tool` message is a
-valid terminal message), so removing the old injection after tool round-trips is safe. Drivers that
-consume `is_synthetic` (or honor `mode: never` via a per-engine `require_trailing_user`) are a later
-phase.
+valid terminal message), so removing the old injection after tool round-trips is safe.
+
+> **`hd-driver-claude` — do not deploy/roll out yet.** `hd-driver-claude` must **not** be deployed against
+> this daemon release until its `tool_result` block-shape fix lands (the deferred follow-up ticket;
+> `tool_result` blocks need the `tool_use_id` correlation). The old synthetic trailing user turn was
+> masking that bug on the `tool_result` path: with the injection removed, the driver's malformed
+> `tool_result` block is now the trailing message and the defect becomes reachable. This is a
+> **pre-existing driver bug that the removed workaround happened to hide**, not a regression introduced
+> here — the daemon Phase-1 change touches no driver code. Only `hd-driver-openai` is safe to run today.
+
+Drivers that consume `is_synthetic` (or honor `mode: never` via a per-engine `require_trailing_user`) are
+a later phase.
 
 ---
 

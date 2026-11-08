@@ -75,10 +75,9 @@ func assertNoSynthetic(t *testing.T, history []AgentMessage, msg string) {
 
 func TestContinuePolicy_DecisionMatrix(t *testing.T) {
 	type policyCase struct {
-		name      string
-		policy    *agentpkg.ContinuePolicy
-		wantText  string
-		expectRun bool
+		name     string
+		policy   *agentpkg.ContinuePolicy
+		wantText string
 	}
 	policies := []policyCase{
 		{name: "nil", policy: nil, wantText: defaultContinuePrompt},
@@ -152,9 +151,7 @@ func TestContinuePolicy_DecisionMatrix(t *testing.T) {
 	}
 
 	for _, tc := range tails {
-		tc := tc
 		for _, pc := range policies {
-			pc := pc
 			t.Run(tc.name+"/"+pc.name, func(t *testing.T) {
 				store, s := newContinuePolicySession(t, pc.policy)
 				s.history = tc.history
@@ -164,6 +161,7 @@ func TestContinuePolicy_DecisionMatrix(t *testing.T) {
 
 				if !tc.synthable {
 					assertNoSynthetic(t, history, tc.name)
+
 					return
 				}
 
@@ -241,13 +239,13 @@ func TestFilteredTail_MatchesLastNonSlashMsg(t *testing.T) {
 	}
 
 	for name, history := range cases {
-		history := history
 		t.Run(name, func(t *testing.T) {
 			s := &AgentSession{history: history}
 			got := s.lastNonSlashMsg()
 			tail, ok := filteredTail(history)
 			if got == nil {
 				assert.False(t, ok, "filteredTail must report no tail when lastNonSlashMsg is nil")
+
 				return
 			}
 			require.True(t, ok)
@@ -375,7 +373,6 @@ func TestContinuePolicy_Recover_MatchesLivePath(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			store, s := newContinuePolicySession(t, nil)
 			s.history = tc.history
@@ -387,6 +384,7 @@ func TestContinuePolicy_Recover_MatchesLivePath(t *testing.T) {
 				last := history[len(history)-1]
 				require.Equal(t, RoleUser, last.Role)
 				assert.True(t, last.IsSynthetic)
+
 				return
 			}
 			assertNoSynthetic(t, history, tc.name)
@@ -430,6 +428,39 @@ func TestContinuePolicy_CompactionResume(t *testing.T) {
 		assertNoSynthetic(t, history, "compaction failure")
 		assert.Equal(t, RoleSystem, history[len(history)-1].Role,
 			"compaction failure resumes on the RoleSystem placeholder")
+	})
+
+	t.Run("skip_unusable_summarizer", func(t *testing.T) {
+		// Second RoleSystem-tail path reaching sendToDriver via the same
+		// fall-through: automatic compaction is skipped because the configured
+		// summarization agent is missing/unusable, so
+		// appendCompactionSkipPlaceholder appends a RoleSystem placeholder and
+		// compactHistory returns false. The matrix must treat this exactly like
+		// the failure placeholder: no synthesis, logged Debug no-op, history
+		// sent as-is.
+		store, s := makeCompactionResultSession(t, false)
+		// Point at a summarization agent that is not defined so
+		// summarizerUnusableReason() reports the skip.
+		s.Agent.CompactionPolicy.SummarizationAgent = "missing_summ"
+		s.Agent.CompactionPolicy.ThresholdType = "history_len"
+		s.Agent.CompactionPolicy.Threshold = 3
+
+		s.sendToDriver()
+
+		// Skipping falls through to the driver (unlike a dispatched summarizer).
+		require.True(t, store.hasCall("driver:openai:send_to_model"),
+			"compaction skip must fall through to the driver")
+
+		// The skip placeholder is persisted into live history and is the tail.
+		lastLive := s.history[len(s.history)-1]
+		require.Equal(t, RoleSystem, lastLive.Role,
+			"compaction skip appends a RoleSystem placeholder to live history")
+		assert.Contains(t, lastLive.Content, "Compaction skipped")
+
+		history := captureDriverHistory(t, store)
+		assertNoSynthetic(t, history, "compaction skip")
+		assert.Equal(t, RoleSystem, history[len(history)-1].Role,
+			"compaction skip resumes on the RoleSystem placeholder")
 	})
 }
 

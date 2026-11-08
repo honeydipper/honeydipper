@@ -372,7 +372,7 @@ type ContinuePolicy struct {
 | Field | Description |
 |---|---|
 | `mode` | `auto` (default) synthesizes a marker only for an interrupted agent turn. `never` is **RESERVED** for a later phase; it is not honored yet — the daemon warns at assembly time (`mode: never requires driver-side handling; using auto`) and degrades to `auto` at runtime. |
-| `prompt` | Optional override for the marker text. It is intentionally **not interpolated** (session data must not leak into a user-authority turn) and must stay byte-stable. Empty/whitespace falls back to the built-in default; an empty prompt is never transmitted. |
+| `prompt` | Optional override for the marker text. It is intentionally **not interpolated** (session data must not leak into a user-authority turn) and must stay byte-stable. Omit it to use the built-in default silently; an explicitly empty/whitespace value falls back to the default (never transmitted empty) and is logged at assembly time as a likely misconfiguration. |
 
 Behavior at a glance:
 
@@ -389,7 +389,7 @@ agents:
   sre_assistant:
     continue_policy:
       mode: auto
-      prompt: ""   # use the built-in resume marker
+      # prompt: "Resume the task exactly where it stopped."   # optional override; omit to use the built-in marker
 ```
 
 ### Example Agent Configuration
