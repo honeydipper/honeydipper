@@ -297,15 +297,32 @@ func listKnownEngines(s *AgentSession) string {
 	return strings.Join(lines, "\n")
 }
 
-// lastNonSlashMsg returns the most recent history message that is not marked
-// IsSlash, or nil when history is empty or every message is slash-origin.
-// Marked slash messages (command text and replies) are not part of the real
-// conversation, so they are skipped when deciding whether a turn is interrupted.
-func (s *AgentSession) lastNonSlashMsg() *AgentMessage {
-	for i := len(s.history) - 1; i >= 0; i-- {
-		if !s.history[i].IsSlash {
-			return &s.history[i]
+// filteredTail returns the most recent message in history that is not marked
+// IsSlash, together with true. Marked slash messages (command text and replies)
+// are not part of the real conversation, so they are skipped. It returns the
+// zero message and false when history is empty or every message is
+// slash-origin.
+//
+// It is the single source of truth for "what is the real tail of the
+// conversation": lastNonSlashMsg() is defined in terms of it, and
+// sendToDriver() decides whether to synthesize a resume marker from it, so the
+// two can never drift.
+func filteredTail(history []AgentMessage) (AgentMessage, bool) {
+	for i := len(history) - 1; i >= 0; i-- {
+		if !history[i].IsSlash {
+			return history[i], true
 		}
+	}
+
+	return AgentMessage{}, false
+}
+
+// lastNonSlashMsg returns the most recent history message that is not marked
+// IsSlash, or nil when history is empty or every message is slash-origin. It is
+// a thin wrapper over filteredTail so both share one rule.
+func (s *AgentSession) lastNonSlashMsg() *AgentMessage {
+	if m, ok := filteredTail(s.history); ok {
+		return &m
 	}
 
 	return nil
@@ -336,9 +353,13 @@ func (s *AgentSession) hasInterruptedTurn() bool {
 // interrupted (cancelled or errored mid-way) and history already ends at the
 // interruption point: resolveUnresolvedToolCalls clears any hanging tool calls,
 // then sendToDriver() rebuilds the model history from s.history (filtering the
-// marked slash command text) and appends a synthetic "Please continue." only
-// when the trailing role isn't a user — it is never written into s.history, so
-// no "continue" text or duplicate user message pollutes the conversation.
+// marked slash command text).
+//
+// After unresolved tool calls are resolved the trailing real message is a
+// RoleToolResult, which is a valid continuation for every supported driver, so
+// no resume marker is synthesized. Only a trailing interrupted agent turn
+// (RoleAgent with no pending ToolCalls) gets the ephemeral, provenance-marked
+// (IsSynthetic) resume message, which is never written into s.history.
 func slashRetry(s *AgentSession, _ string) bool {
 	if !s.hasInterruptedTurn() {
 		s.reply("Nothing to retry: the last turn already completed.")

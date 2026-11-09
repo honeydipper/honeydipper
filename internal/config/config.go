@@ -252,6 +252,15 @@ func (c *Config) assemble() {
 			dipper.Logger.Warningf("[config] %s", w)
 		}
 	}
+	// Emit a load/validate-time warning for continue policies this phase cannot
+	// honor (mode: never) or that are malformed. Like compaction validation, a
+	// bad continue_policy NEVER fails assembly: it only warns and the runtime
+	// degrades to the safe default behavior.
+	for _, w := range ValidateAgentContinuePolicies(c.Staged) {
+		if dipper.Logger != nil {
+			dipper.Logger.Warningf("[config] %s", w)
+		}
+	}
 }
 
 // ValidateAgentCompactionPolicies returns a warning message for every agent
@@ -273,6 +282,52 @@ func ValidateAgentCompactionPolicies(ds *DataSet) []string {
 			warnings = append(warnings, fmt.Sprintf(
 				"agent %q compaction_policy.summarization_agent %q matches no agents key; compaction will be skipped until the summarizer is configured",
 				name, ag.CompactionPolicy.SummarizationAgent,
+			))
+		}
+	}
+
+	return warnings
+}
+
+// ValidateAgentContinuePolicies returns a warning message for every agent whose
+// continue_policy is malformed or asks for a mode this phase cannot honor. It
+// runs on every config load/refresh (via assemble) so misconfigurations are
+// surfaced early. It NEVER fails assembly: a warning here only means the runtime
+// degrades to the safe default (mode auto with the built-in prompt).
+//
+// Warnings:
+//   - unknown mode -> "using auto"
+//   - mode "never" -> "requires driver-side handling; using auto" (RESERVED; this
+//     phase cannot disable synthesis because no driver in this phase honors a
+//     missing trailing user turn)
+//   - empty/whitespace prompt under an effective auto mode -> "empty prompt;
+//     default text will be used"
+//
+// A nil policy is not flagged: it simply means "auto with the built-in prompt".
+func ValidateAgentContinuePolicies(ds *DataSet) []string {
+	if ds == nil || ds.Agents == nil {
+		return nil
+	}
+	warnings := []string{}
+	for name, ag := range ds.Agents {
+		cp := ag.ContinuePolicy
+		if cp == nil {
+			continue
+		}
+		switch mode := strings.ToLower(strings.TrimSpace(cp.Mode)); mode {
+		case "", "auto":
+			if strings.TrimSpace(cp.Prompt) == "" {
+				warnings = append(warnings, fmt.Sprintf(
+					"agent %q continue_policy: empty prompt; default text will be used", name,
+				))
+			}
+		case "never":
+			warnings = append(warnings, fmt.Sprintf(
+				"agent %q continue_policy: mode: never requires driver-side handling; using auto", name,
+			))
+		default:
+			warnings = append(warnings, fmt.Sprintf(
+				"agent %q continue_policy.mode %q is unknown; using auto", name, cp.Mode,
 			))
 		}
 	}

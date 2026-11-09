@@ -933,18 +933,19 @@ func TestSlashRetry_MidToolCallInterruption_ResolvesThenResumes(t *testing.T) {
 	require.NotNil(t, params, "sendToDriver must be invoked to resume the paused tool turn")
 	driverHistory, ok := params["history"].([]AgentMessage)
 	require.True(t, ok)
-	// system + user + agent tool call + tool_result failure + synthetic continue.
-	require.Len(t, driverHistory, 5)
+	// system + user + agent tool call + tool_result failure. A trailing
+	// tool_result is a valid continuation for every driver, so NO resume marker
+	// is synthesized (the old "Please continue." injection is gone).
+	require.Len(t, driverHistory, 4)
 	assert.Equal(t, RoleUser, driverHistory[1].Role)
 	assert.Equal(t, "hello", driverHistory[1].Content)
 	assert.Equal(t, RoleAgent, driverHistory[2].Role)
 	assert.Len(t, driverHistory[2].ToolCalls, 1)
 	assert.Equal(t, RoleToolResult, driverHistory[3].Role)
 	assert.Equal(t, "failure", driverHistory[3].ToolResult[0]["status"])
-	// Because the trailing real role is a tool result, sendToDriver appends the
-	// ephemeral "Please continue." user message (never persisted to s.history).
-	assert.Equal(t, RoleUser, driverHistory[4].Role)
-	assert.Equal(t, "Please continue.", driverHistory[4].Content)
+	for _, m := range driverHistory {
+		assert.False(t, m.IsSynthetic, "no synthetic turn on a resolved tool call")
+	}
 }
 
 // TestSlashRetry_EmptyHistory_NothingToRetry verifies that /retry on empty
