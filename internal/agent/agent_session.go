@@ -38,6 +38,12 @@ const (
 	RoleToolResult = agentpkg.RoleToolResult
 )
 
+// defaultContinuePrompt is the built-in resume marker used when an interrupted
+// agent turn needs a trailing user message and the agent's ContinuePolicy does
+// not supply one. It mirrors agentpkg.DefaultContinuePrompt (single source of
+// truth) so drivers and tests agree on the exact bytes.
+const defaultContinuePrompt = agentpkg.DefaultContinuePrompt
+
 // AgentSession holds the runtime state of a single agent inference or chat-turn session.
 type AgentSession struct {
 	ID             string
@@ -979,11 +985,11 @@ func (s *AgentSession) sendToDriver() {
 		history = append(history, m)
 	}
 
-	// Ensure the last message is a user message to avoid "assistant message prefill not supported" errors.
-	// Some models reject requests where the last message is from the assistant (agent), tool, or system.
-	if len(history) > 0 && history[len(history)-1].Role != RoleUser {
-		history = append(history, AgentMessage{Role: RoleUser, Content: "Please continue."})
-	}
+	// Decide whether the serialized (slash-filtered) history needs an ephemeral
+	// resume marker. Only an interrupted agent turn does; tool round-trips and
+	// every other role are sent as-is. The marker (if any) is appended to this
+	// local slice only — it is never persisted or counted.
+	history = s.resolveTrailingTurn(history)
 
 	if log := s.log(); log != nil {
 		log.Infof("[agent] session [%s] sending to driver=%s engine=%s history_len=%d tools=%d",
@@ -999,6 +1005,128 @@ func (s *AgentSession) sendToDriver() {
 		"should_stream":  s.Agent.ShouldStream,
 		"agent_settings": s.Agent.AgentSettings,
 	}, "agent_session_id", s.ID, "timeout", timeout))
+}
+
+// continuePolicy resolves the agent's ContinuePolicy, degrading any mode this
+// phase cannot honor to "auto". A nil agent or nil policy yields the zero policy
+// (auto + built-in prompt). mode "never" is RESERVED for drivers that can handle
+// a missing trailing user turn; this phase cannot honor it, so it degrades to
+// "auto" with a warning (assembly time warns too). Unknown modes do the same.
+func (s *AgentSession) continuePolicy() agentpkg.ContinuePolicy {
+	if s.Agent == nil || s.Agent.ContinuePolicy == nil {
+		return agentpkg.ContinuePolicy{}
+	}
+	cp := *s.Agent.ContinuePolicy
+	switch strings.ToLower(strings.TrimSpace(cp.Mode)) {
+	case "", "auto":
+		return cp
+	case "never":
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] continue_policy: mode: never requires driver-side handling; using auto", s.ID)
+		}
+		cp.Mode = "auto"
+
+		return cp
+	default:
+		if log := s.log(); log != nil {
+			log.Warningf("[agent] session [%s] continue_policy: unrecognized mode %q; using auto", s.ID, cp.Mode)
+		}
+		cp.Mode = "auto"
+
+		return cp
+	}
+}
+
+// resolvedContinuePrompt returns the configured prompt trimmed when non-empty,
+// else the built-in default. It never returns an empty string: Anthropic and
+// Gemini reject empty content with a 400 and OpenAI treats it as inert, so an
+// empty prompt must never be transmitted. The prompt is intentionally NOT
+// interpolated (see ContinuePolicy.Prompt).
+func resolvedContinuePrompt(cp agentpkg.ContinuePolicy) string {
+	if p := strings.TrimSpace(cp.Prompt); p != "" {
+		return p
+	}
+
+	return defaultContinuePrompt
+}
+
+// synthesizeTrailingUserTurn builds the ephemeral resume marker for reason,
+// marking it IsSynthetic so provenance is observable. It emits the provenance
+// Debug log (session id, reason, mode, prompt length). The caller appends the
+// returned message to the local driver history only; it is never persisted.
+func (s *AgentSession) synthesizeTrailingUserTurn(reason string) AgentMessage {
+	cp := s.continuePolicy()
+	prompt := resolvedContinuePrompt(cp)
+	if log := s.log(); log != nil {
+		log.Debugf("[agent] session [%s] continue_policy: synthesized trailing user turn reason=%s mode=%s prompt_len=%d",
+			s.ID, reason, cp.Mode, len(prompt))
+	}
+
+	return AgentMessage{Role: RoleUser, Content: prompt, IsSynthetic: true}
+}
+
+// logNoActionableContinueTurn records the Debug line used when the serialized
+// history has no real tail to act on (empty or system-only). It is never an
+// injection point: the request is sent as-is.
+func (s *AgentSession) logNoActionableContinueTurn() {
+	if log := s.log(); log != nil {
+		log.Debugf("[agent] session [%s] continue_policy: no actionable turn, sending as-is", s.ID)
+	}
+}
+
+// resolveTrailingTurn decides whether to append an ephemeral resume marker to
+// the serialized (slash-filtered) model history. It returns history unchanged
+// unless the real tail is an interrupted agent turn (RoleAgent with no pending
+// ToolCalls), in which case it appends a marked IsSynthetic user message.
+//
+// The decision uses filteredTail() — the same rule as lastNonSlashMsg() — so the
+// serialized and persisted tails can never drift. Behavior matrix:
+//   - no real tail / RoleSystem: no actionable turn, send as-is (Debug).
+//   - RoleUser: already a user turn, send as-is.
+//   - RoleToolResult: a valid continuation for every driver, send as-is.
+//   - RoleTool / unknown role: send as-is (Debug).
+//   - RoleAgent with pending ToolCalls: resolveUnresolvedToolCalls() did not run
+//     (bug-shaped) — warn and send as-is instead of hiding it behind a user turn.
+//   - RoleAgent without ToolCalls: interrupted agent turn, synthesize a marker.
+func (s *AgentSession) resolveTrailingTurn(history []AgentMessage) []AgentMessage {
+	tail, ok := filteredTail(history)
+	if !ok {
+		s.logNoActionableContinueTurn()
+
+		return history
+	}
+
+	switch tail.Role {
+	case RoleUser, RoleToolResult:
+		return history
+	case RoleTool:
+		if log := s.log(); log != nil {
+			log.Debugf("[agent] session [%s] continue_policy: trailing role %q needs no resume marker", s.ID, tail.Role)
+		}
+
+		return history
+	case RoleAgent:
+		if len(tail.ToolCalls) > 0 {
+			if log := s.log(); log != nil {
+				log.Warningf("[agent] session [%s] continue_policy: trailing agent message has unresolved ToolCalls "+
+					"(resolveUnresolvedToolCalls() did not run); sending as-is instead of synthesizing a user turn", s.ID)
+			}
+
+			return history
+		}
+
+		return append(history, s.synthesizeTrailingUserTurn("interrupted_turn"))
+	case RoleSystem:
+		s.logNoActionableContinueTurn()
+
+		return history
+	default:
+		if log := s.log(); log != nil {
+			log.Debugf("[agent] session [%s] continue_policy: unrecognized trailing role %q; sending as-is", s.ID, tail.Role)
+		}
+
+		return history
+	}
 }
 
 // notifyParentFailure emits an agent_continue failure message to the parent session.

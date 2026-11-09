@@ -310,6 +310,7 @@ type Agent struct {
 	ShouldStream        bool     `json:"should_stream,omitempty"`
 	MaxHistoryLen       int      `json:"max_history_len,omitempty"`
 	CompactionPolicy    CompactionPolicy `json:"compaction_policy,omitempty"`
+	ContinuePolicy      ContinuePolicy   `json:"continue_policy,omitempty"`
 	Tools               []string `json:"tools,omitempty"`
 	ModelData           map[string]interface{} `json:"model_data,omitempty"`
 }
@@ -327,6 +328,7 @@ type Agent struct {
 | `should_stream` | If true, the response is streamed back as it is generated |
 | `max_history_len` | Maximum number of messages to retain in conversation history (default: unlimited) |
 | `compaction_policy` | Policy for compacting conversation history when it gets too long (see below) |
+| `continue_policy` | How the engine resumes an interrupted agent turn (see below) |
 | `tools` | List of tools the agent can use. Tools are built from system functions (`sys_`), workflows (`wf_`), sub-agents (`ag_`), and MCP servers (`mcp_`) |
 | `model_data` | Additional model-specific parameters (temperature, top_p, etc.) passed to the AI driver |
 
@@ -354,6 +356,42 @@ type CompactionPolicy struct {
 | `summarization_agent` | Name of another agent to use for summarization (defaults to the current agent) |
 | `summarization_prompt` | Custom prompt for the summarization step |
 
+### Continue Policy
+
+`continue_policy` controls the resume marker the engine may append to the model history when that
+history would otherwise not end on a user-role message. It follows the same shape and validation style
+as `compaction_policy`.
+
+```go
+type ContinuePolicy struct {
+	Mode   string `json:"mode" mapstructure:"mode"`
+	Prompt string `json:"prompt" mapstructure:"prompt"`
+}
+```
+
+| Field | Description |
+|---|---|
+| `mode` | `auto` (default) synthesizes a marker only for an interrupted agent turn. `never` is **RESERVED** for a later phase; it is not honored yet — the daemon warns at assembly time (`mode: never requires driver-side handling; using auto`) and degrades to `auto` at runtime. |
+| `prompt` | Optional override for the marker text. It is intentionally **not interpolated** (session data must not leak into a user-authority turn) and must stay byte-stable. Omit it to use the built-in default silently; an explicitly empty/whitespace value falls back to the default (never transmitted empty) and is logged at assembly time as a likely misconfiguration. |
+
+Behavior at a glance:
+
+- A **tool round-trip** (trailing `tool_result`) is sent as-is — no fabricated user turn.
+- A trailing `agent` message with **pending `ToolCalls`** is sent as-is with a Warning (it means
+  unresolved tool calls were not cleaned up).
+- Only a trailing **interrupted agent turn** (`agent` with no `ToolCalls`) is resumed with a
+  provenance-marked (`is_synthetic`) user turn. The marker is ephemeral: never persisted, never counted
+  in token accounting, never subject to `max_history_len`.
+- Empty or system-only histories are never an injection point.
+
+```yaml
+agents:
+  sre_assistant:
+    continue_policy:
+      mode: auto
+      # prompt: "Resume the task exactly where it stopped."   # optional override; omit to use the built-in marker
+```
+
 ### Example Agent Configuration
 
 ```yaml
@@ -372,6 +410,8 @@ agents:
       threshold_type: history_len
       threshold: 20
       preserve_recent: 4
+    continue_policy:
+      mode: auto
     model_data:
       temperature: 0.3
       max_tokens: 2000

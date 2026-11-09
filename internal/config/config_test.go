@@ -472,3 +472,54 @@ func TestValidateAgentCompactionPolicies_EmptyPolicyNoWarning(t *testing.T) {
 
 	assert.Empty(t, ValidateAgentCompactionPolicies(ds), "no summarization_agent must not be flagged")
 }
+
+func TestValidateAgentContinuePolicies(t *testing.T) {
+	t.Run("nil policy no warning", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{"a": {Name: "a"}}}
+		assert.Empty(t, ValidateAgentContinuePolicies(ds))
+	})
+
+	t.Run("valid auto policy no warning", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{
+			"a": {Name: "a", ContinuePolicy: &agentpkg.ContinuePolicy{Mode: "auto", Prompt: "go on"}},
+		}}
+		assert.Empty(t, ValidateAgentContinuePolicies(ds))
+	})
+
+	t.Run("unknown mode warns", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{
+			"a": {Name: "a", ContinuePolicy: &agentpkg.ContinuePolicy{Mode: "sometimes"}},
+		}}
+		warnings := ValidateAgentContinuePolicies(ds)
+		require.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "a")
+		assert.Contains(t, warnings[0], "sometimes")
+		assert.Contains(t, warnings[0], "unknown")
+		assert.Contains(t, warnings[0], "using auto")
+	})
+
+	t.Run("never mode warns and degrades", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{
+			"a": {Name: "a", ContinuePolicy: &agentpkg.ContinuePolicy{Mode: "never"}},
+		}}
+		warnings := ValidateAgentContinuePolicies(ds)
+		require.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "a")
+		assert.Contains(t, warnings[0], "mode: never requires driver-side handling; using auto")
+	})
+
+	t.Run("empty prompt warns", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{
+			"a": {Name: "a", ContinuePolicy: &agentpkg.ContinuePolicy{Mode: "auto", Prompt: "   "}},
+		}}
+		warnings := ValidateAgentContinuePolicies(ds)
+		require.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "empty prompt; default text will be used")
+	})
+
+	t.Run("nil dataset", func(t *testing.T) {
+		assert.Nil(t, ValidateAgentContinuePolicies(nil))
+		assert.Nil(t, ValidateAgentContinuePolicies(&DataSet{}))
+		assert.Nil(t, ValidateAgentContinuePolicies(&DataSet{Agents: nil}))
+	})
+}
