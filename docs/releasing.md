@@ -5,6 +5,9 @@ automatically, and from the `dev` branch only after an approved CircleCI
 approval job. CircleCI publishes Docker images from those immutable release
 tags.
 
+For the branch model, release channels, approval ceremonies, recovery-path rationale, backport
+rules and tag/image invariants, see [Release Process](./release-process.md).
+
 ## Registry credentials
 
 The legacy Codefresh registry integration does not expose a reusable credential
