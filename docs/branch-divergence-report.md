@@ -12,6 +12,16 @@
 `main` **is** that merge-base. `main` is the dormant, oldest line; `v3` is the modern,
 actively-maintained 3.x line; `dev` is the v4 integration line.
 
+Branch roles are unambiguous and **permanent**:
+
+- **`dev`** — the repository **default branch** and integration line. All feature work lands here.
+- **`main`** — the v4 **release channel** (`latest`), populated only by promotion from `dev`. It is
+  **not** the default branch, now or after promotion.
+- **`v3`** — the 3.x **maintenance** line, fed only by cherry-picks, never by promotion.
+
+**Nothing in this report authorises a reset or force-push of `main` or `v3`.** `v3`'s history is the
+sole input to 3.x version computation; `main` is a promotion target, not a branch to be rewritten.
+
 Concretely, per area:
 
 | Area | Winner | One-line evidence |
@@ -42,11 +52,19 @@ dev
 ```
 
 > Note: the **default branch is `dev`**, not `main` (the plan assumed `main`). `main` is protected
-> but dormant. This is operationally load-bearing, not trivia: Renovate reads its configuration
-> **only** from the default branch, so the canonical `renovate.json` must live on `dev` and must set
-> `"baseBranches": ["dev", "main", "v3"]` to reach the other two lines — see
-> [`docs/release-process.md`](./release-process.md) §10 and §13.5. Whether the default branch moves
-> to `main` at promotion is an open Phase 3 decision.
+> but dormant.
+>
+> **Decision: `dev` remains the repository default branch permanently** — it is never switched to
+> `main`, at promotion or afterwards. "Default branch" (`dev`) and "release channel" (`main`,
+> `latest`) are therefore kept permanently separate.
+>
+> This is operationally load-bearing, not trivia: Renovate reads its configuration **only** from the
+> default branch, so the canonical `renovate.json` lives on `dev` and sets
+> `"baseBranches": ["dev", "v3"]`. **`main` is deliberately not watched** — it is a projection of
+> `dev`, so updates enter through `dev` and reach the release line at promotion; watching `main` too
+> would duplicate or conflict every update. The `main`/`v3` copies of the file are **inert** —
+> Renovate ignores config on non-default branches — and are kept byte-identical only for merge
+> hygiene. See [`docs/release-process.md`](./release-process.md) §1.1, §1.3 and §10.
 
 | Branch | SHA | Module | `go` directive | CI default image | `publish-image` job | `.releaserc` branches |
 |---|---|---|---|---|---|---|
@@ -445,7 +463,7 @@ for t in v3.10.2 v3.10.3 v3.10.4 v3.10.5; do git branch -a --contains "$(git rev
 
 | Plan stated | Observed | Handling |
 |---|---|---|
-| default branch = `main` | default branch = **`dev`** | docs PR based on `dev` (the actual default/integration branch) |
+| default branch = `main` | default branch = **`dev`**, and it stays `dev` permanently | decision recorded: `dev` is never switched to `main`; docs PR based on `dev` (the actual default/integration branch) |
 | `dev` head = `cb50cddb` | `dev` head = `264bd3f` (+4 commits, incl. `4.0.0-dev.15`) | freeze branch cut from current tip; `archive/v4-freeze` kept at `dev.14` as planned, plus `archive/v4-freeze-dev.15` at the cut point |
 | arch docs "present on main/dev" | present on **`dev` only** | recorded as corrected evidence; recommendation unchanged (no backport to `v3`) |
 | `v3.10.2–5` flagged `prerelease:true` | confirmed via Releases API | documented in `docs/release-process.md` bug-vs-intended matrix |

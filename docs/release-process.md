@@ -7,18 +7,98 @@ evidence), [`docs/releasing.md`](./releasing.md) (image publishing mechanics and
 
 ---
 
-## 1. Branch model
+## 1. Branches and channels
+
+### 1.1 Decision: `dev` is the permanent default branch
+
+> **The `dev` branch remains the repository default branch permanently.** It is never switched to
+> `main`, at promotion or afterwards.
+>
+> Consequently two concepts are kept permanently separate:
+>
+> - **Default branch (`dev`)** — the integration branch; the branch Renovate reads its configuration
+>   from, the branch the dependency dashboard lives on, and the branch that new pull requests target
+>   by default.
+> - **Release channel (`main`)** — the v4 stable/"latest" release line, populated only by promotion
+>   from `dev`.
+>
+> Dependency automation watches **`dev` and `v3` only**. `main` is deliberately not watched: `dev` is
+> upstream of `main`, so dependency updates enter through `dev` and reach the release line when `dev`
+> is promoted.
+
+**Hard verification gate** — run this at every promotion. If it does not print `dev`, stop and
+escalate; do not proceed with the promotion:
+
+```console
+$ gh api repos/honeydipper/honeydipper --jq .default_branch
+dev
+```
+
+The decision above is only real while this command keeps printing `dev`. A silent change to
+`default_branch` would relocate where Renovate reads its config (§10) and where new pull requests
+base by default — including promotion PRs (§1.2).
 
 | Branch | Role | Lifetime | Protection | Notes |
 |---|---|---|---|---|
-| `main` | **v4 release line** after promotion (Phase 3). Historically the dormant v3-era line. | permanent | protected: PR + 1 review + code-owner review + status checks + push restrictions | the v4 **release channel** (`latest`); `semantic-release` runs here with **no** approval gate. **Not** the repo default branch today — that is `dev` (§10.1, §13.5) |
-| `v3` | **3.x maintenance line** — security and patch releases only | permanent (through Phase 5) | protected since Phase 1: PR + 1 review + code-owner review + required checks + no force-push + push restrictions | **never reset, never force-pushed**; history is the sole input to 3.x version computation |
-| `dev` | **integration / beta line** — all feature work lands here first | permanent | protected: PR + 1 review + code-owner review + strict status checks + push restrictions | **the repo default branch today** — Renovate reads its config from here (§10.1, §13.5); releases publish as `beta` prereleases |
+| `main` | **v4 release line** after promotion (Phase 3). Historically the dormant v3-era line. | permanent | protected: PR + 1 review + code-owner review + status checks + push restrictions | the v4 **release channel** (`latest`); `semantic-release` runs here with **no** approval gate. **Permanently not** the repo default branch — that is `dev` (§1.1). Not watched by Renovate (§1.3) |
+| `v3` | **3.x maintenance line** — security and patch releases only | permanent (through Phase 5) | protected since Phase 1: PR + 1 review + code-owner review + required checks + no force-push + push restrictions | **never reset, never force-pushed**; history is the sole input to 3.x version computation. Watched by Renovate, **patch-only** (§1.3) |
+| `dev` | **integration / beta line** — all feature work lands here first | permanent | protected: PR + 1 review + code-owner review + strict status checks + push restrictions | **the repository default branch, permanently** (§1.1) — Renovate reads its config from here (§10); releases publish as `beta` prereleases |
 | `v4` | **short-lived freeze line** — the exact tree being promoted into `main` | temporary, deleted after promotion | none (freeze ref, not a collaboration branch) | created from `dev` tip; see §7 |
 | `archive/*` | **immutable safety net** (tags and their mirror branches) | permanent | never deleted, never moved | see §8 |
 
 Downstream of decisions in Phase 1: **`main` is the ancestor of `v3` and `dev`**, so no
 reconciliation may assume "main is newer". See the divergence report for per-area winners.
+
+### 1.2 Promotion PRs must target `main` explicitly
+
+GitHub bases a new pull request on the repository **default branch**, which is `dev` (§1.1). A
+promotion PR opened without an explicit base therefore targets the *integration* branch — it looks
+like a promotion but merges v4 content straight back into `dev` and promotes nothing.
+
+**Promotion PRs must set `base: main` explicitly:**
+
+```bash
+gh pr create --base main --head <promotion-branch> \
+  --title "chore(release): promote v4.0.0" --body "<promotion checklist>"
+```
+
+Confirm the base before asking for review:
+
+```console
+$ gh pr view <n> --json baseRefName --jq .baseRefName
+main
+```
+
+If it prints `dev`, open the PR again against `main` — do not simply flip the base after review has
+started, because the diff reviewers already approved was computed against the wrong target.
+
+### 1.3 Dependency automation scope
+
+Renovate is scoped to **`baseBranches: ["dev", "v3"]`**.
+
+**`dev` (default branch, integration).** All dependency, Docker-base-image and Go-toolchain updates
+are raised here. `dev` is the upstream of the release line: `main` receives v4 code exclusively by
+promotion from `dev`. Watching `main` as well would produce duplicate PRs for the same update on two
+branches, with the `main` copy either conflicting at promotion or being silently overwritten by the
+`dev` copy.
+
+**`v3` (maintenance).** Watched because v3 never receives promotions — it only receives cherry-picks —
+so it has no upstream to inherit updates from. Every update here must be a `fix:` (patch), not a
+`feat:`.
+
+**`main` (release channel).** Not watched by design. It is a projection of `dev`.
+
+**Known trade-off and compensating control.** Because `main` is unwatched, a release line can lag
+behind `dev` between promotions. A dependency fix required on the release line before the next
+promotion is handled by the documented **release-line hotfix path**: cherry-pick the `fix(deps): …`
+commit from `dev` onto `main` as a normal PR, which `semantic-release` turns into a `4.x.y` patch
+release. Target: any security fix affecting a shipped 4.x image is either promoted or hotfixed to
+`main` within **7 days** of being merged to `dev`; a promotion is triggered immediately if the fix is
+critical.
+
+Note: Dependabot/GitHub advisory alerts are repo-level, so a vulnerable dependency in `main` still
+surfaces in the Security tab even though Renovate is not opening PRs against `main` — the alerts are
+the tripwire, the hotfix path is the remedy.
 
 ### Direction of content flow
 
@@ -261,49 +341,103 @@ Rules:
   the lint image past golangci-lint v1's export-data support.
 - `v3` and `main`(v4) may legitimately run different Go versions during the 3.x/4.x overlap. That is
   expected, not drift to be reconciled.
-- Renovate may propose Go/toolchain PRs on any branch (§10); the `ci/circleci: golangci-lint` check on
+- Renovate may propose Go/toolchain PRs on `dev` and `v3` only (§1.3, §10); the `ci/circleci: golangci-lint` check on
   `v3` is the gate that catches "bumped past the lint pin".
 
 ---
 
-## 10. Renovate caveats
+## 10. Dependency automation (Renovate)
 
-`renovate.json` exists on `main`, `v3` and `dev` and is currently **byte-identical**:
+### 10.1 Authoritative configuration
+
+`renovate.json` is read **only from `dev`** (the repository default branch, §1.1). The copy below is
+canonical and deliberately **comment-free**, so a byte-for-byte `cmp` across branches is trivial. All
+explanation lives in §10.2, never in the JSON.
 
 ```json
-{ "extends": ["config:recommended"],
-  "packageRules": [{ "matchDepTypes": ["require"], "semanticCommitType": "fix" }],
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranches": ["dev", "v3"],
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": false,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "prCreation": "immediate",
+    "automerge": false
+  },
+  "packageRules": [
+    { "matchDepTypes": ["require"], "semanticCommitType": "fix" },
+    { "matchBaseBranches": ["v3"], "semanticCommitType": "fix" },
+    { "matchBaseBranches": ["v3"], "matchDatasources": ["docker", "golang-version"], "semanticCommitType": "fix" }
+  ],
+  "prHourlyLimit": 0,
   "prConcurrentLimit": 10,
-  "schedule": ["before 3:00am on the 3 day of the month"] }
+  "schedule": ["before 3:00am on the 3 day of the month"]
+}
 ```
 
-Operational caveats that Phase 2 must design around:
+> **Status.** Phase 1 changes `renovate.json` on **no** branch. This is the Phase 2 target
+> configuration, recorded here so it is reviewed once and then applied verbatim.
 
-1. **Config is read from the default branch only.** The default branch is **`dev`**. `renovate.json`
-   on `v3` and `main` is **not** consulted for scheduling/rules — it is only version-controlled
-   documentation of intent for those branches. Any policy that must hold on `v3` has to be expressed
-   in the **default-branch** config. Whether the default branch moves to `main` after promotion is
-   an open Phase 3 decision — see §13.5.
-2. **`baseBranches` is required for multi-line scanning.** To have Renovate open PRs against `v3`
-   and `main`, the default-branch config must list them explicitly, e.g.
-   `"baseBranches": ["dev", "main", "v3"]`. Without it, only the default branch is updated and the
-   maintenance lines silently rot.
-3. **`prConcurrentLimit` is global to the config, not per base branch.** `10` means 10 open Renovate
-   PRs *across all base branches*; one noisy branch starves the others. Use per-branch
-   `packageRules` with `matchBaseBranches` and `prConcurrentLimit`/`prHourlyLimit` overrides so each
-   line gets its own budget.
-4. **Staging must stay byte-identical across lines.** The three copies must not drift; a divergence
-   produces different effective policy per line once (1) changes. Treat the `dev` copy as canonical
-   and copy it verbatim (Phase 2).
-5. **`semanticCommitType: "fix"` on `require` deps** means every dependency bump proposes a **patch
+### 10.2 What each setting does
+
+| Setting | Why |
+|---|---|
+| `baseBranches: ["dev", "v3"]` | `main` removed. `dev` is both the default branch and an explicit entry; `main` is excluded cleanly — because it is **not** the default branch, Renovate cannot implicitly include it. |
+| `osvVulnerabilityAlerts: true` | OSV detection (experimental; **direct** dependencies only). Extra advisory coverage. |
+| `vulnerabilityAlerts.enabled` + `prCreation: "immediate"` | GitHub-advisory detection including **transitive** dependencies. Immediacy is built in — Renovate ignores `schedule` for vulnerability alerts. |
+| `dependencyDashboardApproval: false` | No checkbox gate before PRs are opened. The dashboard lives on `dev`, with `dev` and `v3` sections. |
+| `matchBaseBranches: ["v3"]` rules | `v3`-only. `dev` is not `v3`, so `dev` dependency bumps keep their natural typing (`feat` allowed → a 4.x minor at the next promotion); `v3` stays patch-only. |
+| `prHourlyLimit: 0`, `prConcurrentLimit: 10` | Limits are **per base branch**, so with exactly two watched branches there are exactly two buckets — `dev` and `v3` — at 10 concurrent each. |
+| `schedule` (monthly) | Routine updates on `dev` and `v3`. Security PRs bypass it by built-in behavior. |
+| `govulncheck` in `v3` CI | Compensating control for the OSV **direct-dependencies-only** gap — keep both advisory paths. |
+
+### 10.3 Only `dev`'s copy is operative
+
+1. **Config is read from the default branch only, and that branch is `dev`.** `renovate.json` on
+   `main` and `v3` is **INERT**: Renovate ignores configuration on non-default branches entirely.
+   Those copies have **no** effect on behavior — they are kept for merge hygiene only (§10.4).
+2. **Watched branches are `dev` and `v3`, and nothing else** (§1.3). `main` is not watched by design.
+3. **To change dependency automation, open a PR against `dev`.** A `renovate.json` change merged to
+   `v3` or `main` changes nothing at all. This is the practical rule; the rest of this section is the
+   explanation behind it.
+4. **Enforce byte-identity mechanically**, not by review — `cmp` in CI or a pre-commit hook:
+
+```bash
+# dev's copy is the reference
+git fetch -q origin dev v3 main
+cmp -s <(git show origin/dev:renovate.json) <(git show origin/v3:renovate.json)
+cmp -s <(git show origin/dev:renovate.json) <(git show origin/main:renovate.json)
+```
+
+### 10.4 Why the inert copies are still kept byte-identical
+
+The `main` and `v3` copies cannot affect behavior (§10.3), yet they are kept byte-identical to
+`dev`'s copy **for merge hygiene only**: a diverged copy manufactures spurious merge conflicts during
+promotion and cherry-picks, and resolving such a conflict badly is how the file gets lost.
+
+- Phase 3 promotion **cannot break `v3` automation** — at worst it overwrites `main`'s **inert** copy.
+- Phase 3 promotion **can still lose the file** if the merge is resolved badly — which is why the
+  byte-identical gate stays.
+
+### 10.5 Operational caveats
+
+1. **`semanticCommitType: "fix"` on `require` deps** means every dependency bump proposes a **patch
    release**. On `v3` that is intentional (security patches must be releasable), but it also means a
    Renovate PR is a release trigger once the approval gate is passed — sequence them with §4.
-6. **Security PRs and the `[security]` suffix** (e.g. `#835`, `#833`, `#837`) indicate
-   vulnerability-driven updates. They must not be batched into a routine monthly window; they travel
-   the same PR path but should be merged and released promptly on both `dev` and `v3`.
-7. **Renovate never touches release state.** It opens PRs; it does not tag, publish, or edit
+2. **Security PRs carry a `[security]` suffix** (e.g. `#835`, `#833`, `#837`) and are
+   vulnerability-driven. They must not be batched into a routine monthly window; they travel the same
+   PR path but are merged and released promptly on both `dev` and `v3`.
+3. **`prConcurrentLimit` is per base branch, not global.** With two buckets (`dev`, `v3`) a noisy
+   `dev` week cannot starve `v3`. Do not reintroduce a single global budget.
+4. **Renovate never touches release state.** It opens PRs; it does not tag, publish, or edit
    `.releaserc`. Version computation stays exclusively with `semantic-release` on the configured
    branches.
+5. **Release-line latency is a known, accepted trade-off** with a documented compensating control —
+   the hotfix path and 7-day target in §1.3.
 
 ---
 
@@ -353,6 +487,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 2. `.releaserc` on that branch knows the branch (no silent "unknown branch" fallback).
 3. Required checks green; PR squashed/merged as the project prefers.
 4. For `v3`: `approve-v3-release` approval granted by the release operator.
+5. For a **promotion** PR: the base is `main`, set explicitly with `--base main` (§1.2) — GitHub
+   would otherwise default it to `dev`, the integration branch.
 
 **After tagging**
 
@@ -419,24 +555,21 @@ matching `archive/*` and the release tag pattern (`v*.*.*`) that blocks **deleti
 convention, and the annotated `archive/*` tags are the only durable recovery artifact — which is why
 they are annotated tags *and* mirrored to branches.
 
-### 13.5 The default branch after promotion — resolve the ambiguity in Phase 3
+### 13.5 The default branch after promotion — **RESOLVED** (closed, not a follow-up)
 
-The repository default branch **today is `dev`** (confirmed by the GitHub API; the original plan
-assumed `main`). This has a concrete operational consequence: **Renovate reads its config only from
-the default branch**, so the canonical `renovate.json` must live on `dev` and must carry
-`"baseBranches": ["dev", "main", "v3"]` to reach the other two lines (§10.1–§10.2). A canonical
-config placed on `main` would be inert.
+**Decision: `dev` remains the repository default branch permanently.** It is never switched to
+`main`, at promotion or afterwards; default branch and release channel are kept permanently separate
+(§1.1). Dependency automation therefore watches **`dev` and `v3` only**, and the canonical
+`renovate.json` uses `baseBranches: ["dev", "v3"]` with `main` deliberately excluded (§1.3, §10).
 
-Phase 3 must therefore answer explicitly: **is the repo default branch switched to `main` at or after
-promotion?**
+Consequences for Phase 3 — none of which require a further decision:
 
-- **If yes** — the Renovate config *read location* moves to `main`. `main`'s copy becomes
-  authoritative and `dev`'s becomes version-controlled documentation. Update both in the same change
-  and keep all three copies byte-identical (§10.4), or the maintenance lines silently lose policy.
-- **If no** — `dev` stays the default branch, and this document must not conflate **"default
-  branch"** (a GitHub repo setting controlling where Renovate/Dependabot read config and where new
-  PRs base by default) with **"release channel"** (a `semantic-release` concept driven by
-  `.releaserc`). `main` is the v4 *release channel*; it is **not** the default branch unless Phase 3
-  changes it.
+- The Renovate config **read location does not move** at promotion. It stays `dev`.
+- Promotion does **not** re-point `default_branch`. `main` stays a release channel, never a default
+  branch.
+- Because new PRs base on the default branch, promotion PRs must pass `--base main` explicitly
+  (§1.2). That is the one operational consequence of this decision.
+- The §1.1 verification gate is re-run at promotion, so the setting cannot drift silently.
 
-Either way, the decision and its Renovate consequence must be recorded in the Phase 3 promotion PR.
+This item is **closed**. It is retained only so the reasoning is not re-litigated in Phase 3.
+
