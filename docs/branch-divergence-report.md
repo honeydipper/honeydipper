@@ -41,7 +41,12 @@ $ curl -s https://api.github.com/repos/honeydipper/honeydipper | jq -r '.default
 dev
 ```
 
-> Note: the **default branch is `dev`**, not `main`. `main` is protected but dormant.
+> Note: the **default branch is `dev`**, not `main` (the plan assumed `main`). `main` is protected
+> but dormant. This is operationally load-bearing, not trivia: Renovate reads its configuration
+> **only** from the default branch, so the canonical `renovate.json` must live on `dev` and must set
+> `"baseBranches": ["dev", "main", "v3"]` to reach the other two lines — see
+> [`docs/release-process.md`](./release-process.md) §10 and §13.5. Whether the default branch moves
+> to `main` at promotion is an open Phase 3 decision.
 
 | Branch | SHA | Module | `go` directive | CI default image | `publish-image` job | `.releaserc` branches |
 |---|---|---|---|---|---|---|
@@ -255,7 +260,7 @@ of that exists on `v3` (`internal/workflow/` instead of `pkg/workflow/`, no agen
 
 **Area B verdict: dev wins.** Explicit recommendation, recorded as a decision:
 
-> **Do NOT backport `HONEYDIAPPER_CONTEXT.md` / `FUNCTION_MAP.md` to `v3`.**
+> **Do NOT backport `HONEYDIPPER_CONTEXT.md` / `FUNCTION_MAP.md` to `v3`.**
 > They are v4 architecture documents; on `v3` they would be factually wrong (wrong module path,
 > wrong package layout, non-existent services) and would mislead both humans and AI agents that
 > read them as ground truth. If v3 needs orientation material, write a small **v3-accurate**
@@ -290,8 +295,13 @@ Consequences that matter for the plan:
    versions. It is not a superset and not a fallback.
 2. `v3`'s config has no `dev` entry, so it cannot be shared upward.
 3. `dev`'s config is the only one that already describes all three long-lived branches — but it
-   does **not** yet express "v3 releases are prerelease by design", which is a Phase 2 concern
-   (the `prerelease: true` flag on the `v3` branch entry).
+   does **not** yet give `v3` maintenance-branch semantics. `v3` must keep producing stable `3.x.y`
+   patches, so the canonical entry is `{ "name": "v3", "range": "3.x", "channel": "3.x" }`.
+   **Not** `prerelease: true`: in semantic-release that declares a *prerelease channel* and would
+   emit prerelease-suffixed versions (e.g. `3.10.6-v3.1`), destroying 3.x versioning. The
+   `prerelease` flag seen on the published `v3` GitHub releases is a consequence of publishing to a
+   **non-default channel**, not of a `prerelease` key. Authoring that entry is a Phase 2 concern
+   (see `docs/release-process.md` §2).
 
 **Area C verdict: policy-wins.** No branch's `.releaserc` is copied to another during Phase 1.
 The canonical config is authored once, in Phase 2, and is the single source of truth. Phase 1

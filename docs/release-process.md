@@ -11,9 +11,9 @@ evidence), [`docs/releasing.md`](./releasing.md) (image publishing mechanics and
 
 | Branch | Role | Lifetime | Protection | Notes |
 |---|---|---|---|---|
-| `main` | **v4 release line** after promotion (Phase 3). Historically the dormant v3-era line. | permanent | protected: PR + 1 review + code-owner review + status checks + push restrictions | default/release channel; `semantic-release` runs here with **no** approval gate |
+| `main` | **v4 release line** after promotion (Phase 3). Historically the dormant v3-era line. | permanent | protected: PR + 1 review + code-owner review + status checks + push restrictions | the v4 **release channel** (`latest`); `semantic-release` runs here with **no** approval gate. **Not** the repo default branch today — that is `dev` (§10.1, §13.5) |
 | `v3` | **3.x maintenance line** — security and patch releases only | permanent (through Phase 5) | protected since Phase 1: PR + 1 review + code-owner review + required checks + no force-push + push restrictions | **never reset, never force-pushed**; history is the sole input to 3.x version computation |
-| `dev` | **integration / beta line** — all feature work lands here first | permanent | protected: PR + 1 review + code-owner review + strict status checks + push restrictions | default branch today; releases publish as `beta` prereleases |
+| `dev` | **integration / beta line** — all feature work lands here first | permanent | protected: PR + 1 review + code-owner review + strict status checks + push restrictions | **the repo default branch today** — Renovate reads its config from here (§10.1, §13.5); releases publish as `beta` prereleases |
 | `v4` | **short-lived freeze line** — the exact tree being promoted into `main` | temporary, deleted after promotion | none (freeze ref, not a collaboration branch) | created from `dev` tip; see §7 |
 | `archive/*` | **immutable safety net** (tags and their mirror branches) | permanent | never deleted, never moved | see §8 |
 
@@ -35,7 +35,7 @@ toolchain / CI hardening ──► v3 (authoritative for 3.x)   # never copied b
 | Source branch | `.releaserc` entry | npm dist-tag / channel | GitHub prerelease flag | Example |
 |---|---|---|---|---|
 | `main` | `"main"` | `latest` (default) | **false** — becomes the repo "Latest" release | `v4.0.0` |
-| `v3` | `"v3"` | `v3` (3.x line) | **true — BY DESIGN** | `v3.11.0` |
+| `v3` | `{ name: "v3", range: "3.x", channel: "3.x" }` | `3.x` | **true — BY DESIGN** (derived from the non-default channel, **not** from a `prerelease` key) | `v3.11.0` |
 | `dev` | `{ name: "dev", prerelease: true, channel: "beta" }` | `beta` | true | `v4.0.0-dev.16` |
 
 Canonical configuration (authored once, in Phase 2 — Phase 1 does **not** touch `.releaserc`):
@@ -44,16 +44,30 @@ Canonical configuration (authored once, in Phase 2 — Phase 1 does **not** touc
 {
   "branches": [
     "main",
-    { "name": "v3", "prerelease": true, "channel": "v3" },
+    { "name": "v3", "range": "3.x", "channel": "3.x" },
     { "name": "dev", "prerelease": true, "channel": "beta" }
   ]
 }
 ```
 
-Rationale for `v3 ⇒ prerelease: true`: `v3` is a **maintenance** channel served in parallel with
-the `latest` v4 line. Marking its GitHub releases `prerelease: true` keeps them out of the
-"Latest" slot so that `latest` always resolves to the newest v4 release, while the 3.x artifacts
-remain fully available by tag, by channel, and as immutable images.
+### Why `v3` uses the *maintenance-branch* shape and **not** `prerelease: true`
+
+`v3` is a **maintenance branch**, so its entry is `{ name: "v3", range: "3.x", channel: "3.x" }`:
+
+- **`range: "3.x"`** is what makes it a maintenance branch. It pins version computation to the
+  3.x tag line, so the next release is a stable `3.x.y` patch.
+- **`channel: "3.x"`** publishes to the `3.x` dist-tag instead of `latest`. Because this is **not
+  the default channel**, the `@semantic-release/github` plugin marks the resulting GitHub release
+  `prerelease: true` — which is precisely the intended behavior (§3, "future `v3.11.x+`" row): it
+  keeps 3.x releases out of the repo "Latest" slot so that `latest` always resolves to the newest
+  v4 release.
+- **`prerelease: true` is deliberately NOT set on `v3`.** In semantic-release, `prerelease: true`
+  declares a *prerelease channel*: it emits prerelease-suffixed versions (e.g. `3.10.6-v3.1`)
+  rather than stable `3.x.y` patches. Putting it on a maintenance branch would quietly destroy 3.x
+  versioning and produce versions no 3.x consumer expects. **The GitHub `prerelease` flag is a
+  consequence of the non-default channel, not a configuration key.**
+
+The 3.x artifacts remain fully available by tag, by the `3.x` channel, and as immutable images.
 
 ---
 
@@ -64,14 +78,17 @@ The `prerelease` flag has two distinct histories. Do not conflate them.
 | Release(s) | Flag observed | Verdict | Action |
 |---|---|---|---|
 | `v3.10.0`, `v3.9.x`, `v3.8.0` (≤ 2026-02) | `prerelease: false` | correct at the time — `v3` was not yet a managed channel entry | none |
-| **`v3.10.1`–`v3.10.5`** (2026-03-19 → 2026-10-28) | `prerelease: true` | **BUG.** They were full 3.x patch releases published out of a config that gave the `v3` branch no channel semantics, so semantic-release treated them as prereleases and pushed them out of the "Latest" slot | patch **later, in Phase 2**, by re-flagging these existing releases (`prerelease: false` is correct for them: they are completed 3.x patches) and by adding the explicit `v3` channel entry |
+| **`v3.10.1`–`v3.10.5`** (2026-03-19 → 2026-10-28) | `prerelease: true` | **BUG.** They are full 3.x patch releases, yet they were published flagged `prerelease: true` and so never occupied the "Latest" slot. The *verdict* is certain from the Releases API; the *mechanism* is not (see below) | patch **later, in Phase 2**, by re-flagging these existing releases (`prerelease: false` is correct for them: they are completed 3.x patches) and by giving `v3` the maintenance-branch entry (`range` + `channel`, §2) |
 | **future `v3.11.x+`** releases (post-Phase 2) | `prerelease: true` | **INTENDED.** `v3` is a parallel maintenance channel; its releases are deliberately not "Latest" | none — this is the design |
 
-Why the bug happened: `v3`'s `.releaserc` lists `"v3"` as a bare string branch. A branch with no
-`prerelease`/`channel` object is a normal release branch, but the release *author* identity plus the
-absence of a channel made the GitHub plugin publish with the prerelease flag set, and the "Latest"
-pointer was never assigned. Phase 2 fixes the config; the already-published releases are corrected
-in place (their tags and images are untouched — only the GitHub release flag changes).
+**Root cause: not yet established.** What is *observed* (Releases API, no inference): `v3`'s
+`.releaserc` lists `"v3"` as a bare string branch — an entry carrying neither `range` nor `channel` —
+and the releases published from it are flagged `prerelease: true` with the "Latest" pointer
+unassigned. **The exact mechanism is to be established by the Phase 2 root-cause investigation.**
+Hypotheses (release-author identity, absent `range`/`channel` pair, plugin default behavior) are
+recorded in the Phase 2 investigation ticket as leads only; this document does not assert one.
+Phase 2 fixes the config; the already-published releases are corrected in place (their tags and
+images are untouched — only the GitHub release flag changes).
 
 **Invariant**: changing a release's `prerelease` flag never changes its tag, its commit, or its
 image digest. The flag is presentation and "Latest"-selection only.
@@ -158,7 +175,7 @@ may legitimately run the pipeline from either checkout.
 5. **Every backport goes through a PR.** `v3` is protected (§7); direct pushes are not the mechanism,
    even for maintainers. The PR must pass `golangci-lint`, `license_finder`, `test`, `integration`
    and `check_pr_title`, and take one code-owner approval.
-6. **Never backport v4 architecture docs.** `HONEYDIAPPER_CONTEXT.md` and `FUNCTION_MAP.md` describe
+6. **Never backport v4 architecture docs.** `HONEYDIPPER_CONTEXT.md` and `FUNCTION_MAP.md` describe
    the `/v4` module and v4-only packages; on `v3` they would be false. See the divergence report.
 7. **Never backport `go.mod` module path, `.releaserc` branches, or v4 driver packages.** Toolchain
    scope on `v3` is defined by §9.
@@ -186,8 +203,9 @@ may legitimately run the pipeline from either checkout.
 
 ### The "Latest" safety-net step
 
-Because `v3` and `dev` releases are `prerelease: true`, GitHub's "Latest" pointer is *not* advanced
-by them. Every promotion therefore ends with an explicit check:
+Because `v3` releases publish to a non-default channel (`3.x`) and `dev` releases are
+`prerelease: true`, GitHub's "Latest" pointer is **not** advanced by either of them. Every
+promotion therefore ends with an explicit check:
 
 1. Open the newest non-prerelease release on `main` and confirm it is marked **Latest**.
 2. If it is not (e.g. a `v3` release was published mis-flagged as non-prerelease), set
@@ -264,7 +282,8 @@ Operational caveats that Phase 2 must design around:
 1. **Config is read from the default branch only.** The default branch is **`dev`**. `renovate.json`
    on `v3` and `main` is **not** consulted for scheduling/rules — it is only version-controlled
    documentation of intent for those branches. Any policy that must hold on `v3` has to be expressed
-   in the **default-branch** config.
+   in the **default-branch** config. Whether the default branch moves to `main` after promotion is
+   an open Phase 3 decision — see §13.5.
 2. **`baseBranches` is required for multi-line scanning.** To have Renovate open PRs against `v3`
    and `main`, the default-branch config must list them explicitly, e.g.
    `"baseBranches": ["dev", "main", "v3"]`. Without it, only the default branch is updated and the
@@ -342,3 +361,82 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 3. `v3`/`dev`: confirm "Latest" still points at the newest non-prerelease v4 release (§7).
 4. If the image is missing: run the **un-gated** recovery path with `release_tag=<tag>` (§5) — never
    move the tag.
+
+---
+
+## 13. Phase 2 follow-ups (tracked, explicitly non-blocking)
+
+Nothing in this section gates Phase 1 acceptance or the merge of the Phase 1 documentation PR. These
+items are recorded here **so they cannot be lost between phases**, and so Phase 2 inherits them as
+requirements rather than rediscovering them.
+
+### 13.1 Checks must *run* on `v3` before they can be *required*
+
+`test_coverage` and `govulncheck` currently execute only on `dev`/`main` (§11). Making them required
+checks on `v3` **before** widening their workflow/branch filters would reintroduce exactly the
+deadlock Phase 1 avoided: a required check that never runs on `v3` leaves every `v3` PR permanently
+pending. The order of operations is therefore fixed:
+
+1. Change the filters so `test_coverage` and `govulncheck` actually execute on `v3`.
+2. Confirm they report and pass on a real `v3` PR.
+3. **Only then** add them to `required_status_checks`.
+
+**Verify the exact CircleCI check-run names.** The required contexts in §11 are asserted from the API
+as `ci/circleci: <job>` strings. Before adding any new context, read back what CircleCI actually
+reports for that job (`GET /repos/{owner}/{repo}/commits/{sha}/status`, or the PR's `get_check_runs`).
+A renamed or misspelled job produces a required check that never matches — which blocks merges just
+as effectively as one that never runs.
+
+### 13.2 Rehearse the release-bot bypass before the first real `v3` security release
+
+The bypass in §11 is *attested* from earlier releases (`v3.10.2`–`v3.10.5`, `v4.0.0-dev.14/15`, all
+authored by `tgreenhalgh`) plus that account's repo `admin` role. That is strong evidence, but it is
+inference from releases published **before** the new protection existed — not a demonstration under
+it. Before the first real post-Phase 2 `v3` security release, run a deliberate rehearsal (an approved
+release-style push by the release identity onto a throwaway ref, or a full dry run of the `v3`
+pipeline), so the attestation becomes a **demonstrated fact** with an observed run to point at.
+
+### 13.3 Ruleset migration to bind `non_fast_forward` for everyone (deferred from Phase 1)
+
+Phase 1 used classic branch protection with `enforce_admins: false` (§11), which unavoidably lets
+*any* admin force-push — not only the release identity. Phase 2 should replace it with a repository
+**ruleset** that:
+
+- enables `non_fast_forward` and deletion protection for **everyone**, and
+- grants a single explicit bypass — `{ "actor_type": "User", "actor_id": 5298300 }` (`tgreenhalgh`)
+  — so only the release identity can bypass.
+
+Re-verify that actor id at the time of the change. If the CircleCI release token rotates to a
+different account, the `bypass_actors` entry must be updated **in the same change**, or every
+`chore(release)` push will be rejected (`check_pr_title` / PR-required rules apply to it).
+
+### 13.4 Tag protection for `archive/*` and release tags
+
+Branch protection (§11) does **not** cover tags, and neither does `allow_force_pushes: false` on a
+branch. Today the safety net (§8) is protected by policy alone. Phase 2 should add a **tag ruleset**
+matching `archive/*` and the release tag pattern (`v*.*.*`) that blocks **deletion** and
+**re-pointing** (non-fast-forward on tags). Until that exists, §7 rules 1–3 are enforced by
+convention, and the annotated `archive/*` tags are the only durable recovery artifact — which is why
+they are annotated tags *and* mirrored to branches.
+
+### 13.5 The default branch after promotion — resolve the ambiguity in Phase 3
+
+The repository default branch **today is `dev`** (confirmed by the GitHub API; the original plan
+assumed `main`). This has a concrete operational consequence: **Renovate reads its config only from
+the default branch**, so the canonical `renovate.json` must live on `dev` and must carry
+`"baseBranches": ["dev", "main", "v3"]` to reach the other two lines (§10.1–§10.2). A canonical
+config placed on `main` would be inert.
+
+Phase 3 must therefore answer explicitly: **is the repo default branch switched to `main` at or after
+promotion?**
+
+- **If yes** — the Renovate config *read location* moves to `main`. `main`'s copy becomes
+  authoritative and `dev`'s becomes version-controlled documentation. Update both in the same change
+  and keep all three copies byte-identical (§10.4), or the maintenance lines silently lose policy.
+- **If no** — `dev` stays the default branch, and this document must not conflate **"default
+  branch"** (a GitHub repo setting controlling where Renovate/Dependabot read config and where new
+  PRs base by default) with **"release channel"** (a `semantic-release` concept driven by
+  `.releaserc`). `main` is the v4 *release channel*; it is **not** the default branch unless Phase 3
+  changes it.
+
+Either way, the decision and its Renovate consequence must be recorded in the Phase 3 promotion PR.
