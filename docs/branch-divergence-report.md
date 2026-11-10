@@ -60,7 +60,7 @@ dev
 >
 > This is operationally load-bearing, not trivia: Renovate reads its configuration **only** from the
 > default branch, so the canonical `renovate.json` lives on `dev` and sets
-> `"baseBranches": ["dev", "v3"]`. **`main` is deliberately not watched** — it is a projection of
+> `"baseBranchPatterns": ["dev", "v3"]` (formerly `baseBranches`). **`main` is deliberately not watched** — it is a projection of
 > `dev`, so updates enter through `dev` and reach the release line at promotion; watching `main` too
 > would duplicate or conflict every update. The `main`/`v3` copies of the file are **inert** —
 > Renovate ignores config on non-default branches — and are kept byte-identical only for merge

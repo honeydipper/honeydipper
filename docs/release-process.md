@@ -74,7 +74,8 @@ started, because the diff reviewers already approved was computed against the wr
 
 ### 1.3 Dependency automation scope
 
-Renovate is scoped to **`baseBranches: ["dev", "v3"]`**.
+Renovate is scoped to **`baseBranchPatterns: ["dev", "v3"]`** (formerly `baseBranches`; renamed
+to match the current Renovate schema and avoid a deprecation-driven config migration).
 
 **`dev` (default branch, integration).** All dependency, Docker-base-image and Go-toolchain updates
 are raised here. `dev` is the upstream of the release line: `main` receives v4 code exclusively by
@@ -96,9 +97,15 @@ release. Target: any security fix affecting a shipped 4.x image is either promot
 `main` within **7 days** of being merged to `dev`; a promotion is triggered immediately if the fix is
 critical.
 
-Note: Dependabot/GitHub advisory alerts are repo-level, so a vulnerable dependency in `main` still
-surfaces in the Security tab even though Renovate is not opening PRs against `main` — the alerts are
-the tripwire, the hotfix path is the remedy.
+Note: Dependabot/GitHub advisory alerts are computed from the **default branch's** dependency graph
+— that is `dev`, not `main`. A vulnerable dependency in `main` therefore surfaces only while `main`'s
+manifest still matches `dev`'s; precisely in the lag window this section is about, `main` drops out
+of the advisory graph and the alert can go quiet. The intended release-line tripwire is a
+`govulncheck` CI job on `main`, but **Phase 1 verified that no such job exists yet** — there is no
+`govulncheck` reference in `.circleci/`, `.github/workflows/`, or the `Makefile` on `dev`, `main`, or
+`v3` — so it is tracked as a Phase 2 gap (§13.1). Until that job lands, the operative control is the
+**7-day hotfix SLA** above: an advisory affecting a shipped 4.x image is cherry-picked to `main`
+(or promoted) within 7 days, and the hotfix path is the remedy.
 
 ### Direction of content flow
 
@@ -358,7 +365,7 @@ explanation lives in §10.2, never in the JSON.
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "baseBranches": ["dev", "v3"],
+  "baseBranchPatterns": ["dev", "v3"],
   "dependencyDashboard": true,
   "dependencyDashboardApproval": false,
   "osvVulnerabilityAlerts": true,
@@ -386,20 +393,23 @@ explanation lives in §10.2, never in the JSON.
 
 | Setting | Why |
 |---|---|
-| `baseBranches: ["dev", "v3"]` | `main` removed. `dev` is both the default branch and an explicit entry; `main` is excluded cleanly — because it is **not** the default branch, Renovate cannot implicitly include it. |
+| `baseBranchPatterns: ["dev", "v3"]` | Current schema's option name (formerly `baseBranches`; renamed to avoid a deprecation-driven config migration). `main` removed. `dev` is both the default branch and an explicit entry; `main` is excluded cleanly — because it is **not** the default branch, Renovate cannot implicitly include it. |
 | `osvVulnerabilityAlerts: true` | OSV detection (experimental; **direct** dependencies only). Extra advisory coverage. |
-| `vulnerabilityAlerts.enabled` + `prCreation: "immediate"` | GitHub-advisory detection including **transitive** dependencies. Immediacy is built in — Renovate ignores `schedule` for vulnerability alerts. |
+| `vulnerabilityAlerts.enabled` + `prCreation: "immediate"` | GitHub-advisory detection including **transitive** dependencies. Immediacy is built in — Renovate ignores `schedule` for vulnerability alerts. The `security` label must already exist in the repo; if it does not, Renovate silently skips applying it (the PR is still opened, just unlabelled). |
 | `dependencyDashboardApproval: false` | No checkbox gate before PRs are opened. The dashboard lives on `dev`, with `dev` and `v3` sections. |
-| `matchBaseBranches: ["v3"]` rules | `v3`-only. `dev` is not `v3`, so `dev` dependency bumps keep their natural typing (`feat` allowed → a 4.x minor at the next promotion); `v3` stays patch-only. |
-| `prHourlyLimit: 0`, `prConcurrentLimit: 10` | Limits are **per base branch**, so with exactly two watched branches there are exactly two buckets — `dev` and `v3` — at 10 concurrent each. |
+| `matchBaseBranches: ["v3"]` rules | `v3`-only. On `v3` these force `fix` typing for every bump and for docker/golang-version datasources. On `dev`, **non-`require` datasources keep their natural typing** (`feat` allowed → a 4.x minor at the next promotion); `require`-type bumps do **not**, because packageRule 0 (`matchDepTypes: ["require"] → fix`) is repo-wide and applies to `dev` too. |
+| `prHourlyLimit: 0`, `prConcurrentLimit: 10` | One **shared repo-wide budget**: `prConcurrentLimit` (and `prHourlyLimit`) applies to the whole repo, so `dev` and `v3` draw from the same 10-concurrent pool — not two 10-slot buckets. `prHourlyLimit: 0` disables the hourly cap. |
 | `schedule` (monthly) | Routine updates on `dev` and `v3`. Security PRs bypass it by built-in behavior. |
-| `govulncheck` in `v3` CI | Compensating control for the OSV **direct-dependencies-only** gap — keep both advisory paths. |
+| `govulncheck` on `main` + `v3` CI (**not yet present**) | Intended compensating control for the OSV **direct-dependencies-only** gap and the release-line advisory blind spot (§1.3). Phase 1 verified that no `govulncheck` job exists in CI yet; tracked in §13.1. |
 
 ### 10.3 Only `dev`'s copy is operative
 
 1. **Config is read from the default branch only, and that branch is `dev`.** `renovate.json` on
-   `main` and `v3` is **INERT**: Renovate ignores configuration on non-default branches entirely.
-   Those copies have **no** effect on behavior — they are kept for merge hygiene only (§10.4).
+   `main` and `v3` is **INERT**: Renovate ignores configuration on non-default branches **by
+   default** — it reads a non-default branch's config only when `useBaseBranchConfig` is explicitly
+   set, and that key is deliberately absent here. Those copies have **no** effect on behavior — they
+   are kept for merge hygiene only (§10.4). The byte-identical `cmp` gate below would surface any
+   edit to the authoritative file, including one that added `useBaseBranchConfig`.
 2. **Watched branches are `dev` and `v3`, and nothing else** (§1.3). `main` is not watched by design.
 3. **To change dependency automation, open a PR against `dev`.** A `renovate.json` change merged to
    `v3` or `main` changes nothing at all. This is the practical rule; the rest of this section is the
@@ -419,6 +429,11 @@ The `main` and `v3` copies cannot affect behavior (§10.3), yet they are kept by
 `dev`'s copy **for merge hygiene only**: a diverged copy manufactures spurious merge conflicts during
 promotion and cherry-picks, and resolving such a conflict badly is how the file gets lost.
 
+The "inert" property is a **default**, not a hard guarantee: Renovate reads config from the default
+branch only unless `useBaseBranchConfig` is explicitly enabled. That key is absent from the
+byte-compared canonical file, so enabling it would require editing `dev`'s copy — which the §10.3
+`cmp` gate makes visible on every branch.
+
 - Phase 3 promotion **cannot break `v3` automation** — at worst it overwrites `main`'s **inert** copy.
 - Phase 3 promotion **can still lose the file** if the merge is resolved badly — which is why the
   byte-identical gate stays.
@@ -431,8 +446,11 @@ promotion and cherry-picks, and resolving such a conflict badly is how the file 
 2. **Security PRs carry a `[security]` suffix** (e.g. `#835`, `#833`, `#837`) and are
    vulnerability-driven. They must not be batched into a routine monthly window; they travel the same
    PR path but are merged and released promptly on both `dev` and `v3`.
-3. **`prConcurrentLimit` is per base branch, not global.** With two buckets (`dev`, `v3`) a noisy
-   `dev` week cannot starve `v3`. Do not reintroduce a single global budget.
+3. **`prConcurrentLimit` is a single repo-wide budget shared across all base branches (`dev` and
+   `v3`), not per base branch** — a noisy `dev` batch can consume the budget and delay `v3` PRs.
+   Renovate extracts and looks up dependencies per base branch but concatenates all base branches
+   into one list and calls `updateRepo` once, so the limit is enforced once for the whole repo. Do
+   not reintroduce a per-branch budget model.
 4. **Renovate never touches release state.** It opens PRs; it does not tag, publish, or edit
    `.releaserc`. Version computation stays exclusively with `semantic-release` on the configured
    branches.
@@ -508,12 +526,14 @@ requirements rather than rediscovering them.
 
 ### 13.1 Checks must *run* on `v3` before they can be *required*
 
-`test_coverage` and `govulncheck` currently execute only on `dev`/`main` (§11). Making them required
-checks on `v3` **before** widening their workflow/branch filters would reintroduce exactly the
-deadlock Phase 1 avoided: a required check that never runs on `v3` leaves every `v3` PR permanently
-pending. The order of operations is therefore fixed:
+`test_coverage` currently executes only on `dev`/`main` (§11), and **no `govulncheck` job exists at
+all yet** (verified in Phase 1: nothing in `.circleci/`, `.github/workflows/`, or the `Makefile` on
+`dev`, `main`, or `v3` references it). Making either a required check on `v3` **before** it actually
+runs would reintroduce exactly the deadlock Phase 1 avoided: a required check that never runs on
+`v3` leaves every `v3` PR permanently pending. The order of operations is therefore fixed:
 
-1. Change the filters so `test_coverage` and `govulncheck` actually execute on `v3`.
+1. Add a `govulncheck` job (running on `main` and `v3`) and change the `test_coverage` filter so both
+   actually execute on `v3`.
 2. Confirm they report and pass on a real `v3` PR.
 3. **Only then** add them to `required_status_checks`.
 
@@ -560,7 +580,7 @@ they are annotated tags *and* mirrored to branches.
 **Decision: `dev` remains the repository default branch permanently.** It is never switched to
 `main`, at promotion or afterwards; default branch and release channel are kept permanently separate
 (§1.1). Dependency automation therefore watches **`dev` and `v3` only**, and the canonical
-`renovate.json` uses `baseBranches: ["dev", "v3"]` with `main` deliberately excluded (§1.3, §10).
+`renovate.json` uses `baseBranchPatterns: ["dev", "v3"]` with `main` deliberately excluded (§1.3, §10).
 
 Consequences for Phase 3 — none of which require a further decision:
 
