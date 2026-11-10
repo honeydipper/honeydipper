@@ -1,3 +1,17 @@
+# [4.0.0-dev.15](https://github.com/honeydipper/honeydipper/compare/v4.0.0-dev.14...v4.0.0-dev.15) (2026-11-10)
+
+
+### Bug Fixes
+
+* **agent:** narrow trailing-user synthesis to interrupted agent turns ([#855](https://github.com/honeydipper/honeydipper/issues/855)) ([d177ba2](https://github.com/honeydipper/honeydipper/commit/d177ba240f4a3e180b80da0f0d0bcd6a5791b32f))
+* **deps:** update module github.com/go-git/go-git/v5 to v5.19.2 [security] ([#689](https://github.com/honeydipper/honeydipper/issues/689)) ([bbffa00](https://github.com/honeydipper/honeydipper/commit/bbffa0017f2631386133e8b6bf52689e3b891ecf))
+* **deps:** update module google.golang.org/grpc to v1.83.2 [security] ([#833](https://github.com/honeydipper/honeydipper/issues/833)) ([4253549](https://github.com/honeydipper/honeydipper/commit/4253549755672186258a9aa9922c27b7b3bbf0cf))
+
+
+### Features
+
+* **drivers:** route docker pod log streaming to driver:docker ([#845](https://github.com/honeydipper/honeydipper/issues/845)) ([112b2da](https://github.com/honeydipper/honeydipper/commit/112b2daacf78e173506d0ede9bb5a581e991e980))
+
 # Unreleased
 
 ### Bug Fixes
