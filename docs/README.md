@@ -27,6 +27,8 @@
 
 ## Operations
 
+* [Release Process](./release-process.md) — branch model, channels, gates, backports, invariants
+* [Branch Divergence Report](./branch-divergence-report.md) — per-area evidence, main vs v3 vs dev
 * [Agent System Guide](./agents.md) *(new in v4)*
 * [HTTP API Reference](./api.md) *(new in v4)*
 * [Eventbus Message Types](./eventbus.md) *(new in v4)*
