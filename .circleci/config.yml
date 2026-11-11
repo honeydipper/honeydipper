@@ -330,14 +330,26 @@ workflows:
               only: v3
   publish_release_image:
     jobs:
-      - publish-image:
-          name: publish-image-tag
-          context: honeydipper
+      - approve-v3-image:
+          type: approval
           filters:
             branches:
               ignore: /.*/
             tags:
-              only: /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+              only: /^v3\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+      - publish-image:
+          name: publish-image-tag
+          context: honeydipper
+          requires:
+            - approve-v3-image
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v3\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+      # publish-image-recovery is deliberately NOT gated behind approve-v3-image:
+      # it only runs when an operator explicitly supplies release_tag, which is
+      # itself the manual authorization for a recovery republication.
       - publish-image:
           name: publish-image-recovery
           context: honeydipper
