@@ -62,6 +62,29 @@ jobs:
           key: v1-buildcache-{{ checksum "/tmp/build_num" }}
           paths:
             - /root/.cache
+  govulncheck:
+    # Scan in SYMBOL mode, never '-scan=module'.
+    # Module-only scanning silently omits vulnerabilities that have no fix
+    # available.  On this repo that is not hypothetical: module mode on the v3
+    # line reported only the stdlib finding while a symbol scan of the ollama
+    # driver returned 8 real, reachable advisories -- a green-but-worthless gate.
+    <<: *defaults
+    resource_class: medium+
+    docker:
+      # MUST be >= go1.27.4.  stdlib GO-2026-6859 (net/http MaxBytesReader header
+      # race) is fixed only in 1.27.4, so any older image leaves this job
+      # permanently red no matter what the modules say.
+      - image: golang:1.27.4-alpine
+    environment:
+      GOTOOLCHAIN: local
+    steps:
+      - checkout
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - run:
+          name: govulncheck
+          command: govulncheck -scan=symbol ./...
+          # the scan is silent while it works; do not let the no-output timeout kill it
+          no_output_timeout: 30m
   license_finder:
     resource_class: small
     <<: *defaults
@@ -283,6 +306,8 @@ workflows:
     jobs:
       - license_finder
       - golangci-lint
+      # no branch filter, same as golangci-lint, so the status posts on PR heads
+      - govulncheck
       - install
       - test_coverage:
           context: honeydipper
