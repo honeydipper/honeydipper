@@ -1,13 +1,32 @@
 {
-  "extends": [
-    "config:recommended"
-  ],
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranchPatterns": ["dev", "v3"],
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": false,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "prCreation": "immediate",
+    "automerge": false
+  },
   "packageRules": [
     {
       "matchDepTypes": ["require"],
       "semanticCommitType": "fix"
+    },
+    {
+      "matchBaseBranches": ["v3"],
+      "semanticCommitType": "fix"
+    },
+    {
+      "matchBaseBranches": ["v3"],
+      "matchDatasources": ["docker", "golang-version"],
+      "semanticCommitType": "fix"
     }
   ],
+  "prHourlyLimit": 0,
   "prConcurrentLimit": 10,
   "schedule": ["before 3:00am on the 3 day of the month"]
 }
