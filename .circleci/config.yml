@@ -55,6 +55,12 @@ jobs:
     resource_class: medium+
     docker:
       - image: golangci/golangci-lint:v2.15.0-alpine
+    environment:
+      # This image ships its own Go (v2.15.0-alpine = go1.27.2), older than the
+      # `go` directive, so it must be allowed to fetch the toolchain it needs.
+      # `auto` is the default it had before this PR; `local` (inherited from
+      # defaults) makes go.mod's version requirement a hard failure here.
+      GOTOOLCHAIN: auto
     steps:
       - checkout
       - restore_cache:
