@@ -1,7 +1,13 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.27.3-alpine
+    # >=1.27.4: stdlib GO-2026-6859 (net/http MaxBytesReader header race) is
+    # fixed only in go1.27.4; 1.27.3 leaves govulncheck permanently red.
+    - image: golang:1.27.4-alpine
+  environment:
+    # build with the toolchain shipped in the image; never download a second one,
+    # so the govulncheck stdlib result and the test results agree
+    GOTOOLCHAIN: local
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 version: 2.1
@@ -36,6 +42,7 @@ jobs:
     resource_class: medium+
     steps:
       - setup
+      - run: go version
       - run: go install -v ./...
       - save-mod
       - persist_to_workspace:
@@ -134,7 +141,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.27.3-alpine
+      - image: golang:1.27.4-alpine
       - image: redis:7.0.11-alpine
     steps:
       - attach_workspace:
