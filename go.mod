@@ -105,7 +105,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/hashicorp/vault/api v1.15.0
 	github.com/hashicorp/vault/api/auth/kubernetes v0.8.0
-	github.com/ollama/ollama v0.17.1
+	github.com/ollama/ollama v0.20.3
 	github.com/openai/openai-go/v3 v3.8.1
 	github.com/qdrant/go-client v1.14.0
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
