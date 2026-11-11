@@ -290,6 +290,7 @@ workflows:
               only:
                 - dev
                 - main
+                - v3
           requires:
             - install
       - test:
