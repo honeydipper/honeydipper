@@ -68,7 +68,9 @@ jobs:
       # govulncheck must run on Go >= 1.27.4. net/http GO-2026-6859 is fixed in
       # 1.27.4, so a 1.27.3 image reports it and this gate can never pass.
       - image: golang:1.27.4-alpine
-    resource_class: medium+
+    # govulncheck symbol-scans every package incl. ./drivers/...; that is heavy.
+    # Locally a 12-package drivers chunk exceeded 15 minutes on 2 cores.
+    resource_class: large
     steps:
       - run: apk add git
       - checkout
@@ -80,7 +82,11 @@ jobs:
             - /root/.cache
       # We want to keep the cache, but save it every time
       - run: echo "$CIRCLE_BUILD_NUM-$CIRCLE_JOB" > /tmp/build_num
-      - run: govulncheck ./...
+      - run:
+          name: govulncheck
+          command: govulncheck ./...
+          # silent for long stretches; do not let CircleCI's no-output timeout kill it
+          no_output_timeout: 30m
       - save_cache:
           key: v1-buildcache-{{ checksum "/tmp/build_num" }}
           paths:
