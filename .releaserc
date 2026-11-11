@@ -1,7 +1,11 @@
 {
     "branches": [
         "main",
-        "v3",
+        {
+            "name": "v3",
+            "range": "3.x",
+            "channel": "3.x"
+        },
         {
             "name": "dev",
             "prerelease": true,
