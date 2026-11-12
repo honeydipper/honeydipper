@@ -1,5 +1,9 @@
 FROM golang:1.27.4-alpine AS build
 
+# Never let this build download a different toolchain than the one in the
+# image: GOTOOLCHAIN=local mirrors what CI enforces.
+ENV GOTOOLCHAIN=local
+
 ARG GOINSTALLOPTS=""
 ARG GOGC=""
 

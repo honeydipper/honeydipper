@@ -336,14 +336,17 @@ Baseline for the `v3` line as it stands (recorded as **policy, not a pending upg
 | Item | Value | Why |
 |---|---|---|
 | `go` directive | `1.25.0` | `main` is at 1.24.1 — moving `v3` "toward main" would be a **downgrade** |
-| build/test image | `golang:1.27.3-alpine` | carries the CVE-2026-111943 fix |
+| build/test image | `golang:1.27.4-alpine` | carries the CVE-2026-111943 and GO-2026-6859 fixes |
 | lint image | `golang:1.26.10-alpine` + `golangci-lint@v1.64.8` | golangci-lint v1 cannot read go1.27 export data; the pin is **deliberate** |
-| integration image | `golang:1.27.3-alpine`, `redis:7.0.11-alpine` | matches build image |
+| integration image | `golang:1.27.4-alpine`, `redis:7.0.11-alpine` | matches build image |
 | image publishing | `publish-image` (exact-tag checkout, no-overwrite, digest evidence) | load-bearing for §7 |
 
 Rules:
 
 - Toolchain moves **forward only**, and only with a CVE/security or compatibility justification.
+- `GOTOOLCHAIN=local` is enforced wherever Go runs for us: in every CI job that builds or tests,
+  and in the Docker build stages (`build/docker/Dockerfile`, `Dockerfile-dev`). A build must
+  never silently download a toolchain that differs from the pinned image.
 - Lint is allowed to run on an older Go than the build/test toolchain; do not "fix" that by bumping
   the lint image past golangci-lint v1's export-data support.
 - `v3` and `main`(v4) may legitimately run different Go versions during the 3.x/4.x overlap. That is
