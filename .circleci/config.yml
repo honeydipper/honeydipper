@@ -146,14 +146,45 @@ jobs:
       - image: cimg/node:22.21.1
     steps:
       - checkout
-      - run: |
-          sudo npm install -g semantic-release      \
-          @semantic-release/changelog               \
-          @semantic-release/commit-analyzer         \
-          @semantic-release/git                     \
-          @semantic-release/release-notes-generator
+      # PINNED TOOLCHAIN -- keep this block byte-identical to dev's.
+      # Unpinned @latest lets branch/range semantics drift between rehearsal
+      # and release (the 3.10.6 maintenance-range incident).
+      # Bump deliberately: bump -> local --dry-run rehearsal -> merge.
       - run:
-          command: npx semantic-release
+          name: Install pinned semantic-release toolchain
+          command: |
+            set -eu
+            sudo npm install -g \
+              semantic-release@25.0.9 \
+              @semantic-release/changelog@6.0.3 \
+              @semantic-release/commit-analyzer@13.0.1 \
+              @semantic-release/git@10.0.1 \
+              @semantic-release/github@12.0.11 \
+              @semantic-release/release-notes-generator@14.1.0
+      - run:
+          name: Assert pinned toolchain
+          command: |
+            set -eu
+            root="$(npm root -g)"
+            printf 'global root: %s\n' "$root"
+            assert() {
+              pkg="$1"; want="$2"
+              got="$(node -p "require('$root/$pkg/package.json').version")"
+              printf '%-42s %s (want %s)\n' "$pkg" "$got" "$want"
+              [ "$got" = "$want" ] || { printf 'FATAL: %s is %s, expected %s\n' "$pkg" "$got" "$want" >&2; exit 1; }
+            }
+            assert semantic-release 25.0.9
+            assert @semantic-release/github 12.0.11
+            assert @semantic-release/changelog 6.0.3
+            assert @semantic-release/git 10.0.1
+            assert @semantic-release/commit-analyzer 13.0.1
+            assert @semantic-release/release-notes-generator 14.1.0
+            command -v semantic-release
+            npm ls -g --depth=0 2>/dev/null || true
+            printf 'all pins verified\n'
+      - run:
+          # --no-install: never silently download a different semantic-release
+          command: npx --no-install semantic-release
           environment:
             DEBUG: semantic-release:get-commits
   publish-image:
