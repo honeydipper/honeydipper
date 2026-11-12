@@ -1,7 +1,13 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.27.3-alpine
+    # >=1.27.4: stdlib GO-2026-6859 (net/http MaxBytesReader header race) is
+    # fixed only in go1.27.4; 1.27.3 leaves govulncheck permanently red.
+    - image: golang:1.27.4-alpine
+  environment:
+    # build with the toolchain shipped in the image; never download a second one,
+    # so the govulncheck stdlib result and the test results agree
+    GOTOOLCHAIN: local
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 version: 2.1
@@ -36,6 +42,7 @@ jobs:
     resource_class: medium+
     steps:
       - setup
+      - run: go version
       - run: go install -v ./...
       - save-mod
       - persist_to_workspace:
@@ -48,6 +55,12 @@ jobs:
     resource_class: medium+
     docker:
       - image: golangci/golangci-lint:v2.15.0-alpine
+    environment:
+      # This image ships its own Go (v2.15.0-alpine = go1.27.2), older than the
+      # `go` directive, so it must be allowed to fetch the toolchain it needs.
+      # `auto` is the default it had before this PR; `local` (inherited from
+      # defaults) makes go.mod's version requirement a hard failure here.
+      GOTOOLCHAIN: auto
     steps:
       - checkout
       - restore_cache:
@@ -100,7 +113,9 @@ jobs:
       - attach_workspace:
           at: /go
       - setup
-      - run: go install gotest.tools/gotestsum@latest
+      # Pinned: @latest under GOTOOLCHAIN=local hard-fails the day upstream cut a
+      # release needing a newer Go than this image ships. v1.13.0 declares go 1.24.0.
+      - run: go install gotest.tools/gotestsum@v1.13.0
       - run: gotestsum -f testname --junitfile test-results/gotestsum-report.xml
       - store_test_results:
           path: test-results
@@ -134,7 +149,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.27.3-alpine
+      - image: golang:1.27.4-alpine
       - image: redis:7.0.11-alpine
     steps:
       - attach_workspace:
