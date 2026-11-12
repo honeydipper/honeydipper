@@ -1,8 +1,12 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.27.3-alpine
+    - image: golang:1.27.4-alpine
   working_directory: /go/src/github.com/honeydipper/honeydipper
+  environment:
+    # Build and test with the image's own toolchain (1.27.4) rather than letting
+    # GOTOOLCHAIN=auto silently download a different one mid-build.
+    GOTOOLCHAIN: local
 
 version: 2.1
 
@@ -36,6 +40,7 @@ jobs:
     resource_class: medium+
     steps:
       - setup
+      - run: go version
       - run: go install -v ./...
       - save-mod
       - persist_to_workspace:
@@ -80,7 +85,9 @@ jobs:
       - attach_workspace:
           at: /go
       - setup
-      - run: go install gotest.tools/gotestsum@latest
+      # Pinned: @latest under GOTOOLCHAIN=local hard-fails the day upstream cut a
+      # release needing a newer Go than this image ships. v1.13.0 declares go 1.24.0.
+      - run: go install gotest.tools/gotestsum@v1.13.0
       - run: gotestsum -f testname --junitfile test-results/gotestsum-report.xml
       - store_test_results:
           path: test-results
@@ -114,7 +121,7 @@ jobs:
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.27.3-alpine
+      - image: golang:1.27.4-alpine
       - image: redis:7.0.11-alpine
     steps:
       - attach_workspace:
