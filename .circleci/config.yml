@@ -113,7 +113,9 @@ jobs:
       - attach_workspace:
           at: /go
       - setup
-      - run: go install gotest.tools/gotestsum@latest
+      # Pinned: @latest under GOTOOLCHAIN=local hard-fails the day upstream cut a
+      # release needing a newer Go than this image ships. v1.13.0 declares go 1.24.0.
+      - run: go install gotest.tools/gotestsum@v1.13.0
       - run: gotestsum -f testname --junitfile test-results/gotestsum-report.xml
       - store_test_results:
           path: test-results
