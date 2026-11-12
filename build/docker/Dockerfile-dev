@@ -1,5 +1,9 @@
 FROM golang:1.27.4-alpine
 
+# Never let this build download a different toolchain than the one in the
+# image: GOTOOLCHAIN=local mirrors what CI enforces.
+ENV GOTOOLCHAIN=local
+
 # Enable module mode (see https://github.com/golang/go/wiki/Modules)
 ENV GO111MODULE=auto
 RUN apk add --no-cache git gcc libc-dev ca-certificates
