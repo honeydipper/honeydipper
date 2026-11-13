@@ -16,18 +16,28 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/honeydipper/honeydipper/v3/drivers/pkg/redisclient"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // DefaultPrefix is the prefix used for naming the locking topic.
 const DefaultPrefix = "lock:"
+
+// Compare and delete atomically so an expired owner's cleanup cannot remove a
+// successor's lock. Missing and already-released locks are successful no-ops.
+const unlockOwnedScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("DEL", KEYS[1])
+end
+return 0`
 
 var (
 	// ErrFailToLock means not being able to acquire the lock.
 	ErrFailToLock = errors.New("fail to lock")
 	// ErrFailToUnlock means not being able to unlock.
 	ErrFailToUnlock = errors.New("fail to unlock")
+	// ErrOutOfSync means the given sequence number is lower than the current lock serial.
+	ErrOutOfSync = errors.New("out of sync")
 )
 
 // Locker holds the driver, configurations and runtime information.
@@ -67,33 +77,73 @@ func main() {
 	l.driver.Reload = l.loadOptions
 	l.driver.RPCHandlers["lock"] = l.lock
 	l.driver.RPCHandlers["unlock"] = l.unlock
+	l.driver.RPCHandlers["getID"] = l.getID
 	l.driver.Run()
 	l.nodeID = dipper.GetIP()
+}
+
+func waitForSeq(ctx context.Context, client redisclient.Options, seqKey string, sq int, strict bool) bool {
+	for {
+		currentSeq, _ := strconv.ParseInt(dipper.Must(client.Get(ctx, seqKey).Result()).(string), 10, 64)
+		if strict {
+			if currentSeq > int64(sq) {
+				panic(ErrOutOfSync)
+			}
+			if currentSeq == int64(sq) {
+				return true
+			}
+		} else if currentSeq >= int64(sq) {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func (l *Locker) lock(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	expire := dipper.Must(time.ParseDuration(dipper.MustGetMapDataStr(msg.Payload, "expire"))).(time.Duration)
 	name := dipper.MustGetMapDataStr(msg.Payload, "name")
-
-	var (
-		ctx    context.Context
-		cancel context.CancelFunc
-	)
-	if attemptMsStr, ok := dipper.GetMapDataStr(msg.Payload, "attempt_ms"); ok {
-		attemptMs := dipper.Must(strconv.Atoi(attemptMsStr)).(int)
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(attemptMs)*time.Millisecond)
-	} else {
-		ctx, cancel = l.driver.GetContext()
+	owner, _ := dipper.GetMapDataStr(msg.Payload, "owner")
+	if owner == "" {
+		owner = l.nodeID
 	}
+	sq, hasSq := dipper.GetMapDataInt(msg.Payload, "sq")
+	strict, _ := dipper.GetMapDataBool(msg.Payload, "strict")
+
+	seqExpire := 24 * time.Hour
+	if seqExpireStr, ok := dipper.GetMapDataStr(msg.Payload, "seq_expire"); ok {
+		seqExpire = dipper.Must(time.ParseDuration(seqExpireStr)).(time.Duration)
+	}
+
+	ctx, cancel := l.driver.GetContext(msg)
 	defer cancel()
 
 	client := redisclient.NewClient(l.redisOptions)
 	defer client.Close()
 
-	ok := dipper.Must(client.SetNX(ctx, l.prefix+name, l.nodeID, expire).Result()).(bool)
-	if !ok {
-		panic(ErrFailToLock)
+	var seqKey string
+	if hasSq {
+		seqKey = l.prefix + name + ":seq"
+		dipper.Must(client.SetNX(ctx, seqKey, "1", seqExpire).Result())
+		if !waitForSeq(ctx, client, seqKey, sq, strict) {
+			return
+		}
+	}
+
+	for !dipper.Must(client.SetNX(ctx, l.prefix+name, owner, expire).Result()).(bool) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	if hasSq {
+		dipper.Must(client.Incr(ctx, seqKey).Result())
 	}
 
 	msg.Reply <- dipper.Message{}
@@ -103,11 +153,18 @@ func (l *Locker) unlock(msg *dipper.Message) {
 	msg = dipper.DeserializePayload(msg)
 	name := dipper.MustGetMapDataStr(msg.Payload, "name")
 
-	ctx, cancel := l.driver.GetContext()
+	ctx, cancel := l.driver.GetContext(msg)
 	defer cancel()
 
 	client := redisclient.NewClient(l.redisOptions)
 	defer client.Close()
+
+	if owner, _ := dipper.GetMapDataStr(msg.Payload, "owner"); owner != "" {
+		dipper.Must(client.Eval(ctx, unlockOwnedScript, []string{l.prefix + name}, owner).Result())
+		msg.Reply <- dipper.Message{}
+
+		return
+	}
 
 	ok := dipper.Must(client.Del(ctx, l.prefix+name).Result()).(int64) > 0
 	if !ok {
@@ -115,4 +172,38 @@ func (l *Locker) unlock(msg *dipper.Message) {
 	}
 
 	msg.Reply <- dipper.Message{}
+}
+
+// getID return one ID or the top of a batch of IDs atomically.
+func (l *Locker) getID(msg *dipper.Message) {
+	msg = dipper.DeserializePayload(msg)
+	name := dipper.MustGetMapDataStr(msg.Payload, "name")
+	wrap := dipper.MustGetMapDataInt(msg.Payload, "wrap")
+	batch, _ := dipper.GetMapDataInt(msg.Payload, "batch")
+	if batch == 0 {
+		batch = 1
+	}
+
+	ctx, cancel := l.driver.GetContext(msg)
+	defer cancel()
+
+	client := redisclient.NewClient(l.redisOptions)
+	defer client.Close()
+
+	ret := dipper.Must(client.Eval(ctx, `
+        local wrap = tonumber(ARGV[1])
+        local batch = tonumber(ARGV[2])
+        local current_value = redis.call("INCRBY", KEYS[1], batch)
+
+        if current_value > wrap then
+            redis.call("SET", KEYS[1], batch)
+            return batch
+        else
+            return current_value
+        end	`, []string{"hd_unique_id:" + name}, wrap, batch).Result()).(int64)
+
+	msg.Reply <- dipper.Message{
+		Payload: []byte(strconv.Itoa(int(ret))),
+		IsRaw:   true,
+	}
 }

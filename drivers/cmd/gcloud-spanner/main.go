@@ -6,24 +6,21 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
-	"sync"
 	"time"
 
 	spannerAdmin "cloud.google.com/go/spanner/admin/database/apiv1"
 	spannerAdminSchema "cloud.google.com/go/spanner/admin/database/apiv1/databasepb"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"google.golang.org/api/option"
 )
 
 const (
 	// DefaultBackupOpWaitTimeout is the default timeout in seconds for waiting for the backup to complete.
-	DefaultBackupOpWaitTimeout time.Duration = 1800
+	DefaultBackupOpWaitTimeout = "30m"
 
 	// DefaultBackupExpireDuration is the default duration before a backup is expired and removed.
-	DefaultBackupExpireDuration time.Duration = time.Hour * 24 * 180
+	DefaultBackupExpire = "4320h" // 24 * 180 = 4320
 )
 
 var (
@@ -49,20 +46,16 @@ func initFlags() {
 	}
 }
 
-var (
-	driver *dipper.Driver
-	lro    *sync.Map
-)
+var driver *dipper.Driver
 
 func main() {
 	initFlags()
 	flag.Parse()
 
-	lro = &sync.Map{}
-
 	driver = dipper.NewDriver(os.Args[1], "gcloud-spanner")
 	driver.Commands["backup"] = backup
-	driver.Commands["waitForBackup"] = waitForBackup
+	driver.Commands["waitForBackup|interruptible"] = waitForBackup
+	driver.DefaultTimeout["waitForBackup"] = DefaultBackupOpWaitTimeout
 	driver.Run()
 }
 
@@ -82,33 +75,22 @@ func backup(m *dipper.Message) {
 	if !ok {
 		panic(ErrMissingDB)
 	}
-	expireDuration := DefaultBackupExpireDuration
-	expireStr, ok := dipper.GetMapDataStr(params, "expires")
-	if ok && len(expireStr) > 0 {
-		var err error
-		expireDuration, err = time.ParseDuration(expireStr)
-		if err != nil {
-			panic(err)
-		}
+	expire, ok := dipper.GetMapDataStr(params, "expires")
+	if !ok {
+		expire = DefaultBackupExpire
 	}
-	timeout := DefaultBackupOpWaitTimeout
-	timeoutStr, ok := m.Labels["timeout"]
-	if ok {
-		timeoutInt, _ := strconv.Atoi(timeoutStr)
-		timeout = time.Duration(timeoutInt)
-	}
+	expireDuration := dipper.Must(time.ParseDuration(expire)).(time.Duration)
 
 	var (
 		client *spannerAdmin.DatabaseAdminClient
 		err    error
 	)
 	if len(serviceAccountBytes) > 0 {
-		clientOption := option.WithCredentialsJSON([]byte(serviceAccountBytes))
+		clientOption := option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes))
 		client, err = spannerAdmin.NewDatabaseAdminClient(context.Background(), clientOption)
 	} else {
 		client, err = spannerAdmin.NewDatabaseAdminClient(context.Background())
 	}
-
 	if err != nil {
 		panic(ErrCreateClient)
 	}
@@ -123,23 +105,15 @@ func backup(m *dipper.Message) {
 			ExpireTime: expireTime,
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+
+	ctx, cancel := driver.GetContext(m)
 	defer cancel()
 	op, err := client.CreateBackup(ctx, req)
 	if err != nil {
 		dipper.Logger.Panicf("[%s] unable to start the backup %s/%s/%s: %+v", driver.Service, project, instance, db, err)
 	}
 
-	backupOpID := strings.Join([]string{"backup", project, instance, db, req.BackupId}, "_")
-	waitCtx, cancelWait := context.WithTimeout(context.Background(), timeout*time.Second)
-	lro.Store(backupOpID, []interface{}{op, waitCtx})
-
-	go func() {
-		defer cancelWait()
-		defer lro.Delete(backupOpID)
-
-		_, _ = op.Wait(waitCtx)
-	}()
+	backupOpID := op.Name()
 
 	m.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
@@ -151,26 +125,38 @@ func backup(m *dipper.Message) {
 func waitForBackup(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	params := m.Payload
+	serviceAccountBytes, _ := dipper.GetMapDataStr(params, "service_account")
+
 	backupOpID, ok := dipper.GetMapDataStr(params, "backupOpID")
 	if !ok {
 		panic(ErrMissingBackupOpID)
 	}
 
-	obj, ok := lro.Load(backupOpID)
-	if ok {
-		op := obj.([]interface{})[0].(*spannerAdmin.CreateBackupOperation)
-		waitCtx := obj.([]interface{})[1].(context.Context)
-		backup, err := op.Wait(waitCtx)
-		if err != nil {
-			panic(err)
-		}
-
-		m.Reply <- dipper.Message{
-			Payload: map[string]interface{}{
-				"backup": backup,
-			},
-		}
+	var (
+		client *spannerAdmin.DatabaseAdminClient
+		err    error
+	)
+	if len(serviceAccountBytes) > 0 {
+		clientOption := option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(serviceAccountBytes))
+		client, err = spannerAdmin.NewDatabaseAdminClient(context.Background(), clientOption)
 	} else {
-		panic(ErrBackupOpNotFound)
+		client, err = spannerAdmin.NewDatabaseAdminClient(context.Background())
+	}
+
+	if err != nil {
+		panic(ErrCreateClient)
+	}
+
+	op := client.CreateBackupOperation(backupOpID)
+
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
+
+	backup := dipper.Must(op.Wait(ctx)).(*spannerAdminSchema.Backup)
+
+	m.Reply <- dipper.Message{
+		Payload: map[string]interface{}{
+			"backup": backup,
+		},
 	}
 }

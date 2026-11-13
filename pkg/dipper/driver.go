@@ -10,7 +10,9 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,9 +28,14 @@ const (
 	// DefaultAPITimeout is the default timeout for making an outbound API call.
 	DefaultAPITimeout time.Duration = 10
 
-	// DriverStateCompleted indicates a driver can be gracefully shutdown. Currently,
-	// only used in tests.
+	// DriverStateCompleted indicates a driver can be gracefully shutdown.
 	DriverStateCompleted = "completed"
+
+	// DriverStateDraining indicates a driver is being drained.
+	DriverStateDraining = "draining"
+
+	// DriverStateAlive indicates a driver is alive and can receive commands.
+	DriverStateAlive = "alive"
 )
 
 // Driver : the helper stuct for creating a honey-dipper driver in golang.
@@ -46,8 +53,13 @@ type Driver struct {
 	Start           MessageHandler
 	Stop            MessageHandler
 	Reload          MessageHandler
-	ReadySignal     chan bool
+	Drain           MessageHandler
 	APITimeout      time.Duration
+	JobWaitTimeout  time.Duration
+	optionsMu       sync.Mutex
+	optionsReady    chan struct{}
+	cancel          context.CancelFunc
+	ctx             context.Context
 }
 
 // DriverOption provides a way to pass parameters to NewDriver method to override
@@ -71,12 +83,12 @@ func DriverWithWriter(w io.Writer) DriverOption {
 // NewDriver : create a blank driver object.
 func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 	driver := Driver{
-		Name:        name,
-		Service:     service,
-		State:       "loaded",
-		In:          os.Stdin,
-		Out:         os.Stdout,
-		ReadySignal: make(chan bool),
+		Name:         name,
+		Service:      service,
+		State:        "loaded",
+		In:           os.Stdin,
+		Out:          os.Stdout,
+		optionsReady: make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -84,17 +96,25 @@ func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 	}
 
 	driver.RPCProvider.Init("rpc", "return", driver.Out)
+	driver.RPCProvider.Handler = driver.ctx
+	if service == "agent" {
+		driver.InterruptedChannel = "agentbus"
+		driver.RPCProvider.InterruptedSubject = EventbusRPCInterrupted
+	}
 	driver.RPCCallerBase.Init(&driver, "rpc", "call")
-	driver.CommandProvider.Init("eventbus", "return", driver.Out)
+	driver.ctx, driver.cancel = context.WithCancel(context.Background())
+	driver.CommandProvider.Init(ChannelEventbus, EventbusReturn, EventbusReturnInterrupted, driver.Out, driver.ctx)
 
 	driver.MessageHandlers = map[string]MessageHandler{
-		"command:options":  driver.ReceiveOptions,
-		"command:ping":     driver.Ping,
-		"command:start":    driver.start,
-		"command:stop":     driver.stop,
-		"rpc:call":         driver.RPCProvider.Router,
-		"rpc:return":       driver.HandleReturn,
-		"eventbus:command": driver.CommandProvider.Router,
+		"command:options":        driver.ReceiveOptions,
+		"command:ping":           driver.Ping,
+		"command:start":          driver.start,
+		"command:stop":           driver.stop,
+		"command:drain":          driver.drain,
+		"rpc:call":               driver.RPCProvider.Router,
+		"rpc:return":             driver.HandleReturn,
+		"eventbus:command":       driver.CommandProvider.Router,
+		"eventbus:agent_command": driver.CommandProvider.Router,
 	}
 
 	driver.GetLogger()
@@ -104,8 +124,11 @@ func NewDriver(service string, name string, opts ...DriverOption) *Driver {
 
 // Run : start a loop to communicate with daemon.
 func (d *Driver) Run() {
+	// Ignore SIGINT, let daemon handle the graceful shutdown of the driver.
+	signal.Ignore()
+
 	Logger.Infof("[%s] driver loaded", d.Service)
-	for {
+	for d.State != DriverStateCompleted {
 		func() {
 			defer SafeExitOnError("[%s] Resuming driver message loop", d.Service)
 			defer CatchError(io.EOF, func() {
@@ -113,8 +136,13 @@ func (d *Driver) Run() {
 					Logger.Fatalf("[%s] daemon closed channel", d.Service)
 				}
 			})
-			for {
+			for d.State != DriverStateCompleted {
 				msg := FetchRawMessage(d.In)
+				if msg.Channel == "command" && msg.Subject == "options" {
+					// messages are handled concurrently, so mark the options as pending before
+					// dispatching, ensuring the following start/reload waits for them to be applied.
+					d.beginOptions()
+				}
 				go func() {
 					defer SafeExitOnError("[%s] Continuing driver message loop", d.Service)
 					if handler, ok := d.MessageHandlers[msg.Channel+":"+msg.Subject]; ok {
@@ -125,10 +153,6 @@ func (d *Driver) Run() {
 				}()
 			}
 		}()
-		// allow graceful shutdown during testing.
-		if d.State == DriverStateCompleted {
-			break
-		}
 	}
 }
 
@@ -142,12 +166,12 @@ func (d *Driver) Ping(msg *Message) {
 
 // ReceiveOptions : receive options from daemon.
 func (d *Driver) ReceiveOptions(msg *Message) {
+	defer d.finishOptions()
 	msg = DeserializePayload(msg)
 	Recursive(msg.Payload, RegexParser)
 	DecryptAll(d, msg.Payload)
 	d.Options = msg.Payload
-	Logger = nil
-	d.GetLogger()
+	d.resetLogger()
 	d.APITimeout = DefaultAPITimeout
 	apiTimeoutStr, ok := d.GetOptionStr("data.api_timeout")
 	if ok {
@@ -158,18 +182,38 @@ func (d *Driver) ReceiveOptions(msg *Message) {
 			d.APITimeout = time.Duration(apiTimeout)
 		}
 	}
-	if d.ReadySignal != nil {
-		close(d.ReadySignal)
+}
+
+func (d *Driver) beginOptions() {
+	d.optionsMu.Lock()
+	defer d.optionsMu.Unlock()
+	if d.optionsReady == nil {
+		d.optionsReady = make(chan struct{})
+	}
+}
+
+func (d *Driver) finishOptions() {
+	d.optionsMu.Lock()
+	defer d.optionsMu.Unlock()
+	if d.optionsReady != nil {
+		close(d.optionsReady)
+		d.optionsReady = nil
+	}
+}
+
+func (d *Driver) waitOptions() {
+	d.optionsMu.Lock()
+	ready := d.optionsReady
+	d.optionsMu.Unlock()
+	if ready != nil {
+		<-ready
 	}
 }
 
 func (d *Driver) start(msg *Message) {
-	if d.ReadySignal != nil {
-		<-d.ReadySignal
-		d.ReadySignal = nil
-	}
+	d.waitOptions()
 
-	if d.State == "alive" {
+	if d.State == DriverStateAlive {
 		if d.Reload != nil {
 			d.Reload(msg)
 		} else {
@@ -179,18 +223,43 @@ func (d *Driver) start(msg *Message) {
 		if d.Start != nil {
 			d.Start(msg)
 		}
-		d.State = "alive"
+		d.State = DriverStateAlive
 	}
 	d.Ping(msg)
 }
 
 func (d *Driver) stop(msg *Message) {
-	d.State = "stopped"
+	if d.State != "drained" {
+		Logger.Warningf("[%s] driver %s received stopping while not fully drained", d.Service, d.Name)
+	}
+	d.State = "stopping"
 	if d.Stop != nil {
 		d.Stop(msg)
 	}
+	d.Flush(true)
+	WaitGroupWaitTimeout(&d.CommandProvider.Live, time.Second*2) // wait for all in-flight commands to complete before changing state to drained.
+	WaitGroupWaitTimeout(&d.RPCProvider.Live, time.Second*2)     // wait for all in-flight rpcs to complete before changing state to drained.
+	d.State = DriverStateCompleted
 	d.Ping(msg)
 	Logger.Warningf("[%s] quiting on daemon request", d.Service)
+}
+
+func (d *Driver) drain(msg *Message) {
+	if d.State != DriverStateAlive {
+		Logger.Warningf("[%s] received drain command while not alive, ignoring", d.Service)
+
+		return
+	}
+	d.State = DriverStateDraining
+	if d.Drain != nil {
+		d.Drain(msg)
+	}
+	d.Flush(false)
+	d.CommandProvider.Live.Wait() // wait for all in-flight commands to complete before changing state to drained.
+	d.RPCProvider.Live.Wait()     // wait for all in-flight rpcs to complete before changing state to drained.
+	d.State = "drained"
+	d.Ping(msg)
+	Logger.Warningf("[%s] drained on daemon request", d.Service)
 }
 
 // SendMessage : send a prepared message to daemon.
@@ -218,18 +287,22 @@ func (d *Driver) GetOptionStr(path string) (string, bool) {
 // avoid being closed by garbage collector (runtime.setFinalizer).
 var logFile *os.File
 
+// resetLogger rebuilds the logger from the latest options without exposing a nil Logger to concurrent handlers.
+func (d *Driver) resetLogger() {
+	levelstr, ok := d.GetOptionStr("data.loglevel")
+	if !ok {
+		levelstr = "INFO"
+	}
+	if logFile == nil {
+		logFile = os.NewFile(DriverLogDescriptor, "log")
+	}
+	GetLogger(d.Name, levelstr, logFile)
+}
+
 // GetLogger : getting a logger for the driver.
 func (d *Driver) GetLogger() *logging.Logger {
 	if Logger == nil {
-		levelstr, ok := d.GetOptionStr("data.loglevel")
-		if !ok {
-			levelstr = "INFO"
-		}
-		if logFile == nil {
-			logFile = os.NewFile(DriverLogDescriptor, "log")
-		}
-
-		return GetLogger(d.Name, levelstr, logFile)
+		d.resetLogger()
 	}
 
 	return Logger
@@ -264,6 +337,45 @@ func (d *Driver) EmitEvent(payload map[string]interface{}) string {
 }
 
 // GetContext creates a context with APITimeout.
-func (d *Driver) GetContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), d.APITimeout*time.Second)
+func (d *Driver) GetContext(m *Message) (context.Context, context.CancelFunc) {
+	if m == nil {
+		// this is a wrapper func
+		return context.WithCancel(d.ctx)
+	}
+
+	timeout := d.JobWaitTimeout * time.Second
+	if m.Channel == "rpc" {
+		timeout = d.APITimeout * time.Second
+	}
+	timeoutStr, ok := m.Labels["timeout"]
+	if ok {
+		timeout = Must(time.ParseDuration(timeoutStr)).(time.Duration)
+	}
+
+	sourceCtx := d.ctx
+	if _, ok := m.Labels["interruptible"]; !ok {
+		sourceCtx = context.Background()
+	}
+
+	if timeout == 0 {
+		// this is a wrapper func
+		return context.WithCancel(sourceCtx)
+	}
+
+	// this is a wrapper func
+	return context.WithTimeout(sourceCtx, timeout)
+}
+
+func (d *Driver) Done() <-chan struct{} {
+	return d.ctx.Done()
+}
+
+func (d *Driver) Flush(shutdown bool) {
+	d.cancel()
+
+	if !shutdown {
+		d.ctx, d.cancel = context.WithCancel(context.Background())
+		d.CommandProvider.Handler = d.ctx
+		d.RPCProvider.Handler = d.ctx
+	}
 }

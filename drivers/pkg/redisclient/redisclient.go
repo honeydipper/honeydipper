@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // Options wraps redis.Options and provide a persisted redis.Client.
@@ -75,6 +75,7 @@ func setupTLSConfig(driver *dipper.Driver) *tls.Config {
 			// so we can use google memorystore redis with TLS.
 
 			config.InsecureSkipVerify = true
+			//nolint:gosec
 			config.VerifyPeerCertificate = func(rawCerts [][]byte, chains [][]*x509.Certificate) error {
 				return verifyPeerCertificate(config, rawCerts, chains)
 			}

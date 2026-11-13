@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/honeydipper/honeydipper/v3/internal/daemon"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/daemon"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // BuiltinDriver are compiled and delivered with daemon binary in the same container image.
@@ -130,7 +130,7 @@ func (d *BuiltinDriver) fetchMessages(service string) {
 	quit := false
 	daemon.Children.Add(1)
 	defer daemon.Children.Done()
-	for !quit && !daemon.ShuttingDown {
+	for !quit && !daemon.ShuttingDown && d.stream != nil && d.input != nil {
 		func() {
 			defer dipper.SafeExitOnError(
 				"failed to fetching messages from driver %s.%s",
@@ -138,7 +138,7 @@ func (d *BuiltinDriver) fetchMessages(service string) {
 				d.meta.Name,
 			)
 			defer dipper.CatchError(io.EOF, func() { quit = true })
-			for !quit && !daemon.ShuttingDown {
+			for !quit && !daemon.ShuttingDown && d.stream != nil && d.input != nil {
 				message := dipper.FetchRawMessage(d.input)
 				d.stream <- message
 			}

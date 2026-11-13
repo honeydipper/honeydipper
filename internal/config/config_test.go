@@ -10,11 +10,14 @@
 package config
 
 import (
+	"encoding/json"
 	"regexp"
 	"testing"
 
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigGetDriverData(t *testing.T) {
@@ -83,6 +86,75 @@ func TestRegexParsing(t *testing.T) {
 	assert.Equal(t, "non regex", config.DataSet.Rules[0].When.Match["key6"], "rule match non-regex should remain")
 }
 
+func TestRegexParsingSkipsRuntimeData(t *testing.T) {
+	newConfig := func() *Config {
+		return &Config{
+			Staged: &DataSet{
+				Workflows: map[string]Workflow{
+					"test-workflow": {
+						Match:   map[string]interface{}{"key1": ":regex:wf-match"},
+						Iterate: []interface{}{map[string]interface{}{"pattern": ":regex:wf-iterate"}},
+					},
+				},
+				Contexts: map[string]interface{}{
+					"test-context": map[string]interface{}{"key": ":regex:ctx"},
+				},
+				Systems: map[string]System{
+					"test-system": {
+						Data: map[string]interface{}{"key": ":regex:sys-data"},
+					},
+				},
+				Rules: []Rule{
+					{
+						When: Trigger{Match: map[string]interface{}{"key": ":regex:rule-when"}},
+						Do: Workflow{
+							Iterate: []interface{}{
+								map[string]interface{}{"alert_message": ":regex:5xx", "plain": "plain"},
+							},
+							IterateParallel: []interface{}{":regex:parallel"},
+							Match:           map[string]interface{}{"key": ":regex:do-match"},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	config := newConfig()
+	assert.NotPanics(t, func() { config.recursive(dipper.RegexParser, true, true) }, "skipping runtime data should not panic")
+
+	wf := config.Staged.Workflows["test-workflow"]
+	assert.Equal(t, ":regex:wf-match", wf.Match.(map[string]interface{})["key1"], "workflow match should stay a string")
+	assert.Equal(t, ":regex:wf-iterate", wf.Iterate.([]interface{})[0].(map[string]interface{})["pattern"], "workflow iterate should stay a string")
+	assert.Equal(t, ":regex:ctx", config.Staged.Contexts["test-context"].(map[string]interface{})["key"], "context should stay a string")
+
+	do := config.Staged.Rules[0].Do
+	item := do.Iterate.([]interface{})[0].(map[string]interface{})
+	assert.Equal(t, ":regex:5xx", item["alert_message"], "rule do iterate should stay a string")
+	assert.Equal(t, "plain", item["plain"], "non-regex value should remain")
+	assert.Equal(t, ":regex:parallel", do.IterateParallel.([]interface{})[0], "rule do iterate_parallel should stay a string")
+	assert.Equal(t, ":regex:do-match", do.Match.(map[string]interface{})["key"], "rule do match should stay a string")
+
+	assert.IsType(t, &regexp.Regexp{}, config.Staged.Rules[0].When.Match["key"], "rule trigger match should be compiled")
+	assert.IsType(t, &regexp.Regexp{}, config.Staged.Systems["test-system"].Data["key"], "system data should be compiled")
+
+	data, err := json.Marshal(do)
+	assert.NoError(t, err, "marshaling rule do should not fail")
+	var reloaded Workflow
+	assert.NoError(t, json.Unmarshal(data, &reloaded), "unmarshaling rule do should not fail")
+	reloadedItem := reloaded.Iterate.([]interface{})[0].(map[string]interface{})
+	assert.True(t, dipper.CompareAll("a 5xx error", reloadedItem["alert_message"]), "regex should still match after persistence round trip")
+	assert.False(t, dipper.CompareAll("all good", reloadedItem["alert_message"]), "regex should not match unrelated text after persistence round trip")
+
+	compiled := newConfig()
+	compiled.RecursiveStaged(dipper.RegexParser)
+	cdata, err := json.Marshal(compiled.Staged.Rules[0].Do)
+	assert.NoError(t, err)
+	var creloaded Workflow
+	assert.NoError(t, json.Unmarshal(cdata, &creloaded))
+	assert.Equal(t, "5xx", creloaded.Iterate.([]interface{})[0].(map[string]interface{})["alert_message"], "pre-compiled regex loses its prefix when persisted")
+}
+
 func TestLoadValidOverrides(t *testing.T) {
 	config := &Config{}
 	t.Setenv("REPO_OVERRIDE", "https://test.com/foo/bar.git => /tmp/foobar")
@@ -99,4 +171,355 @@ func TestLoadInvalidOverrides(t *testing.T) {
 	t.Setenv("REPO_OVERRIDE", "https://test.com/foo/bar.git =>")
 
 	assert.Panics(t, func() { config.loadOverrides() }, "loadOverride shoud panic with invalid definition")
+}
+
+func TestResolveStagedDriverMetaRegistry(t *testing.T) {
+	testCases := map[string]interface{}{
+		"resolve named registry from daemon config": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL":          "https://example.com/registry",
+							"requireSignature": true,
+							"publicKey":        "pubkey",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+					"channel":  "stable",
+				},
+			},
+			"",
+			"https://example.com/registry",
+			true,
+			"pubkey",
+		},
+		"deny direct url by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL": "https://example.com/registry",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+					"url":      "https://override.example.com/driver",
+					"sha256":   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				},
+			},
+			"remote driver source is not allowed by policy: direct",
+		},
+		"allow direct url by policy": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"direct": map[string]interface{}{
+							"enabled": true,
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"url":    "https://override.example.com/driver",
+					"sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				},
+			},
+			"",
+			"",
+			false,
+			"",
+		},
+		"deny local source by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"localPath": "/tmp/hd-driver-local",
+				},
+			},
+			"remote driver source is not allowed by policy: local",
+		},
+		"deny registry by policy": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						"github": map[string]interface{}{
+							"baseURL": "https://example.com/registry",
+						},
+					},
+					"remoteDriverPolicy": map[string]interface{}{
+						"registry": map[string]interface{}{
+							"enabled": false,
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": "github",
+				},
+			},
+			"remote driver source is not allowed by policy: registry",
+		},
+		"reject builtin registry override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"registries": map[string]interface{}{
+						BuiltinRemoteRegistryName: map[string]interface{}{
+							"baseURL": "https://malicious.example.com/registry",
+						},
+					},
+				},
+			}}},
+			map[string]interface{}{
+				"name": "remote-test",
+				"type": "remote",
+				"handlerData": map[string]interface{}{
+					"registry": BuiltinRemoteRegistryName,
+				},
+			},
+			"builtin remote registry cannot be overridden",
+		},
+	}
+
+	for msg, tc := range testCases {
+		func(c []interface{}) {
+			resolvedMeta, err := c[0].(*Config).ResolveStagedDriverMeta(c[1].(map[string]interface{}))
+			if len(c[2].(string)) > 0 {
+				if assert.Error(t, err, "should "+msg) {
+					assert.Equal(t, c[2].(string), err.Error()[:len(c[2].(string))], "should "+msg)
+				}
+
+				return
+			}
+
+			if assert.NoError(t, err, "should "+msg) {
+				handlerData := resolvedMeta["handlerData"].(map[string]interface{})
+				if c[3].(string) != "" {
+					assert.Equal(t, c[3].(string), handlerData["registryURL"], "should "+msg)
+				} else {
+					_, ok := handlerData["registryURL"]
+					assert.False(t, ok, "should "+msg)
+				}
+				if len(c) > 4 {
+					if c[4].(bool) {
+						assert.Equal(t, true, handlerData["requireSignature"], "should "+msg)
+					} else {
+						_, ok := handlerData["requireSignature"]
+						assert.False(t, ok, "should "+msg)
+					}
+				}
+				if len(c) > 5 {
+					if c[5].(string) != "" {
+						assert.Equal(t, c[5].(string), handlerData["publicKey"], "should "+msg)
+					}
+				}
+			}
+		}(tc.([]interface{}))
+	}
+}
+
+func TestResolveRemoteSourceType(t *testing.T) {
+	testCases := map[string]interface{}{
+		"registry by name": []interface{}{map[string]interface{}{"registry": "github"}, remoteSourceRegistry},
+		"registry by URL":  []interface{}{map[string]interface{}{"registryURL": "https://example.com"}, remoteSourceRegistry},
+		"direct URL":       []interface{}{map[string]interface{}{"url": "https://example.com/driver"}, remoteSourceDirect},
+		"local file URL":   []interface{}{map[string]interface{}{"url": "file:///tmp/driver"}, remoteSourceLocal},
+		"local abs path":   []interface{}{map[string]interface{}{"url": "/tmp/driver"}, remoteSourceLocal},
+		"local path field": []interface{}{map[string]interface{}{"localPath": "/tmp/driver"}, remoteSourceLocal},
+		"unknown source":   []interface{}{map[string]interface{}{}, remoteSourceUnknown},
+	}
+
+	for msg, tc := range testCases {
+		handlerData := tc.([]interface{})[0].(map[string]interface{})
+		expected := tc.([]interface{})[1].(string)
+		assert.Equal(t, expected, resolveRemoteSourceType(handlerData), "should "+msg)
+	}
+}
+
+func TestEvaluateRemoteSourcePolicy(t *testing.T) {
+	testCases := map[string]interface{}{
+		"registry allowed by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceRegistry,
+			true,
+			remotePolicyReasonDefaultAllowRegistry,
+		},
+		"direct denied by default": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceDirect,
+			false,
+			remotePolicyReasonDefaultDenySource,
+		},
+		"local denied by override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"local": map[string]interface{}{
+							"enabled": false,
+						},
+					},
+				},
+			}}},
+			remoteSourceLocal,
+			false,
+			remotePolicyReasonPolicyOverrideDeny,
+		},
+		"direct allowed by override": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{
+				"daemon": map[string]interface{}{
+					"remoteDriverPolicy": map[string]interface{}{
+						"direct": map[string]interface{}{
+							"enabled": true,
+						},
+					},
+				},
+			}}},
+			remoteSourceDirect,
+			true,
+			remotePolicyReasonPolicyOverrideAllow,
+		},
+		"unknown source denied": []interface{}{
+			&Config{Staged: &DataSet{Drivers: map[string]interface{}{"daemon": map[string]interface{}{}}}},
+			remoteSourceUnknown,
+			false,
+			remotePolicyReasonUnknownSource,
+		},
+	}
+
+	for msg, tc := range testCases {
+		cfg := tc.([]interface{})[0].(*Config)
+		source := tc.([]interface{})[1].(string)
+		expectedAllowed := tc.([]interface{})[2].(bool)
+		expectedReason := tc.([]interface{})[3].(string)
+
+		allowed, reason := cfg.evaluateRemoteSourcePolicy(source)
+		assert.Equal(t, expectedAllowed, allowed, "should "+msg)
+		assert.Equal(t, expectedReason, reason, "should "+msg)
+	}
+}
+
+func TestValidateAgentCompactionPolicies_WarnsOnMissingSummarizer(t *testing.T) {
+	ds := &DataSet{
+		Agents: map[string]Agent{
+			// The user's typo scenario: policy references "compactor" but the
+			// agents key is "campactor".
+			"main": {Name: "main", CompactionPolicy: &agentpkg.CompactionPolicy{
+				SummarizationAgent: "compactor",
+			}},
+			"campactor": {Name: "campactor"},
+			"fine": {Name: "fine", CompactionPolicy: &agentpkg.CompactionPolicy{
+				SummarizationAgent: "campactor",
+			}},
+		},
+	}
+
+	warnings := ValidateAgentCompactionPolicies(ds)
+	require.Len(t, warnings, 1, "only the mismatched summarization_agent should be flagged")
+	assert.Contains(t, warnings[0], "main")
+	assert.Contains(t, warnings[0], "compactor")
+	assert.Contains(t, warnings[0], "matches no agents key")
+	assert.Contains(t, warnings[0], "skipped")
+}
+
+func TestValidateAgentCompactionPolicies_NoWarningsWhenMatch(t *testing.T) {
+	ds := &DataSet{
+		Agents: map[string]Agent{
+			"main": {Name: "main", CompactionPolicy: &agentpkg.CompactionPolicy{
+				SummarizationAgent: "summ",
+			}},
+			"summ": {Name: "summ"},
+		},
+	}
+
+	warnings := ValidateAgentCompactionPolicies(ds)
+	assert.Empty(t, warnings, "a matching summarization_agent must not be flagged")
+}
+
+func TestValidateAgentCompactionPolicies_NilDataSet(t *testing.T) {
+	assert.Nil(t, ValidateAgentCompactionPolicies(nil))
+	assert.Nil(t, ValidateAgentCompactionPolicies(&DataSet{}))
+	assert.Nil(t, ValidateAgentCompactionPolicies(&DataSet{Agents: nil}))
+}
+
+func TestValidateAgentCompactionPolicies_EmptyPolicyNoWarning(t *testing.T) {
+	ds := &DataSet{
+		Agents: map[string]Agent{
+			"no-policy": {Name: "no-policy"},
+			"empty-sum": {Name: "empty-sum", CompactionPolicy: &agentpkg.CompactionPolicy{}},
+		},
+	}
+
+	assert.Empty(t, ValidateAgentCompactionPolicies(ds), "no summarization_agent must not be flagged")
+}
+
+func TestValidateAgentContinuePolicies(t *testing.T) {
+	t.Run("nil policy no warning", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{"a": {Name: "a"}}}
+		assert.Empty(t, ValidateAgentContinuePolicies(ds))
+	})
+
+	t.Run("valid auto policy no warning", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{
+			"a": {Name: "a", ContinuePolicy: &agentpkg.ContinuePolicy{Mode: "auto", Prompt: "go on"}},
+		}}
+		assert.Empty(t, ValidateAgentContinuePolicies(ds))
+	})
+
+	t.Run("unknown mode warns", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{
+			"a": {Name: "a", ContinuePolicy: &agentpkg.ContinuePolicy{Mode: "sometimes"}},
+		}}
+		warnings := ValidateAgentContinuePolicies(ds)
+		require.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "a")
+		assert.Contains(t, warnings[0], "sometimes")
+		assert.Contains(t, warnings[0], "unknown")
+		assert.Contains(t, warnings[0], "using auto")
+	})
+
+	t.Run("never mode warns and degrades", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{
+			"a": {Name: "a", ContinuePolicy: &agentpkg.ContinuePolicy{Mode: "never"}},
+		}}
+		warnings := ValidateAgentContinuePolicies(ds)
+		require.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "a")
+		assert.Contains(t, warnings[0], "mode: never requires driver-side handling; using auto")
+	})
+
+	t.Run("empty prompt warns", func(t *testing.T) {
+		ds := &DataSet{Agents: map[string]Agent{
+			"a": {Name: "a", ContinuePolicy: &agentpkg.ContinuePolicy{Mode: "auto", Prompt: "   "}},
+		}}
+		warnings := ValidateAgentContinuePolicies(ds)
+		require.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "empty prompt; default text will be used")
+	})
+
+	t.Run("nil dataset", func(t *testing.T) {
+		assert.Nil(t, ValidateAgentContinuePolicies(nil))
+		assert.Nil(t, ValidateAgentContinuePolicies(&DataSet{}))
+		assert.Nil(t, ValidateAgentContinuePolicies(&DataSet{Agents: nil}))
+	})
 }

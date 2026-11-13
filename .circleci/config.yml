@@ -1,10 +1,21 @@
 ---
 defaults: &defaults
   docker:
-    - image: golang:1.24.1-alpine
+    # >=1.27.4: stdlib GO-2026-6859 (net/http MaxBytesReader header race) is
+    # fixed only in go1.27.4; 1.27.3 leaves govulncheck permanently red.
+    - image: golang:1.27.4-alpine
+  environment:
+    # build with the toolchain shipped in the image; never download a second one,
+    # so the govulncheck stdlib result and the test results agree
+    GOTOOLCHAIN: local
   working_directory: /go/src/github.com/honeydipper/honeydipper
 
 version: 2.1
+
+parameters:
+  release_tag:
+    type: string
+    default: ""
 
 commands:
   setup:
@@ -31,6 +42,7 @@ jobs:
     resource_class: medium+
     steps:
       - setup
+      - run: go version
       - run: go install -v ./...
       - save-mod
       - persist_to_workspace:
@@ -42,7 +54,13 @@ jobs:
     <<: *defaults
     resource_class: medium+
     docker:
-      - image: golangci/golangci-lint:v1.64.8-alpine
+      - image: golangci/golangci-lint:v2.15.0-alpine
+    environment:
+      # This image ships its own Go (v2.15.0-alpine = go1.27.2), older than the
+      # `go` directive, so it must be allowed to fetch the toolchain it needs.
+      # `auto` is the default it had before this PR; `local` (inherited from
+      # defaults) makes go.mod's version requirement a hard failure here.
+      GOTOOLCHAIN: auto
     steps:
       - checkout
       - restore_cache:
@@ -57,6 +75,29 @@ jobs:
           key: v1-buildcache-{{ checksum "/tmp/build_num" }}
           paths:
             - /root/.cache
+  govulncheck:
+    # Scan in SYMBOL mode, never '-scan=module'.
+    # Module-only scanning silently omits vulnerabilities that have no fix
+    # available.  On this repo that is not hypothetical: module mode on the v3
+    # line reported only the stdlib finding while a symbol scan of the ollama
+    # driver returned 8 real, reachable advisories -- a green-but-worthless gate.
+    <<: *defaults
+    resource_class: medium+
+    docker:
+      # MUST be >= go1.27.4.  stdlib GO-2026-6859 (net/http MaxBytesReader header
+      # race) is fixed only in 1.27.4, so any older image leaves this job
+      # permanently red no matter what the modules say.
+      - image: golang:1.27.4-alpine
+    environment:
+      GOTOOLCHAIN: local
+    steps:
+      - checkout
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - run:
+          name: govulncheck
+          command: govulncheck -scan=symbol ./...
+          # the scan is silent while it works; do not let the no-output timeout kill it
+          no_output_timeout: 30m
   license_finder:
     resource_class: small
     <<: *defaults
@@ -72,7 +113,9 @@ jobs:
       - attach_workspace:
           at: /go
       - setup
-      - run: go install gotest.tools/gotestsum@latest
+      # Pinned: @latest under GOTOOLCHAIN=local hard-fails the day upstream cut a
+      # release needing a newer Go than this image ships. v1.13.0 declares go 1.24.0.
+      - run: go install gotest.tools/gotestsum@v1.13.0
       - run: gotestsum -f testname --junitfile test-results/gotestsum-report.xml
       - store_test_results:
           path: test-results
@@ -98,12 +141,15 @@ jobs:
             $HOME/.qlty/bin/qlty --version
       - run:
           name: qlty-coverage-publish
-          command: |
-            $HOME/.qlty/bin/qlty coverage publish --format coverprofile c.out
+          command: >
+            $HOME/.qlty/bin/qlty coverage publish
+            --strip-prefix="$(head -n 1 go.mod |cut -d " " -f2)"
+            --format coverprofile
+            c.out
   integration:
     <<: *defaults
     docker:
-      - image: golang:1.26.0-alpine
+      - image: golang:1.27.4-alpine
       - image: redis:7.0.11-alpine
     steps:
       - attach_workspace:
@@ -128,16 +174,176 @@ jobs:
       - image: cimg/node:22.21.1
     steps:
       - checkout
-      - run: |
-          sudo npm install -g semantic-release      \
-          @semantic-release/changelog               \
-          @semantic-release/commit-analyzer         \
-          @semantic-release/git                     \
-          @semantic-release/release-notes-generator
+      # PINNED TOOLCHAIN. An unpinned @latest lets branch/range semantics drift
+      # between rehearsal and release (see the v3 maintenance-range incident).
+      # Bump deliberately: bump -> local --dry-run rehearsal -> merge.
       - run:
-          command: npx semantic-release
+          name: Install pinned semantic-release toolchain
+          command: |
+            set -eu
+            sudo npm install -g \
+              semantic-release@25.0.9 \
+              @semantic-release/changelog@6.0.3 \
+              @semantic-release/commit-analyzer@13.0.1 \
+              @semantic-release/git@10.0.1 \
+              @semantic-release/github@12.0.11 \
+              @semantic-release/release-notes-generator@14.1.0
+      - run:
+          name: Assert pinned toolchain
+          command: |
+            set -eu
+            root="$(npm root -g)"
+            printf 'global root: %s\n' "$root"
+            assert() {
+              pkg="$1"; want="$2"
+              got="$(node -p "require('$root/$pkg/package.json').version")"
+              printf '%-42s %s (want %s)\n' "$pkg" "$got" "$want"
+              [ "$got" = "$want" ] || { printf 'FATAL: %s is %s, expected %s\n' "$pkg" "$got" "$want" >&2; exit 1; }
+            }
+            assert semantic-release 25.0.9
+            assert @semantic-release/github 12.0.11
+            assert @semantic-release/changelog 6.0.3
+            assert @semantic-release/git 10.0.1
+            assert @semantic-release/commit-analyzer 13.0.1
+            assert @semantic-release/release-notes-generator 14.1.0
+            command -v semantic-release
+            npm ls -g --depth=0 2>/dev/null || true
+            printf 'all pins verified\n'
+      - run:
+          # --no-install: never silently download a different semantic-release
+          command: npx --no-install semantic-release
           environment:
             DEBUG: semantic-release:get-commits
+  publish-image:
+    docker:
+      - image: cimg/base:2026.09
+    resource_class: large
+    parameters:
+      release_tag:
+        type: string
+        default: ""
+    environment:
+      IMAGE_REPOSITORY: honeydipper/honeydipper
+      REQUESTED_RELEASE_TAG: << parameters.release_tag >>
+    steps:
+      - checkout
+      - run:
+          name: Resolve immutable release source
+          command: |
+            set -eu
+
+            release_tag="${REQUESTED_RELEASE_TAG:-${CIRCLE_TAG:-}}"
+            if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+              echo "release_tag must be a semantic version tag prefixed with v" >&2
+              exit 1
+            fi
+
+            git fetch --force --tags origin
+            if ! git show-ref --verify --quiet "refs/tags/$release_tag"; then
+              echo "release tag does not exist: $release_tag" >&2
+              exit 1
+            fi
+
+            release_commit="$(git rev-list -n 1 "refs/tags/$release_tag")"
+            git checkout --detach "$release_commit"
+            test "$(git rev-parse HEAD)" = "$release_commit"
+            curl --fail --silent --show-error \
+              "https://api.github.com/repos/honeydipper/honeydipper/releases/tags/$release_tag" \
+              >/dev/null
+
+            image_tag="${release_tag#v}"
+            printf 'export RELEASE_TAG=%q\n' "$release_tag" >> "$BASH_ENV"
+            printf 'export RELEASE_COMMIT=%q\n' "$release_commit" >> "$BASH_ENV"
+            printf 'export IMAGE_TAG=%q\n' "$image_tag" >> "$BASH_ENV"
+            printf 'export IMAGE_REF=%q\n' "$IMAGE_REPOSITORY:$image_tag" >> "$BASH_ENV"
+      - run:
+          name: Refuse to overwrite a published tag
+          command: |
+            set -eu
+
+            status="$(curl --silent --show-error --output /tmp/dockerhub-tag.json \
+              --write-out '%{http_code}' \
+              "https://hub.docker.com/v2/repositories/$IMAGE_REPOSITORY/tags/$IMAGE_TAG")"
+            case "$status" in
+              404)
+                ;;
+              200)
+                echo "Docker Hub tag already exists: $IMAGE_REF" >&2
+                exit 1
+                ;;
+              *)
+                echo "Docker Hub tag lookup returned HTTP $status" >&2
+                exit 1
+                ;;
+            esac
+      - run:
+          name: Validate Docker Hub credentials
+          command: |
+            set -eu
+            test -n "${DOCKERHUB_ACCOUNT:-}" || {
+              echo "DOCKERHUB_ACCOUNT is not configured" >&2
+              exit 1
+            }
+            test -n "${DOCKERHUB_TOKEN:-}" || {
+              echo "DOCKERHUB_TOKEN is not configured" >&2
+              exit 1
+            }
+      - setup_remote_docker:
+          version: default
+          docker_layer_caching: true
+      - run:
+          name: Build release image
+          no_output_timeout: 60m
+          command: |
+            docker build --progress=plain --platform=linux/amd64 \
+              --build-arg "GOINSTALLOPTS=${GOINSTALLOPTS:-}" \
+              --build-arg "GOGC=${GOGC:-}" \
+              --build-arg "HD_VERSION=$RELEASE_TAG" \
+              --label "org.opencontainers.image.revision=$RELEASE_COMMIT" \
+              --label "org.opencontainers.image.version=$IMAGE_TAG" \
+              --tag "$IMAGE_REF" \
+              --file build/docker/Dockerfile \
+              .
+      - run:
+          name: Publish release image
+          no_output_timeout: 30m
+          command: |
+            set -eu
+            printf '%s' "$DOCKERHUB_TOKEN" | \
+              docker login --username "$DOCKERHUB_ACCOUNT" --password-stdin
+            docker push "$IMAGE_REF"
+      - run:
+          name: Record immutable image evidence
+          command: |
+            set -eu
+            docker pull "$IMAGE_REF"
+            digest="$(docker image inspect --format '{{ index .RepoDigests 0 }}' "$IMAGE_REF")"
+            os="$(docker image inspect --format '{{ .Os }}' "$IMAGE_REF")"
+            architecture="$(docker image inspect --format '{{ .Architecture }}' "$IMAGE_REF")"
+            case "$digest" in
+              "$IMAGE_REPOSITORY@sha256:"*)
+                ;;
+              *)
+                echo "published image has no immutable repository digest" >&2
+                exit 1
+                ;;
+            esac
+
+            mkdir -p /tmp/release-evidence
+            {
+              printf 'release_tag=%s\n' "$RELEASE_TAG"
+              printf 'commit=%s\n' "$RELEASE_COMMIT"
+              printf 'image=%s\n' "$IMAGE_REF"
+              printf 'digest=%s\n' "$digest"
+              printf 'platform=%s/%s\n' "$os" "$architecture"
+            } | tee /tmp/release-evidence/image.txt
+      - run:
+          name: Remove registry credentials
+          when: always
+          command: docker logout || true
+      - store_artifacts:
+          path: /tmp/release-evidence
+          destination: release-evidence
 
 workflows:
   version: 2
@@ -145,6 +351,8 @@ workflows:
     jobs:
       - license_finder
       - golangci-lint
+      # no branch filter, same as golangci-lint, so the status posts on PR heads
+      - govulncheck
       - install
       - test_coverage:
           context: honeydipper
@@ -172,7 +380,38 @@ workflows:
   release:
     jobs:
       - semantic-release:
+          name: semantic-release-main
           context: honeydipper
           filters:
             branches:
               only: main
+      - approve-dev-release:
+          type: approval
+          filters:
+            branches:
+              only: dev
+      - semantic-release:
+          name: semantic-release-dev
+          context: honeydipper
+          requires:
+            - approve-dev-release
+          filters:
+            branches:
+              only: dev
+  publish_release_image:
+    jobs:
+      - publish-image:
+          name: publish-image-tag
+          context: honeydipper
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+      - publish-image:
+          name: publish-image-recovery
+          context: honeydipper
+          release_tag: << pipeline.parameters.release_tag >>
+          filters: |
+            pipeline.parameters.release_tag != ""
+            and (pipeline.git.branch == "dev" or pipeline.git.branch == "main")

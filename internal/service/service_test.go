@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/honeydipper/honeydipper/v3/internal/config"
-	"github.com/honeydipper/honeydipper/v3/internal/daemon"
-	"github.com/honeydipper/honeydipper/v3/internal/driver"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	"github.com/honeydipper/honeydipper/v4/internal/daemon"
+	"github.com/honeydipper/honeydipper/v4/internal/driver"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -141,6 +141,25 @@ func TestServiceLoopCatchError(t *testing.T) {
 	daemon.ShuttingDown = false
 }
 
+func TestRecoverReloadPanicHandlesNonErrorPanic(t *testing.T) {
+	if dipper.Logger == nil {
+		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
+		defer f.Close()
+		dipper.GetLogger("test service", "DEBUG", f, f)
+	}
+
+	svc := &Service{
+		name:    "testsvc",
+		config:  &config.Config{},
+		healthy: true,
+	}
+
+	assert.NotPanics(t, func() {
+		svc.recoverReloadPanic("non-error panic")
+	}, "service reload recovery should handle non-error panic values")
+	assert.False(t, svc.healthy, "service should be unhealthy after reload panic")
+}
+
 func TestServiceRemoveEmitter(t *testing.T) {
 	if dipper.Logger == nil {
 		f, _ := os.OpenFile(os.DevNull, os.O_APPEND, 0o777)
@@ -175,7 +194,7 @@ func TestServiceRemoveEmitter(t *testing.T) {
 			return nil
 		},
 	}
-	daemon.Emitters["testsvc"] = svc
+	daemon.SetEmitter("testsvc", svc)
 
 	daemon.ShuttingDown = false
 	go func() {
@@ -269,7 +288,7 @@ func TestServiceEmitterCrashing(t *testing.T) {
 			return nil
 		},
 	}
-	daemon.Emitters["testsvc"] = svc
+	daemon.SetEmitter("testsvc", svc)
 
 	daemon.ShuttingDown = false
 	go func() {
@@ -344,7 +363,7 @@ func TestServiceReplaceEmitter(t *testing.T) {
 			return nil
 		},
 	}
-	daemon.Emitters["testsvc"] = svc
+	daemon.SetEmitter("testsvc", svc)
 
 	daemon.ShuttingDown = false
 	go func() {

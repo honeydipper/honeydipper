@@ -3,9 +3,7 @@ BOLD := \033[1m
 DIM := \033[2m
 RESET := \033[0m
 
-files_require_mocking = internal/workflow/session.go \
-						internal/workflow/store.go \
-						pkg/dipper/rpc.go \
+files_require_mocking = pkg/dipper/rpc.go \
 						internal/api/request_context.go \
 						drivers/cmd/gcloud-secret/main.go \
 						drivers/cmd/datadog-emitter/statsd.go \
@@ -13,6 +11,8 @@ files_require_mocking = internal/workflow/session.go \
 						drivers/cmd/hd-driver-embeddings/main.go \
 						drivers/cmd/hd-driver-embeddings/ollama.go \
 						drivers/cmd/hd-driver-openai/session.go
+
+HD_VERSION := $(shell echo "$${HD_VERSION-$$(git describe --tags)}")
 
 ifneq (,$(wildcard ./.env))
 	include ./.env
@@ -23,7 +23,7 @@ endif
 
 build:
 	@printf "$(BOLD)Building$(RESET)\n"
-	@go install ./...
+	go install -ldflags='-X main._honeydipperVersion=$(HD_VERSION)' ./...
 
 lint:
 	@printf "$(BOLD)Linting source code$(RESET)\n"

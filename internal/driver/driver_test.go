@@ -36,6 +36,10 @@ func TestDriverNewDriver(t *testing.T) {
 			map[string]interface{}{"name": "test", "type": "builtin"}, // driver meta
 			"driver error: shortName is missing for builtin driver: ", // error prefix
 		},
+		"panic when remote driver data missing": []interface{}{
+			map[string]interface{}{"name": "test", "type": "remote"}, // driver meta
+			"driver error: url is missing for remote driver: ",       // error prefix
+		},
 	}
 
 	for msg, tc := range testCases {

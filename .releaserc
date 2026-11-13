@@ -1,10 +1,27 @@
 {
-    "branches": ["main"],
+    "branches": [
+        "main",
+        {
+            "name": "v3",
+            "range": "3.x",
+            "channel": "3.x"
+        },
+        {
+            "name": "dev",
+            "prerelease": true,
+            "channel": "beta"
+        }
+    ],
     "plugins": [
         "@semantic-release/commit-analyzer",
         "@semantic-release/release-notes-generator",
         "@semantic-release/changelog",
-        "@semantic-release/git",
+        [
+            "@semantic-release/git",
+            {
+                "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
+            }
+        ],
         "@semantic-release/github"
     ]
 }

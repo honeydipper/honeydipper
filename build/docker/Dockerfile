@@ -1,7 +1,13 @@
-FROM golang:1.26.0-alpine AS build
+FROM golang:1.27.4-alpine AS build
 
-ARG GOINSTALLOPTS
-ARG GOGC
+# Never let this build download a different toolchain than the one in the
+# image: GOTOOLCHAIN=local mirrors what CI enforces.
+ENV GOTOOLCHAIN=local
+
+ARG GOINSTALLOPTS=""
+ARG GOGC=""
+
+ARG HD_VERSION=""
 
 ENV GOGC=$GOGC
 
@@ -18,10 +24,11 @@ RUN go install -v ./drivers/cmd/gcloud-storage
 RUN go install -v ./drivers/cmd/kubernetes
 RUN go install -v ./drivers/cmd/redisqueue
 RUN go install -v ./drivers/cmd/redispubsub
-RUN go install -v ./cmd/...
+RUN if [[ -z "$HD_VERSION" ]]; then HD_VERSION="$(git describe --tags)"; fi && \
+    go install -v -ldflags='-X main._honeydipperVersion='$HD_VERSION ./cmd/...
 RUN go install -v ./drivers/...
 
-FROM alpine:3.22
+FROM alpine:3.21
 
 LABEL description="Honeydipper - an event-driven orchestration framework" \
       org.label-schema.vcs-url=https://github.com/honeydipper/honeydipper \
@@ -31,7 +38,8 @@ RUN apk add --no-cache ca-certificates git tzdata
 
 WORKDIR /opt/honeydipper/drivers/builtin
 COPY --from=build /go/bin/* ./
+COPY ./build/docker/docker-entrypoint.sh ./
 
-ENTRYPOINT ["./honeydipper"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
 EXPOSE 8080
 EXPOSE 9000

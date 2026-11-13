@@ -20,12 +20,16 @@ import (
 
 // channel names and subject names.
 const (
-	ChannelEventbus = "eventbus"
-	ChannelState    = "state"
-	ChannelRPC      = "rpc"
-	EventbusMessage = "message"
-	EventbusCommand = "command"
-	EventbusReturn  = "return"
+	ChannelEventbus           = "eventbus"
+	ChannelState              = "state"
+	ChannelRPC                = "rpc"
+	EventbusMessage           = "message"
+	EventbusCommand           = "command"
+	EventbusReturn            = "return"
+	EventbusReturnInterrupted = "return/interrupted"
+	EventbusRPCInterrupted    = "rpc/interrupted"
+	EventbusAgentCommand      = "agent_command"
+	EventbusAgentContinue     = "agent_continue"
 )
 
 // CommLocks : comm channels are protected with locks.
@@ -37,16 +41,16 @@ var MasterCommLock = sync.Mutex{}
 // Message : the message passed between components of the system.
 type Message struct {
 	// on the wire
-	Channel string
-	Subject string
+	Channel string `json:"channel" mapstructure:"channel"`
+	Subject string `json:"subject" mapstructure:"subject"`
 	Size    int
-	Labels  map[string]string
-	Payload interface{}
+	Labels  map[string]string `json:"labels" mapstructure:"labels"`
+	Payload interface{}       `json:"payload" mapstructure:"payload"`
 
 	// runtime meta info in memory
 	IsRaw    bool
-	Reply    chan Message
-	ReturnTo io.Writer
+	Reply    chan Message `json:"-"`
+	ReturnTo io.Writer    `json:"-"`
 }
 
 // MessageHandler : a type of functions that take a pointer to a message and handle it.

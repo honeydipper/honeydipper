@@ -1,8 +1,6 @@
-// Copyright 2022 PayPal Inc.
-
 // This Source Code Form is subject to the terms of the MIT License.
 // If a copy of the MIT License was not distributed with this file,
-// you can obtain one at https://mit-license.org/.
+// you can obtain one at https://mit-license.org.
 
 // Package webhook enables Honeydipper to receive incoming webhook requests.
 package main
@@ -19,10 +17,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-errors/errors"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/op/go-logging"
 )
 
@@ -55,14 +54,90 @@ func initFlags() {
 }
 
 var (
-	driver *dipper.Driver
-	server *http.Server
-	hooks  map[string]interface{}
-	sysMap map[string]map[string]interface{}
+	driver           *dipper.Driver
+	server           *http.Server
+	hooks            map[string]interface{}
+	sysMap           map[string]map[string]interface{}
+	addr             string
+	configMu         sync.RWMutex
+	configUpdated    bool
+	driverAlive      bool
+	retryInterval    = 500 * time.Millisecond // initial backoff for bind failures
+	maxRetryInterval = 30 * time.Second       // cap for exponential backoff
 )
 
 // Addr : listening address and port of the webhook.
 var Addr string
+
+// getDriver returns the driver under read lock.
+func getDriver() *dipper.Driver {
+	configMu.RLock()
+	defer configMu.RUnlock()
+
+	return driver
+}
+
+// setDriver sets the driver under write lock.
+func setDriver(d *dipper.Driver) {
+	configMu.Lock()
+	driver = d
+	configMu.Unlock()
+}
+
+// getAddr returns the addr under read lock.
+func getAddr() string {
+	configMu.RLock()
+	defer configMu.RUnlock()
+
+	return addr
+}
+
+// getServer returns the server under read lock.
+func getServer() *http.Server {
+	configMu.RLock()
+	defer configMu.RUnlock()
+
+	return server
+}
+
+// setServer sets the server under write lock.
+func setServer(s *http.Server) {
+	configMu.Lock()
+	server = s
+	configMu.Unlock()
+}
+
+// getRetryInterval returns the retryInterval under read lock.
+func getRetryInterval() time.Duration {
+	configMu.RLock()
+	defer configMu.RUnlock()
+
+	return retryInterval
+}
+
+// incrementRetryInterval doubles the retryInterval under write lock, capped at maxRetryInterval.
+func incrementRetryInterval() {
+	configMu.Lock()
+	retryInterval *= 2
+	if retryInterval > maxRetryInterval {
+		retryInterval = maxRetryInterval
+	}
+	configMu.Unlock()
+}
+
+// resetRetryInterval resets the retryInterval under write lock.
+func resetRetryInterval() {
+	configMu.Lock()
+	retryInterval = 500 * time.Millisecond
+	configMu.Unlock()
+}
+
+// setConfigUpdated sets configUpdated under write lock.
+func setConfigUpdated() {
+	configMu.Lock()
+	configUpdated = true
+	configMu.Unlock()
+}
 
 func main() {
 	initFlags()
@@ -71,61 +146,155 @@ func main() {
 	driver = dipper.NewDriver(os.Args[1], "webhook")
 	if driver.Service == "receiver" {
 		driver.Start = startWebhook
-		driver.Stop = stopWebhook
-		driver.Reload = loadOptions
+		driver.Drain = stopWebhook
+		driver.Reload = func(m *dipper.Message) {
+			setConfigUpdated()
+			loadOptions(m)
+		}
 	}
 	driver.Run()
 }
 
 func stopWebhook(*dipper.Message) {
-	dipper.Must(server.Shutdown(context.Background()))
+	s := getServer()
+	if s != nil {
+		dipper.Must(s.Shutdown(context.Background()))
+	}
 }
 
 func loadOptions(m *dipper.Message) {
-	log = driver.GetLogger()
-	hooksObj, ok := driver.GetOption("dynamicData.collapsedEvents")
-	if !ok {
-		log.Panicf("[%s] no hooks defined for webhook driver", driver.Service)
+	configMu.Lock()
+	// Early return if config hasn't been updated and driver is already alive
+	if !configUpdated && driverAlive {
+		configMu.Unlock()
+
+		return
 	}
-	hooks, ok = hooksObj.(map[string]interface{})
-	if !ok {
-		log.Panicf("[%s] hook data should be a map of event to conditions", driver.Service)
+	configUpdated = false
+	configMu.Unlock()
+
+	// Only reassign logger if config was actually updated
+	if m != nil {
+		d := getDriver()
+		if d != nil {
+			log = d.GetLogger()
+		}
 	}
 
-	log.Debugf("[%s] hook data : %+v", driver.Service, hooks)
+	// Process driver.Options into local temporary maps using ok-checked type assertions
+	d := getDriver()
+	if d == nil {
+		return
+	}
 
-	sysMap = map[string]map[string]interface{}{}
-	for _, hook := range hooks {
-		for _, collapsed := range hook.([]interface{}) {
-			rule := collapsed.(map[string]interface{})
-			if sys, ok := rule["sysName"]; ok && sys.(string) != "" {
-				sysMap[sys.(string)] = rule["sysData"].(map[string]interface{})
+	hooksObj, ok := d.GetOption("dynamicData.collapsedEvents")
+	if !ok || hooksObj == nil {
+		log.Panicf("[%s] no hooks defined for webhook driver", d.Service)
+	}
+
+	newHooks, ok := hooksObj.(map[string]interface{})
+	if !ok {
+		log.Panicf("[%s] hook data should be a map of event to conditions", d.Service)
+	}
+
+	log.Debugf("[%s] hook data : %+v", d.Service, newHooks)
+
+	newSysMap := map[string]map[string]interface{}{}
+	for _, hook := range newHooks {
+		hookSlice, ok := hook.([]interface{})
+		if !ok {
+			log.Warningf("[%s] hook data should be a slice of collapsed events", d.Service)
+
+			continue
+		}
+		for _, collapsed := range hookSlice {
+			rule, ok := collapsed.(map[string]interface{})
+			if !ok {
+				log.Warningf("[%s] collapsed event should be a map", d.Service)
+
+				continue
+			}
+			if sys, ok := rule["sysName"]; ok {
+				sysName, ok := sys.(string)
+				if !ok || sysName == "" {
+					continue
+				}
+				if sysData, ok := rule["sysData"].(map[string]interface{}); ok {
+					newSysMap[sysName] = sysData
+				}
 			}
 		}
 	}
 
-	NewAddr, ok := driver.GetOptionStr("data.Addr")
+	newAddr, ok := d.GetOptionStr("data.Addr")
 	if !ok {
-		NewAddr = ":8080"
+		newAddr = ":8080"
 	}
-	if driver.State == "alive" && NewAddr != Addr {
-		stopWebhook(m) // the webhook will be restarted automatically in the loop
+
+	// Atomically swap the global maps under the mutex
+	configMu.Lock()
+	hooks = newHooks
+	sysMap = newSysMap
+	if d.State == dipper.DriverStateAlive && newAddr != addr {
+		addr = newAddr
+		// Signal to restart the webhook listener
+		if server != nil {
+			go func() {
+				_ = server.Shutdown(context.Background())
+			}()
+		}
+	} else if !driverAlive {
+		addr = newAddr
 	}
-	Addr = NewAddr
+	driverAlive = true
+	Addr = addr
+	configMu.Unlock()
 }
 
 func startWebhook(m *dipper.Message) {
 	loadOptions(m)
-	server = &http.Server{
-		Addr:              Addr,
+
+	// Read addr under lock
+	currentAddr := getAddr()
+
+	s := &http.Server{
+		Addr:              currentAddr,
 		Handler:           http.HandlerFunc(hookHandler),
 		ReadHeaderTimeout: RequestHeaderTimeoutSecs * time.Second,
 	}
+	setServer(s)
+
 	go func() {
-		log.Infof("[%s] start listening for webhook requests", driver.Service)
-		log.Infof("[%s] listener stopped: %+v", driver.Service, server.ListenAndServe())
-		if driver.State != "stopped" && driver.State != "cold" {
-			startWebhook(m)
+		d := getDriver()
+		if d != nil {
+			log.Infof("[%s] start listening for webhook requests on %s", d.Service, currentAddr)
+		}
+		err := s.ListenAndServe()
+		d = getDriver()
+		if d != nil {
+			log.Infof("[%s] listener stopped: %+v", d.Service, err)
+		}
+
+		d = getDriver()
+		if d != nil && d.State == dipper.DriverStateAlive {
+			if errors.Is(err, http.ErrServerClosed) {
+				// Clean shutdown for address change - reset backoff and restart immediately
+				resetRetryInterval()
+				startWebhook(m)
+			} else {
+				// Bind failure or other error - log once, back off, then retry
+				currentRetry := getRetryInterval()
+
+				d = getDriver()
+				if d != nil {
+					log.Errorf("[%s] webhook listener error: %v, retrying in %v", d.Service, err, currentRetry)
+				}
+				time.Sleep(currentRetry)
+
+				incrementRetryInterval()
+
+				startWebhook(m)
+			}
 		}
 	}()
 }
@@ -153,49 +322,72 @@ func hookHandler(w http.ResponseWriter, r *http.Request) {
 
 	verifySystems(eventData)
 
-	log.Debugf("[%s] webhook event data: %+v", driver.Service, eventData)
-	var matched map[string]any
-	for _, hook := range hooks {
-		for _, collapsed := range hook.([]interface{}) {
-			condition, _ := dipper.GetMapData(collapsed, "match")
-
-			if dipper.CompareAll(eventData, condition) {
-				matched = collapsed.(map[string]any)
-
-				break
-			}
-		}
-		if matched != nil {
-			break
-		}
+	d := getDriver()
+	if d != nil {
+		log.Debugf("[%s] webhook event data: %+v", d.Service, eventData)
 	}
 
-	if matched != nil {
-		id := driver.EmitEvent(map[string]interface{}{
-			"events": []interface{}{"webhook."},
-			"data":   eventData,
-		})
+	// Read hooks under read lock
+	configMu.RLock()
+	hooksCopy := hooks
+	configMu.RUnlock()
 
-		if respTplt, ok := dipper.GetMapDataStr(matched, "parameters.response_payload"); ok && respTplt != "" {
-			writeCustomizedResponse(w, matched, respTplt, eventData)
-		} else if _, ok := dipper.GetMapDataStr(eventData, "form.accept_uuid.0"); ok {
-			w.Header().Set("content-type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(fmt.Sprintf("{\"eventID\": \"%s\"}", id)))
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
+	matched := findMatchedHook(eventData, hooksCopy)
+	if matched == nil {
+		http.NotFound(w, r)
 
 		return
 	}
 
-	http.NotFound(w, r)
+	d = getDriver()
+	if d == nil {
+		return
+	}
+
+	id := d.EmitEvent(map[string]interface{}{
+		"events": []interface{}{"webhook."},
+		"data":   eventData,
+	})
+
+	if respTplt, ok := dipper.GetMapDataStr(matched, "parameters.response_payload"); ok && respTplt != "" {
+		writeCustomizedResponse(w, matched, respTplt, eventData)
+	} else if _, ok := dipper.GetMapDataStr(eventData, "form.accept_uuid.0"); ok {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "{\"eventID\": \"%s\"}", id)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func findMatchedHook(eventData map[string]interface{}, hooksCopy map[string]interface{}) map[string]any {
+	for _, hook := range hooksCopy {
+		hookSlice, ok := hook.([]interface{})
+		if !ok {
+			continue
+		}
+		for _, collapsed := range hookSlice {
+			condition, _ := dipper.GetMapData(collapsed, "match")
+
+			if dipper.CompareAll(eventData, condition) {
+				matched, _ := collapsed.(map[string]any)
+
+				return matched
+			}
+		}
+	}
+
+	return nil
 }
 
 func writeCustomizedResponse(w http.ResponseWriter, matched map[string]any, tpl string, eventData interface{}) {
-	dipper.Logger.Debugf("[%s] webhook responding with template: %s", driver.Service, tpl)
+	d := getDriver()
+	if d != nil {
+		dipper.Logger.Debugf("[%s] webhook responding with template: %s", d.Service, tpl)
+	}
 	ctype, _ := dipper.GetMapDataStr(matched, "parameters.response_content_type")
-	resp := dipper.InterpolateStr(tpl, map[string]any{"event": eventData})
+
+	resp := dipper.InterpolateStr("webhook-response", tpl, map[string]any{"event": eventData})
 	if ctype == "" {
 		ctype = "application/text"
 	}
@@ -224,6 +416,7 @@ func extractEventData(w http.ResponseWriter, r *http.Request) map[string]interfa
 func verifySignature(header, actual, secret string, eventData map[string]interface{}) bool {
 	key := []byte(secret)
 	mac := hmac.New(sha256.New, key)
+
 	switch header {
 	case "X-Slack-Signature":
 		timestamp := eventData["headers"].(http.Header).Get("X-Slack-Request-Timestamp")
@@ -243,19 +436,26 @@ func verifySignature(header, actual, secret string, eventData map[string]interfa
 	case "X-PagerDuty-Signature":
 	case "X-Hub-Signature-256": // github signature
 	}
+
 	dipper.Must(mac.Write(eventData["body"].([]byte)))
 	expected := mac.Sum(nil)
-	log.Infof("[%s] HMAC for %s calculated: %s", driver.Service, header, hex.EncodeToString(expected))
+	d := getDriver()
+	if d != nil {
+		log.Infof("[%s] HMAC for %s calculated: %s", d.Service, header, hex.EncodeToString(expected))
+	}
 
 	var hashes []string
+
 	switch header {
 	case "X-Slack-Signature":
+		//nolint:prealloc
 		hashes = []string{strings.TrimPrefix(actual, "v0=")}
 	case "X-PagerDuty-Signature":
 		for _, sig := range strings.Split(actual, ",") {
 			hashes = append(hashes, strings.TrimPrefix(sig, "v1="))
 		}
 	case "X-Hub-Signature-256": // github signature
+
 		hashes = []string{strings.TrimPrefix(actual, "sha256=")}
 	}
 
@@ -286,7 +486,13 @@ func verifySystems(eventData map[string]interface{}) {
 	}
 
 	var verifiedSystem []string
-	for name, sys := range sysMap {
+
+	// Read sysMap under read lock
+	configMu.RLock()
+	sysMapCopy := sysMap
+	configMu.RUnlock()
+
+	for name, sys := range sysMapCopy {
 		expectedHeader, ok := sys["signatureHeader"]
 		if !ok || !strings.EqualFold(expectedHeader.(string), signatureHeader) {
 			// ignore unsupported headers or system without signatureHeader
@@ -295,7 +501,10 @@ func verifySystems(eventData map[string]interface{}) {
 
 		secretValue, ok := dipper.GetMapData(sys, "signatureSecret")
 		if !ok {
-			log.Warningf("[%s] signature secret not defined for system %s", driver.Service, name)
+			d := getDriver()
+			if d != nil {
+				log.Warningf("[%s] signature secret not defined for system %s", d.Service, name)
+			}
 
 			continue
 		}
@@ -312,6 +521,9 @@ func verifySystems(eventData map[string]interface{}) {
 			}
 		}
 	}
-	log.Infof("[%s] HMAC verified for system(s) %+v", driver.Service, verifiedSystem)
+	d := getDriver()
+	if d != nil {
+		log.Infof("[%s] HMAC verified for system(s) %+v", d.Service, verifiedSystem)
+	}
 	eventData["verifiedSystem"] = verifiedSystem
 }

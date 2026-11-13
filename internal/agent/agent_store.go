@@ -1,0 +1,846 @@
+package agent
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/honeydipper/honeydipper/v4/internal/config"
+	agentpkg "github.com/honeydipper/honeydipper/v4/pkg/agent"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
+	"github.com/op/go-logging"
+)
+
+// Static errors for resolveOrRecreateConvoState (exported for external callers).
+var (
+	ErrConvoExpiredNoAgent  = errors.New("conversation expired and no agent supplied to recreate")
+	ErrAgentNotFound        = errors.New("agent not found in config")
+	ErrCannotDetermineAgent = errors.New("cannot determine agent name for conversation")
+)
+
+// AgentStore is the interface used by agent sessions to interact with the store.
+type AgentStore interface {
+	StartInference(msg *dipper.Message)
+	PollInference(msg *dipper.Message)
+	ContinueInference(msg *dipper.Message)
+	ReceiveInference(msg *dipper.Message)
+	StartAgentCall(msg *dipper.Message)
+	StartMCPCall(msg *dipper.Message)
+	CancelConvo(msg *dipper.Message)
+	// StartTurn fires a new chat turn on an existing conversation without a
+	// return path back to a workflow. It is used by the UI-initiated turn API.
+	// engine and driver are optional overrides; empty strings mean "no override".
+	StartTurn(convoID, text, user, engine, driver, agent string, agentOverride bool) error
+	// StartNewConvo starts a brand-new conversation for the named agent and
+	// returns the generated convo_id synchronously. The session runs asynchronously.
+	// engine and driver are optional overrides; empty strings mean "no override".
+	StartNewConvo(agentName, text, user, engine, driver string) string
+
+	GetAgent(name string) *config.Agent
+	GetSystem(name string) *config.System
+	GetWorkflow(name string) *config.Workflow
+	EmitMessage(msg dipper.Message)
+	GetConfig() *config.Config
+	GetUIURL() string
+
+	// Stop signals the store to stop accepting new sessions and returns immediately.
+	// Call Wait to block until all in-flight sessions have drained.
+	Stop()
+	// Wait blocks until all in-flight sessions are done.
+	Wait()
+
+	// GetLogger returns the logger used by the agent store and sessions.
+	GetLogger() *logging.Logger
+
+	dipper.RPCCaller
+}
+
+// StoreHelper defines the methods PersistentAgentStore requires from the service layer.
+// internal/service.Service satisfies this interface, keeping the agent package free of
+// any dependency on internal/service.
+type StoreHelper interface {
+	dipper.RPCCaller
+	GetConfig() *config.Config
+	EmitMessage(msg dipper.Message)
+}
+
+// PersistentAgentStore implements AgentStore by delegating to a StoreHelper.
+type PersistentAgentStore struct {
+	StoreHelper
+	*logging.Logger
+	wg      sync.WaitGroup
+	stopped atomic.Bool
+	uiURL   string
+}
+
+// GetLogger returns the logger used by the agent store and sessions.
+func (p *PersistentAgentStore) GetLogger() *logging.Logger {
+	return p.Logger
+}
+
+// GetUIURL returns the base URL for the Honeydipper UI.
+func (p *PersistentAgentStore) GetUIURL() string {
+	return p.uiURL
+}
+
+// emitErrorResponse sends an agent_response with status=error back to the workflow
+// session identified by callerID. It is a no-op when callerID is empty.
+func (p *PersistentAgentStore) emitErrorResponse(msg *dipper.Message, reason string) {
+	resumeKey := msg.Labels["resume_key"]
+	if resumeKey == "" {
+		p.Warningf("[agent] cannot emit error response without resume key in message %+v", msg.Labels)
+
+		return
+	}
+	p.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "agent_response",
+		Labels: map[string]string{
+			"resume_key": resumeKey,
+			"status":     "error",
+			"reason":     reason,
+		},
+	})
+}
+
+// StartInference handles an incoming inference request by creating and running a new agent session.
+func (p *PersistentAgentStore) StartInference(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
+	resumeKey := msg.Labels["resume_key"]
+	defer dipper.SafeExitOnError("[agent] error in handleAgentStart", func(r interface{}) {
+		p.emitErrorResponse(msg, fmt.Sprintf("%v", r))
+	})
+	p.Infof("[agent] StartInference agent=%s", msg.Labels["agent_name"])
+	s := &AgentSession{}
+	defer s.persist(true)
+	defer dipper.SafeExitOnError("[agent] error in running inference for %s", resumeKey, func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = fmt.Sprintf("%v", r)
+		}
+		s.notifyParentFailure(s.ErrorReason)
+	})
+
+	// StartInference always begins a new turn; tool-call results and other
+	// continuations re-enter via ContinueInference, not here.
+	// Setup first to populate s.Agent (for TurnLockTimeout) and generate s.ID/s.ConvoID.
+	s.setup(msg, p, true)
+
+	// If initNewSession recorded a hard config error (missing main agent), the
+	// session was registered as failed in ConvoState and the deferred persist
+	// above will record it. Emit an error response to the caller (which would
+	// otherwise hang waiting for a session it can never poll) and return without
+	// running the turn.
+	if s.ErrorReason != "" {
+		p.emitErrorResponse(msg, s.ErrorReason)
+
+		return
+	}
+
+	// Emit the session ID to the caller (which polls on it) after setup has
+	// generated the session ID.
+	p.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: "agent_response",
+		Labels: map[string]string{
+			"resume_key":       resumeKey,
+			"agent_session_id": s.ID,
+		},
+	})
+
+	// Determine convoID: use payload convo_id if provided (existing convo),
+	// otherwise use the one generated by setup (new convo).
+	convoID, _ := dipper.GetMapDataStr(msg.Payload, "convo_id")
+	if convoID == "" {
+		convoID = s.ConvoID
+	}
+
+	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
+	s.lockTurn(p, convoID)
+	if s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+
+		return
+	}
+
+	// Load history under the turn lock to avoid stale snapshots from
+	// in-flight prior turns.
+	s.loadConvoHistory()
+
+	// Resolve any unresolved tool calls from a previous cancelled conversation
+	s.resolveUnresolvedToolCalls()
+
+	// Refresh the compaction baseline under the turn lock from the freshly
+	// loaded history (not the pre-lock snapshot in initNewSession), so
+	// threshold_type: total_tokens fires consistently on the next real user
+	// message even after an interrupted/cancelled/errored prior turn.
+	s.refreshContextSize()
+
+	s.run()
+}
+
+func (p *PersistentAgentStore) ContinueInference(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in ContinueInference")
+	p.Infof("[agent] ContinueInference session=%s subject=%s", msg.Labels["agent_session_id"], msg.Subject)
+	s := &AgentSession{}
+	s.setup(msg, p, true)
+	// Load history for the restored session.
+	s.loadConvoHistory()
+	// Re-derive the compaction baseline from the restored history so a
+	// mid-turn restore (tool result / recover) keeps PrevContextSize accurate.
+	s.refreshContextSize()
+	defer s.persist(true)
+	defer dipper.SafeExitOnError("[agent] error in ContinueInference", func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = fmt.Sprintf("%v", r)
+		}
+		s.notifyParentFailure(s.ErrorReason)
+	})
+
+	if msg.Labels["recover"] == "true" {
+		s.recover()
+	} else {
+		s.processToolResult(msg)
+	}
+}
+
+// ReceiveInference handles an incoming inference message by loading the corresponding agent session and appending
+// the message to the conversation history.
+func (p *PersistentAgentStore) ReceiveInference(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in ReceiveInference")
+	p.Infof("[agent] ReceiveInference session=%s", msg.Labels["agent_session_id"])
+	s := &AgentSession{}
+	s.setup(msg, p, true)
+	// Load history for the restored session.
+	s.loadConvoHistory()
+	// Re-derive the compaction baseline from the restored history.
+	s.refreshContextSize()
+	defer s.persist(true)
+	defer dipper.SafeExitOnError("[agent] error in process agent response", func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = fmt.Sprintf("%v", r)
+		}
+		s.notifyParentFailure(s.ErrorReason)
+	})
+	s.processAgentResponse(msg)
+}
+
+// GetAgent returns the named agent from the current configuration, or nil when
+// the name does not exist in the current config (or the config/DataSet is not
+// yet available, e.g. before StageServing or during a reload race). Callers
+// MUST nil-check the result before dereferencing it.
+//
+// No locking is used here: the unsynchronized map read is pre-existing and
+// benign for map reads given that config refresh swaps in a fresh *DataSet
+// pointer atomically. The nil-DataSet guard is the only protection needed for
+// the window where GetConfig() has been set but DataSet is nil.
+func (p *PersistentAgentStore) GetAgent(name string) *config.Agent {
+	cfg := p.GetConfig()
+	if cfg == nil || cfg.DataSet == nil {
+		return nil
+	}
+	agent, ok := cfg.DataSet.Agents[name]
+	if !ok {
+		return nil
+	}
+
+	return &agent
+}
+
+// GetSystem returns the named system from the current configuration, or nil
+// when the name does not exist in the current config. Callers MUST nil-check
+// the result before dereferencing it. See GetAgent for the nil-DataSet guard
+// rationale.
+func (p *PersistentAgentStore) GetSystem(name string) *config.System {
+	cfg := p.GetConfig()
+	if cfg == nil || cfg.DataSet == nil {
+		return nil
+	}
+	system, ok := cfg.DataSet.Systems[name]
+	if !ok {
+		return nil
+	}
+
+	return &system
+}
+
+// GetWorkflow returns the named workflow from the current configuration, or
+// nil when the name does not exist in the current config. Callers MUST
+// nil-check the result before dereferencing it. See GetAgent for the
+// nil-DataSet guard rationale.
+func (p *PersistentAgentStore) GetWorkflow(name string) *config.Workflow {
+	cfg := p.GetConfig()
+	if cfg == nil || cfg.DataSet == nil {
+		return nil
+	}
+	workflow, ok := cfg.DataSet.Workflows[name]
+	if !ok {
+		return nil
+	}
+
+	return &workflow
+}
+
+// Wait blocks until all in-flight agent sessions have completed.
+func (p *PersistentAgentStore) Wait() {
+	p.wg.Wait()
+}
+
+// Stop signals the store to reject new sessions and returns immediately.
+// Call Wait to block until in-flight sessions have drained.
+func (p *PersistentAgentStore) Stop() {
+	p.stopped.Store(true)
+}
+
+// resolveOrRecreateConvoState loads or recreates the ConvoState for the given conversation.
+// It implements the Phase 2 recovery truth table:
+//
+//	cs present | agent supplied | agentOverride | behavior
+//	-----------|----------------|---------------|--------------------------------------
+//	no         | no             | n/a           | error (unrecoverable)
+//	no         | yes            | false         | recreate cs with supplied agent
+//	no         | yes            | true          | recreate cs with supplied agent
+//	yes        | no             | n/a           | return existing cs (created=false)
+//	yes        | yes            | false         | return existing cs (created=false); ignore supplied agent
+//	yes        | yes            | true          | recreate/overwrite cs with supplied agent
+//
+// The returned ConvoState is ready for runTurn (cs.Agent, cs.TTL populated).
+// If created=true, the state has been persisted. The caller should NOT persist again.
+// resolveOrRecreateConvoState loads or recreates the ConvoState for the given
+// conversation.
+//
+// TOCTOU note: agent resolution is a SINGLE lookup — interpolateAgentConfig
+// internally calls GetAgent and returns nil when the agent is absent (a
+// config reload can land at any point and remove the agent). Every recreate
+// path below nil-checks that interpolated result BEFORE persisting, so a
+// reload between name resolution and persist can never poison the ConvoState
+// with a nil Agent (which would send later turns down setup's nil-agent
+// path). The ErrAgentNotFound branch is live because GetAgent returns nil for
+// missing keys (previously it returned a non-nil zero-value agent, making
+// nil-guards dead code).
+func (p *PersistentAgentStore) resolveOrRecreateConvoState(convoID, agentName string, agentOverride bool) (*ConvoState, bool, error) {
+	cs := &ConvoState{}
+	cs.load(convoID, p)
+
+	// Check if ConvoState exists (has meaningful data beyond just ConvoID).
+	// A freshly loaded empty state has only ConvoID populated.
+	csExists := cs.FirstSession != nil || cs.LastSession != nil || cs.Agent != nil || cs.Cancelled
+
+	// Case: cs missing, no agent -> unrecoverable
+	if !csExists && agentName == "" {
+		return nil, false, fmt.Errorf("%w: conversation %s expired and no agent supplied to recreate", ErrConvoExpiredNoAgent, convoID)
+	}
+
+	// Case: cs present, agentOverride false (or no agent supplied) -> use existing
+	useExisting := csExists && (!agentOverride || agentName == "")
+	if !useExisting {
+		// Case: recreate/overwrite (cs missing with agent, or cs present with agentOverride true)
+		// We need the agent config to populate cs.Agent. Interpolate in a single
+		// lookup and nil-check the RESULT: a config reload between an earlier
+		// GetAgent and this interpolation could remove the agent, and persisting
+		// a nil-Agent ConvoState would poison the conversation (later turns hit
+		// setup's nil-agent path). Surfacing ErrAgentNotFound here keeps the
+		// recreate path correct.
+		agentCfg := interpolateAgentConfig(p, agentName, map[string]interface{}{"text": "recovery placeholder"})
+		if agentCfg == nil {
+			return nil, false, fmt.Errorf("%w: %s", ErrAgentNotFound, agentName)
+		}
+
+		// Build a fresh ConvoState with the supplied agent.
+		newCS := &ConvoState{
+			ConvoID: convoID,
+			TTL:     ConvoStreamTTL,
+			Agent:   agentCfg,
+		}
+
+		// Persist the new state immediately so it exists before runTurn loads it.
+		newCS.persist(p)
+
+		return newCS, true, nil
+	}
+
+	// Use existing state - resolve agent from existing state (LastSession/FirstSession).
+	// Ignore any supplied agentName when not overriding.
+	resolvedAgentName := ""
+	switch {
+	case cs.LastSession != nil && cs.LastSession.Type != AgentSessionTypeInference:
+		resolvedAgentName = cs.LastSession.AgentName
+	case cs.FirstSession != nil:
+		resolvedAgentName = cs.FirstSession.AgentName
+	}
+
+	// If still no agent name (corrupt state), fall through to recreate logic below.
+	if resolvedAgentName != "" {
+		// Ensure cs.Agent is populated for runTurn.
+		if cs.Agent == nil {
+			cs.Agent = interpolateAgentConfig(p, resolvedAgentName, map[string]interface{}{"text": "recovery placeholder"})
+		}
+		// Ensure TTL is set for persistence.
+		if cs.TTL == "" {
+			cs.TTL = ConvoStreamTTL
+		}
+
+		return cs, false, nil
+	}
+
+	// Fall through to recreate if agentName still empty.
+	// Interpolate in a single lookup and nil-check the result (see the
+	// recreate/overwrite branch for the TOCTOU rationale).
+	agentCfg := interpolateAgentConfig(p, agentName, map[string]interface{}{"text": "recovery placeholder"})
+	if agentCfg == nil {
+		return nil, false, fmt.Errorf("%w: %s", ErrAgentNotFound, agentName)
+	}
+
+	// Build a fresh ConvoState with the supplied agent.
+	newCS := &ConvoState{
+		ConvoID: convoID,
+		TTL:     ConvoStreamTTL,
+		Agent:   agentCfg,
+	}
+
+	// Persist the new state immediately so it exists before runTurn loads it.
+	newCS.persist(p)
+
+	return newCS, true, nil
+}
+
+func (p *PersistentAgentStore) StartTurn(convoID, text, user, engine, driver, agent string, agentOverride bool) error {
+	// Validate/resolve the ConvoState synchronously so errors can be returned.
+	cs, created, err := p.resolveOrRecreateConvoState(convoID, agent, agentOverride)
+	if err != nil {
+		p.Errorf("[agent] StartTurn: %v", err)
+
+		return err
+	}
+
+	agentName := ""
+	if cs.Agent != nil {
+		agentName = cs.Agent.Name
+	}
+	if agentName == "" {
+		err := fmt.Errorf("%w: %s", ErrCannotDetermineAgent, convoID)
+		p.Errorf("[agent] StartTurn: %v", err)
+
+		return err
+	}
+
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		defer dipper.SafeExitOnError("[agent] error in StartTurn")
+
+		if created {
+			p.Infof("[agent] StartTurn convo=%s agent=%s (recreated)", convoID, agentName)
+		} else {
+			p.Infof("[agent] StartTurn convo=%s agent=%s", convoID, agentName)
+		}
+		p.runTurn(agentName, convoID, text, user, engine, driver)
+	}()
+
+	return nil
+}
+
+// StartNewConvo starts a brand-new conversation for the named agent and returns
+// the generated convo_id synchronously. The session runs asynchronously.
+// engine and driver are optional overrides; empty strings mean "no override".
+func (p *PersistentAgentStore) StartNewConvo(agentName, text, user, engine, driver string) string {
+	convoID := dipper.NewUUID()
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		defer dipper.SafeExitOnError("[agent] error in StartNewConvo")
+
+		p.Infof("[agent] StartNewConvo convo=%s agent=%s", convoID, agentName)
+		p.runTurn(agentName, convoID, text, user, engine, driver)
+	}()
+
+	return convoID
+}
+
+// runTurn creates and runs a single chat-turn session for the given agent and
+// conversation. It must be called from within a goroutine that has already
+// incremented p.wg; it does NOT add/done the WaitGroup itself.
+func (p *PersistentAgentStore) runTurn(agentName, convoID, text, user, engine, driver string) {
+	payload := map[string]interface{}{
+		"text":     text,
+		"user":     user,
+		"convo_id": convoID,
+	}
+	// Pass optional engine/driver overrides through the message payload
+	// so initNewSession can pick them up.
+	if engine != "" {
+		payload["engine"] = engine
+	}
+	if driver != "" {
+		payload["driver"] = driver
+	}
+
+	msg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name": agentName,
+		},
+		Payload: payload,
+	}
+
+	s := &AgentSession{}
+
+	// Run setup first to populate s.Agent with interpolated config (including
+	// TurnLockTimeout from Phase 1). The convo id is known here (it is a
+	// parameter), so setup will adopt it and load the agent config.
+	s.setup(msg, p, true)
+
+	defer s.persist(true)
+	defer dipper.SafeExitOnError("[agent] error running turn for convo "+convoID, func(r interface{}) {
+		if s.ErrorReason == "" {
+			s.ErrorReason = fmt.Sprintf("%v", r)
+		}
+	})
+
+	// If initNewSession recorded a hard config error (missing main agent), the
+	// session was registered as failed in ConvoState; the deferred persist above
+	// records it and syncs the failed status. Do not run the turn.
+	if s.ErrorReason != "" {
+		p.Warningf("[agent] runTurn convo=%s skipping turn: %s", convoID, s.ErrorReason)
+
+		return
+	}
+
+	// Take the turn lock after setup so lockTurn can use s.Agent.TurnLockTimeout.
+	s.lockTurn(p, convoID)
+	if s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+
+		return
+	}
+
+	// Reload conversation history under the turn lock to avoid starting from a
+	// stale snapshot when a previous turn for the same conversation is still
+	// in flight (its final tool_result not yet persisted).
+	s.loadConvoHistory()
+
+	// Resolve any unresolved tool calls from a previous cancelled conversation
+	s.resolveUnresolvedToolCalls()
+
+	// Refresh the compaction baseline under the turn lock from the freshly
+	// loaded history so total_tokens compaction triggers on this user message
+	// when the driver-reported context is over threshold (even after an
+	// interrupted prior turn).
+	s.refreshContextSize()
+
+	s.run()
+}
+
+// NewAgentStore creates an AgentStore backed by the provided StoreHelper.
+func NewAgentStore(helper StoreHelper, uiURL string) AgentStore {
+	return &PersistentAgentStore{
+		StoreHelper: helper,
+		Logger:      dipper.GetLogger("agent", "INFO"),
+		uiURL:       uiURL,
+	}
+}
+
+// StartAgentCall handles an eventbus:agent_call dispatched by a parent session's tool call.
+// It creates a new inference session for the named sub-agent, initiates its first driver call,
+// and persists it. The sub-agent session will notify the parent via eventbus:agent_continue
+// when it produces its final complete message.
+func (p *PersistentAgentStore) StartAgentCall(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in StartAgentCall", func(r interface{}) {
+		p.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusAgentContinue,
+			Labels: map[string]string{
+				"agent_session_id": msg.Labels["agent_session_id"],
+				"turn_id":          msg.Labels["turn_id"],
+				"tool_call_id":     msg.Labels["tool_call_id"],
+				"status":           "failure",
+				"reason":           fmt.Sprintf("%v", r),
+			},
+		})
+	})
+	p.Infof("[agent] StartAgentCall sub_agent=%s parent=%s", msg.Labels["sub_agent_name"], msg.Labels["agent_session_id"])
+
+	// Build a synthetic start message for the sub-agent session.
+	forgetHistory, _ := dipper.GetMapDataBool(msg.Payload, "forget_history")
+	// Check if a convo_id was pre-generated by the caller (handleAgentToolCall).
+	// If present, use it directly; otherwise fall back to the existing generation logic.
+	convoID, _ := dipper.GetMapDataStr(msg.Payload, "convo_id")
+	if convoID == "" {
+		oneShot, _ := dipper.GetMapDataBool(msg.Payload, "one_shot")
+		if !oneShot {
+			convoID = fmt.Sprintf("%s-%s", msg.Labels["convo_id"], msg.Labels["sub_agent_name"])
+		}
+	}
+	compactID, _ := dipper.GetMapDataStr(msg.Payload, "compaction_id")
+	if compactID != "" {
+		convoID = compactID
+	}
+	// The compaction summarize_upto boundary: the summarizer sub-agent honors it
+	// in loadConvoHistory so it loads the archived history up to (excluding) the
+	// triggering user message. 0 means "not set" (non-compaction ag__ calls).
+	summarizeUpto, _ := dipper.GetMapDataInt(msg.Payload, "summarize_upto")
+	sessionType, _ := dipper.GetMapDataStr(msg.Payload, "session_type")
+	if sessionType == "" {
+		sessionType = agentpkg.SessionTypeChatTurn
+	}
+	if sessionType != agentpkg.SessionTypeChatTurn && sessionType != agentpkg.SessionTypeInference {
+		p.Warningf("[agent] StartAgentCall got invalid session_type %s, defaulting to chat_turn", sessionType)
+		sessionType = agentpkg.SessionTypeChatTurn
+	}
+	subMsg := &dipper.Message{
+		Labels: map[string]string{
+			"agent_name":       msg.Labels["sub_agent_name"],
+			"unified_convo_id": msg.Labels["unified_convo_id"],
+		},
+		Payload: map[string]interface{}{
+			"text":             dipper.MustGetMapDataStr(msg.Payload, "input"),
+			"type":             sessionType,
+			"convo_id":         convoID,
+			"unified_convo_id": msg.Labels["unified_convo_id"],
+			"forget_history":   forgetHistory,
+			"summarize_upto":   summarizeUpto,
+		},
+	}
+
+	// ParentSessionID must be set before setup() so the session ref registered in
+	// the unified ConvoState carries it; the parent's poll relies on it to avoid
+	// treating its own sub-agent as a superseding turn.
+	s := &AgentSession{ParentSessionID: msg.Labels["agent_session_id"]}
+	s.setup(subMsg, p, false)
+
+	// If initNewSession recorded a hard config error (missing sub-agent), the
+	// session was registered as failed in ConvoState. Emit a failure back to the
+	// parent session (via agent_continue) so its tool call resolves instead of
+	// stalling, and return without running the turn (a nil Agent here would
+	// otherwise panic in sendToDriver with a less actionable message).
+	if s.ErrorReason != "" {
+		p.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusAgentContinue,
+			Labels: map[string]string{
+				"agent_session_id": msg.Labels["agent_session_id"],
+				"turn_id":          msg.Labels["turn_id"],
+				"tool_call_id":     msg.Labels["tool_call_id"],
+				"status":           "failure",
+				"reason":           s.ErrorReason,
+			},
+		})
+
+		return
+	}
+
+	// Compaction recursion guard: when this sub-agent call IS a compaction
+	// (compaction_id present), the summarizer sub-agent must never re-trigger
+	// compaction itself. The summarizer agent's own config could legitimately
+	// carry a compaction_policy (e.g. a generic summarizer reused as a main
+	// agent elsewhere); letting it run would archive/replace the archived
+	// history it is meant to summarize, and could recurse indefinitely. Disable
+	// compaction on the summarizer session so it summarizes the archive and
+	// nothing more.
+	if compactID != "" && s.Agent != nil {
+		s.Agent.CompactionPolicy = nil
+	}
+
+	// Sub-agents don't use turn locks; load history after setup.
+	s.loadConvoHistory()
+	// Re-derive the compaction baseline from the loaded history.
+	s.refreshContextSize()
+	s.ParentTurnID = msg.Labels["turn_id"]
+	s.ParentToolCallID = msg.Labels["tool_call_id"]
+
+	defer s.persist(false)
+	s.run()
+}
+
+// StartMCPCall handles an eventbus:mcp_call dispatched by an agent session's tool call.
+// It forwards the call synchronously to the MCP driver via RPC and emits the result as
+// an eventbus:agent_continue message back to the originating session.
+func (p *PersistentAgentStore) StartMCPCall(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in StartMCPCall", func(r interface{}) {
+		p.EmitMessage(dipper.Message{
+			Channel: dipper.ChannelEventbus,
+			Subject: dipper.EventbusAgentContinue,
+			Labels: map[string]string{
+				"agent_session_id": msg.Labels["agent_session_id"],
+				"turn_id":          msg.Labels["turn_id"],
+				"tool_call_id":     msg.Labels["tool_call_id"],
+				"status":           "failure",
+				"reason":           fmt.Sprintf("%v", r),
+			},
+		})
+	})
+
+	msg = dipper.DeserializePayload(msg)
+	serverName := dipper.MustGetMapDataStr(msg.Payload, "server")
+	toolName := dipper.MustGetMapDataStr(msg.Payload, "tool")
+	args, _ := dipper.GetMapData(msg.Payload, "args")
+
+	p.Infof("[agent] StartMCPCall server=%s tool=%s session=%s", serverName, toolName, msg.Labels["agent_session_id"])
+
+	result, callErr := p.Call("driver:mcp", "call_tool", map[string]interface{}{
+		"server": serverName,
+		"tool":   toolName,
+		"args":   args,
+	})
+
+	status := "success"
+	reason := ""
+	var output interface{}
+
+	if callErr != nil {
+		status = "failure"
+		reason = callErr.Error()
+	} else {
+		var resultMap map[string]interface{}
+		if jsonErr := json.Unmarshal(result, &resultMap); jsonErr == nil {
+			output = resultMap["output"]
+		}
+	}
+
+	p.EmitMessage(dipper.Message{
+		Channel: dipper.ChannelEventbus,
+		Subject: dipper.EventbusAgentContinue,
+		Labels: map[string]string{
+			"agent_session_id": msg.Labels["agent_session_id"],
+			"turn_id":          msg.Labels["turn_id"],
+			"tool_call_id":     msg.Labels["tool_call_id"],
+			"status":           status,
+			"reason":           reason,
+		},
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{"output": output},
+		},
+	})
+}
+
+// PollInference handles an incoming poll request for an inference session.
+func (p *PersistentAgentStore) PollInference(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in handleAgentPoll", func(r interface{}) {
+		p.emitErrorResponse(msg, fmt.Sprintf("%v", r))
+	})
+	p.Infof("[agent] PollInference session=%s", msg.Labels["agent_session_id"])
+
+	timeout := agentPollTimeout(msg)
+	deadline := time.Now().Add(timeout)
+	s := &AgentSession{}
+	sessionLocked := false
+	defer func() {
+		if sessionLocked {
+			s.persist(true)
+		}
+	}()
+	if err := s.lockForPoll(msg, p, deadline); err != nil {
+		if errors.Is(err, dipper.ErrTimeout) {
+			p.Warningf("[agent] session [%s] poll timeout after %s while acquiring session lock", msg.Labels["agent_session_id"], timeout)
+			emitAgentPollTimeout(p, msg, timeout)
+
+			return
+		}
+		panic(err)
+	}
+	sessionLocked = true
+	s.setup(msg, p, false)
+	// Completed polls use their retained response, not mutable conversation history.
+	if s.CompletedResponse == nil {
+		s.loadConvoHistory()
+		s.refreshContextSize()
+	}
+	if s.CompletedHistoryLen == 0 && s.ErrorReason == "" && s.checkCancelled() {
+		s.ErrorReason = "conversation cancelled"
+	}
+	if timedOut := s.processAgentPoll(msg, deadline, timeout, &sessionLocked); timedOut {
+		if agentPollOptionEnabled(msg, "cancel_on_timeout") && s.ConvoID != "" {
+			p.Infof("[agent] session [%s] cancelling conversation after supervised poll timeout", s.ID)
+			func() {
+				// Cleanup failures must not replace the original timeout response.
+				defer dipper.SafeExitOnError("[agent] error cancelling timed-out session %s", s.ID)
+				p.cancelConversations(s.ConvoID, s.UnifiedConvoID, s.ID)
+			}()
+		}
+		emitAgentPollTimeout(p, msg, timeout)
+	}
+}
+
+// CancelConvo marks the conversation identified by convo_id or unified_convo_id as cancelled.
+// Active sessions belonging to the conversation will detect this flag on their
+// next poll cycle and abort with a "conversation cancelled" error.
+func (p *PersistentAgentStore) CancelConvo(msg *dipper.Message) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+	defer dipper.SafeExitOnError("[agent] error in CancelConvo")
+
+	convoID := msg.Labels["convo_id"]
+	if convoID == "" {
+		convoID, _ = dipper.GetMapDataStr(msg.Payload, "convo_id")
+	}
+	unifiedConvoID := msg.Labels["unified_convo_id"]
+	if unifiedConvoID == "" {
+		unifiedConvoID, _ = dipper.GetMapDataStr(msg.Payload, "unified_convo_id")
+	}
+
+	if convoID == "" && unifiedConvoID == "" {
+		p.Warningf("[agent] CancelConvo called without convo_id or unified_convo_id")
+
+		return
+	}
+
+	p.cancelConversations(convoID, unifiedConvoID, "")
+}
+
+// sessionID scopes supervisor cleanup to its own turn. An empty ID retains the
+// explicit CancelConvo operation's conversation-wide cancellation behavior.
+func (p *PersistentAgentStore) cancelConversations(convoID, unifiedConvoID, sessionID string) {
+	cancelOne := func(id string) {
+		owners := map[string]bool{}
+		if sessionID != "" {
+			// The target may no longer have a ConvoState reference after a queued
+			// turn registers. Owner-checked cleanup remains safe and retryable.
+			owners[sessionID] = true
+		}
+		lockedConvoStateUpdate(id, p, func(cs *ConvoState) {
+			if sessionID == "" && cs.LastTurnOwner != "" {
+				owners[cs.LastTurnOwner] = true
+			}
+			now := time.Now()
+			for _, sr := range []*ConvoSessionRef{cs.FirstSession, cs.LastSession, cs.ActiveSession} {
+				if sr == nil || (sessionID != "" && sr.SessionID != sessionID) {
+					continue
+				}
+				owners[sr.SessionID] = true
+				if sr.Status == ConvoSessionStatusActive {
+					sr.Status = ConvoSessionStatusCancelled
+					sr.UpdatedAt = now
+				}
+			}
+		})
+		for owner := range owners {
+			if _, err := p.Call("locker", "unlock", map[string]interface{}{
+				"name": ConvoTurnLockPrefix + id, "owner": owner,
+			}, "timeout", "30s"); err != nil {
+				p.Warningf("[agent] session [%s] turn lock cleanup failed: %v", owner, err)
+			}
+		}
+	}
+
+	if convoID != "" {
+		p.Infof("[agent] CancelConvo convo=%s", convoID)
+		cancelOne(convoID)
+	}
+	if unifiedConvoID != "" && unifiedConvoID != convoID {
+		p.Infof("[agent] CancelConvo unified_convo=%s", unifiedConvoID)
+		cancelOne(unifiedConvoID)
+	}
+}

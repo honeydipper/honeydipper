@@ -7,7 +7,7 @@
 package config
 
 import (
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 // CollapsedTrigger is a trigger with collapsed matching criteria, parameters, merged sysData and stack of exports.
@@ -46,8 +46,15 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		exports = append(exports, trigger.Export)
 
 		if current.Driver == "webhook" {
-			if sigsec, ok := sourceSys.Data["signatureSecret"]; ok && sigsec.(string) != "" {
-				match["verifiedSystem"] = trigger.Source.System
+			switch v := sourceSys.Data["signatureSecret"].(type) {
+			case string:
+				if len(v) > 0 {
+					match["verifiedSystem"] = trigger.Source.System
+				}
+			case []interface{}:
+				if len(v) > 0 {
+					match["verifiedSystem"] = trigger.Source.System
+				}
 			}
 		}
 	}
@@ -56,8 +63,8 @@ func CollapseTrigger(t *Trigger, c *DataSet) (*Trigger, *CollapsedTrigger) {
 		envData := map[string]interface{}{
 			"sysData": sysData,
 		}
-		match = dipper.Interpolate(match, envData).(map[string]interface{})
-		params = dipper.Interpolate(params, envData).(map[string]interface{})
+		match = dipper.Interpolate("trigger", match, envData).(map[string]interface{})
+		params = dipper.Interpolate("trigger", params, envData).(map[string]interface{})
 	}
 
 	return current, &CollapsedTrigger{
@@ -76,7 +83,7 @@ func (t *CollapsedTrigger) ExportContext(eventName string, envData map[string]in
 	envData["sysData"] = t.SysData
 
 	for _, layer := range t.Exports {
-		delta := dipper.Interpolate(layer, envData)
+		delta := dipper.Interpolate("trigger", layer, envData)
 		newCtx = dipper.MergeMap(newCtx, delta)
 	}
 

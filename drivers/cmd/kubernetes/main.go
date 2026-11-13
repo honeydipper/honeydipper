@@ -16,23 +16,23 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"strconv"
 	"strings"
-	"time"
 
 	"dario.cat/mergo"
 	"github.com/ghodss/yaml"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/op/go-logging"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	batchv1client "k8s.io/client-go/kubernetes/typed/batch/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -45,8 +45,8 @@ const (
 	// StatusFailure is the status when the job finished with error or not finished within time limit.
 	StatusFailure = "failure"
 
-	// DefaultJobWaitTimeout is the default timeout in seconds for waiting a job to be complete.
-	DefaultJobWaitTimeout time.Duration = 10
+	// StatusPending is the status when the job has not produced a terminal result yet.
+	StatusPending = "pending"
 
 	// LabelHoneydipperUniqueIdentifier is the name of the label to uniquely identify the job.
 	LabelHoneydipperUniqueIdentifier = "honeydipper-unique-identifier"
@@ -75,11 +75,17 @@ func main() {
 	log = driver.GetLogger()
 	driver.Commands["recycleDeployment"] = recycleDeployment
 	driver.Commands["createJob"] = createJob
-	driver.Commands["waitForJob"] = waitForJob
+	driver.Commands["startJob"] = startJob
+	driver.Commands["waitForJob|interruptible"] = waitForJob
+	driver.DefaultTimeout["waitForJob"] = "30m"
 	driver.Commands["getJobLog"] = getJobLog
+	driver.Commands["waitForJobPods|interruptible"] = waitForJobPods
+	driver.DefaultTimeout["waitForJobPods"] = "5m"
+	driver.RPCHandlers["get_pod_log_tail"] = getPodLogTail
 	driver.Commands["deleteJob"] = deleteJob
 	driver.Commands["createPVC"] = createPVC
 	driver.Commands["deletePVC"] = deletePVC
+	driver.Commands["exec"] = exec
 	driver.Reload = func(*dipper.Message) {}
 	driver.Run()
 }
@@ -94,7 +100,7 @@ func deleteJob(m *dipper.Message) {
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
 
 	client := k8client.BatchV1().Jobs(nameSpace)
-	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	ctx, cancel := driver.GetContext(m)
 	defer cancel()
 	deletePropagation := metav1.DeletePropagationBackground
 	err := client.Delete(ctx, jobName, metav1.DeleteOptions{PropagationPolicy: &deletePropagation})
@@ -109,6 +115,7 @@ func deleteJob(m *dipper.Message) {
 }
 
 func getJobLog(m *dipper.Message) {
+	m = dipper.DeserializePayload(m)
 	k8client := prepareKubeConfig(m)
 
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
@@ -117,13 +124,14 @@ func getJobLog(m *dipper.Message) {
 	}
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
 
-	listCtx, cancelList := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-	defer cancelList()
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
+
 	jobclient := k8client.BatchV1().Jobs(nameSpace)
 	watchOption := metav1.ListOptions{
 		FieldSelector: "metadata.name==" + jobName,
 	}
-	joblist, err := jobclient.List(listCtx, watchOption)
+	joblist, err := jobclient.List(ctx, watchOption)
 	if err != nil || len(joblist.Items) == 0 {
 		log.Panicf("[%s] job not found [%s]: %+v", driver.Service, jobName, err)
 	}
@@ -137,11 +145,31 @@ func getJobLog(m *dipper.Message) {
 	search.Kind = "Pod"
 
 	client := k8client.CoreV1().Pods(nameSpace)
-	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-	defer cancel()
 	pods, err := client.List(ctx, search)
-	if err != nil || len(pods.Items) < 1 {
+	if err != nil {
 		log.Panicf("[%s] unable to find the pod for the job %+v", driver.Service, err)
+	}
+	if len(pods.Items) < 1 {
+		message := "job has not started"
+		if isJobSuspended(job) {
+			message = "job is suspended"
+		}
+
+		m.Reply <- dipper.Message{
+			Labels: map[string]string{
+				"status": StatusPending,
+				"reason": message,
+			},
+			Payload: map[string]interface{}{
+				"log":       map[string]map[string]string{},
+				"output":    "",
+				"suspended": isJobSuspended(job),
+				"started":   !isJobSuspended(job),
+				"state":     getJobState(job),
+			},
+		}
+
+		return
 	}
 
 	alllogs := map[string]map[string]string{}
@@ -165,27 +193,23 @@ func getJobLog(m *dipper.Message) {
 
 		podlogs := map[string]string{}
 		for _, container := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
-			func() {
-				ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-				defer cancel()
-				stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream(ctx)
+			stream, err := client.GetLogs(pod.Name, &corev1.PodLogOptions{Container: container.Name}).Stream(ctx)
+			if err != nil {
+				podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
+				messages = append(messages, podlogs[container.Name])
+				log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+			} else {
+				defer stream.Close()
+				containerlog, err := io.ReadAll(stream)
 				if err != nil {
-					podlogs[container.Name] = fmt.Sprintf("Error: unable to fetch the logs from the container %s.%s", pod.Name, container.Name)
+					podlogs[container.Name] = fmt.Sprintf("Error: unable to read the logs from the stream %s.%s", pod.Name, container.Name)
 					messages = append(messages, podlogs[container.Name])
-					log.Warningf("[%s] unable to fetch the logs for the pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
+					log.Warningf("[%s] unable to read logs from stream for pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
 				} else {
-					defer stream.Close()
-					containerlog, err := io.ReadAll(stream)
-					if err != nil {
-						podlogs[container.Name] = fmt.Sprintf("Error: unable to read the logs from the stream %s.%s", pod.Name, container.Name)
-						messages = append(messages, podlogs[container.Name])
-						log.Warningf("[%s] unable to read logs from stream for pod %s container %s: %+v", driver.Service, pod.Name, container.Name, err)
-					} else {
-						podlogs[container.Name] = string(containerlog)
-						messages = append(messages, podlogs[container.Name])
-					}
+					podlogs[container.Name] = string(containerlog)
+					messages = append(messages, podlogs[container.Name])
 				}
-			}()
+			}
 		}
 		alllogs[pod.Name] = podlogs
 	}
@@ -195,8 +219,11 @@ func getJobLog(m *dipper.Message) {
 			"status": jobStatus,
 		},
 		Payload: map[string]interface{}{
-			"log":    alllogs,
-			"output": output,
+			"log":       alllogs,
+			"output":    output,
+			"suspended": isJobSuspended(job),
+			"started":   !isJobSuspended(job),
+			"state":     getJobState(job),
 		},
 	}
 	if jobStatus != StatusSuccess {
@@ -235,6 +262,59 @@ func getJobStatus(job *batchv1.Job) (string, bool, []string) {
 	return jobStatus, completed, reason
 }
 
+func isJobSuspended(job *batchv1.Job) bool {
+	return job.Spec.Suspend != nil && *job.Spec.Suspend
+}
+
+func setJobSuspended(job *batchv1.Job, suspended bool) {
+	job.Spec.Suspend = &suspended
+}
+
+func shouldStartImmediately(payload interface{}) bool {
+	payloadMap, ok := payload.(map[string]interface{})
+	if !ok {
+		return true
+	}
+
+	startImmediately, ok := dipper.GetMapDataBool(payloadMap, "start_immediately")
+	if !ok {
+		return true
+	}
+
+	return startImmediately
+}
+
+func getJobState(job *batchv1.Job) string {
+	if isJobSuspended(job) {
+		return "suspended"
+	}
+
+	jobStatus, completed, _ := getJobStatus(job)
+	if completed {
+		if jobStatus == StatusSuccess {
+			return "completed"
+		}
+
+		return "failed"
+	}
+
+	if job.Status.Active > 0 {
+		return "running"
+	}
+
+	return StatusPending
+}
+
+func buildJobPayload(job *batchv1.Job) map[string]interface{} {
+	return map[string]interface{}{
+		"metadata":  job.ObjectMeta,
+		"status":    job.Status,
+		"suspended": isJobSuspended(job),
+		"started":   !isJobSuspended(job),
+		"state":     getJobState(job),
+	}
+}
+
 func returnJobStatus(m *dipper.Message, job *batchv1.Job) bool {
 	jobStatus, completed, reason := getJobStatus(job)
 
@@ -244,7 +324,10 @@ func returnJobStatus(m *dipper.Message, job *batchv1.Job) bool {
 
 	m.Reply <- dipper.Message{
 		Payload: map[string]interface{}{
-			"status": job.Status,
+			"status":    job.Status,
+			"suspended": isJobSuspended(job),
+			"started":   !isJobSuspended(job),
+			"state":     getJobState(job),
 		},
 		Labels: map[string]string{
 			"status": jobStatus,
@@ -255,6 +338,24 @@ func returnJobStatus(m *dipper.Message, job *batchv1.Job) bool {
 	return true
 }
 
+func startExistingJob(ctx context.Context, jobclient batchv1client.JobInterface, jobName string) (*batchv1.Job, error) {
+	job, err := jobclient.Get(ctx, jobName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get job %s: %w", jobName, err)
+	}
+
+	if !isJobSuspended(job) {
+		return job, nil
+	}
+
+	updated, err := jobclient.Patch(ctx, jobName, types.MergePatchType, []byte(`{"spec":{"suspend":false}}`), metav1.PatchOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("unsuspend job %s: %w", jobName, err)
+	}
+
+	return updated, nil
+}
+
 func waitForJob(m *dipper.Message) {
 	m = dipper.DeserializePayload(m)
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
@@ -263,85 +364,67 @@ func waitForJob(m *dipper.Message) {
 	}
 
 	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
+	k8client := prepareKubeConfig(m)
+	jobclient := k8client.BatchV1().Jobs(nameSpace)
 
-	timeout := DefaultJobWaitTimeout
-	if timeoutStr, ok := m.Labels["timeout"]; ok {
-		timeoutInt, _ := strconv.Atoi(timeoutStr)
-		timeout = time.Duration(timeoutInt)
+	watchOption := metav1.ListOptions{
+		FieldSelector: "metadata.name==" + jobName,
 	}
+	watchOption.Kind = "job"
 
-	ctxWatch, cancelWatch := context.WithTimeout(context.Background(), timeout*time.Second)
-	defer cancelWatch()
-	for EOW := false; !EOW; {
-		var job *batchv1.Job
-		k8client := prepareKubeConfig(m)
-		jobclient := k8client.BatchV1().Jobs(nameSpace)
-
-		watchOption := metav1.ListOptions{
-			FieldSelector: "metadata.name==" + jobName,
-		}
-		watchOption.Kind = "job"
-
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
+	for {
 		func() {
-			listCtx, cancelList := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-			defer cancelList()
-			joblist, err := jobclient.List(listCtx, watchOption)
+			joblist, err := jobclient.List(ctx, watchOption)
 			if err != nil || len(joblist.Items) == 0 {
 				log.Panicf("[%s] job not found [%s]: %+v", driver.Service, jobName, err)
 			}
-			job = &joblist.Items[0]
+			job := &joblist.Items[0]
 			watchOption.ResourceVersion = joblist.ResourceVersion
-		}()
 
-		if returnJobStatus(m, job) {
-			break
-		}
+			if returnJobStatus(m, job) {
+				return
+			}
 
-		jobstatus, err := jobclient.Watch(ctxWatch, watchOption)
-		if err != nil {
-			log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
-		}
+			jobstatus, err := jobclient.Watch(ctx, watchOption)
+			if err != nil {
+				log.Panicf("[%s] unable to watch the job %+v", driver.Service, err)
+			}
+			defer jobstatus.Stop()
 
-		defer jobstatus.Stop()
-
-	loop:
-		for {
-			select {
-			case <-ctxWatch.Done():
-				returnJobStatus(m, job)
-				EOW = true
-
-				break loop
-			case evt := <-jobstatus.ResultChan():
+			for evt := range jobstatus.ResultChan() {
 				if evt.Object == nil {
-					break loop
+					return
 				}
 
 				if evt.Type == watch.Error {
 					e := evt.Object.(*metav1.Status)
-					if e.Code == http.StatusGone {
-						log.Warningf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
-
-						break loop
-					} else {
+					if e.Code != http.StatusGone {
 						log.Panicf("[%s] error from watching channel for job [%s]: %+v", driver.Service, jobName, evt.Object)
 					}
+
+					return
 				}
 
-				job := evt.Object.(*batchv1.Job)
+				job = evt.Object.(*batchv1.Job)
 				log.Debugf("[%s] receiving a event when watching for job [%s] %s: %+v", driver.Service, jobName, evt.Type, job.Status)
 				if returnJobStatus(m, job) {
-					EOW = true
+					cancel()
 
-					break loop
+					return
 				}
 			}
+		}()
+
+		if ctx.Err() != nil {
+			return
 		}
 	}
 }
 
-func getExistingJob(jobSpec *batchv1.Job, jobclient batchv1client.JobInterface) *batchv1.Job {
-	uniqID, ok := jobSpec.ObjectMeta.Labels[LabelHoneydipperUniqueIdentifier]
+func getExistingJob(ctx context.Context, jobSpec *batchv1.Job, jobclient batchv1client.JobInterface) *batchv1.Job {
+	uniqID, ok := jobSpec.Labels[LabelHoneydipperUniqueIdentifier]
 	if !ok {
 		return nil
 	}
@@ -349,13 +432,11 @@ func getExistingJob(jobSpec *batchv1.Job, jobclient batchv1client.JobInterface) 
 	opt := metav1.ListOptions{
 		LabelSelector: LabelHoneydipperUniqueIdentifier + "=" + uniqID,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-	defer cancel()
 
 	jobList := dipper.Must(jobclient.List(ctx, opt)).(*batchv1.JobList)
 
 	for _, job := range jobList.Items {
-		if job.Status.Active > 0 {
+		if _, completed, _ := getJobStatus(&job); !completed {
 			return &job
 		}
 	}
@@ -364,6 +445,7 @@ func getExistingJob(jobSpec *batchv1.Job, jobclient batchv1client.JobInterface) 
 }
 
 func createJob(m *dipper.Message) {
+	m = dipper.DeserializePayload(m)
 	k8client := prepareKubeConfig(m)
 
 	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
@@ -372,11 +454,12 @@ func createJob(m *dipper.Message) {
 	}
 
 	job := constructJob(m, nameSpace, k8client)
+	setJobSuspended(&job, !shouldStartImmediately(m.Payload))
 	jobclient := k8client.BatchV1().Jobs(nameSpace)
-	jobResult := getExistingJob(&job, jobclient)
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
+	jobResult := getExistingJob(ctx, &job, jobclient)
 	if jobResult == nil {
-		ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-		defer cancel()
 		jobResult, err = jobclient.Create(ctx, &job, metav1.CreateOptions{})
 		if err != nil {
 			log.Panicf("[%s] failed to create job %+v", driver.Service, err)
@@ -384,10 +467,34 @@ func createJob(m *dipper.Message) {
 	}
 
 	m.Reply <- dipper.Message{
-		Payload: map[string]interface{}{
-			"metadata": jobResult.ObjectMeta,
-			"status":   jobResult.Status,
+		Payload: buildJobPayload(jobResult),
+	}
+}
+
+func startJob(m *dipper.Message) {
+	m = dipper.DeserializePayload(m)
+	k8client := prepareKubeConfig(m)
+
+	nameSpace, ok := dipper.GetMapDataStr(m.Payload, "namespace")
+	if !ok {
+		nameSpace = DefaultNamespace
+	}
+	jobName := dipper.MustGetMapDataStr(m.Payload, "job")
+
+	jobclient := k8client.BatchV1().Jobs(nameSpace)
+	ctx, cancel := driver.GetContext(m)
+	defer cancel()
+
+	job, err := startExistingJob(ctx, jobclient, jobName)
+	if err != nil {
+		log.Panicf("[%s] unable to start the job %s: %+v", driver.Service, jobName, err)
+	}
+
+	m.Reply <- dipper.Message{
+		Labels: map[string]string{
+			"status": StatusSuccess,
 		},
+		Payload: buildJobPayload(job),
 	}
 }
 
@@ -401,16 +508,14 @@ func constructJob(m *dipper.Message, namespace string, client *kubernetes.Client
 		}
 
 		v1client := client.BatchV1().CronJobs(cronJobNamespace)
-		ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+		ctx, cancel := driver.GetContext(m)
 		defer cancel()
 		cronJob, err := v1client.Get(ctx, cronJobName, metav1.GetOptions{})
 
 		switch {
 		case errors.IsNotFound(err):
 			v1beta1client := client.BatchV1().CronJobs(cronJobNamespace)
-			ctx2, cancel2 := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-			defer cancel2()
-			cronJobv1beta1 := dipper.Must(v1beta1client.Get(ctx2, cronJobName, metav1.GetOptions{})).(*batchv1.CronJob)
+			cronJobv1beta1 := dipper.Must(v1beta1client.Get(ctx, cronJobName, metav1.GetOptions{})).(*batchv1.CronJob)
 
 			job.Spec = cronJobv1beta1.Spec.JobTemplate.Spec
 		case err != nil:
@@ -460,7 +565,7 @@ func recycleDeployment(m *dipper.Message) {
 	// to accurately identify the replicaset, we have to retrieve the revision
 	// from the deployment
 	deploymentclient := k8client.AppsV1().Deployments(nameSpace)
-	ctx, cancel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
+	ctx, cancel := driver.GetContext(m)
 	defer cancel()
 	if useLabelSelector {
 		deployments, err := deploymentclient.List(ctx, metav1.ListOptions{LabelSelector: deploymentName})
@@ -487,9 +592,7 @@ func recycleDeployment(m *dipper.Message) {
 	revision := deployment.Annotations["deployment.kubernetes.io/revision"]
 
 	rsclient := k8client.AppsV1().ReplicaSets(nameSpace)
-	ctxRsList, cancelRsList := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-	defer cancelRsList()
-	rs, err := rsclient.List(ctxRsList, metav1.ListOptions{LabelSelector: labels})
+	rs, err := rsclient.List(ctx, metav1.ListOptions{LabelSelector: labels})
 	if err != nil || len(rs.Items) == 0 {
 		log.Panicf("[%s] unable to find the replicaset for the deployment %s: %+v", driver.Service, deploymentName, err)
 	}
@@ -509,9 +612,7 @@ func recycleDeployment(m *dipper.Message) {
 		log.Panicf("[%s] unable to figure out which is current replicaset for %s", driver.Service, deploymentName)
 	}
 
-	ctxDel, cancelDel := context.WithTimeout(context.Background(), driver.APITimeout*time.Second)
-	defer cancelDel()
-	err = rsclient.Delete(ctxDel, rsName, metav1.DeleteOptions{})
+	err = rsclient.Delete(ctx, rsName, metav1.DeleteOptions{})
 	if err != nil {
 		log.Panicf("[%s] failed to recycle replicaset %s: %+v", driver.Service, rsName, err)
 	}
@@ -543,6 +644,10 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 		if err != nil {
 			log.Panicf("[%s] unable to load default account for kubernetes %+v", driver.Service, err)
 		}
+	case "static":
+		kubeConfig = getStaticKubeConfig(source.(map[string]interface{}))
+	case "user":
+		kubeConfig = getUserKubeConfig(source.(map[string]interface{}))
 	default:
 		log.Panicf("[%s] unsupported kubernetes source type: %s", driver.Service, stype)
 	}
@@ -556,6 +661,20 @@ func prepareKubeConfig(m *dipper.Message) *kubernetes.Clientset {
 	}
 
 	return k8client
+}
+
+func getUserKubeConfig(cfg map[string]interface{}) *rest.Config {
+	kubeconfigPath, ok := dipper.GetMapDataStr(cfg, "kubeconfig_path")
+	if !ok {
+		kubeconfigPath = path.Join(os.Getenv("HOME"), ".kube", "config")
+	}
+
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		log.Panicf("[%s] unable to load kubeconfig from path %s: %+v", driver.Service, kubeconfigPath, err)
+	}
+
+	return kubeConfig
 }
 
 func getGKEConfig(cfg map[string]interface{}) *rest.Config {
@@ -584,6 +703,70 @@ func getGKEConfig(cfg map[string]interface{}) *rest.Config {
 		}
 	} else {
 		cadata, _ := base64.StdEncoding.DecodeString(cacert)
+		k8cfg.CAData = cadata
+	}
+
+	return k8cfg
+}
+
+func getStaticKubeConfig(cfg map[string]interface{}) *rest.Config {
+	name, ok := dipper.GetMapDataStr(cfg, "name")
+	if !ok {
+		log.Panicf("[%s] source name is missing for static kubernetes source", driver.Service)
+	}
+
+	ret, ok := driver.GetOption("data.sources." + name)
+	if !ok {
+		log.Panicf("[%s] static kubernetes source not found: %s", driver.Service, name)
+	}
+
+	host, _ := dipper.GetMapDataStr(ret, "Host")
+	token, hasToken := dipper.GetMapDataStr(ret, "Token")
+	clientCert, hasClientCert := dipper.GetMapDataStr(ret, "ClientCert")
+	clientKey, hasClientKey := dipper.GetMapDataStr(ret, "ClientKey")
+	cacert, _ := dipper.GetMapDataStr(ret, "CACert")
+	useDNS, _ := dipper.GetMapDataBool(ret, "useDNS")
+
+	k8cfg := &rest.Config{
+		Host: host,
+	}
+
+	if hasToken {
+		k8cfg.BearerToken = token
+	}
+
+	if hasClientCert || hasClientKey {
+		if !hasClientCert || !hasClientKey {
+			log.Panicf("[%s] static kubernetes source %s must include both ClientCert and ClientKey", driver.Service, name)
+		}
+
+		certData, err := base64.StdEncoding.DecodeString(clientCert)
+		if err != nil {
+			log.Panicf("[%s] static kubernetes source %s has invalid ClientCert: %+v", driver.Service, name, err)
+		}
+
+		keyData, err := base64.StdEncoding.DecodeString(clientKey)
+		if err != nil {
+			log.Panicf("[%s] static kubernetes source %s has invalid ClientKey: %+v", driver.Service, name, err)
+		}
+
+		k8cfg.CertData = certData
+		k8cfg.KeyData = keyData
+	}
+
+	if !hasToken && (!hasClientCert || !hasClientKey) {
+		log.Panicf("[%s] static kubernetes source %s must include either Token or ClientCert/ClientKey", driver.Service, name)
+	}
+
+	if useDNS {
+		if !strings.HasPrefix(k8cfg.Host, "https://") {
+			k8cfg.Host = "https://" + k8cfg.Host
+		}
+	} else {
+		cadata, err := base64.StdEncoding.DecodeString(cacert)
+		if err != nil {
+			log.Panicf("[%s] static kubernetes source %s has invalid CACert: %+v", driver.Service, name, err)
+		}
 		k8cfg.CAData = cadata
 	}
 

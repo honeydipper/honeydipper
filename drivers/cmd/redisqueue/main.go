@@ -13,11 +13,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/honeydipper/honeydipper/v3/drivers/pkg/redisclient"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/op/go-logging"
 )
 
@@ -28,10 +29,17 @@ const (
 
 // EventBusOptions : stores all the redis key names used by honeydipper.
 type EventBusOptions struct {
-	EventTopic   string
-	CommandTopic string
-	ReturnTopic  string
-	APITopic     string
+	EventTopic         string
+	CommandTopic       string
+	ReturnTopic        string
+	APITopic           string
+	AgentStartTopic    string
+	AgentContinueTopic string
+	AgentCommandTopic  string
+	AgentWorkflowTopic string
+	AgentResponseTopic string
+	AgentRecoverTopic  string
+	AgentPollTopic     string
 }
 
 var (
@@ -40,6 +48,7 @@ var (
 	eventbus         *EventBusOptions
 	redisOptions     *redisclient.Options
 	redisOptionsMock *redisclient.Options
+	outbox           sync.WaitGroup
 )
 
 func initFlags() {
@@ -57,14 +66,27 @@ func main() {
 		driver = dipper.NewDriver(os.Args[1], "redisqueue")
 	}
 	driver.Start = start
+	driver.Stop = func(_ *dipper.Message) { outbox.Wait() }
 	switch driver.Service {
 	case "receiver":
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
 	case "engine":
 		driver.MessageHandlers["eventbus:command"] = relayToRedis
+		driver.MessageHandlers["eventbus:message"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_start"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_poll"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_continue"] = relayToRedis
 	case "operator":
+		driver.MessageHandlers["eventbus:agent_command"] = relayToRedis
+		driver.MessageHandlers["eventbus:command"] = relayToRedis
 		driver.MessageHandlers["eventbus:return"] = relayToRedis
 		driver.MessageHandlers["eventbus:message"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_continue"] = relayToRedis
+	case "agent":
+		driver.MessageHandlers["eventbus:agent_command"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_workflow"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_response"] = relayToRedis
+		driver.MessageHandlers["eventbus:agent_recover"] = relayToRedis
 	}
 	driver.MessageHandlers["eventbus:api"] = relayToRedis
 	driver.Run()
@@ -80,10 +102,17 @@ func loadOptions() {
 	log.Infof("[%s] receiving driver data %+v", driver.Service, driver.Options)
 
 	eb := &EventBusOptions{
-		CommandTopic: "honeydipper:commands",
-		EventTopic:   "honeydipper:events",
-		ReturnTopic:  "honeydipper:return:",
-		APITopic:     "honeydipper:api:",
+		CommandTopic:       "honeydipper:commands",
+		EventTopic:         "honeydipper:events",
+		ReturnTopic:        "honeydipper:return",
+		APITopic:           "honeydipper:api:",
+		AgentStartTopic:    "honeydipper:agent_start",
+		AgentContinueTopic: "honeydipper:agent_continue",
+		AgentCommandTopic:  "honeydipper:agent_command",
+		AgentWorkflowTopic: "honeydipper:agent_workflow",
+		AgentResponseTopic: "honeydipper:agent_response",
+		AgentPollTopic:     "honeydipper:agent_poll",
+		AgentRecoverTopic:  "honeydipper:agent_recover",
 	}
 	if commandTopic, ok := driver.GetOptionStr("data.topics.command"); ok {
 		eb.CommandTopic = commandTopic
@@ -97,6 +126,27 @@ func loadOptions() {
 	if apiTopic, ok := driver.GetOptionStr("data.topics.api"); ok {
 		eb.APITopic = apiTopic
 	}
+	if v, ok := driver.GetOptionStr("data.topics.agent_start"); ok {
+		eb.AgentStartTopic = v
+	}
+	if v, ok := driver.GetOptionStr("data.topics.agent_continue"); ok {
+		eb.AgentContinueTopic = v
+	}
+	if v, ok := driver.GetOptionStr("data.topics.agent_command"); ok {
+		eb.AgentCommandTopic = v
+	}
+	if v, ok := driver.GetOptionStr("data.topics.agent_workflow"); ok {
+		eb.AgentWorkflowTopic = v
+	}
+	if v, ok := driver.GetOptionStr("data.topics.agent_response"); ok {
+		eb.AgentResponseTopic = v
+	}
+	if v, ok := driver.GetOptionStr("data.topics.agent_recover"); ok {
+		eb.AgentRecoverTopic = v
+	}
+	if v, ok := driver.GetOptionStr("data.topics.agent_poll"); ok {
+		eb.AgentPollTopic = v
+	}
 	eventbus = eb
 }
 
@@ -106,22 +156,30 @@ func start(msg *dipper.Message) {
 	case "engine":
 		go subscribe(eventbus.EventTopic, "message")
 		go subscribe(eventbus.ReturnTopic, "return")
+		go subscribe(eventbus.AgentWorkflowTopic, "agent_workflow")
+		go subscribe(eventbus.AgentResponseTopic, "agent_response")
 	case "operator":
 		go subscribe(eventbus.CommandTopic, "command")
+		go subscribe(eventbus.AgentCommandTopic, "agent_command")
+	case "agent":
+		go subscribe(eventbus.AgentStartTopic, "agent_start")
+		go subscribe(eventbus.AgentContinueTopic, "agent_continue")
+		go subscribe(eventbus.AgentRecoverTopic, "agent_recover")
+		go subscribe(eventbus.AgentPollTopic, "agent_poll")
 	case "api":
 		go subscribe(eventbus.APITopic, "api")
 	case "receiver":
 		client := redisclient.NewClient(redisOptions)
 		defer client.Close()
-		ctx, cancel := driver.GetContext()
-		defer cancel()
-		if err := client.Ping(ctx).Err(); err != nil {
+		if err := client.Ping(context.Background()).Err(); err != nil {
 			log.Panicf("[%s] redis error: %v", driver.Service, err)
 		}
 	}
 }
 
 func relayToRedis(msg *dipper.Message) {
+	outbox.Add(1)
+	defer outbox.Done()
 	returnTo := msg.Labels["from"]
 	msg.Labels["from"] = dipper.GetIP()
 	topic := eventbus.EventTopic
@@ -135,10 +193,21 @@ func relayToRedis(msg *dipper.Message) {
 			log.Panicf("[%s] api return message without receipient", driver.Service)
 		}
 	case "return":
-		if returnTo == "" {
-			log.Panicf("[%s] return message without receipient", driver.Service)
-		}
-		topic = eventbus.ReturnTopic + returnTo
+		topic = eventbus.ReturnTopic
+	case "agent_start":
+		topic = eventbus.AgentStartTopic
+	case "agent_continue":
+		topic = eventbus.AgentContinueTopic
+	case "agent_command":
+		topic = eventbus.AgentCommandTopic
+	case "agent_workflow":
+		topic = eventbus.AgentWorkflowTopic
+	case "agent_response":
+		topic = eventbus.AgentResponseTopic
+	case "agent_recover":
+		topic = eventbus.AgentRecoverTopic
+	case "agent_poll":
+		topic = eventbus.AgentPollTopic
 	}
 
 	payload := map[string]interface{}{
@@ -150,29 +219,32 @@ func relayToRedis(msg *dipper.Message) {
 	buf := dipper.SerializeContent(payload)
 	client := redisclient.NewClient(redisOptions)
 	defer client.Close()
-	ctx, cancel := driver.GetContext()
-	defer cancel()
-	if err := client.RPush(ctx, topic, string(buf)).Err(); err != nil {
+	if err := client.RPush(context.Background(), topic, string(buf)).Err(); err != nil {
 		log.Panicf("[%s] redis error: %v", driver.Service, err)
 	}
-	client.Expire(ctx, topic, TopicExpireTimeout)
+	client.Expire(context.Background(), topic, TopicExpireTimeout)
 }
 
 func subscribe(topic string, subject string) {
+	ctx, cancel := driver.GetContext(nil)
+	defer cancel()
 	for {
 		func() {
 			defer dipper.SafeExitOnError("[%s] re-subscribing to redis %s", driver.Service, topic)
+			defer dipper.CatchError(context.Canceled, func() {
+				log.Warningf("[%s] subscriber stopped on %s", driver.Service, topic)
+			})
 			client := redisclient.NewClient(redisOptions)
 			defer client.Close()
 			realTopic := topic
-			if topic == eventbus.ReturnTopic || topic == eventbus.APITopic {
+			if topic == eventbus.APITopic {
 				realTopic = topic + dipper.GetIP()
 			}
 			log.Infof("[%s] start receiving messages on topic: %s", driver.Service, realTopic)
 			for {
-				messages, err := client.BLPop(context.Background(), time.Second, realTopic).Result()
+				messages, err := client.BLPop(ctx, time.Second, realTopic).Result()
 				if err != nil && !errors.Is(err, redis.Nil) {
-					log.Panicf("[%s] redis error: %v", driver.Service, err)
+					panic(err)
 				}
 				if len(messages) > 1 {
 					for _, m := range messages[1:] {
@@ -194,13 +266,17 @@ func subscribe(topic string, subject string) {
 						})
 					}
 				}
-				if driver.State == dipper.DriverStateCompleted {
+				if driver.State != dipper.DriverStateAlive {
+					log.Warningf("[%s] gracefully shutting down subscriber %s inner loop", driver.Service, topic)
+
 					return
 				}
 			}
 		}()
-		if driver.State == dipper.DriverStateCompleted {
+		if driver.State != dipper.DriverStateAlive {
 			// allow graceful shutdown during tests.
+			log.Warningf("[%s] gracefully shutting down subscriber %s", driver.Service, topic)
+
 			return
 		}
 		time.Sleep(time.Second)

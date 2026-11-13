@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	crypto_ssh "golang.org/x/crypto/ssh"
 )
 
@@ -34,12 +34,12 @@ func GetGitSSHAuth(keyfile, keypassEnv string) transport.AuthMethod {
 		return loaded
 	}
 
+	keybytes := os.Getenv("DIPPER_SSH_KEY")
 	keysock := os.Getenv("SSH_AUTH_SOCK")
-	if keyfile == "" && keysock == "" {
+
+	if keyfile == "" && keysock == "" && keybytes == "" {
 		dipper.Logger.Panicf("Unable load ssh key: no key file specified")
 	}
-
-	keybytes := os.Getenv("DIPPER_SSH_KEY")
 
 	switch {
 	case keybytes != "":

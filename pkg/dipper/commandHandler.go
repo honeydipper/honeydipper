@@ -7,9 +7,12 @@
 package dipper
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -26,18 +29,44 @@ const (
 
 // CommandProvider : an interface for providing Command handling feature.
 type CommandProvider struct {
-	Commands     map[string]MessageHandler
-	ReturnWriter io.Writer
-	Channel      string
-	Subject      string
+	Live               sync.WaitGroup
+	Commands           map[string]MessageHandler
+	DefaultTimeout     map[string]string
+	ReturnWriter       io.Writer
+	Channel            string
+	Subject            string
+	InterruptedSubject string
+	Handler            context.Context
 }
 
 // Init : initializing rpc provider.
-func (p *CommandProvider) Init(channel string, subject string, defaultWriter io.Writer) {
+func (p *CommandProvider) Init(channel string, subject string, interruptedSubject string, defaultWriter io.Writer, handler context.Context) {
 	p.Commands = map[string]MessageHandler{}
+	p.DefaultTimeout = map[string]string{}
 	p.ReturnWriter = defaultWriter
 	p.Channel = channel
 	p.Subject = subject
+	p.InterruptedSubject = interruptedSubject
+	p.Handler = handler
+}
+
+// ReturnInterrupted returns an message to caller so the interrupted call can be resumed later.
+func (p *CommandProvider) ReturnInterrupted(call *Message) {
+	defer func() {
+		if call.Reply != nil {
+			call.Reply = nil
+			p.Live.Done()
+		}
+	}()
+
+	msg := *call
+	msg.Channel = p.Channel
+	msg.Subject = p.InterruptedSubject
+	msg.Labels["dipper_call_subject"] = call.Subject
+
+	Logger.Warningf("[operator] interrupted, sessionID: %+v", msg)
+
+	SendMessage(p.ReturnWriter, &msg)
 }
 
 // ReturnError sends an error message return to caller and create an error.
@@ -56,16 +85,21 @@ func (p *CommandProvider) ReturnError(call *Message, pattern string, args ...int
 // Return : return a value to rpc caller.
 func (p *CommandProvider) Return(call *Message, retval *Message) {
 	defer func() {
-		call.Reply = nil
+		if call.Reply != nil {
+			call.Reply = nil
+			p.Live.Done()
+		}
 	}()
 
-	if _, ok := call.Labels["sessionID"]; !ok {
+	_, hasSessionID := call.Labels["sessionID"]
+	_, hasAgentSessionID := call.Labels["agent_session_id"]
+	if !hasSessionID && !hasAgentSessionID {
 		return
 	}
 
 	retMsg := &Message{
 		Channel: p.Channel,
-		Subject: p.Subject,
+		Subject: p.returnSubject(call.Subject),
 		Labels:  call.Labels,
 	}
 	delete(retMsg.Labels, "backoff_ms")
@@ -90,13 +124,14 @@ func (p *CommandProvider) Return(call *Message, retval *Message) {
 }
 
 type commandWrapper struct {
-	msg      *Message
-	method   string
-	provider *CommandProvider
-	f        MessageHandler
-	retry    int
-	timeout  time.Duration
-	backoff  time.Duration
+	msg           *Message
+	method        string
+	provider      *CommandProvider
+	f             MessageHandler
+	retry         int
+	timeout       time.Duration
+	backoff       time.Duration
+	interruptible bool
 }
 
 func (w *commandWrapper) attempt(replyChannel chan Message) {
@@ -117,13 +152,24 @@ func (w *commandWrapper) attempt(replyChannel chan Message) {
 
 		Logger.Debugf("[operaotr] cmd labels %+v", m.Labels)
 
-		apiTimer := time.NewTimer(time.Second * w.timeout)
+		apiTimer := time.NewTimer(w.timeout)
 		defer apiTimer.Stop()
+
+		interruption := context.Background().Done()
+		if w.interruptible {
+			interruption = w.provider.Handler.Done()
+		}
 
 		select {
 		case reply := <-replyChannel:
 			if _, ok := reply.Labels["no-timeout"]; ok {
-				reply = <-m.Reply
+				select {
+				case reply = <-replyChannel:
+				case <-w.provider.Handler.Done():
+					w.provider.ReturnInterrupted(w.msg)
+
+					return
+				}
 			}
 
 			_, hasError := reply.Labels["error"]
@@ -136,43 +182,92 @@ func (w *commandWrapper) attempt(replyChannel chan Message) {
 			} else {
 				w.provider.Return(w.msg, &reply)
 			}
+		case <-interruption:
+			w.provider.ReturnInterrupted(w.msg)
 		case <-apiTimer.C:
 			_ = w.provider.ReturnError(w.msg, "timeout")
 		}
 	}()
 
 	defer func() {
-		if r := recover(); r != nil && replyChannel != nil {
-			Logger.Warningf("Resuming after command error: %v", r)
-			Logger.Warning(errors.Wrap(r, 1).ErrorStack())
-			replyChannel <- Message{
-				Labels: map[string]string{
-					"error": fmt.Sprintf("%+v", r),
-				},
+		r := recover()
+		if r == nil {
+			return
+		}
+
+		if e, ok := r.(error); ok {
+			if errors.Is(e, context.Canceled) && w.interruptible && errors.Is(w.provider.Handler.Err(), context.Canceled) {
+				Logger.Warningf("Command interrupted: %+v", *w.msg)
+
+				return
 			}
+		}
+
+		stack := errors.Wrap(r, 1).ErrorStack()
+		Logger.Warningf("Resuming after command error: %v", r)
+		if replyChannel == nil {
+			Logger.Warning("Reply channel not exists. Error ignored!")
+
+			return
+		}
+		Logger.Warning(stack)
+
+		errMsg := fmt.Sprintf("%+v", r)
+		if errMsg == "" {
+			lines := strings.Split(stack, "\n")
+			l := 8
+			if len(lines) < 8 {
+				l = len(lines)
+			}
+			errMsg = "unknown error: " + strings.Join(lines[:l], "\n")
+		}
+		replyChannel <- Message{
+			Labels: map[string]string{
+				"error": errMsg,
+			},
 		}
 	}()
 	w.f(&m)
 }
 
+// returnSubject maps an incoming call subject to its corresponding return subject.
+func (p *CommandProvider) returnSubject(callSubject string) string {
+	if callSubject == EventbusAgentCommand {
+		return EventbusAgentContinue
+	}
+
+	return p.Subject
+}
+
 // Router : route the message to rpc handlers.
 func (p *CommandProvider) Router(msg *Message) {
 	method := msg.Labels["method"]
+	interruptible := false
 	f, ok := p.Commands[method]
+	if !ok {
+		f, ok = p.Commands[method+"|interruptible"]
+		if ok {
+			interruptible = true
+
+			msg.Labels["interruptible"] = "true"
+		}
+	}
 	if !ok {
 		panic(p.ReturnError(msg, "[operator] cmd not defined: %s", method))
 	}
 
 	retry, timeout, backoff := p.UnpackLabels(msg)
 	w := &commandWrapper{
-		msg:      msg,
-		f:        f,
-		provider: p,
-		retry:    retry,
-		timeout:  timeout,
-		backoff:  backoff,
+		msg:           msg,
+		f:             f,
+		provider:      p,
+		retry:         retry,
+		timeout:       timeout,
+		backoff:       backoff,
+		interruptible: interruptible,
 	}
 
+	p.Live.Add(1)
 	w.attempt(make(chan Message, 1))
 }
 
@@ -200,14 +295,20 @@ func (p *CommandProvider) UnpackLabels(msg *Message) (retry int, timeout, backof
 	}
 
 	timeoutStr := msg.Labels["timeout"]
+	if timeoutStr == "" {
+		if timeoutStr = p.DefaultTimeout[msg.Labels["method"]]; timeoutStr != "" {
+			msg.Labels["timeout"] = timeoutStr
+		}
+	}
+
 	if timeoutStr != "" {
-		timeoutVal, err := strconv.Atoi(timeoutStr)
+		timeout, err = time.ParseDuration(timeoutStr)
 		if err != nil {
 			panic(p.ReturnError(msg, "[operator] invalid timeout: %s", timeoutStr))
 		}
-		timeout = time.Duration(timeoutVal)
 	} else {
-		timeout = 30
+		timeout = 30 * time.Second
+		msg.Labels["timeout"] = "30s"
 	}
 
 	return retry, timeout, backoffms

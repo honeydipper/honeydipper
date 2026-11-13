@@ -11,6 +11,7 @@ package config
 import (
 	"bytes"
 	"encoding/gob"
+	stderrors "errors"
 	"fmt"
 	"os"
 	"strings"
@@ -19,7 +20,7 @@ import (
 
 	"dario.cat/mergo"
 	"github.com/go-errors/errors"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 )
 
 const (
@@ -47,6 +48,32 @@ var (
 
 	// ErrConfigRollback happens when daemon decides to rollback during reload.
 	ErrConfigRollback = errors.New("config rollback")
+
+	errBuiltinRegistryOverride    = stderrors.New("builtin remote registry cannot be overridden")
+	errRemoteRegistryMissing      = stderrors.New("remote registry is not defined")
+	errRemoteRegistryTypeMismatch = stderrors.New("remote registry config should be a map")
+	errRemoteSourceNotAllowed     = stderrors.New("remote driver source is not allowed by policy")
+)
+
+// BuiltinRemoteRegistryName is the reserved registry name for daemon managed builtins.
+const BuiltinRemoteRegistryName = "builtin"
+
+var builtinRemoteRegistry = map[string]interface{}{
+	"registryURL":      "https://registry.honeydipper.io/drivers",
+	"requireSignature": true,
+}
+
+const (
+	remoteSourceRegistry = "registry"
+	remoteSourceDirect   = "direct"
+	remoteSourceLocal    = "local"
+	remoteSourceUnknown  = "unknown"
+
+	remotePolicyReasonDefaultAllowRegistry = "default_registry_allowed"
+	remotePolicyReasonDefaultDenySource    = "default_source_denied"
+	remotePolicyReasonUnknownSource        = "unknown_source"
+	remotePolicyReasonPolicyOverrideAllow  = "policy_override_allowed"
+	remotePolicyReasonPolicyOverrideDeny   = "policy_override_denied"
 )
 
 //nolint:gochecknoinits
@@ -57,17 +84,17 @@ func init() {
 	gob.Register(DataSet{})
 }
 
-// Config is a wrapper around the final complete configration of the daemon.
+// Config is a wrapper around the final complete configuration of the daemon.
 // including history and the runtime information.
 type Config struct {
 	InitRepo          RepoInfo
 	Services          []string
 	DataSet           *DataSet
-	Loaded            map[RepoInfo]*Repo
+	Loaded            map[RepoKey]*Repo
 	WorkingDir        string
 	LastRunningConfig struct {
 		DataSet *DataSet
-		Loaded  map[RepoInfo]*Repo
+		Loaded  map[RepoKey]*Repo
 	}
 	OnChange      func()
 	IsConfigCheck bool
@@ -101,7 +128,6 @@ func (c *Config) ResetStage() {
 			dipper.WaitGroupDoneAll(wg)
 		}
 	}
-	//nolint:gomnd
 	c.StageWG = make([]*sync.WaitGroup, 4)
 	c.StageWG[StageLoading] = &sync.WaitGroup{}
 	c.StageWG[StageLoading].Add(len(c.Services))
@@ -177,7 +203,7 @@ func (c *Config) Refresh() {
 	if changeDetected {
 		c.ResetStage()
 		c.LastRunningConfig.DataSet = c.RawData
-		c.LastRunningConfig.Loaded = map[RepoInfo]*Repo{}
+		c.LastRunningConfig.Loaded = map[RepoKey]*Repo{}
 		for k, v := range c.Loaded {
 			c.LastRunningConfig.Loaded[k] = v
 		}
@@ -203,7 +229,7 @@ func (c *Config) Refresh() {
 func (c *Config) RollBack() {
 	if c.LastRunningConfig.DataSet != nil && c.LastRunningConfig.DataSet != c.DataSet {
 		c.Staged = c.LastRunningConfig.DataSet
-		c.Loaded = map[RepoInfo]*Repo{}
+		c.Loaded = map[RepoKey]*Repo{}
 		for k, v := range c.LastRunningConfig.Loaded {
 			c.Loaded[k] = v
 		}
@@ -216,7 +242,97 @@ func (c *Config) RollBack() {
 }
 
 func (c *Config) assemble() {
-	c.Staged, c.Loaded = c.Loaded[c.InitRepo].assemble(&(DataSet{}), map[RepoInfo]*Repo{})
+	c.Staged, c.Loaded = c.Loaded[c.InitRepo.Key()].assemble(&(DataSet{}), map[RepoKey]*Repo{})
+	// Emit a load/validate-time warning for compaction policies whose
+	// summarization_agent does not match any configured agents key. This would
+	// have flagged a typo like `campactor` vs `name: compactor` at load time
+	// instead of surfacing later as a confusing empty-agent compaction failure.
+	for _, w := range ValidateAgentCompactionPolicies(c.Staged) {
+		if dipper.Logger != nil {
+			dipper.Logger.Warningf("[config] %s", w)
+		}
+	}
+	// Emit a load/validate-time warning for continue policies this phase cannot
+	// honor (mode: never) or that are malformed. Like compaction validation, a
+	// bad continue_policy NEVER fails assembly: it only warns and the runtime
+	// degrades to the safe default behavior.
+	for _, w := range ValidateAgentContinuePolicies(c.Staged) {
+		if dipper.Logger != nil {
+			dipper.Logger.Warningf("[config] %s", w)
+		}
+	}
+}
+
+// ValidateAgentCompactionPolicies returns a warning message for every agent
+// whose compaction_policy.summarization_agent references an agents key that
+// does not exist in the assembled DataSet. It runs on every config load/refresh
+// (via assemble) so misconfigured summarizers are surfaced early, before they
+// cause a compaction that silently fails. A missing summarization_agent (empty
+// string) is intentionally NOT flagged: it simply disables compaction.
+func ValidateAgentCompactionPolicies(ds *DataSet) []string {
+	if ds == nil || ds.Agents == nil {
+		return nil
+	}
+	warnings := []string{}
+	for name, ag := range ds.Agents {
+		if ag.CompactionPolicy == nil || ag.CompactionPolicy.SummarizationAgent == "" {
+			continue
+		}
+		if _, ok := ds.Agents[ag.CompactionPolicy.SummarizationAgent]; !ok {
+			warnings = append(warnings, fmt.Sprintf(
+				"agent %q compaction_policy.summarization_agent %q matches no agents key; compaction will be skipped until the summarizer is configured",
+				name, ag.CompactionPolicy.SummarizationAgent,
+			))
+		}
+	}
+
+	return warnings
+}
+
+// ValidateAgentContinuePolicies returns a warning message for every agent whose
+// continue_policy is malformed or asks for a mode this phase cannot honor. It
+// runs on every config load/refresh (via assemble) so misconfigurations are
+// surfaced early. It NEVER fails assembly: a warning here only means the runtime
+// degrades to the safe default (mode auto with the built-in prompt).
+//
+// Warnings:
+//   - unknown mode -> "using auto"
+//   - mode "never" -> "requires driver-side handling; using auto" (RESERVED; this
+//     phase cannot disable synthesis because no driver in this phase honors a
+//     missing trailing user turn)
+//   - empty/whitespace prompt under an effective auto mode -> "empty prompt;
+//     default text will be used"
+//
+// A nil policy is not flagged: it simply means "auto with the built-in prompt".
+func ValidateAgentContinuePolicies(ds *DataSet) []string {
+	if ds == nil || ds.Agents == nil {
+		return nil
+	}
+	warnings := []string{}
+	for name, ag := range ds.Agents {
+		cp := ag.ContinuePolicy
+		if cp == nil {
+			continue
+		}
+		switch mode := strings.ToLower(strings.TrimSpace(cp.Mode)); mode {
+		case "", "auto":
+			if strings.TrimSpace(cp.Prompt) == "" {
+				warnings = append(warnings, fmt.Sprintf(
+					"agent %q continue_policy: empty prompt; default text will be used", name,
+				))
+			}
+		case "never":
+			warnings = append(warnings, fmt.Sprintf(
+				"agent %q continue_policy: mode: never requires driver-side handling; using auto", name,
+			))
+		default:
+			warnings = append(warnings, fmt.Sprintf(
+				"agent %q continue_policy.mode %q is unknown; using auto", name, cp.Mode,
+			))
+		}
+	}
+
+	return warnings
 }
 
 // AdvanceStage processes the config and advances the config into the new stage.
@@ -269,7 +385,7 @@ func (c *Config) AdvanceStage(service string, stage int, fns ...dipper.ItemProce
 		case StageDiscovering:
 			c.extendAllSystems()
 		case StageServing:
-			c.RecursiveStaged(dipper.RegexParser)
+			c.recursive(dipper.RegexParser, true, true)
 
 			c.DataSet = c.Staged
 		}
@@ -278,7 +394,9 @@ func (c *Config) AdvanceStage(service string, stage int, fns ...dipper.ItemProce
 }
 
 // recursive iterates all items and their children to parse the values with give processor.
-func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
+// With skipRuntime set, workflows, rule actions and contexts are left alone, because they are
+// persisted with the workflow sessions and compiled values would not survive the persistence.
+func (c *Config) recursive(f dipper.ItemProcessor, stage bool, skipRuntime bool) {
 	var processor dipper.ItemProcessor
 	target := c.DataSet
 	if stage {
@@ -288,14 +406,16 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 	processor = func(name string, val interface{}) (interface{}, bool) {
 		switch v := val.(type) {
 		case string:
-			nv, ok := f(name, val)
-			if stage {
-				return nv, ok
+			if !stage {
+				return nil, false
 			}
 			// only staged data can be changed.
-			return nil, false
+
+			return f(name, val)
 		case Rule:
-			dipper.Recursive(&v.Do, processor)
+			if !skipRuntime {
+				dipper.Recursive(&v.Do, processor)
+			}
 			dipper.Recursive(&v.When, processor)
 		case Workflow:
 			dipper.Recursive(v.Match, processor)
@@ -318,14 +438,18 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 		return nil, false
 	}
 
-	dipper.Logger.Debugf("[config] recursively processing workflows ...")
-	dipper.Recursive(target.Workflows, processor)
+	if !skipRuntime {
+		dipper.Logger.Debugf("[config] recursively processing workflows ...")
+		dipper.Recursive(target.Workflows, processor)
+	}
 	dipper.Logger.Debugf("[config] recursively processing rules ...")
 	dipper.Recursive(target.Rules, processor)
 	dipper.Logger.Debugf("[config] recursively processing systems ...")
 	dipper.Recursive(target.Systems, processor)
-	dipper.Logger.Debugf("[config] recursively processing contexts ...")
-	dipper.Recursive(target.Contexts, f)
+	if !skipRuntime {
+		dipper.Logger.Debugf("[config] recursively processing contexts ...")
+		dipper.Recursive(target.Contexts, f)
+	}
 	dipper.Logger.Debugf("[config] recursively processing drivers ...")
 	for k, v := range target.Drivers {
 		if k != "daemon" {
@@ -336,16 +460,11 @@ func (c *Config) recursive(f dipper.ItemProcessor, stage bool) {
 
 // RecursiveStaged recursively process staged data.
 func (c *Config) RecursiveStaged(f dipper.ItemProcessor) {
-	c.recursive(f, true)
-}
-
-// Recursive recursively process readonly config data.
-func (c *Config) Recursive(f dipper.ItemProcessor) {
-	c.recursive(f, false)
+	c.recursive(f, true, false)
 }
 
 func (c *Config) isRepoLoaded(repo RepoInfo) bool {
-	_, ok := c.Loaded[repo]
+	_, ok := c.Loaded[repo.Key()]
 
 	return ok
 }
@@ -355,9 +474,9 @@ func (c *Config) loadRepo(repo RepoInfo) {
 		repoRuntime := newRepo(c, repo)
 		repoRuntime.loadRepo()
 		if c.Loaded == nil {
-			c.Loaded = map[RepoInfo]*Repo{}
+			c.Loaded = map[RepoKey]*Repo{}
 		}
-		c.Loaded[repo] = repoRuntime
+		c.Loaded[repo.Key()] = repoRuntime
 	}
 }
 
@@ -403,6 +522,203 @@ func (c *Config) GetDriverDataStr(path string) (ret string, ok bool) {
 	return dipper.GetMapDataStr(c.DataSet.Drivers, path)
 }
 
+// ResolveStagedDriverMeta resolves and normalizes staged driver metadata.
+func (c *Config) ResolveStagedDriverMeta(driverMeta map[string]interface{}) (map[string]interface{}, error) {
+	resolvedMeta := copyMap(driverMeta)
+	driverType, _ := resolvedMeta["type"].(string)
+	if driverType != "remote" {
+		return resolvedMeta, nil
+	}
+
+	driverName, _ := resolvedMeta["name"].(string)
+	if driverName == "" {
+		driverName = "unknown"
+	}
+
+	handlerData, ok := resolvedMeta["handlerData"].(map[string]interface{})
+	if !ok || handlerData == nil {
+		logRemoteMetaDecision(driverName, remoteSourceUnknown, true, "missing_handler_data")
+
+		return resolvedMeta, nil
+	}
+
+	resolvedHandlerData := copyMap(handlerData)
+	resolvedMeta["handlerData"] = resolvedHandlerData
+
+	source := resolveRemoteSourceType(resolvedHandlerData)
+	allowed, reason := c.evaluateRemoteSourcePolicy(source)
+	logRemoteMetaDecision(driverName, source, allowed, reason)
+	if source != remoteSourceUnknown && !allowed {
+		return nil, fmt.Errorf("%w: %s", errRemoteSourceNotAllowed, source)
+	}
+
+	if rawURL, ok := resolvedHandlerData["url"].(string); ok && rawURL != "" {
+		logRemoteMetaDecision(driverName, source, true, "direct_url_in_handler")
+
+		return resolvedMeta, nil
+	}
+
+	registryName, _ := resolvedHandlerData["registry"].(string)
+	if registryName == "" {
+		logRemoteMetaDecision(driverName, source, true, "registry_not_specified")
+
+		return resolvedMeta, nil
+	}
+
+	registryConfig, err := c.resolveRemoteRegistryConfig(registryName)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := resolvedHandlerData["registryURL"]; !ok {
+		if registryURL, ok := registryConfig["registryURL"]; ok {
+			resolvedHandlerData["registryURL"] = registryURL
+		} else if baseURL, ok := registryConfig["baseURL"]; ok {
+			resolvedHandlerData["registryURL"] = baseURL
+		}
+	}
+	if _, ok := resolvedHandlerData["requireSignature"]; !ok {
+		if requireSignature, ok := registryConfig["requireSignature"]; ok {
+			resolvedHandlerData["requireSignature"] = requireSignature
+		}
+	}
+	if _, ok := resolvedHandlerData["publicKey"]; !ok {
+		if publicKey, ok := registryConfig["publicKey"]; ok {
+			resolvedHandlerData["publicKey"] = publicKey
+		}
+	}
+
+	logRemoteMetaDecision(driverName, source, true, "registry_config_resolved")
+
+	return resolvedMeta, nil
+}
+
+func (c *Config) resolveRemoteRegistryConfig(registryName string) (map[string]interface{}, error) {
+	if _, ok := c.GetStagedDriverData(fmt.Sprintf("daemon.registries.%s", BuiltinRemoteRegistryName)); ok {
+		logRemoteMetaDecision("unknown", remoteSourceRegistry, false, "builtin_registry_override_detected")
+
+		return nil, fmt.Errorf("%w: %s", errBuiltinRegistryOverride, BuiltinRemoteRegistryName)
+	}
+
+	if registryName == BuiltinRemoteRegistryName {
+		logRemoteMetaDecision("unknown", remoteSourceRegistry, true, "using_builtin_registry")
+
+		return copyMap(builtinRemoteRegistry), nil
+	}
+
+	registryData, ok := c.GetStagedDriverData(fmt.Sprintf("daemon.registries.%s", registryName))
+	if !ok {
+		logRemoteMetaDecision("unknown", remoteSourceRegistry, false, "registry_not_found")
+
+		return nil, fmt.Errorf("%w: %s", errRemoteRegistryMissing, registryName)
+	}
+
+	registryConfig, ok := registryData.(map[string]interface{})
+	if !ok {
+		logRemoteMetaDecision("unknown", remoteSourceRegistry, false, "registry_config_type_invalid")
+
+		return nil, errRemoteRegistryTypeMismatch
+	}
+
+	logRemoteMetaDecision("unknown", remoteSourceRegistry, true, "registry_config_loaded")
+
+	return copyMap(registryConfig), nil
+}
+
+func resolveRemoteSourceType(handlerData map[string]interface{}) string {
+	if localPath, ok := handlerData["localPath"].(string); ok && localPath != "" {
+		return remoteSourceLocal
+	}
+
+	if rawURL, ok := handlerData["url"].(string); ok && rawURL != "" {
+		if strings.HasPrefix(rawURL, "file://") ||
+			strings.HasPrefix(rawURL, "/") ||
+			strings.HasPrefix(rawURL, "./") ||
+			strings.HasPrefix(rawURL, "../") {
+			return remoteSourceLocal
+		}
+
+		return remoteSourceDirect
+	}
+
+	if registryName, ok := handlerData["registry"].(string); ok && registryName != "" {
+		return remoteSourceRegistry
+	}
+	if registryURL, ok := handlerData["registryURL"].(string); ok && registryURL != "" {
+		return remoteSourceRegistry
+	}
+
+	return remoteSourceUnknown
+}
+
+func (c *Config) evaluateRemoteSourcePolicy(source string) (bool, string) {
+	allowed := false
+	reason := remotePolicyReasonUnknownSource
+	switch source {
+	case remoteSourceRegistry:
+		allowed = true
+		reason = remotePolicyReasonDefaultAllowRegistry
+	case remoteSourceDirect, remoteSourceLocal:
+		allowed = false
+		reason = remotePolicyReasonDefaultDenySource
+	default:
+		return false, reason
+	}
+
+	policy, ok := c.GetStagedDriverData("daemon.remoteDriverPolicy")
+	if !ok {
+		return allowed, reason
+	}
+	policyMap, ok := policy.(map[string]interface{})
+	if !ok {
+		return allowed, reason
+	}
+	sourceCfg, ok := policyMap[source].(map[string]interface{})
+	if !ok {
+		return allowed, reason
+	}
+	enabled, ok := sourceCfg["enabled"].(bool)
+	if !ok {
+		return allowed, reason
+	}
+
+	allowed = enabled
+	if allowed {
+		reason = remotePolicyReasonPolicyOverrideAllow
+	} else {
+		reason = remotePolicyReasonPolicyOverrideDeny
+	}
+
+	return allowed, reason
+}
+
+func logRemoteMetaDecision(driverName string, source string, allowed bool, reason string) {
+	if dipper.Logger == nil {
+		return
+	}
+
+	if allowed {
+		dipper.Logger.Infof("[config] remote_meta_decision driver=%s source=%s allowed=true reason=%s", driverName, source, reason)
+
+		return
+	}
+
+	dipper.Logger.Warningf("[config] remote_meta_decision driver=%s source=%s allowed=false reason=%s", driverName, source, reason)
+}
+
+func copyMap(input map[string]interface{}) map[string]interface{} {
+	ret := map[string]interface{}{}
+	for key, value := range input {
+		if nested, ok := value.(map[string]interface{}); ok {
+			ret[key] = copyMap(nested)
+		} else {
+			ret[key] = value
+		}
+	}
+
+	return ret
+}
+
 func (c *Config) extendSystem(processed map[string]bool, system string) {
 	var merged System
 	current := c.Staged.Systems[system]
@@ -410,7 +726,6 @@ func (c *Config) extendSystem(processed map[string]bool, system string) {
 		parts := strings.Split(extend, "=")
 		var base, subKey string
 		base = strings.TrimSpace(parts[0])
-		//nolint:gomnd
 		if len(parts) >= 2 {
 			subKey = base
 			base = strings.TrimSpace(parts[1])
@@ -483,8 +798,60 @@ func mergeDataSet(d *DataSet, source DataSet) error {
 	}
 	s.Systems = map[string]System{}
 
+	// Agents are merged per-key (like Systems) so each agent's Name can be
+	// populated from its own map key before the cross-repo/overlay merge. An
+	// explicitly set `name:` is always respected and is never clobbered by a
+	// key-derived Name from an overlay repo. Populating here (rather than as a
+	// post-assembly step) keeps the correct per-repo keys when multiple repos
+	// or overlays define agents for the same key.
+	for name, agent := range s.Agents {
+		if agent.Name == "" {
+			agent.Name = name
+		}
+		exist, ok := d.Agents[name]
+		if ok {
+			dipper.Must(mergeAgent(&exist, agent, name))
+		} else {
+			exist = agent
+		}
+		if d.Agents == nil {
+			d.Agents = map[string]Agent{}
+		}
+		d.Agents[name] = exist
+	}
+	s.Agents = map[string]Agent{}
+
 	if e := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice); e != nil {
 		return fmt.Errorf("merging error: %w", e)
+	}
+
+	return nil
+}
+
+// mergeAgent merges source agent s into destination agent d, keeping the Name
+// field consistent with the map key (key) the agent is stored under. An
+// explicitly set `name:` on either side (a value that differs from the map
+// key) always wins over a key-derived Name, and the source overlay wins when
+// both sides carry an explicit Name. All other fields are merged with the
+// same override/appending semantics as the top-level merge.
+func mergeAgent(d *Agent, s Agent, key string) error {
+	// Determine the winning Name before merging fields so a key-derived Name on
+	// the source cannot clobber an explicit `name:` already present in the
+	// destination.
+	explicit := d.Name
+	if explicit == key {
+		explicit = ""
+	}
+	if s.Name != "" && s.Name != key {
+		explicit = s.Name
+	}
+	if err := mergo.Merge(d, s, mergo.WithOverride, mergo.WithAppendSlice); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	if explicit != "" {
+		d.Name = explicit
+	} else {
+		d.Name = key
 	}
 
 	return nil

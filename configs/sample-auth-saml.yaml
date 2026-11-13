@@ -1,0 +1,66 @@
+---
+# Sample SAML authentication configuration for Honeydipper API service.
+#
+# Merge this into your repo-managed config structure as needed.
+
+drivers:
+  daemon:
+    featureMap:
+      global:
+        eventbus: redisqueue
+
+    drivers:
+      auth-saml:
+        name: auth-saml
+        type: builtin
+        handlerData:
+          shortName: auth-saml
+
+    services:
+      api:
+        auth-providers:
+          - auth-saml
+
+        auth:
+          casbin:
+            models:
+              - |
+                [request_definition]
+                r = sub, principal, obj, act, provider
+
+                [policy_definition]
+                p = sub, obj, act, provider
+
+                [role_definition]
+                g = _, _
+
+                [policy_effect]
+                e = some(where (p.eft == allow))
+
+                [matchers]
+                m = (r.sub == p.sub && r.obj == p.obj && r.act == p.act && r.provider == p.provider) \
+                  || (g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act && r.provider == p.provider)
+
+            policies:
+              - |
+                p, everyone, user/profile, read, auth-saml
+                g, alice@example.com, everyone
+
+  auth-saml:
+    acs_url: https://hd.example.com/api/auth/saml/callback
+    idp_metadata_url: https://idp.example.com/metadata
+
+    # Optional, defaults to acs_url
+    entity_id: https://hd.example.com/saml/sp
+
+    # Optional, defaults to false
+    allow_idp_initiated: false
+
+    # Optional, defaults to 86400 seconds
+    token_expiration: 86400
+
+    # Optional, defaults to 600 seconds
+    request_ttl: 600
+
+    # Prefer using AUTH_SAML_JWT_SIGNING_KEY in production.
+    jwt_signing_key: replace-with-a-strong-random-secret

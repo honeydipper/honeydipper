@@ -38,3 +38,6 @@ vendor/**
 launch.json
 settings.json
 **/__debug_bin*
+drivers/cmd/hd-driver-vault/hd-driver-*
+drivers/cmd/auth-gcp-iap/auth-gcp-iap
+hd-driver-mcp

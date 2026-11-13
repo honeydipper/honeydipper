@@ -20,7 +20,10 @@ func Compare(actual string, criteria interface{}) bool {
 
 	strVal, ok := criteria.(string)
 	if ok {
-		return (strVal == actual)
+		if !strings.HasPrefix(strVal, ":regex:") {
+			return (strVal == actual)
+		}
+		criteria = Must(regexp.Compile(strVal[7:])).(*regexp.Regexp)
 	}
 
 	re, ok := criteria.(*regexp.Regexp)
@@ -60,13 +63,13 @@ func CompareMap(actual interface{}, criteria interface{}) bool {
 	case map[string]interface{}:
 		value := reflect.ValueOf(actual)
 		for key, subCriteria := range scenario {
-			switch {
-			case key == ":auth:":
+			switch key {
+			case ":auth:":
 				// offload to another driver using RPC
 				// pass
-			case key == ":present:":
+			case ":present:":
 				fallthrough
-			case key == ":absent:":
+			case ":absent:":
 				expectPresence := key == ":present:"
 				keys := []interface{}{}
 				for _, k := range value.MapKeys() {
@@ -77,7 +80,7 @@ func CompareMap(actual interface{}, criteria interface{}) bool {
 					// key presence not matching expectation
 					return false
 				}
-			case key == ":except:":
+			case ":except:":
 				if CompareAll(actual, subCriteria) {
 					return false
 				}
@@ -165,6 +168,7 @@ func IsTruthy(v interface{}) bool {
 	case string:
 		c = strings.ToLower(strings.TrimSpace(c))
 
+		//nolint:goconst
 		return c == "true"
 	case nil:
 		return false

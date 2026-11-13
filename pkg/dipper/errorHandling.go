@@ -14,7 +14,7 @@ func SafeExitOnError(args ...interface{}) {
 		l := len(args)
 		if handler, ok := args[l-1].(func(interface{})); ok {
 			l--
-			handler(r)
+			defer handler(r)
 		}
 		Logger.Warningf("Resuming after error: %v", r)
 		Logger.Warning(errors.Wrap(r, 1).ErrorStack())
@@ -26,16 +26,26 @@ func SafeExitOnError(args ...interface{}) {
 
 // IgnoreError : use this function in defer statement to ignore a particular error.
 func IgnoreError(expectedError interface{}) {
-	if x := recover(); x != nil && x != expectedError {
-		panic(x)
+	if x := recover(); x != nil {
+		e, CheckingError := expectedError.(error)
+		xe, FoundError := x.(error)
+		if CheckingError && FoundError && errors.Is(xe, e) || x == expectedError {
+			return
+		} else {
+			panic(x)
+		}
 	}
 }
 
 // CatchError : use this in defer to catch a certain error.
 func CatchError(err interface{}, handler func()) {
 	if x := recover(); x != nil {
-		if x == err {
-			handler()
+		e, CheckingError := err.(error)
+		xe, FoundError := x.(error)
+		if CheckingError && FoundError && errors.Is(xe, e) || x == err {
+			if handler != nil {
+				handler()
+			}
 		} else {
 			panic(x)
 		}
@@ -54,7 +64,6 @@ func Must(args ...interface{}) interface{} {
 	switch l {
 	case 1:
 		return nil
-	//nolint:gomnd
 	case 2:
 		return args[0]
 	}

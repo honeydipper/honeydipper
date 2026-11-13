@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/go-redis/redismock/v8"
-	"github.com/honeydipper/honeydipper/v3/drivers/pkg/redisclient"
-	"github.com/honeydipper/honeydipper/v3/pkg/dipper"
+	"github.com/honeydipper/honeydipper/v4/drivers/pkg/redisclient"
+	"github.com/honeydipper/honeydipper/v4/pkg/dipper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,7 +27,6 @@ func testStartDriver(t *testing.T, service string, i *io.PipeReader, o *io.PipeW
 	go func() {
 		assert.NotPanics(t, main, "driver main should not panic")
 		close(done)
-		driver = nil
 	}()
 
 	return done
@@ -60,8 +59,17 @@ func TestLoadDriver(t *testing.T) {
 	reply := dipper.FetchRawMessage(outbuf)
 	assert.Equal(t, "state", reply.Channel, "reply channel should be state")
 	assert.Equal(t, "alive", reply.Subject, "reply subject should be alive")
-	_, exists := dipper.GetMapData(driver.Options, "data.connection.Password")
-	assert.False(t, exists, "Password should be removed from the driver options")
+
+	// loadOptions() runs in a separate goroutine and deletes Password via a
+	// deferred call inside GetRedisOpts. The "alive" reply is sent from that
+	// same goroutine, but there is no memory-synchronisation barrier between
+	// it and this goroutine. Poll until the deletion is visible rather than
+	// checking immediately after receiving "alive".
+	assert.Eventually(t, func() bool {
+		_, exists := dipper.GetMapData(driver.Options, "data.connection.Password")
+
+		return !exists
+	}, 30*time.Second, time.Millisecond*100, "Password should be removed from the driver options")
 	assert.NotNil(t, redisOptions, "redisOptions should not be nil afterwards")
 
 	driver.State = dipper.DriverStateCompleted
@@ -79,6 +87,13 @@ func TestOperatorRelayToRedis(t *testing.T) {
 	outbuf, o := io.Pipe()
 
 	done := testStartDriver(t, "operator", i, o)
+
+	// Set up mock expectations before "start" so subscriber goroutines find them immediately.
+	mock.MatchExpectationsInOrder(false)
+	mock.ExpectBLPop(time.Second, "honeydipper:commands").SetVal([]string{})
+	mock.ExpectBLPop(time.Second, "honeydipper:agent_command").SetVal([]string{})
+	mock.ExpectRPush("honeydipper:events", `{"data":"{\"foo\":\"bar\"}","labels":{"from":"`+dipper.GetIP()+`"}}`).SetVal(1)
+
 	dipper.SendMessage(inbuf, &dipper.Message{
 		Channel: "command",
 		Subject: "options",
@@ -104,10 +119,6 @@ func TestOperatorRelayToRedis(t *testing.T) {
 
 	driver.State = dipper.DriverStateCompleted
 
-	mock.MatchExpectationsInOrder(false)
-	mock.ExpectBLPop(time.Second, "honeydipper:commands").SetVal([]string{})
-	mock.ExpectRPush("honeydipper:events", `{"data":"{\"foo\":\"bar\"}","labels":{"from":"`+dipper.GetIP()+`"}}`).SetVal(1)
-
 	dipper.SendMessage(inbuf, &dipper.Message{
 		Channel: "eventbus",
 		Subject: "message",
@@ -115,8 +126,66 @@ func TestOperatorRelayToRedis(t *testing.T) {
 			"foo": "bar",
 		},
 	})
-	time.Sleep(time.Millisecond * 100)
-	assert.NoError(t, mock.ExpectationsWereMet(), "mock redis expectations not met")
+
+	assert.Eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	}, 30*time.Second, time.Millisecond*100, "mock redis expectations not met")
+	inbuf.Close()
+	<-done
+}
+
+func TestEngineRelayEventToRedis(t *testing.T) {
+	db, mock := redismock.NewClientMock()
+	redisOptionsMock = &redisclient.Options{Client: db}
+
+	i, inbuf := io.Pipe()
+	outbuf, o := io.Pipe()
+
+	done := testStartDriver(t, "engine", i, o)
+	// Set up mock expectations before "start" so subscriber goroutines find them immediately.
+	mock.MatchExpectationsInOrder(false)
+	mock.ExpectBLPop(time.Second, "honeydipper:events").SetVal([]string{})
+	mock.ExpectBLPop(time.Second, "honeydipper:return").SetVal([]string{})
+	mock.ExpectBLPop(time.Second, "honeydipper:agent_workflow").SetVal([]string{})
+	mock.ExpectBLPop(time.Second, "honeydipper:agent_response").SetVal([]string{})
+	mock.ExpectRPush("honeydipper:events", `{"data":"{\"events\":[\"demo.event\"]}","labels":{"from":"`+dipper.GetIP()+`"}}`).SetVal(1)
+
+	dipper.SendMessage(inbuf, &dipper.Message{
+		Channel: "command",
+		Subject: "options",
+		Payload: map[string]interface{}{
+			"data": map[string]interface{}{
+				"connection": map[string]interface{}{
+					"Addr":     "1.1.1.1:6379",
+					"Username": "nouser",
+					"Password": "123",
+					"DB":       "2",
+				},
+			},
+		},
+	})
+	dipper.SendMessage(inbuf, &dipper.Message{
+		Channel: "command",
+		Subject: "start",
+	})
+
+	reply := dipper.FetchRawMessage(outbuf)
+	assert.Equal(t, "state", reply.Channel, "reply channel should be state")
+	assert.Equal(t, "alive", reply.Subject, "reply subject should be alive")
+
+	driver.State = dipper.DriverStateCompleted
+
+	dipper.SendMessage(inbuf, &dipper.Message{
+		Channel: "eventbus",
+		Subject: "message",
+		Payload: map[string]interface{}{
+			"events": []string{"demo.event"},
+		},
+	})
+
+	assert.Eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	}, 30*time.Second, time.Millisecond*100, "mock redis expectations not met")
 	inbuf.Close()
 	<-done
 }
@@ -131,6 +200,12 @@ func TestOperatorEmit(t *testing.T) {
 	outbuf, o := io.Pipe()
 
 	done := testStartDriver(t, "operator", i, o)
+
+	// Set up mock expectations before "start" so subscriber goroutines find them immediately.
+	mock.MatchExpectationsInOrder(false)
+	mock.ExpectBLPop(time.Second, "honeydipper:agent_command").SetVal([]string{})
+	mock.ExpectBLPop(time.Second, "honeydipper:commands").SetVal([]string{"honeydipper:command", `{"labels": {"from": "1.1.1.1"}, "data": {"foo": "bar"}}`})
+
 	dipper.SendMessage(inbuf, &dipper.Message{
 		Channel: "command",
 		Subject: "options",
@@ -155,15 +230,13 @@ func TestOperatorEmit(t *testing.T) {
 	assert.Equal(t, "alive", reply.Subject, "reply subject should be alive")
 	driver.State = "completed"
 
-	mock.MatchExpectationsInOrder(false)
-	mock.ExpectBLPop(time.Second, "honeydipper:commands").SetVal([]string{"honeydipper:command", `{"labels": {"from": "1.1.1.1"}, "data": {"foo": "bar"}}`})
-
 	reply = dipper.FetchRawMessage(outbuf)
 	assert.Equal(t, "eventbus", reply.Channel, "reply channel should be state")
 	assert.Equal(t, "command", reply.Subject, "reply subject should be alive")
 
-	time.Sleep(time.Millisecond * 100)
-	assert.NoError(t, mock.ExpectationsWereMet(), "mock redis expectations not met")
+	assert.Eventually(t, func() bool {
+		return mock.ExpectationsWereMet() == nil
+	}, 30*time.Second, time.Millisecond*100, "mock redis expectations not met")
 
 	inbuf.Close()
 	<-done
