@@ -152,6 +152,7 @@ workflows:
 
 The switch expression supports interpolation, so you can use go templates or path interpolation:
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -167,6 +168,7 @@ workflows:
     default:
       call_workflow: log_only
 ```
+<!-- {% endraw %} -->
 
 You can nest `switch` within `steps` or other complex actions for multi-level branching:
 
@@ -204,6 +206,7 @@ To enable caching for a workflow:
 
 To cache data from your workflow, you need to explicitly place it in `cache-data`:
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -216,6 +219,7 @@ workflows:
           cache-data:
             deployment_status: $ctx.status
 ```
+<!-- {% endraw %} -->
 
 In this example, the `deployment_status` is placed inside `cache-data`, so it will be cached. When the same `cache_key` is requested again within the TTL period, the workflow will return the cached data without executing the `kubernetes.get_deployment_status` function.
 
@@ -251,7 +255,7 @@ logical cache object whose fields are populated independently.
 
 The caching mode is selected by the presence and position of `#` in the key:
 
- - **Normal key** (for example `myapp:data:{{ .ctx.key }}` &mdash; no `#`): behaves
+ - **Normal key** (for example <!-- {% raw %} -->`myapp:data:{{ .ctx.key }}`<!-- {% endraw %} --> &mdash; no `#`): behaves
    exactly as described above. The entry is stored and read as a single value
    via the `cache` `save`/`load` RPCs, and is additionally held in the
    in-memory memcache. *This mode is unchanged by the hash feature.*
@@ -566,6 +570,7 @@ Workflows can export data back to the parent context or to the triggering event'
 
 #### Export Examples
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -585,6 +590,7 @@ workflows:
           status: "error"
           error_detail: $ctx.error
 ```
+<!-- {% endraw %} -->
 
 #### Blocking Exports
 
@@ -619,6 +625,7 @@ workflows:
 
 The `*` suffix on export keys marks data that should be cached. When a cached workflow executes, data in keys ending with `*` is stored in the cache:
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -630,6 +637,7 @@ workflows:
       - export:
           result*: $ctx.fetched_data
 ```
+<!-- {% endraw %} -->
 
 When the cache is hit, the cached data is exported with the `*` suffix, and the `from_cache` label is set to `"true"`.
 
@@ -650,6 +658,7 @@ Since the data are received in that particular order listed above, the later sou
 Pay attention to the example `retry_func_count_with_exp_backoff` in the previous section. In order to not contaminate parent context with temporary fields, we use `no_export` to block the exporting of certain fields. For example,
 
 The `with` field in the workflow can be a map or a list of maps. If it is a map, each key defines a variable. If it is a list of maps, each map is a layer. The layers are processed in the order they appear. The variables defined in previous layer can be used to define values in later layers.
+<!-- {% raw %} -->
 ```yaml
 ---
 call_workflow: something
@@ -662,6 +671,7 @@ with:
     foo+:
       - another bar
 ```
+<!-- {% endraw %} -->
 
 The final value for `var3` will be `initial value, val2`, and the final value of list `foo` will contain both `bar` and `another bar`.
 

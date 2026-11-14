@@ -142,13 +142,15 @@ workflows:
 
 ### *\* Backslash escape mechanism
 
-In some cases, you may need to prevent Honeydipper from interpreting special prefixes like `{{` or `$`. You can use a backslash `\` as an escape mechanism. When a string starts with a backslash followed by a prefix, Honeydipper will strip the backslash and return the rest of the string as-is without any interpolation.
+In some cases, you may need to prevent Honeydipper from interpreting special prefixes like <!-- {% raw %} -->`{{`<!-- {% endraw %} --> or `$`. You can use a backslash `\` as an escape mechanism. When a string starts with a backslash followed by a prefix, Honeydipper will strip the backslash and return the rest of the string as-is without any interpolation.
 
 For example:
+<!-- {% raw %} -->
 ```yaml
 # This will be rendered as "{{ .ctx.value }}" without being interpolated
 escaped_value: \{{ .ctx.value }}
 ```
+<!-- {% endraw %} -->
 
 ### *$* Referencing context data with given path
 
