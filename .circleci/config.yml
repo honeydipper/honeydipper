@@ -36,6 +36,217 @@ commands:
           paths:
             - /go/pkg/mod
 
+  publish-image-steps:
+    description: >-
+      Build and publish the immutable Linux/amd64 image for an already-published
+      GitHub release, then record the digest as evidence. Shared by the
+      in-pipeline publisher (publish-image-release) and the manual recovery job
+      (publish-image). The caller owns `checkout` and any workspace attachment.
+    steps:
+      - run:
+          name: Resolve release tag and immutable release source
+          command: |
+            set -eu
+
+            # The tag reaches this job ONLY through REQUESTED_RELEASE_TAG (a
+            # recovery pipeline parameter) or the workspace file written by the
+            # semantic-release job. `BASH_ENV`, job `environment` and step
+            # outputs are all job-local and never cross a job boundary.
+            release_tag="${REQUESTED_RELEASE_TAG:-}"
+            if [ -z "$release_tag" ] && [ -s "$RELEASE_TAG_FILE" ]; then release_tag="$(cat "$RELEASE_TAG_FILE")"; fi
+            if [ -z "$release_tag" ]; then
+              echo "no release created in this pipeline; nothing to publish"
+              # `step halt` skips the remaining steps and marks this job green,
+              # but it does NOT terminate the running script, so it must be
+              # followed immediately by `exit 0` -- nothing meaningful below it.
+              circleci-agent step halt
+              exit 0
+            fi
+
+            if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+              echo "release_tag must be a semantic version tag prefixed with v" >&2
+              exit 1
+            fi
+
+            # The "stable only" rule is scoped to the 3.x maintenance line, the
+            # one channel it was written for: a v3 release tag is never a
+            # prerelease, so a dash there means the wrong channel resolved.
+            # `dev` legitimately publishes `v4.0.0-dev.N`, so the unscoped form
+            # of this check (correct on `v3`, where it lives in this same command
+            # unscoped) would refuse dev's own release tags.
+            case "$release_tag" in
+              v3.*)
+                case "$release_tag" in
+                  *-*)
+                    echo "v3 releases are stable only; refusing prerelease-shaped tag: $release_tag" >&2
+                    exit 1
+                    ;;
+                esac
+                ;;
+            esac
+
+            # This job has its own checkout: resolve the tag from the remote
+            # explicitly instead of relying on a tag fetch done elsewhere.
+            git fetch --force --tags origin
+            if ! git show-ref --verify --quiet "refs/tags/$release_tag"; then
+              echo "release tag does not exist: $release_tag" >&2
+              exit 1
+            fi
+
+            release_commit="$(git rev-list -n 1 "refs/tags/$release_tag")"
+            git checkout --detach "$release_commit"
+            test "$(git rev-parse HEAD)" = "$release_commit"
+            curl --fail --silent --show-error \
+              "https://api.github.com/repos/honeydipper/honeydipper/releases/tags/$release_tag" \
+              >/dev/null
+
+            image_tag="${release_tag#v}"
+            printf 'export RELEASE_TAG=%q\n' "$release_tag" >> "$BASH_ENV"
+            printf 'export RELEASE_COMMIT=%q\n' "$release_commit" >> "$BASH_ENV"
+            printf 'export IMAGE_TAG=%q\n' "$image_tag" >> "$BASH_ENV"
+            printf 'export IMAGE_REF=%q\n' "$IMAGE_REPOSITORY:$image_tag" >> "$BASH_ENV"
+      - run:
+          name: Refuse to overwrite a published tag
+          command: |
+            set -eu
+
+            status="$(curl --silent --show-error --output /tmp/dockerhub-tag.json \
+              --write-out '%{http_code}' \
+              "https://hub.docker.com/v2/repositories/$IMAGE_REPOSITORY/tags/$IMAGE_TAG")"
+            case "$status" in
+              404)
+                ;;
+              200)
+                echo "Docker Hub tag already exists: $IMAGE_REF" >&2
+                exit 1
+                ;;
+              *)
+                echo "Docker Hub tag lookup returned HTTP $status" >&2
+                exit 1
+                ;;
+            esac
+      - run:
+          name: Validate Docker Hub credentials
+          command: |
+            set -eu
+            test -n "${DOCKERHUB_ACCOUNT:-}" || {
+              echo "DOCKERHUB_ACCOUNT is not configured" >&2
+              exit 1
+            }
+            test -n "${DOCKERHUB_TOKEN:-}" || {
+              echo "DOCKERHUB_TOKEN is not configured" >&2
+              exit 1
+            }
+      - setup_remote_docker:
+          version: default
+          docker_layer_caching: true
+      - run:
+          name: Build release image
+          no_output_timeout: 60m
+          command: |
+            docker build --progress=plain --platform=linux/amd64 \
+              --build-arg "GOINSTALLOPTS=${GOINSTALLOPTS:-}" \
+              --build-arg "GOGC=${GOGC:-}" \
+              --build-arg "HD_VERSION=$RELEASE_TAG" \
+              --label "org.opencontainers.image.revision=$RELEASE_COMMIT" \
+              --label "org.opencontainers.image.version=$IMAGE_TAG" \
+              --tag "$IMAGE_REF" \
+              --file build/docker/Dockerfile \
+              .
+      - run:
+          name: Publish release image
+          no_output_timeout: 30m
+          command: |
+            set -eu
+            printf '%s' "$DOCKERHUB_TOKEN" | \
+              docker login --username "$DOCKERHUB_ACCOUNT" --password-stdin
+            docker push "$IMAGE_REF"
+      - run:
+          name: Record immutable image evidence
+          command: |
+            set -eu
+            docker pull "$IMAGE_REF"
+            digest="$(docker image inspect --format '{{ index .RepoDigests 0 }}' "$IMAGE_REF")"
+            os="$(docker image inspect --format '{{ .Os }}' "$IMAGE_REF")"
+            architecture="$(docker image inspect --format '{{ .Architecture }}' "$IMAGE_REF")"
+            case "$digest" in
+              "$IMAGE_REPOSITORY@sha256:"*)
+                ;;
+              *)
+                echo "published image has no immutable repository digest" >&2
+                exit 1
+                ;;
+            esac
+
+            mkdir -p /tmp/release-evidence
+            {
+              printf 'release_tag=%s\n' "$RELEASE_TAG"
+              printf 'commit=%s\n' "$RELEASE_COMMIT"
+              printf 'image=%s\n' "$IMAGE_REF"
+              printf 'digest=%s\n' "$digest"
+              printf 'platform=%s/%s\n' "$os" "$architecture"
+            } | tee /tmp/release-evidence/image.txt
+      - run:
+          name: Assert no 3.x release holds GitHub Latest
+          command: |
+            set -eu
+
+            # This command is shared with the recovery job, which can also be
+            # run from `main`, so keep the Latest assertion branch-agnostic:
+            # only the 3.x maintenance line asserts anything here. On `dev` the
+            # step is a no-op twice over -- dev publishes prereleases, which
+            # never take "Latest", and a `v4.0.0-dev.N` tag does not match the
+            # `v3.*` guard below.
+            case "$RELEASE_TAG" in
+              v3.*) ;;
+              *)
+                echo "not a 3.x release ($RELEASE_TAG); skipping the Latest assertion"
+                exit 0
+                ;;
+            esac
+
+            # Deliberately AFTER the image is published and evidenced: a
+            # `makeLatest` regression must go red without withholding the
+            # already-published image, which would strand the release with no
+            # image at all and force a recovery run.
+            latest_url=https://api.github.com/repos/honeydipper/honeydipper/releases/latest
+            if ! latest_json="$(curl --fail --silent --show-error "$latest_url")"; then
+              echo "could not read $latest_url; the Latest policy cannot be verified" >&2
+              exit 1
+            fi
+            tag_name_matches="$(printf '%s\n' "$latest_json" | grep -c '"tag_name":' || true)"
+            if [ "$tag_name_matches" != "1" ]; then
+              echo "expected exactly one tag_name in the latest-release response, got $tag_name_matches" >&2
+              exit 1
+            fi
+            latest_tag="$(printf '%s\n' "$latest_json" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')"
+            if [ -z "$latest_tag" ]; then
+              echo "could not read the tag_name of the latest GitHub release" >&2
+              exit 1
+            fi
+
+            # Fail on ANY 3.x release holding the slot, not only on this run's
+            # tag. A comparison against $RELEASE_TAG alone catches the theft
+            # event but waves through the standing deviation, where an *earlier*
+            # 3.x release holds "Latest" and every subsequent 3.x release would
+            # pass while the maintenance line still owned the slot (see section 2
+            # of docs/release-process.md).
+            case "$latest_tag" in
+              v3.*)
+                echo "REGRESSION: a maintenance release holds GitHub Latest ($latest_tag); v4 must hold it" >&2
+                echo "this run published $RELEASE_TAG; re-point the Latest flag at v4.0.0 with the one-off PATCH in docs/release-process.md (never by re-tagging)" >&2
+                exit 1
+                ;;
+            esac
+            echo "GitHub latest release is $latest_tag, not a 3.x release -- correct"
+      - run:
+          name: Remove registry credentials
+          when: always
+          command: docker logout || true
+      - store_artifacts:
+          path: /tmp/release-evidence
+          destination: release-evidence
+
 jobs:
   install:
     <<: *defaults
@@ -210,11 +421,59 @@ jobs:
             npm ls -g --depth=0 2>/dev/null || true
             printf 'all pins verified\n'
       - run:
+          name: Record pre-release HEAD
+          command: |
+            set -eu
+
+            # This job is the only one that can answer "did this run release
+            # anything?". Record HEAD before semantic-release; the
+            # `Determine published tag` step compares it after. The tag file
+            # starts EMPTY so a no-release run halts the publish job green
+            # instead of republishing the previous tag.
+            mkdir -p /tmp/release
+            : > /tmp/release/release-tag.txt
+            git rev-parse HEAD > /tmp/release/head-before
+      - run:
+          name: semantic-release
           # --no-install: never silently download a different semantic-release
           command: npx --no-install semantic-release
           environment:
             DEBUG: semantic-release:get-commits
+      - run:
+          name: Determine published tag
+          command: |
+            set -eu
+
+            # The git plugin pushed the tag from this job, but resolve it
+            # against the remote anyway so a partial push can never be mistaken
+            # for a release. The guard exits 1 (loudly, writing nothing) if HEAD
+            # advanced without a matching tag -- see build/ci/write-release-tag.sh.
+            #
+            # Glob: `dev` publishes prereleases only, so it resolves
+            # prerelease-shaped tags only (`v*-*`). The stable `v4.0.0` tag
+            # already sits on dev's own history (commit 0fe9343), and a stable
+            # tag must never be selected for republication from the beta
+            # channel. This job definition also serves `semantic-release-main`
+            # -- and after the dev -> main promotion this file IS main's -- where
+            # releases are stable (`v4.0.1`), so main keeps the general glob;
+            # hard-coding `v*-*` for both would fail every post-promotion stable
+            # release at this step, after its tag and GitHub release already
+            # existed.
+            tag_glob='v*'
+            if [ "${CIRCLE_BRANCH:-}" = "dev" ]; then tag_glob='v*-*'; fi
+            git fetch --force --tags origin
+            bash build/ci/write-release-tag.sh \
+              /tmp/release/head-before \
+              /tmp/release/release-tag.txt \
+              "$tag_glob"
+      - persist_to_workspace:
+          root: /tmp/release
+          paths:
+            - release-tag.txt
   publish-image:
+    # RECOVERY ONLY. A parameter-triggered recovery pipeline has no upstream
+    # workspace, so this job deliberately does NOT attach one -- attaching would
+    # fail the job. It resolves the tag from the `release_tag` parameter alone.
     docker:
       - image: cimg/base:2026.09
     resource_class: large
@@ -225,125 +484,26 @@ jobs:
     environment:
       IMAGE_REPOSITORY: honeydipper/honeydipper
       REQUESTED_RELEASE_TAG: << parameters.release_tag >>
+      RELEASE_TAG_FILE: /tmp/release/release-tag.txt
     steps:
       - checkout
-      - run:
-          name: Resolve immutable release source
-          command: |
-            set -eu
-
-            release_tag="${REQUESTED_RELEASE_TAG:-${CIRCLE_TAG:-}}"
-            if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-              echo "release_tag must be a semantic version tag prefixed with v" >&2
-              exit 1
-            fi
-
-            git fetch --force --tags origin
-            if ! git show-ref --verify --quiet "refs/tags/$release_tag"; then
-              echo "release tag does not exist: $release_tag" >&2
-              exit 1
-            fi
-
-            release_commit="$(git rev-list -n 1 "refs/tags/$release_tag")"
-            git checkout --detach "$release_commit"
-            test "$(git rev-parse HEAD)" = "$release_commit"
-            curl --fail --silent --show-error \
-              "https://api.github.com/repos/honeydipper/honeydipper/releases/tags/$release_tag" \
-              >/dev/null
-
-            image_tag="${release_tag#v}"
-            printf 'export RELEASE_TAG=%q\n' "$release_tag" >> "$BASH_ENV"
-            printf 'export RELEASE_COMMIT=%q\n' "$release_commit" >> "$BASH_ENV"
-            printf 'export IMAGE_TAG=%q\n' "$image_tag" >> "$BASH_ENV"
-            printf 'export IMAGE_REF=%q\n' "$IMAGE_REPOSITORY:$image_tag" >> "$BASH_ENV"
-      - run:
-          name: Refuse to overwrite a published tag
-          command: |
-            set -eu
-
-            status="$(curl --silent --show-error --output /tmp/dockerhub-tag.json \
-              --write-out '%{http_code}' \
-              "https://hub.docker.com/v2/repositories/$IMAGE_REPOSITORY/tags/$IMAGE_TAG")"
-            case "$status" in
-              404)
-                ;;
-              200)
-                echo "Docker Hub tag already exists: $IMAGE_REF" >&2
-                exit 1
-                ;;
-              *)
-                echo "Docker Hub tag lookup returned HTTP $status" >&2
-                exit 1
-                ;;
-            esac
-      - run:
-          name: Validate Docker Hub credentials
-          command: |
-            set -eu
-            test -n "${DOCKERHUB_ACCOUNT:-}" || {
-              echo "DOCKERHUB_ACCOUNT is not configured" >&2
-              exit 1
-            }
-            test -n "${DOCKERHUB_TOKEN:-}" || {
-              echo "DOCKERHUB_TOKEN is not configured" >&2
-              exit 1
-            }
-      - setup_remote_docker:
-          version: default
-          docker_layer_caching: true
-      - run:
-          name: Build release image
-          no_output_timeout: 60m
-          command: |
-            docker build --progress=plain --platform=linux/amd64 \
-              --build-arg "GOINSTALLOPTS=${GOINSTALLOPTS:-}" \
-              --build-arg "GOGC=${GOGC:-}" \
-              --build-arg "HD_VERSION=$RELEASE_TAG" \
-              --label "org.opencontainers.image.revision=$RELEASE_COMMIT" \
-              --label "org.opencontainers.image.version=$IMAGE_TAG" \
-              --tag "$IMAGE_REF" \
-              --file build/docker/Dockerfile \
-              .
-      - run:
-          name: Publish release image
-          no_output_timeout: 30m
-          command: |
-            set -eu
-            printf '%s' "$DOCKERHUB_TOKEN" | \
-              docker login --username "$DOCKERHUB_ACCOUNT" --password-stdin
-            docker push "$IMAGE_REF"
-      - run:
-          name: Record immutable image evidence
-          command: |
-            set -eu
-            docker pull "$IMAGE_REF"
-            digest="$(docker image inspect --format '{{ index .RepoDigests 0 }}' "$IMAGE_REF")"
-            os="$(docker image inspect --format '{{ .Os }}' "$IMAGE_REF")"
-            architecture="$(docker image inspect --format '{{ .Architecture }}' "$IMAGE_REF")"
-            case "$digest" in
-              "$IMAGE_REPOSITORY@sha256:"*)
-                ;;
-              *)
-                echo "published image has no immutable repository digest" >&2
-                exit 1
-                ;;
-            esac
-
-            mkdir -p /tmp/release-evidence
-            {
-              printf 'release_tag=%s\n' "$RELEASE_TAG"
-              printf 'commit=%s\n' "$RELEASE_COMMIT"
-              printf 'image=%s\n' "$IMAGE_REF"
-              printf 'digest=%s\n' "$digest"
-              printf 'platform=%s/%s\n' "$os" "$architecture"
-            } | tee /tmp/release-evidence/image.txt
-      - run:
-          name: Remove registry credentials
-          when: always
-          command: docker logout || true
-      - store_artifacts:
-          path: /tmp/release-evidence
-          destination: release-evidence
+      - publish-image-steps
+  publish-image-release:
+    # Publishes the image for the tag THIS pipeline just released. Runs inside
+    # the release workflow, so one approval covers the release and its image and
+    # nothing depends on a tag-triggered pipeline surviving (the release race).
+    docker:
+      - image: cimg/base:2026.09
+    resource_class: large
+    environment:
+      IMAGE_REPOSITORY: honeydipper/honeydipper
+      RELEASE_TAG_FILE: /tmp/release/release-tag.txt
+    steps:
+      # Attach BEFORE checkout: the tag crosses jobs only through this workspace.
+      - attach_workspace:
+          at: /tmp/release
+      - checkout
+      - publish-image-steps
 
 workflows:
   version: 2
@@ -398,16 +558,27 @@ workflows:
           filters:
             branches:
               only: dev
-  publish_release_image:
-    jobs:
-      - publish-image:
-          name: publish-image-tag
+      # The image publishes inline, so `approve-dev-release` is the single
+      # approval for both the release and its image: nothing has to survive a
+      # tag-triggered pipeline. With no release in this pipeline the job halts
+      # green and publishes nothing.
+      - publish-image-release:
           context: honeydipper
+          requires:
+            - semantic-release-dev
           filters:
             branches:
-              ignore: /.*/
-            tags:
-              only: /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/
+              only: dev
+
+  publish_release_image:
+    jobs:
+      # RECOVERY ONLY. The inline publisher (publish-image-release) lives in the
+      # `release` workflow above; this workflow survives solely for the
+      # `release_tag` parameter path. It is deliberately NOT gated behind an
+      # approval job: supplying release_tag is itself the operator's manual
+      # authorization, and the job cannot mutate a released artifact. The branch
+      # filter stays `dev`/`main` -- dev's own recovery checkout -- and does not
+      # gain v3's branch list.
       - publish-image:
           name: publish-image-recovery
           context: honeydipper
