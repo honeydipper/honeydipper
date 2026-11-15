@@ -44,11 +44,24 @@
 # The last stdout line is always machine readable on success: `TAG=` or
 # `TAG=<tag>`.  Everything else -- including all diagnostics -- goes to stderr.
 #
+# Input validation
+# ----------------
+# <head-before-file> must hold a FULL lowercase commit sha: 40 characters for a
+# SHA-1 repository, 64 for SHA-256.  Anything else is rejected (exit 1) before
+# any git query, because a short sha -- `git rev-parse --short HEAD`, 7 chars by
+# default -- can never equal the full sha that HEAD resolves to.  Unchecked, it
+# would make the "HEAD unchanged" comparison fail every time: a no-op
+# re-approval would be misread as a release, and the *previous* release's tag
+# (still sitting at an unchanged HEAD) would be written out with exit 0 -- the
+# exact false release this script exists to prevent.  Fail loudly instead.
+#
 # Guarantees
 # ----------
 #   * no network access; read-only git (`git rev-parse`, `git tag --points-at`)
 #   * <output-file> is the only file written
 #   * idempotent: same inputs -> identical <output-file> contents
+#   * never guesses: any input it cannot trust is a hard failure, and a failure
+#     never writes (or truncates) <output-file> and never prints `TAG=`
 #
 # Portability
 # -----------
@@ -69,7 +82,14 @@ usage_line() {
     "$prog" "$default_head_before" "$default_output" "$default_glob"
 }
 
-die_usage() { # die_usage <reason> -- one line on stderr, exit 1
+die() { # die <reason> -- one line on stderr, exit 1 (runtime failure)
+  # for "the world is not what we assumed" (no git repo, no HEAD, broken tag
+  # invariant).  No usage text: the caller did not get an argument wrong.
+  printf '%s: %s\n' "$prog" "$1" >&2
+  exit 1
+}
+
+die_usage() { # die_usage <reason> -- die, plus the usage line (bad input/args)
   printf '%s: %s -- ' "$prog" "$1" >&2
   usage_line >&2
   exit 1
@@ -102,10 +122,21 @@ case "$recorded" in
     ;;
 esac
 
-git rev-parse --git-dir >/dev/null 2>&1 || die_usage 'not inside a git repository'
+# Length matters as much as the charset: a *short* sha is pure hex, so it passes
+# the case above, but it can never equal the full sha HEAD resolves to.  Left
+# unchecked it would turn every no-op run into "HEAD advanced" and publish the
+# previous release's tag -- see "Input validation" in the header.
+case "${#recorded}" in
+  40 | 64) ;;
+  *)
+    die_usage "head-before file holds a ${#recorded}-character sha, not a full commit sha -- record \`git rev-parse HEAD\`, never \`git rev-parse --short HEAD\`: $head_before_file"
+    ;;
+esac
+
+git rev-parse --git-dir >/dev/null 2>&1 || die 'not inside a git repository'
 
 if ! current="$(git rev-parse --verify HEAD 2>/dev/null)"; then
-  die_usage 'cannot resolve HEAD (no commit checked out?)'
+  die 'cannot resolve HEAD (no commit checked out?)'
 fi
 
 mkdir -p -- "$(dirname -- "$output_file")"
@@ -121,9 +152,7 @@ fi
 tag="$(git tag --points-at HEAD --list "$tag_glob" | sort -V | tail -n 1)"
 
 if [ -z "$tag" ]; then
-  printf '%s: FATAL: HEAD advanced %s -> %s but no tag matching %s points at it -- concurrent push during release?\n' \
-    "$prog" "$recorded" "$current" "$tag_glob" >&2
-  exit 1
+  die "FATAL: HEAD advanced $recorded -> $current but no tag matching $tag_glob points at it -- concurrent push during release?"
 fi
 
 printf '%s\n' "$tag" > "$output_file"

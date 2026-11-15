@@ -61,13 +61,16 @@ expect() { # expect <what> <actual> <expected> -- aborts the current case
 # fixtures
 # ---------------------------------------------------------------------------
 
-repo_init() { # repo_init <dir>
-  mkdir -p "$1"
-  git -C "$1" init --quiet
-  git -C "$1" config user.email "release-tag-test@example.com"
-  git -C "$1" config user.name "release tag test"
-  git -C "$1" config commit.gpgsign false
-  git -C "$1" config tag.gpgsign false
+repo_init() { # repo_init <dir> [extra `git init` args]
+  local dir
+  dir="$1"
+  shift
+  mkdir -p "$dir"
+  git -C "$dir" init --quiet "$@"
+  git -C "$dir" config user.email "release-tag-test@example.com"
+  git -C "$dir" config user.name "release tag test"
+  git -C "$dir" config commit.gpgsign false
+  git -C "$dir" config tag.gpgsign false
 }
 
 make_commit() { # make_commit <repo> <message> -- echoes the new commit sha
@@ -261,12 +264,16 @@ t5_usage_errors() {
   expect 'T5 empty head-before diagnostic' \
     "$(printf '%s' "$RUN_ERR" | grep -c 'head-before file is empty')" '1'
 
-  # not a git repository
+  # not a git repository -- a runtime failure, so it must NOT read as a usage
+  # error (no usage string appended), unlike the bad-input cases above
   printf '%s\n' '0123456789abcdef0123456789abcdef01234567' >"$empty"
   run_guard "$nogit" "$empty" "$out"
   expect 'T5 not-a-repo exit code' "$RUN_RC" 1
   expect 'T5 not-a-repo diagnostic' \
     "$(printf '%s' "$RUN_ERR" | grep -c 'not inside a git repository')" '1'
+  expect 'T5 not-a-repo is one line' "$(line_count "$RUN_ERR")" '1'
+  expect 'T5 runtime failure carries no usage text' \
+    "$(printf '%s' "$RUN_ERR" | grep -c 'usage:')" '0'
 
   expect 'T5 nothing written' "$(test -e "$out" && echo present || echo absent)" 'absent'
 }
@@ -443,6 +450,88 @@ t11_highest_version_wins() {
   expect 'T11 output file content' "$(cat "$out")" 'v3.10.10'
 }
 
+# T12 -- a short (or otherwise wrong-length) sha in the head-before file must be
+# rejected, never compared.  `git rev-parse --short HEAD` prints pure hex, so the
+# charset check alone lets it through; a 7-char sha can never equal the full sha
+# HEAD resolves to, so this no-op run would be misread as "HEAD advanced" and the
+# PREVIOUS release tag (still sitting at the unchanged HEAD) would be written with
+# exit 0 -- the exact false release the guard exists to prevent.  Fail loudly.
+t12_short_sha_in_head_before_is_rejected() {
+  local repo hb out absent a short bad
+
+  repo="$tmp_root/t12"
+  hb="$tmp_root/t12.head-before"
+  out="$tmp_root/t12.tag"
+  absent="$tmp_root/t12.absent.tag"
+  repo_init "$repo"
+  a="$(make_commit "$repo" 'feat: one')"
+  git -C "$repo" tag v3.10.6 "$a" # HEAD carries the previous release tag
+  short="$(git -C "$repo" rev-parse --short HEAD)"
+  printf 'sentinel\n' >"$out"
+
+  # THE false-release scenario: short sha recorded, HEAD unchanged, old tag on HEAD
+  record "$repo" "$hb" "$short"
+  run_guard "$repo" "$hb" "$out"
+  expect 'T12 short sha exit code' "$RUN_RC" 1
+  expect 'T12 no TAG= line on stdout' "$(printf '%s' "$RUN_OUT" | grep -c '^TAG=')" '0'
+  expect 'T12 previous release tag not written' "$(cat "$out")" 'sentinel'
+  expect 'T12 short sha is one line' "$(line_count "$RUN_ERR")" '1'
+  expect 'T12 short sha names the offending length' \
+    "$(printf '%s' "$RUN_ERR" | grep -c "holds a ${#short}-character sha")" '1'
+  expect 'T12 short sha names the cause' \
+    "$(printf '%s' "$RUN_ERR" | grep -c 'git rev-parse --short HEAD')" '1'
+  expect 'T12 short sha carries usage' \
+    "$(printf '%s' "$RUN_ERR" | grep -c 'usage: write-release-tag.sh')" '1'
+
+  # off-by-one lengths (39 and 41) are rejected the same way, and a failing run
+  # must not create a missing output file either
+  for bad in "$(printf '%s' "$a" | cut -c1-39)" "${a}0"; do
+    record "$repo" "$hb" "$bad"
+    run_guard "$repo" "$hb" "$absent"
+    expect 'T12 off-by-one length exit code' "$RUN_RC" 1
+    # pattern deliberately does not start with '-' (BusyBox grep would read it
+    # as an option): it still pins the length diagnostic specifically
+    expect 'T12 off-by-one length diagnostic' \
+      "$(printf '%s' "$RUN_ERR" | grep -c 'character sha, not a full commit sha')" '1'
+  done
+  expect 'T12 nothing written on failure' \
+    "$(test -e "$absent" && echo present || echo absent)" 'absent'
+}
+
+# T13 -- the length check accepts both git object formats: in a SHA-256
+# repository the recorded sha is 64 characters, and the re-approval no-op still
+# works (a check hard-coded to 40 would reject a perfectly valid file).
+t13_sha256_repository_accepted() {
+  local repo hb out a
+
+  repo="$tmp_root/t13"
+  hb="$tmp_root/t13.head-before"
+  out="$tmp_root/t13.tag"
+  if ! repo_init "$repo" --object-format=sha256 2>/dev/null; then
+    printf '  note: this git cannot create SHA-256 repositories, case skipped\n'
+    return 0
+  fi
+  a="$(make_commit "$repo" 'feat: one')"
+  git -C "$repo" tag v3.10.6 "$a"
+  record "$repo" "$hb" "$a"
+
+  expect 'T13 fixture really is SHA-256' "${#a}" '64'
+
+  # the no-release path: full 64-char sha, HEAD unchanged -> no release
+  run_guard "$repo" "$hb" "$out"
+  expect 'T13 no-release exit code' "$RUN_RC" 0
+  expect 'T13 last stdout line' "$(last_line "$RUN_OUT")" 'TAG='
+  expect 'T13 output file empty' "$(test -s "$out" && echo non-empty || echo empty)" 'empty'
+
+  # and the release path still writes the tag at the advanced HEAD
+  make_commit "$repo" 'fix: two' >/dev/null
+  git -C "$repo" tag v3.10.7
+  run_guard "$repo" "$hb" "$out"
+  expect 'T13 release exit code' "$RUN_RC" 0
+  expect 'T13 last stdout line (release)' "$(last_line "$RUN_OUT")" 'TAG=v3.10.7'
+  expect 'T13 output file content' "$(cat "$out")" 'v3.10.7'
+}
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -458,6 +547,8 @@ run_case t8_v3_glob_ignores_v4_tags
 run_case t9_dev_glob_ignores_promoted_release_tag
 run_case t10_documented_defaults_are_wired
 run_case t11_highest_version_wins
+run_case t12_short_sha_in_head_before_is_rejected
+run_case t13_sha256_repository_accepted
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 if [ "$failed" -ne 0 ]; then
