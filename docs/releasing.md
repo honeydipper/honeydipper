@@ -54,9 +54,13 @@ pushes the release commit **and** its tag) before `publish`
 (`@semantic-release/github`, which creates the GitHub release). That push used
 to start a second pipeline on `v3`; with CircleCI's "auto-cancel redundant
 workflows" enabled, the newer pipeline cancelled the still-running release
-pipeline, so for `v3.10.6` the tag was pushed but the GitHub release was never
-created. Re-running could not help: the tag was already on the remote, so
-semantic-release reported "no relevant changes".
+pipeline. Where the cancellation lands is a race nothing controls: for `v3.10.6`
+it landed *after* `publish`, one second after the tag push (tag `04:02:21`,
+release `04:02:22`), so that release exists — and, being created from the
+maintenance branch, it did not take "Latest". A slightly earlier landing loses
+the release instead, and a later one leaves the run dead before it can hand
+anything onward. Re-running cannot repair either outcome: the tag is already on
+the remote, so semantic-release reports "no relevant changes".
 
 Two changes close that window:
 
@@ -106,10 +110,14 @@ The `v3` Dockerfile does not consume that argument yet (it declares no
 is inert here — see the residuals in
 [the release process](./release-process.md#5-recorded-residuals).
 
-After the image is published and evidenced, one more step asserts that the
-release did **not** become the repository's "Latest" release. It runs last on
-purpose: a flag regression must go red without withholding an image that is
-already published.
+After the image is published and evidenced, one more step asserts that **no
+`v3.*` release holds the repository's "Latest" release** — this run's tag and any
+earlier 3.x release alike, so a standing deviation cannot slip through. It runs
+last on purpose: a flag regression must go red without withholding an image that
+is already published. While the deviation recorded in
+[the release process](./release-process.md#2-channels-the-prerelease-flag-and-the-latest-policy)
+stands, `v3` releases end red at this step *after* their image is published; that
+red is the prompt to run the one-off repair, not a publishing failure.
 
 ## Recovering a missing image
 

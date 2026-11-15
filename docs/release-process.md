@@ -68,21 +68,44 @@ Three layers enforce it, in order of strength:
    without it). It therefore adds no behavior today and becomes load-bearing only
    if a future pin implements it. **It must never appear on `dev` or `main`**,
    where the release line is supposed to take "Latest".
-3. **The CI assertion** — the step *"Assert this release did not take GitHub
-   Latest"*, guarded by `case "$RELEASE_TAG" in v3.*)` so the shared command stays
-   branch-agnostic (the recovery job can also run from `main`). It compares the
-   `tag_name` of `/releases/latest` with the tag that was just published and
-   fails if they are **equal**. It runs *after* "Record immutable image evidence"
-   on purpose: a `makeLatest` regression must go red **without** withholding an
-   already-published image, which would strand the release with no image and
-   force a recovery run.
+3. **The CI assertion** — the step *"Assert no 3.x release holds GitHub Latest"*,
+   guarded by `case "$RELEASE_TAG" in v3.*)` so the shared command stays
+   branch-agnostic (the recovery job can also run from `main`). It fails when the
+   `tag_name` of `/releases/latest` matches `v3.*` **at all**, not only when it
+   equals the tag this run published. One rule, two states, both caught: the theft
+   event (`latest == $RELEASE_TAG`) and the standing deviation below, where an
+   *earlier* 3.x release holds the slot — a self-comparison would wave that
+   through on every subsequent 3.x release. It runs *after* "Record immutable
+   image evidence" on purpose: a `makeLatest` regression must go red **without**
+   withholding an already-published image, which would strand the release with no
+   image and force a recovery run.
 
-**Current live deviation, repaired by hand, not by CI.** At the time of writing,
-`/releases/latest` resolves to **`v3.10.6`**, not `v4.0.0`. That release was
-created by hand during the `v3.10.6` incident (the pipeline was cancelled before
-its `publish` step), and a hand-created release is non-prerelease and defaults to
-`make_latest: true`. The layers above prevent the *next* v3 release from repeating
-that, but they do not undo it. Re-point the pointer explicitly — never by
+**Standing live deviation: `/releases/latest` resolves to `v3.10.6`, and it got
+there during the Phase 1 rehearsal — not because of the `v3.10.6` release.**
+Three facts, each checkable against the live API:
+
+1. `v3.10.6` did **not** take "Latest" when it was published. The pinned plugin
+   created that release from the `v3` maintenance branch, so it was sent with
+   `make_latest: "false"` (layer 1), and its `published_at`
+   (`2026-11-15T04:02:22Z`) matches the release pipeline log to the second
+   (tag `04:02:21`, release `04:02:22`). It was therefore created by
+   `@semantic-release/github`, **not by hand**, a second before the cancellation
+   landed. Up to that point `/releases/latest` was still `v4.0.0`.
+2. The pointer flipped to `v3.10.6` **later, inside the Phase 1 rehearsal
+   window**, almost certainly as a side effect of creating and then deleting the
+   rehearsal releases: when a release is deleted, GitHub recomputes the "Latest"
+   pointer and can land on the newest non-prerelease release **regardless of the
+   `make_latest` flag it was created with**. So the rehearsal mutated live
+   release state at the pointer level. That is recorded here plainly instead of
+   being attributed to the incident, and §5 residual 9 keeps future rehearsals
+   off the production release list.
+3. Nothing in the layers above put the pointer there, and nothing in them can
+   undo it: layers 1 and 2 govern what is *sent* when a release is created, and
+   layer 3 merely *observes* the pointer.
+
+Repair it **before** the next `v3` release. Until then, that run publishes its
+image normally and then ends **red** in layer 3 — by design, since the image must
+never be withheld over a flag. Re-point the pointer explicitly — never by
 re-tagging or re-releasing:
 
 ```bash
@@ -134,9 +157,12 @@ Use it for exactly two states:
 | Symptom | Cause | Action |
 |---|---|---|
 | **Release exists, image missing** | `publish-image-release` failed after `semantic-release-v3` succeeded | run the recovery above for that tag. It re-checks the tag, the release and the Docker Hub tag, then publishes and records `release-evidence`. |
-| **Tag without a release** | e.g. the release was cancelled after the tag push (the `v3.10.6` class of failure) | create the GitHub release for the existing tag — keeping its `prerelease`/`make_latest` flags correct, and leaving §2's "Latest" slot alone — then run the recovery for that tag. Do **not** push a new tag and do **not** move the existing one. |
+| **Tag without a release** | the release was cancelled between the tag push and the `publish` step (`v3.10.6` itself won that race — see §2 — but nothing bounds where the cancellation lands) | create the GitHub release for the existing tag — keeping its `prerelease`/`make_latest` flags correct, and leaving §2's "Latest" slot alone — then run the recovery for that tag. Do **not** push a new tag and do **not** move the existing one. |
 
-Interpreting the outcome:
+Interpreting the outcome (the recovery job runs the same
+`publish-image-steps` command as the in-pipeline publisher, so it also runs the
+layer-3 "Latest" assertion — a recovery run can therefore end red on that step
+*after* publishing, which is the §2 repair prompt, not a publication failure):
 
 | Job output | Meaning | Action |
 |---|---|---|
@@ -144,6 +170,7 @@ Interpreting the outcome:
 | `Docker Hub tag already exists: …` | the guard worked; the image was already published | nothing to repair; if you expected a new image, the tag — not the image — is wrong |
 | `Docker Hub tag lookup returned HTTP …` | Docker Hub hiccup or registry auth problem | retry; investigate only if persistent |
 | `release tag does not exist: …` | wrong tag, or it was never pushed | use the real tag |
+| `REGRESSION: a maintenance release holds GitHub Latest (…)` | layer 3: some `v3.*` release holds the repo "Latest" slot — this run's tag or an earlier one (§2) | the image **is** published; run the one-off PATCH in §2 to re-point "Latest" at `v4.0.0`, then confirm with `/releases/latest` |
 | the `curl --fail …/releases/tags/…` tripwire fails | no GitHub release for that tag | create the release first (row 2 above) |
 | `Release … does not have a GitHub release` / `404` | same as above | same |
 | `v3 releases are stable only; refusing prerelease-shaped tag: …` | a `release_tag` containing `-` was supplied | 3.x publishes stable versions only; a prerelease image must come from the channel that produced it |
@@ -205,9 +232,11 @@ Known and accepted at the time of this change:
    starts working with no further change; if a future pin *rejects* unknown
    options, the failure surfaces at the pin bump, which is rehearsed before
    merge.
-3. **`/releases/latest` currently points at `v3.10.6`**, not `v4.0.0`, because
-   that release was created by hand during the incident. This change does not
-   mutate release state; the repair is the one-off PATCH in §2.
+3. **`/releases/latest` currently points at `v3.10.6`**, as a side effect of the
+   Phase 1 rehearsal's create/delete cycle (§2) — not because any release was
+   created with `make_latest: "true"`. This change mutates no release state; the
+   repair is the one-off PATCH in §2, and until it is applied layer 3 fails every
+   `v3` release *after* publishing its image, on purpose.
 4. **`HD_VERSION` is inert on `v3`.** The build passes
    `--build-arg HD_VERSION=$RELEASE_TAG` for parity with `main`, but `v3`'s
    `build/docker/Dockerfile` declares no `ARG HD_VERSION` and the `v3` Go tree
@@ -228,3 +257,12 @@ Known and accepted at the time of this change:
 8. **`dev` and `main` still have the old shape.** Their tag-triggered
    `publish-image-tag` job and the separate `publish_release_image` publish path
    remain until the later phases of this rollout; the `v3` line is the pilot.
+   Reusing the shared `publish-image-steps` command on `dev` additionally
+   requires scoping the stable-only rejection to `v3.*` tags, because `dev`
+   legitimately publishes `v4.0.0-dev.N`; see the Phase 3 handoff note in
+   `.circleci/config.yml`.
+9. **Rehearsals must not touch the production release list.** The Phase 1
+   rehearsal created and deleted releases in `honeydipper/honeydipper` itself,
+   which moved the repository's "Latest" pointer (§2). Future rehearsals of this
+   pipeline must run against a scratch repository or fork, and any rehearsal that
+   does touch the real release list must re-check `/releases/latest` afterwards.
