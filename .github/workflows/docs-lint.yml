@@ -1,0 +1,128 @@
+---
+# Catches docs breakage before merge. Two distinct failure classes:
+#
+#   1. HARD   - an unescaped {% ... %} block tag makes the Jekyll build fail.
+#   2. SILENT - an unescaped {{ ... }} output tag keeps the build green but
+#               renders empty, silently swallowing documentation content.
+#
+# honeydipper.io is built by GitHub's own system-generated "pages build and
+# deployment" workflow from main /docs. This workflow mirrors that build so a
+# broken docs/ tree is caught on the PR instead of after merge.
+name: docs-lint
+
+on:
+  push:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs-lint.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs-lint.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  liquid-delimiters:
+    name: Liquid delimiter gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail on unescaped Liquid delimiters outside raw fences
+        run: |
+          set -uo pipefail
+          # raw / endraw markers, including whitespace-control variants
+          RAW_OPEN='\{%-?[[:space:]]*raw[[:space:]]*-?%\}'
+          RAW_CLOSE='\{%-?[[:space:]]*endraw[[:space:]]*-?%\}'
+          # the same markers wrapped in HTML comments, used for inline escaping
+          INLINE_OPEN="<!--[[:space:]]*${RAW_OPEN}[[:space:]]*-->"
+          INLINE_CLOSE="<!--[[:space:]]*${RAW_CLOSE}[[:space:]]*-->"
+
+          fail=0
+          checked=0
+          while IFS= read -r f; do
+            checked=$((checked + 1))
+            inraw=0
+            ln=0
+            while IFS= read -r line || [ -n "$line" ]; do
+              ln=$((ln + 1))
+              has_open=0
+              has_close=0
+              printf '%s' "$line" | grep -qE "$RAW_OPEN" && has_open=1
+              printf '%s' "$line" | grep -qE "$RAW_CLOSE" && has_close=1
+              if [ "$has_open" -eq 1 ] && [ "$has_close" -eq 0 ]; then
+                inraw=1
+                continue
+              fi
+              if [ "$has_close" -eq 1 ] && [ "$has_open" -eq 0 ]; then
+                inraw=0
+                continue
+              fi
+              [ "$inraw" -eq 1 ] && continue
+              # drop inline raw spans, then look for leftover delimiters
+              stripped=$(printf '%s' "$line" | sed -E "s/${INLINE_OPEN}.*${INLINE_CLOSE}//g")
+              case "$stripped" in
+                *"{{"* | *"{%"*)
+                  echo "::error file=$f,line=$ln::unescaped Liquid delimiter."
+                  echo "Wrap it in the raw/endraw HTML-comment pair; see docs/documenting.md."
+                  fail=1
+                  ;;
+              esac
+            done < "$f"
+          done < <(git ls-files docs | grep -E '\.(md|markdown|html)$')
+
+          echo "scanned $checked file(s) under docs/"
+          if [ "$fail" -ne 0 ]; then
+            echo "Docs contain Liquid delimiters that Jekyll would interpret."
+            exit 1
+          fi
+          echo "OK: no unescaped Liquid delimiters outside raw fences."
+
+  jekyll-build:
+    name: Jekyll build (Pages parity)
+    runs-on: ubuntu-latest
+    # Pinned to the builder GitHub Pages actually used for the v4.0.0 build
+    # (see the "Pull down action image" line of the pages-build-deployment log).
+    # This image bundles github-pages v232 / jekyll v3.10.0 / liquid 4.0.4.
+    container:
+      image: ghcr.io/actions/jekyll-build-pages:v1.0.13
+    env:
+      PAGES_REPO_NWO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The builder image ships no bash, so these steps must stay POSIX sh
+      # (no `set -o pipefail`, no `[[ ]]`, no process substitution).
+      - name: Build docs/ the same way GitHub Pages does
+        run: |
+          set -u
+          export HOME="${RUNNER_TEMP:-/tmp}/jekyll-home"
+          mkdir -p "$HOME"
+          rc=0
+          github-pages build \
+            --source ./docs \
+            --destination "$HOME/_site" \
+            --verbose >/tmp/jekyll-build.log 2>&1 || rc=$?
+          cat /tmp/jekyll-build.log
+          exit "$rc"
+
+      - name: Fail on Liquid warnings (silent-swallow signal)
+        if: always()
+        run: |
+          set -u
+          if [ ! -s /tmp/jekyll-build.log ]; then
+            echo "No build log produced." >&2
+            exit 1
+          fi
+          if grep -q 'Liquid Warning' /tmp/jekyll-build.log; then
+            grep 'Liquid Warning' /tmp/jekyll-build.log
+            echo "::error::Jekyll emitted Liquid warnings; these expressions likely render empty (silent content loss)."
+            exit 1
+          fi
+          echo "OK: no Liquid warnings."
