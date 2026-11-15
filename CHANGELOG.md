@@ -1,3 +1,15 @@
+## [3.10.6](https://github.com/honeydipper/honeydipper/compare/v3.10.5...v3.10.6) (2026-11-15)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-jose/go-jose/v4 to v4.1.6 [security] ([#868](https://github.com/honeydipper/honeydipper/issues/868)) ([5393b91](https://github.com/honeydipper/honeydipper/commit/5393b91873c1d9ed9f3221087869cef2a3fdfb7e))
+* **deps:** update module github.com/ollama/ollama to v0.20.3 [security] ([#869](https://github.com/honeydipper/honeydipper/issues/869)) ([5848278](https://github.com/honeydipper/honeydipper/commit/5848278eb7cad1d5068b1f11b79df4bf3688372f))
+* **deps:** update module go.opentelemetry.io/otel/sdk to v1.45.0 [security] ([#870](https://github.com/honeydipper/honeydipper/issues/870)) ([fb6e407](https://github.com/honeydipper/honeydipper/commit/fb6e407e0e887473dcc14ada8a0f38a25c47bbf3))
+* **deps:** update module go.opentelemetry.io/otel/sdk to v1.47.0 [security] ([d0c3129](https://github.com/honeydipper/honeydipper/commit/d0c312966e13d1014cc727673399387573ee0830))
+* **deps:** update module golang.org/x/crypto to v0.59.0 [security] ([#873](https://github.com/honeydipper/honeydipper/issues/873)) ([be5e916](https://github.com/honeydipper/honeydipper/commit/be5e91603b0653dbc3cdbaf24cfa3fb5ed73c12a))
+* **deps:** update module golang.org/x/net to v0.62.0 [security] ([#871](https://github.com/honeydipper/honeydipper/issues/871)) ([96cf649](https://github.com/honeydipper/honeydipper/commit/96cf649b3185fb64c79745f1e19d013f56f50e91))
+
 ## [3.10.5](https://github.com/honeydipper/honeydipper/compare/v3.10.4...v3.10.5) (2026-10-28)
 
 
