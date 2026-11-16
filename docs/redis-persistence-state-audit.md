@@ -39,10 +39,11 @@ delivery/TTL semantics. No access to a deployment host was needed or used.
 This is a documentation-only change: no Go source, no test, and no behavior is
 modified. `go build ./...`, `go test ./...` and `go vet ./...` are green. The
 only `golangci-lint run ./...` findings are two `typecheck` errors in generated
-gomock files (`*.go` under `mock_dipper` / `mock_api`) caused by the local
-linter's export-data reader being older than the Go 1.27 toolchain; they
-reproduce identically on a pristine `dev` checkout and are unrelated to this
-document.
+gomock files (`*.go` under `mock_dipper` / `mock_api`). Those are pre-existing
+and environmental: an artifact of the local lint toolchain used for this review,
+not of the Go version this project targets. They reproduce identically on a
+pristine `dev` checkout and are unrelated to this document, and CI's own
+`golangci-lint` job passes.
 
 ## 1. Redis consumer inventory
 
@@ -147,7 +148,7 @@ TTL and re-derivable from configuration.
 |---|---|---|
 | Session key (persist/continue) | 3600s | `pkg/workflow/persisted_store.go:359`, `:986`, `:1017` |
 | Convo state update | 30s | `internal/agent/convo_state.go:283` |
-| Agent turn lock | `TurnLockTimeout` (call timeout 30m) | `internal/agent/agent_session.go:165` |
+| Agent turn lock | default 1h (`AgentSessionDefaultTurnLockExpire`), overridable per agent via `TurnLockTimeout` | `internal/agent/agent_session.go:29`, `:161-163` |
 | Agent session (register/poll) | 600s | `internal/agent/agent_session.go:364`, `:419` |
 | API response candidacy | milliseconds | `internal/api/response.go:80` |
 
@@ -293,9 +294,9 @@ to have an active session that will never progress); it expires with the 720h
 ### (b) Pre-existing, not introduced by persistence: scheduler crash windows
 
 `scheduleOnce` writes the payload (`main.go:162-165`) and *then* adds the ZSET
-member (`main.go:166-169`), and `watch()` removes the member (`:82`) and then
-reads and deletes the payload in a second `EVAL`. Both orderings leave a narrow
-window:
+member (`main.go:166-169`), and `watch()` removes the member with the `ZREM`
+inside its first `EVAL` (`main.go:86`) and then reads and deletes the payload in
+a second `EVAL`. Both orderings leave a narrow window:
 
 | Window | Effect |
 |---|---|
