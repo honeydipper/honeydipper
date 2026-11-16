@@ -469,6 +469,11 @@ jobs:
             # the glob prefer dash-free tags would be hardening for a state the
             # merge-commit promotion cannot produce; it is deliberately not
             # done here (it would need its own guard test cases).
+            #
+            # Revisit the tie-break only if promotion mechanics ever change
+            # (fast-forward promotion or manual stable tagging). The same
+            # sentence is in docs/release-process.md section 16 item 5, so a
+            # search finds both.
             tag_glob='v*'
             if [ "${CIRCLE_BRANCH:-}" = "dev" ]; then tag_glob='v*-*'; fi
             git fetch --force --tags origin
