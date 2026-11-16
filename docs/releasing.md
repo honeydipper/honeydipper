@@ -142,26 +142,41 @@ publisher for exactly the tags `publish-image-release` now publishes inline, so 
 late Codefresh build could have raced or overwritten a `v3.*` image CircleCI had
 just pushed.
 
+**Status: closed.** The Codefresh admin deleted the Git-tag trigger for
+`honeydipper/honeydipper` in the Codefresh UI, so a tag push no longer starts a
+Codefresh run on this repository. Deleting the spec removed the *definition* of a
+tag-triggered image build; deleting the trigger removed the only thing that could
+still have executed it. The pipeline object itself may still be listed there and
+is now inert — nothing fires it — so removing it is tidy-up rather than a
+requirement. Trigger state is UI-side and cannot be confirmed from this
+repository, so that part of the record rests on the admin's report.
+
 What deleting the spec does, and does not, do:
 
 - **It does** remove the only in-repo definition of a tag-triggered honeydipper
   image build. No tag can reach a `dockerPushRelease` step through this
   repository.
-- **It does not** delete the Codefresh *pipeline object or its tag trigger* —
-  those live in the Codefresh UI, not in Git. Until an account admin deletes that
-  pipeline (or at minimum disables its tag trigger), a tag push still starts a
-  Codefresh run. That run is **expected** to fail at config resolution before any
-  build or push, because the release spec it named is gone — but do not rely on
-  it: the failure is expected, not guaranteed. It happens when the pipeline
-  object references its spec by repository path; a *classic* Codefresh pipeline
-  keeps its config in the pipeline object's own database, and for that shape
-  deleting the repo file changes nothing about what a triggered run executes. So
-  neither the expected early failure nor the downstream no-overwrite guard is
-  what retires the publisher — the Codefresh admin deleting the pipeline object
-  (or, at the very least, disabling its tag trigger) **is** the retirement. That
-  action closes the residual tracked in
-  [the release process](./release-process.md#62-deferred-residuals-risk-register)
-  and must happen **before the next stable tag**.
+- **It does not**, by itself, delete the Codefresh *pipeline object or its tag
+  trigger* — those live in the Codefresh UI, not in Git, so the file deletion
+  alone leaves a triggered run reachable. **That gap is now closed:** the tag
+  trigger has been deleted in the Codefresh UI (status above), so no tag push
+  starts a Codefresh run on this repository. The pipeline object may still be
+  listed there and is inert; removing it is tidy-up. This closes the residual
+  tracked in
+  [the release process](./release-process.md#62-deferred-residuals-risk-register),
+  and it landed before the next stable tag, as that residual required.
+
+  Why the repository half could not close it — worth keeping even now: a
+  triggered run was only **expected** to fail at config resolution before any
+  build or push, because the release spec it named was gone, and expected is not
+  guaranteed. It held when the pipeline object references its spec by repository
+  path; a *classic* Codefresh pipeline keeps its config in the pipeline object's
+  own database, and for that shape deleting the repo file changes nothing about
+  what a triggered run executes, so it would still build and push
+  `honeydipper/honeydipper:$CF_RELEASE_TAG` from the tagged revision. Neither the
+  expected early failure nor the downstream no-overwrite guard would have retired
+  the publisher; the trigger deletion is what did.
+
 - **It does not affect** `.codefresh/honeydipper-sphinx.yml` (documentation build
   for `honeydipper/honeydipper-sphinx`), `.codefresh/honeydipper-nightly.yml`
   (nightly branch image) or `.codefresh/honeydipper-manually.yml` (manual
