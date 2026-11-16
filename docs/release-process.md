@@ -453,10 +453,13 @@ $ gh api repos/honeydipper/honeydipper/releases/tags/v4.0.0 \
 ```
 
 The first command must print a `v4` tag. Anything else (a `v3.*` tag, or an empty response) is the
-deviation recorded in §16 item 1, with the repair deferred there. This paragraph deliberately names no
-version: the previous wording asserted that the slot "holds `v4.0.0` today", which had already
-decayed to a false statement by the time the cleanup phase started. The invariant has not changed; only
-the claim that drifted is gone.
+deviation whose repair is recorded in §16.2 item 1 — applied 2026-11-16 and verified there — and the
+fix is `make_latest` on the correct v4 release, **never** re-tagging or recreating it. If it ever
+recurs, repair it that way. This paragraph deliberately names no version: the previous wording
+asserted that the slot "holds `v4.0.0` today", which had already decayed to a false statement by the
+time the cleanup phase started. The invariant has not changed; only the claim that drifted is gone.
+The dated record of the one repair lives in §16.2 item 1 as a log entry, and is deliberately not
+restated here as a stored version, for the same reason.
 
 `publish-image-steps` carries one assertion, "Assert no 3.x release holds GitHub Latest". It is
 scoped with `case "$RELEASE_TAG" in v3.*)` because the command is shared with the recovery job, which
@@ -815,8 +818,12 @@ Known and accepted when the inline publisher landed on `dev`:
    *automatic* cancellation window.
 7. ~~**The legacy Codefresh release trigger** (`.codefresh/honeydipper-release.yml`) must still be
    disabled once the CircleCI path is accepted.~~ **Closed in Phase 5**: the tag-triggered release spec
-   is deleted, so no tag can start a Codefresh image build from this repository any more. The
-   Codefresh-side pipeline object is an operator action, tracked as §16 item 6 (§16.1).
+   is deleted, and the Codefresh-side **tag trigger** has since been deleted in the Codefresh UI as
+   well, closing §16.2 item 6. The two deletions together make it established — not merely *expected*,
+   which is all the in-repo deletion could achieve — that no tag can start a Codefresh image build from
+   this repository any more: a *classic* Codefresh pipeline runs its own stored config, so deleting the
+   file left the trigger able to build from the tagged revision (§16.2 item 6). The pipeline object
+   that may still be listed there is inert, and removing it is tidy-up rather than a requirement.
 8. **`CIRCLE_TAG` is no longer read** by the publish path: the tag arrives from the `release_tag`
    parameter or the workspace file only. **Swept in Phase 5 — zero occurrences in
    `.circleci/config.yml`**; the only hits repo-wide were these two sentences, now corrected (§16.1).
@@ -866,18 +873,20 @@ merged tree) rather than by manufacturing a commit to force a release.
 
 ### Phase 4 residuals (carried into the cleanup phase, not fixed here)
 
-1. **GitHub "Latest" deviates from the policy.** The promotion range carried no releasing commits, so
-   no new stable release was published and nothing displaced the mis-flagged maintenance release. The
-   one-off `PATCH {"make_latest":"true"}` on `v4.0.0` recorded in the v3 release process is
-   **deferred by the user** — do it as a repair, never by re-tagging or re-releasing (§7). Read the
-   pointer with §7's command rather than assuming a version; §16 item 1 records the deferral and its
-   consequence. A *future* successful stable `main` release legitimately takes "Latest" and would
-   resolve the item incidentally.
+1. ~~**GitHub "Latest" deviates from the policy.**~~ **Closed 2026-11-16** (§16.2 item 1): the
+   promotion range carried no releasing commits, so no new stable release was published and nothing
+   displaced the mis-flagged maintenance release; the one-off `PATCH {"make_latest":"true"}` on
+   `v4.0.0` that this residual deferred was later applied as a repair to the existing release object —
+   never by re-tagging or re-releasing (§7) — and §7's read now answers `v4.0.0`. Read the pointer with
+   §7's command rather than assuming a version. A *future* successful stable `main` release
+   legitimately takes "Latest" and would have resolved the item incidentally.
 2. **Empty tag pipelines** for every release commit are still created (§14 item 1); the class is a
    deferred residual, tracked as §16 item 3.
 3. ~~**The legacy Codefresh release trigger** is still enabled.~~ **Closed in Phase 5** (§14 item 7,
-   §16.1): the tag-triggered release spec is deleted. The Codefresh-side pipeline object is an
-   operator action, tracked as §16 item 6.
+   §16.1): the tag-triggered release spec is deleted, and the Codefresh-side **tag trigger** has since
+   been deleted in the Codefresh UI as well, closing §16.2 item 6 — so no tag starts a Codefresh run on
+   this repository. The pipeline object that may still be listed there is inert, and removing it is
+   tidy-up rather than a requirement.
 4. ~~**`$CIRCLE_TAG` debris** in the publish path is still unread and still unremoved.~~ **Swept in
    Phase 5**: `.circleci/config.yml` contains zero `CIRCLE_TAG` occurrences (§16.1).
 5. **`dev` is one commit ahead of the pre-promotion state and now identical to `main`.** Any future
@@ -892,7 +901,8 @@ Phase 5 is the **final** phase of this rollout. It retires the legacy publisher,
 earlier phases recorded, and makes this document stop asserting state that drifts. It **changes no
 release behaviour**: the job graph, the branch-scoped tag glob, the pinned semantic-release toolchain
 and the `build/ci/write-release-tag.sh` guard (13 cases) are untouched, and no tag or release was
-created, moved, re-flagged or deleted.
+created, moved, re-flagged or deleted. (The register below does record one later, separately approved
+release-state change — the `make_latest` repair in §16.2 item 1 — which moved no tag and no image.)
 
 The `v3` line carries its own copy of this register, because the two lines' configs have diverged by
 design (§1.4) and one PR cannot span both.
@@ -901,30 +911,57 @@ design (§1.4) and one PR cannot span both.
 
 | Change | Result |
 |---|---|
-| `.codefresh/honeydipper-release.yml` **deleted** | no in-repo definition of a tag-triggered `honeydipper/honeydipper` image build remains. A triggered Codefresh run is then *expected* to fail at config resolution, before its `dockerPushRelease` step — which is only a guarantee once the pipeline object no longer holds its own copy of the config (§16.2 item 6, `docs/releasing.md`) |
+| `.codefresh/honeydipper-release.yml` **deleted** | no in-repo definition of a tag-triggered `honeydipper/honeydipper` image build remains. A triggered Codefresh run is then *expected* to fail at config resolution, before its `dockerPushRelease` step — an expectation, not a guarantee, which is why the retirement was closed on the trigger side instead (§16.2 item 6, `docs/releasing.md`) |
 | Codefresh documented as **retired** | the release documents no longer describe a Codefresh pipeline as a publisher of release images (§14 item 7, §15 item 3) |
 | `CIRCLE_TAG` sweep | **zero** occurrences in `.circleci/config.yml`. The only hits repo-wide were the two *stale sentences in this document* claiming the debris was "still unremoved"; they are corrected here (§14 item 8, §15 item 4) |
 | deleted-job sweep | **no** surviving executable reference to `publish-image-tag`, `approve-v3-image` or `approve-dev-image`. The remaining mentions are prose that *records the deletion* (§4, §7 rule 6, §12) and must stay |
 | glob sweep | **no** branch-scoped glob on `v3`'s tree and **no** `v3.*` used as a *tag glob* here. Every `v3.*` occurrence on `dev`/`main` is either the Latest assertion's `case` scoping or the stable-only rejection — both deliberate (§7) |
-| GitHub "Latest" sentence | restated as an invariant plus a read command (§7). Nothing in this document asserts a concrete pointer value, and **nothing claims the pointer was repaired** |
+| GitHub "Latest" sentence | restated as an invariant plus a read command (§7). Nothing in this document asserts a concrete pointer value; the *repair* is recorded as a dated, verified action in §16.2 item 1 rather than asserted here as a pointer value, which is precisely what this row's rule forbids |
 | `.circleci/config.yml` | a **comment only**, inside the "Determine published tag" step: the tie-break sentence of item 5 below. No job, filter, `requires:`, command or glob changed (§1.4 records the new `dev`-only blob; `main` carries it at the follow-up promotion) |
 
 ### 16.2 Deferred residuals (risk register)
 
-Every item below is **open by decision, not by oversight**. "Deferred by user" means the operator
-chose to leave release state alone during this rollout — do not "finish" one of these on your own, and
-do not manufacture a commit to force a release that would resolve one incidentally.
+Items **1 and 6 are completed** and stay in the list so this register keeps its numbering, its anchors
+and its history; every other item is **open by decision, not by oversight**. "Deferred by user" means
+the operator chose to leave release state alone during this rollout — do not "finish" one of these on
+your own, and do not manufacture a commit to force a release that would resolve one incidentally.
 
-1. **`PATCH {"make_latest":"true"}` on `v4.0.0` — DEFERRED BY USER.**
-   *Owner*: repository admin / release operator — the identity that holds the §11 bypass role.
-   *Reason*: it mutates live release state, which this phase was explicitly told not to touch. Read the
-   current value with §7's command; the deviation's history is in the `v3` release process.
-   **Consequence while open:** the only automated Latest check is `v3.*`-scoped, so on a stable
-   `v4.0.x` release from `main` it **skips silently** — `case "$RELEASE_TAG" in v3.*)` matches nothing
-   and the step prints `not a 3.x release (…); skipping the Latest assertion` and exits green. The
-   stable channel therefore has **no automated tripwire** on the pointer: a green
-   `publish-image-release-main` proves the image was published, not that "Latest" is correct. The
-   manual check in §7 is the only control that remains until the PATCH is applied.
+1. **`PATCH {"make_latest":"true"}` on `v4.0.0` — COMPLETED 2026-11-16 (was: deferred by user).**
+   *Applied by*: the repository admin / release operator identity — the one holding the §11 bypass
+   role.
+   *The repair, as applied* — one call, on the **existing** release object (`v4.0.0`, release id
+   `444525451`), with `make_latest` as the only field in the body:
+
+   ```bash
+   curl -X PATCH \
+     -H "Authorization: token $GITHUB_TOKEN" \
+     -H "Accept: application/vnd.github+json" \
+     -H "Content-Type: application/json" \
+     -d '{"make_latest":"true"}' \
+     https://api.github.com/repos/honeydipper/honeydipper/releases/444525451
+   ```
+
+   `{"make_latest":"true"}` was the entire body: no tag, `name`, notes, asset or `published_at`
+   field, and no other release touched. **Never repair the pointer by re-tagging, by deleting and
+   recreating the release, or by setting `make_latest: "false"` on the release squatting the slot** —
+   the v4 side is the recorded direction, and the other one has murkier recomputation semantics.
+   *Verified after*: §7's read returns `tag_name: v4.0.0` — release id `444525451`,
+   `prerelease: false`, `published_at: 2026-11-13T17:31:02Z` — and the same endpoint read **without**
+   credentials returned the same tag, so this is repository state, not one token's view. Nothing else
+   drifted: the `v4.0.0` release object is identical before and after apart from latest-ness (same
+   id, tag, `created_at`, `published_at`, notes, empty asset list); `v3.10.6` is unchanged and still
+   present; all 107 tag refs carry the same SHAs (`v4.0.0` → `0fe9343`, `v3.10.6` → `1e526d0`); all
+   94 releases are identical in id/tag/draft/prerelease/dates. No tag was created, moved or deleted.
+   *Verified by replaying the guard*: the CI assertion run against the live API went from
+   `REGRESSION: a maintenance release holds GitHub Latest (v3.10.6); v4 must hold it` (**exit 1** —
+   the state before the call) to `GitHub latest release is v4.0.0, not a 3.x release -- correct`
+   (**exit 0**); the `dev`/prerelease path still prints
+   `not a 3.x release (…); skipping the Latest assertion` and exits green.
+   *Why the timing mattered*: while the deviation was open, the only automated Latest check was
+   `v3.*`-scoped, so a stable `v4.0.x` release from `main` skipped it silently and a green
+   `publish-image-release-main` proved only that the image was published, not that "Latest" was
+   correct. The pointer now satisfies the invariant; §7 step 3's **manual** check stays part of every
+   promotion, because the automated tripwire is still deliberately `v3.*`-scoped (§7).
 2. **The stable-channel build/push/evidence path has never executed — DEFERRED BY USER.**
    *Owner*: release operator. Only the **halt** path has ever run on `main` (pipeline 4888: the
    promotion range carried no releasing commit ⇒ `no release created in this pipeline; nothing to
@@ -963,18 +1000,26 @@ do not manufacture a commit to force a release that would resolve one incidental
    is a fixed 13-case suite and was not touched). **Revisit the tie-break only if promotion mechanics
    ever change (fast-forward promotion or manual stable tagging).** The same sentence sits in the
    `.circleci/config.yml` "Determine published tag" comment, so a search finds both.
-6. **The Codefresh pipeline object and its Git-tag trigger still exist in the Codefresh UI.**
-   *Owner*: Codefresh account admin. *Reason*: the pipeline and its trigger live outside this
-   repository, so no commit can remove them. A tag push still starts a Codefresh run; the in-repo
-   deletion removes the release spec, and such a run is **expected** to fail at config resolution
-   before any `build`/`push` step.
-   **This is an expectation, not a guarantee, and no safety argument may rest on it.** It holds only
-   if the pipeline object references its spec by repository path. A *classic* Codefresh pipeline
-   stores its config in the pipeline object's own database, so for that shape deleting the repo file
-   changes nothing about what a triggered run executes — it would still build and push
-   `honeydipper/honeydipper:$CF_RELEASE_TAG` from the tagged revision. And even in the
-   repo-path case, do not treat a downstream failure as protection: the thing being relied on would be
-   a run failing *early*, not an image remaining unbuilt.
-   The retirement therefore closes in the Codefresh UI — delete the pipeline object, or at minimum
-   disable its Git-tag trigger after confirming which shape it is — and that must happen **before the
-   next stable tag**.
+6. **The Codefresh pipeline object and its Git-tag trigger — the trigger is DELETED (2026-11-16); the
+   object's own removal is optional tidy-up, not a requirement.**
+   The Codefresh account admin deleted the **Git-tag trigger** for `honeydipper/honeydipper` in the
+   Codefresh UI, so a tag push no longer starts a Codefresh run on this repository. Deleting the
+   in-repo spec (§16.1) removed the *definition* of a tag-triggered image build; deleting the trigger
+   removed the only thing that could still have executed it. Both landed **before the next stable
+   tag** — the newest stable release at the time of this entry is still `v4.0.0` — so the publisher is
+   retired.
+   **What remains, stated honestly:** the pipeline **object** may still be listed in the Codefresh UI.
+   It is now inert — nothing fires it — so removing it outright is tidy-up, and no safety argument
+   depends on its absence.
+   **What this entry does not claim:** the trigger state is **UI-side and cannot be verified from this
+   repository**, so this records an operator's report, not a read this document can reproduce. It
+   also covers *this* repository's tag trigger only: the group's other Codefresh pipelines
+   (`.codefresh/honeydipper-sphinx.yml`, `honeydipper-nightly.yml`, `honeydipper-manually.yml`) and
+   their trigger wiring have **not** been audited here — see `docs/releasing.md`.
+   *Why the in-repo half alone was not enough* — kept so the reasoning survives the fix: a triggered
+   run was only **expected** to fail at config resolution, never guaranteed to, because a *classic*
+   Codefresh pipeline keeps its config in the pipeline object's own database, and for that shape
+   deleting the repo file changed nothing about what a triggered run executes — it would still have
+   built and pushed `honeydipper/honeydipper:$CF_RELEASE_TAG` from the tagged revision. That is why
+   the closing action was the trigger deletion rather than the file deletion, and why no safety
+   argument may rest on a downstream failure instead.
