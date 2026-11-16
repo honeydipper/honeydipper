@@ -103,8 +103,10 @@ repos:
 
 ### Load-time templates
 
+<!-- {% raw %} -->
 Every config file is processed through a Go template engine before being parsed as YAML. The template delimiters are `{%` and `%}` (instead
 of the usual `{{` and `}}`, which are reserved for run-time interpolation). The following data is available inside load-time templates:
+<!-- {% endraw %} -->
 
 | Variable | Description |
 |---|---|
@@ -123,6 +125,7 @@ precedence on conflict) and passed down to repo C.
 
 Example: conditionally loading content based on an option passed by the parent repo.
 
+<!-- {% raw %} -->
 ```yaml
 {%- if .options.enable_feature_x %}
 systems:
@@ -131,6 +134,7 @@ systems:
       foo: bar
 {%- end %}
 ```
+<!-- {% endraw %} -->
 
 ## Drivers
 
@@ -594,6 +598,7 @@ is preserved).
 
 Context variables are available in the `ctx` namespace for interpolation within workflows:
 
+<!-- {% raw %} -->
 ```yaml
 ---
 workflows:
@@ -602,6 +607,7 @@ workflows:
     with:
       message: "Running in {{ .ctx.notify_pipeline | default 'default' }} mode"
 ```
+<!-- {% endraw %} -->
 
 For a complete list of contextual data sources and interpolation methods, see the [Workflow Composing Guide](./workflow.md#contextual-data).
 

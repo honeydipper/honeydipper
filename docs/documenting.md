@@ -7,6 +7,7 @@
 - [Document a Workflow](#document-a-workflow)
 - [Document an Agent](#document-an-agent)
 - [Formatting](#formatting)
+- [Writing Liquid-safe docs](#writing-liquid-safe-docs)
 - [Building](#building)
 - [Publishing](#publishing)
 
@@ -308,3 +309,92 @@ In order to including your document in the Honeydipper community repo section of
     ```
  2. modify the `docgen/docgen.yaml` to add your repo under the `repos` section
  3. submit a PR
+
+## Writing Liquid-safe docs
+
+The `docs/` directory is published by GitHub Pages, which runs **every file
+through Liquid** before Markdown conversion. So <!-- {% raw %} -->`{%`<!-- {% endraw %} --> and <!-- {% raw %} -->`{{`<!-- {% endraw %} --> are
+not free text here &mdash; not even inside a fenced code block.
+
+There are two failure classes, and only one of them makes any noise:
+
+| Delimiter | Failure mode | What you see |
+|---|---|---|
+| <!-- {% raw %} -->`{%`<!-- {% endraw %} --> ... <!-- {% raw %} -->`%}`<!-- {% endraw %} --> | **hard error** | The Pages build fails and the site is not updated at all. |
+| <!-- {% raw %} -->`{{`<!-- {% endraw %} --> ... <!-- {% raw %} -->`}}`<!-- {% endraw %} --> | **silent** | The build passes, the expression renders empty, and your text simply disappears. |
+
+The whitespace-control variants &mdash; <!-- {% raw %} -->`{%-`<!-- {% endraw %} -->, <!-- {% raw %} -->`-%}`<!-- {% endraw %} -->, <!-- {% raw %} -->`{{-`<!-- {% endraw %} -->,
+<!-- {% raw %} -->`-}}`<!-- {% endraw %} --> &mdash; are the same delimiters and behave identically.
+
+Because the second class keeps the build green, **a passing build is not proof
+that the page renders correctly**. GitHub Pages will happily publish a page
+with holes in it.
+
+### The convention already in use
+
+Wrap the literal example in the `raw` / `endraw` HTML-comment pair. Put the
+opening comment on the line above the fenced block and the closing comment on
+the line below it; both are HTML comments, so they are invisible in the
+rendered page but perfectly visible in the source on GitHub:
+
+<!-- {% raw %} -->
+```yaml
+{%- if .options.enable_feature_x %}
+systems:
+  feature_x:
+    data:
+      foo: bar
+{%- end %}
+```
+<!-- {% endraw %} -->
+
+For an inline mention, wrap just the code span:
+
+    Use <!-- {% raw %} -->`{{ .ctx.value }}`<!-- {% endraw %} --> to interpolate a value.
+
+This is established practice, not a new invention &mdash; it is already used
+throughout [interpolation.md](./interpolation.md), [workflow.md](./workflow.md),
+[configuration.md](./configuration.md) and [developer.md](./developer.md).
+
+### What needs escaping
+
+  * block tags: <!-- {% raw %} -->`{%`<!-- {% endraw %} --> ... <!-- {% raw %} -->`%}`<!-- {% endraw %} -->, including <!-- {% raw %} -->`{%-`<!-- {% endraw %} --> ... <!-- {% raw %} -->`-%}`<!-- {% endraw %} -->
+  * output tags: <!-- {% raw %} -->`{{`<!-- {% endraw %} --> ... <!-- {% raw %} -->`}}`<!-- {% endraw %} -->, including <!-- {% raw %} -->`{{-`<!-- {% endraw %} --> ... <!-- {% raw %} -->`-}}`<!-- {% endraw %} -->
+  * GitHub Actions expressions such as <!-- {% raw %} -->`${{ github.sha }}`<!-- {% endraw %} --> &mdash; Liquid only sees the inner
+    <!-- {% raw %} -->`{{ ... }}`<!-- {% endraw %} -->, so these need the same treatment
+
+### What does not work: a backslash
+
+A backslash does **not** escape anything for Liquid. This line still parses as
+a Liquid output tag, emits a warning, and renders only the backslash:
+
+<!-- {% raw %} -->
+```yaml
+escaped_value: \{{ .ctx.value }}
+```
+<!-- {% endraw %} -->
+
+That is worth knowing because Honeydipper itself uses a leading backslash as an
+escape mechanism &mdash; the two are unrelated. Wrap the example in the `raw` /
+`endraw` pair if you need to show a backslash escape; the rendered page then
+shows the literal text, which is exactly what documentation needs.
+
+### The check that guards this
+
+`.github/workflows/docs-lint.yml` runs whenever a pull request or a push
+touches `docs/`, and does two things:
+
+  1. a real Jekyll build of `docs/` using the **same builder image and gem
+     versions as GitHub Pages**, so the check cannot go green while Pages goes
+     red; and
+  2. a delimiter gate that fails on <!-- {% raw %} -->`{%`<!-- {% endraw %} --> or <!-- {% raw %} -->`{{`<!-- {% endraw %} --> left outside a `raw`
+     fence, which is the only way to catch the silent class before merge.
+
+Known limits:
+
+  * the delimiter gate is a static check &mdash; it proves an example will not be
+    eaten by Liquid, not that the example is *correct*;
+  * the pinned builder image can drift from whatever GitHub Pages uses later,
+    so the pin has to be revisited when Pages upgrades;
+  * link checking is deliberately not part of the gate: it says nothing about
+    swallowed content and would only add flaky external dependencies.
