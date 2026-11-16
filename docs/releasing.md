@@ -54,6 +54,23 @@ no release created in this pipeline; nothing to publish
 That is a no-op, not a failure, and it never reaches the
 `Refuse to overwrite a published tag` guard.
 
+## Cutting a stable release (promotion)
+
+`main` has **no approval gate**: the promotion itself is the trigger. Push the `--no-ff` merge commit
+(`chore(release): promote dev to main`, no skip-CI token anywhere in its message — see
+[Release Process §1.4](./release-process.md#14-main-is-promotion-only)) and the `release` workflow runs
+
+1. `semantic-release-main` — creates the tag, the GitHub release and the changelog commit;
+2. `publish-image-release-main` — `requires: [semantic-release-main]`, publishes the image inline from
+   the workspace file the release job wrote, so a promotion never leaves a GitHub release with no
+   image.
+
+Both steps are the same jobs (and the same command) `dev` uses; only the branch filter and the
+`requires:` target differ. A promotion whose carried commits contain no releasing type (only
+`ci`/`chore`/`docs`) releases nothing: `semantic-release-main` reports no relevant changes and the
+publish job halts green with `no release created in this pipeline; nothing to publish`. Confirm that
+with a dry run of the merged tree instead of adding a commit to force a release.
+
 ## Why the release pipeline publishes its own image
 
 `semantic-release` runs `prepare` (`@semantic-release/git`, which commits and

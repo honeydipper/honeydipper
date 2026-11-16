@@ -459,6 +459,16 @@ jobs:
             # hard-coding `v*-*` for both would fail every post-promotion stable
             # release at this step, after its tag and GitHub release already
             # existed.
+            #
+            # `sort -V` inside the guard ranks a prerelease ABOVE its stable
+            # counterpart (`v4.0.1-dev.1` > `v4.0.1`), so IF a prerelease tag
+            # and a stable tag ever pointed at the same release commit, the
+            # general glob would hand the prerelease to the publisher. That is
+            # unreachable on `main`: the release commit is created BY the
+            # release, on `main`, so no `dev` tag can already sit on it. Making
+            # the glob prefer dash-free tags would be hardening for a state the
+            # merge-commit promotion cannot produce; it is deliberately not
+            # done here (it would need its own guard test cases).
             tag_glob='v*'
             if [ "${CIRCLE_BRANCH:-}" = "dev" ]; then tag_glob='v*-*'; fi
             git fetch --force --tags origin
@@ -569,6 +579,24 @@ workflows:
           filters:
             branches:
               only: dev
+      # `main` (the stable channel) publishes its image with the SAME job, from
+      # the SAME workspace file, inline in its own release pipeline. Without
+      # this instance `main` would create a GitHub release and publish no image
+      # -- the exact failure mode the inline publisher exists to eliminate,
+      # reintroduced on the channel that ships.
+      #
+      # Two instances, one per branch, instead of one widened filter: each
+      # requires its OWN semantic-release job, and a `requires:` list cannot
+      # vary by branch. `main` is un-gated by design, so this job is the last
+      # step of a promotion's pipeline.
+      - publish-image-release:
+          name: publish-image-release-main
+          context: honeydipper
+          requires:
+            - semantic-release-main
+          filters:
+            branches:
+              only: main
 
   publish_release_image:
     jobs:

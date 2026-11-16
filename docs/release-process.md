@@ -125,15 +125,16 @@ toolchain / CI hardening ──► v3 (authoritative for 3.x)   # never copied b
   lands on the line that owns it (`v3` for 3.x, `dev` for v4) and reaches `main` only by promotion.
 - Promotion is a **merge commit, not a PR**: `dev` → `main`, performed once per promotion, so
   `main`'s history contains a single recorded promotion point instead of a PR trail.
-- **`dev` and `main` are expected to diverge while Phase 3 lands.** Before the Phase 3 change-set they
-  were byte-identical for the two files it touches; that change-set moves `dev` to the inline release
-  publisher and **does not touch `main`** (it is promotion-only, so nothing may be edited there
-  directly). The promotion in Phase 4 restores identity.
+- **`dev` and `main` were expected to diverge while Phase 3 landed.** Before the Phase 3 change-set
+  they were byte-identical for the two files it touches; that change-set moved `dev` to the inline
+  release publisher and **did not touch `main`** (it is promotion-only, so nothing may be edited there
+  directly). The Phase 4 promotion merged `dev` into `main` and restored identity — and it also added
+  the `main`-side publisher instance (§4), so the config blob it landed is not the Phase 3 one.
 
-  | File | Before Phase 3 (`dev` == `main`) | After Phase 3 (`dev` only) |
-  |---|---|---|
-  | `.circleci/config.yml` | `b81ebbb1f1edd21c65ba105e379ee75549b6cb4e` | `68f85fedb6cee7e5c0f1076ab6575eef167b0f77` |
-  | `.releaserc` | `2da501cf8be5a5d8aa19e3bb1e0dc5117d8f3172` | `48b3d777021ce4330572969b16762f400e9491f7` |
+  | File | Before Phase 3 (`dev` == `main`) | After Phase 3 (`dev` only) | After Phase 4 promotion (`dev` == `main`) |
+  |---|---|---|---|
+  | `.circleci/config.yml` | `b81ebbb1f1edd21c65ba105e379ee75549b6cb4e` | `68f85fedb6cee7e5c0f1076ab6575eef167b0f77` | `f103c57fe5616a10b449629f363d70c6eb292861` |
+  | `.releaserc` | `2da501cf8be5a5d8aa19e3bb1e0dc5117d8f3172` | `48b3d777021ce4330572969b16762f400e9491f7` | `48b3d777021ce4330572969b16762f400e9491f7` |
 
   Drift check — run it before and after any change to either file, and again at promotion:
 
@@ -147,8 +148,9 @@ toolchain / CI hardening ──► v3 (authoritative for 3.x)   # never copied b
 
   Before the promotion the `cmp` lines must **differ** (that is the recorded drift) and `main`'s two
   blobs must still be the "before" column. After the promotion both `git rev-parse` lines must print
-  the same blob twice, equal to the "after" column. A `main` blob that differs from the "before"
-  column *before* the promotion means someone edited `main` directly — stop and investigate.
+  the same blob twice, equal to the "after phase 4" column. A `main` blob that differs from the
+  "before" column *before* the promotion means someone edited `main` directly — stop and investigate.
+  Post-promotion the drift check is the guard that `main` has not been edited on its own since.
 
 - `v3` is expected to **diverge** from `dev`/`main` here, by design: no `dev` branch entry,
   `makeLatest: false`, the `v3.*` tag glob and the unscoped stable-only rejection. Do not "fix" that
@@ -276,6 +278,20 @@ The same shape is live on `v3` (its own `approve-v3-release`, `semantic-release-
 `publish-image-release`); the old `approve-v3-image` gate was deleted with the tag-triggered publish
 job. `main` has no approval gate at all, by design: it is the product line and is released by
 promotion (§1.4).
+
+`main` publishes inline too, as a **second instance of the same job**:
+
+| Step | CircleCI job | Branch | Gate |
+|---|---|---|---|
+| 1 | `semantic-release-main` | `main` | none — the promotion push is the trigger |
+| 2 | `publish-image-release-main` | `main` | `requires: [semantic-release-main]` |
+
+It is a separate instance rather than one widened filter because each instance must require its
+**own** semantic-release job and a `requires:` list cannot vary by branch. Both instances run the same
+`publish-image-steps` command and read the same workspace file, so a promotion that releases publishes
+its image from the identical, already-tagged commit. Without that instance `main` would create a
+GitHub release and publish **no image** — the failure mode the inline publisher exists to eliminate,
+reintroduced on the channel that ships.
 
 How the tag crosses from step 2 to step 3, and why that is the only way:
 
@@ -650,8 +666,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 4. The merge commit / squash message contains **no** skip-CI directive (otherwise no pipeline runs —
    §4, `docs/releasing.md`).
 5. `approve-dev-release` approval granted by the release operator — **once**, for release *and* image.
-6. For a **promotion** PR: the base is `main`, set explicitly with `--base main` (§1.2) — GitHub
-   would otherwise default it to `dev`, the integration branch.
+6. For a **promotion**: there is no PR — it is a `--no-ff` merge commit pushed to `main` (§1.4). Its
+   message carries **no** skip-CI directive either (item 4), and it uses the `chore` type so the
+   merge commit itself contributes no bump. Should a promotion ever be done as a PR, its base is
+   `main`, set explicitly with `--base main` (§1.2) — GitHub would otherwise default it to `dev`,
+   the integration branch.
 
 **After releasing on `dev`**
 
@@ -752,9 +771,10 @@ Known and accepted when the inline publisher landed on `dev`:
    `[skip ci]` suppresses the *branch-push* pipeline, not the tag push. With `publish-image-tag`
    deleted, those pipelines contain no jobs. They are debris to be cleaned up in the final phase;
    nothing depends on them, and they no longer sit behind an approval gate (§7 rule 6).
-2. **`dev` and `main` diverge until the promotion.** `main` is promotion-only, so this change-set
-   touches `dev` only; `main`'s blobs stay at the "before" column of the §1.4 table until the
-   promotion merges `dev` into `main`. Do not "sync" either file by hand in between.
+2. **`dev` and `main` diverged until the promotion.** `main` is promotion-only, so this change-set
+   touched `dev` only; `main`'s blobs stayed at the "before" column of the §1.4 table until the
+   promotion merged `dev` into `main`. Do not "sync" either file by hand in between. **Resolved by
+   the Phase 4 promotion — see §15.**
 3. **`dev` publishes prereleases, so it never becomes GitHub "Latest".** The v3-scoped assertion in
    `publish-image-steps` is a no-op for every `dev` release — it skips, which is the design, not a
    gap: `dev` releases must not hold the slot (`v4.0.0` does, see §7).
@@ -785,3 +805,53 @@ Known and accepted when the inline publisher landed on `dev`:
 11. **Rehearsals must not touch the production release list.** Use a scratch repository or fork; any
     rehearsal that does touch the real release list must re-check `/releases/latest` afterwards
     (creating and deleting releases can move the pointer).
+
+---
+
+## 15. Phase 4: the promotion (`dev` → `main`)
+
+The promotion that lands the inline publisher on the stable channel, recorded so the mechanics do not
+have to be re-derived:
+
+- **One `--no-ff` merge commit**, message `chore(release): promote dev to main`, parents = the
+  pre-promotion `main` head and the `dev` head. Never a fast-forward (a fast-forward would leave no
+  recorded promotion point) and never a PR (§1.4). The `chore` type is deliberate: the merge commit
+  itself contributes no bump, so the release is computed from the range since the last `main` release.
+- **The merge message carries no skip-CI directive** (no bracketed token, not in the subject and not in
+  the body). CircleCI skips any pipeline whose head commit message contains it, which would mean the
+  promotion silently released nothing — §4 and `docs/releasing.md` describe the same trap for PR
+  merge messages. Verify with `git log -1 --format=%B` before pushing.
+- **The tree that was pushed is the tree that was tested**: `circleci config validate`/`process`,
+  `yamllint`, `shellcheck build/ci/*.sh`, the guard suite (13/13) and the guard fixture matrix for both
+  channels were all run on the exact commit `dev` pointed at, not on a rehearsal branch.
+- **The promotion closed the `main`-side publish gap** by adding `publish-image-release-main` (§4).
+  The `dev` instance is untouched and resolves identically; the branch-scoped tag glob is preserved
+  (§14 item 4).
+- **`dev` was not deleted, `v3` was not touched, no tag was moved, recreated or deleted** (§7 rules
+  2–3). The only refs that changed are `dev` (one commit ahead: the publisher instance + these docs)
+  and `main` (one merge commit ahead).
+
+The merge-commit shape has one consequence worth stating: after a promotion, `main`'s history contains
+`dev`'s commits **plus** the promotion merge, so `v4.0.0` is still the last `main` release and the next
+`main` release version is computed over every carried commit since it. A promotion whose carried range
+holds only `ci`/`chore`/`docs` commits therefore releases nothing — semantic-release reports
+`There are no relevant changes, so no new version is released.` and `publish-image-release-main` halts
+green with `no release created in this pipeline; nothing to publish` (§4). That is a correct no-op, not
+a failed promotion; confirm it with a dry run (`npx --no-install semantic-release --dry-run` on the
+merged tree) rather than by manufacturing a commit to force a release.
+
+### Phase 4 residuals (carried into the cleanup phase, not fixed here)
+
+1. **GitHub "Latest" still reads `v3.10.6`.** The promotion range carried no releasing commits, so no
+   new stable release was published and nothing displaced the mis-flagged maintenance release. The
+   one-off `PATCH {"make_latest":"true"}` on `v4.0.0` recorded in the v3 release process is still
+   **open**; do it as a repair, never by re-tagging or re-releasing (§7). A *future* successful stable
+   `main` release legitimately takes "Latest" and would resolve the item incidentally.
+2. **Empty tag pipelines** for every release commit are still created (§14 item 1) — debris for the
+   cleanup phase.
+3. **The legacy Codefresh release trigger** is still enabled and must be disabled before the next real
+   tag (§14 item 7, `docs/releasing.md`).
+4. **`$CIRCLE_TAG` debris** in the publish path is still unread and still unremoved (§14 item 8).
+5. **`dev` is one commit ahead of the pre-promotion state and now identical to `main`.** Any future
+   `dev` work diverges again and needs the next promotion; the §1.4 drift check is what detects an
+   accidental direct edit to `main` in between.
