@@ -19,8 +19,9 @@ context:
 - `DOCKERHUB_TOKEN`: an organization-owned, repository-scoped token that can push
   `honeydipper/honeydipper`.
 
-The legacy Codefresh registry integration does not expose a reusable credential
-or credential-name convention, so the CircleCI path introduces the two above.
+The retired Codefresh registry integration never exposed a reusable credential or
+credential-name convention, which is why the CircleCI path carries its own two
+inputs.
 Prefer a Docker Hub organization access token with image-push permission for
 only `honeydipper/honeydipper`. If the organization cannot issue one, use a
 dedicated service account rather than a personal maintainer account.
@@ -155,12 +156,61 @@ Publishing an image is not a deployment. Update deployment configuration in a
 separate reviewed change, pin the immutable digest, and verify the live digest
 and application behavior after rollout.
 
-## Codefresh migration
+## Codefresh retirement (closed)
 
-Disable the legacy Codefresh release trigger, which runs
-`.codefresh/honeydipper-release.yml`, once the CircleCI path is accepted. Do not
-leave both publishers active for future tags because a late Codefresh build
-could overwrite an image that CircleCI already published.
+The legacy Codefresh release pipeline — `.codefresh/honeydipper-release.yml`, a
+Git-tag-triggered build that pushed `honeydipper/honeydipper:$CF_RELEASE_TAG`
+from the tagged revision — has been **deleted**. It was a second, uncoordinated
+publisher for exactly the tags CircleCI now publishes from the release pipeline,
+so once the stable channel started publishing inline
+(`publish-image-release-main`) it stopped being cosmetic: a late Codefresh build
+could have raced or overwritten an image CircleCI had just pushed.
 
-The trigger is retired in the cleanup phase of this rollout; until then, do not
-tag a release while both publishers are enabled.
+What deleting the spec does, and does not, do:
+
+- **It does** remove the only in-repo definition of a tag-triggered honeydipper
+  image build. No tag can reach a `dockerPushRelease` step through this
+  repository.
+- **It does not** delete the Codefresh *pipeline object or its tag trigger* —
+  those live in the Codefresh UI, not in Git. Until an account admin deletes that
+  pipeline (or at minimum disables its tag trigger), a tag push still starts a
+  Codefresh run. That run is **expected** to fail at config resolution before any
+  build or push, because the release spec it named is gone — but do not rely on
+  it: the failure is expected, not guaranteed. It happens when the pipeline
+  object references its spec by repository path; a *classic* Codefresh pipeline
+  keeps its config in the pipeline object's own database, and for that shape
+  deleting the repo file changes nothing about what a triggered run executes. So
+  neither the expected early failure nor the downstream no-overwrite guard is
+  what retires the publisher — the Codefresh admin deleting the pipeline object
+  (or, at the very least, disabling its tag trigger) **is** the retirement. That
+  action closes the residual tracked in
+  [the release process](./release-process.md#162-deferred-residuals-risk-register)
+  and must happen **before the next stable tag**.
+- **It does not affect** `.codefresh/honeydipper-sphinx.yml` (documentation build
+  for `honeydipper/honeydipper-sphinx`), `.codefresh/honeydipper-nightly.yml`
+  (nightly branch image) or `.codefresh/honeydipper-manually.yml` (manual
+  branch image). None of the three builds a `honeydipper/honeydipper` image from
+  a tag trigger, so none can collide with a CircleCI release image.
+
+One of those specs still deserves a read rather than a skim, because "pushes no
+release tag" would be too strong a claim. `.codefresh/honeydipper-sphinx.yml`
+consumes the Codefresh variable `CF_RELEASE_TAG`, and its last two steps are
+
+<!-- {% raw %} -->
+```text
+git checkout -b ${{CF_RELEASE_TAG}}
+git push -u --force update ${{CF_RELEASE_TAG}}
+```
+<!-- {% endraw %} -->
+
+which write a release-named ref into **`honeydipper/honeydipper-sphinx` only** —
+a branch there, not a tag and not an image — so the sphinx pipeline cannot
+collide with a release image or a release tag in `honeydipper/honeydipper`. The
+`CF_RELEASE_TAG` usage is also circumstantial evidence that the sphinx pipeline
+*is* tag-triggered; which trigger actually fires it, like the pipeline object
+above, can only be confirmed in the Codefresh UI.
+
+Do not reintroduce a tag-triggered image publisher: the image is published by
+`publish-image-release` / `publish-image-release-main` inside the release
+pipeline, and a second publisher would fire for every release *in addition to*
+it (see [Release Process §7](./release-process.md#7-tag-and-image-invariants)).
