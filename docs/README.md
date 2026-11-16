@@ -32,6 +32,7 @@
 * [Agent System Guide](./agents.md) *(new in v4)*
 * [HTTP API Reference](./api.md) *(new in v4)*
 * [Eventbus Message Types](./eventbus.md) *(new in v4)*
+* [Redis Persistence State Audit](./redis-persistence-state-audit.md) — Phase 2: stale-state and duplicate-execution audit of a non-empty Redis
 
 ## HowTos
 
