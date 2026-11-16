@@ -80,9 +80,24 @@ Three layers enforce it, in order of strength:
    withholding an already-published image, which would strand the release with no
    image and force a recovery run.
 
-**Standing live deviation: `/releases/latest` resolves to `v3.10.6`, and it got
-there during the Phase 1 rehearsal — not because of the `v3.10.6` release.**
-Three facts, each checkable against the live API:
+**The pointer is live state, not a constant: read it, do not assume it.** The
+policy above is the invariant; the value it currently resolves to is whatever
+GitHub last computed, and GitHub rewrites it on every release create, delete and
+re-flag. Read it with:
+
+```bash
+curl -s https://api.github.com/repos/honeydipper/honeydipper/releases/latest | jq -r .tag_name
+```
+
+A `v3.*` answer means the deviation below is (still) standing; a `v4.*` answer
+means it is closed. Earlier revisions of this document asserted a concrete value
+here, which decays the moment the pointer moves — so the assertion is gone and
+only the invariant and the read command remain.
+
+**The standing deviation: the pointer was moved to `v3.10.6` during the Phase 1
+rehearsal — not by the `v3.10.6` release, and not by any layer above.** Three
+facts, each checkable against the live API (these are history, so they do not
+decay):
 
 1. `v3.10.6` did **not** take "Latest" when it was published. The pinned plugin
    created that release from the `v3` maintenance branch, so it was sent with
@@ -103,17 +118,20 @@ Three facts, each checkable against the live API:
    undo it: layers 1 and 2 govern what is *sent* when a release is created, and
    layer 3 merely *observes* the pointer.
 
-Repair it **before** the next `v3` release. Until then, that run publishes its
-image normally and then ends **red** in layer 3 — by design, since the image must
-never be withheld over a flag. Re-point the pointer explicitly — never by
-re-tagging or re-releasing:
+The repair is **deferred by the user** (§6 item 1) — it mutates live release
+state, which the cleanup phase was told not to touch, so **it has not been
+applied** and this document does not claim the pointer was repaired. Until it is,
+a `v3` release publishes its image normally and then ends **red** in layer 3 — by
+design, since the image must never be withheld over a flag. Re-point the pointer
+explicitly — never by re-tagging or re-releasing:
 
 ```bash
 id=$(curl -s https://api.github.com/repos/honeydipper/honeydipper/releases/tags/v4.0.0 | jq -r .id)
 curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
   https://api.github.com/repos/honeydipper/honeydipper/releases/$id \
   -d '{"make_latest":"true"}'
-curl -s https://api.github.com/repos/honeydipper/honeydipper/releases/latest | jq -r .tag_name  # v4.0.0
+curl -s https://api.github.com/repos/honeydipper/honeydipper/releases/latest | jq -r .tag_name
+# must now print a v4 tag -- verify it, do not assume v4.0.0 specifically
 ```
 
 ### Why `"main"` is still listed in `v3`'s `branches`
@@ -225,18 +243,21 @@ Known and accepted at the time of this change:
 1. **A tag pipeline is still created for every release, and it is empty.** The
    release commit's `[skip ci]` suppresses the *branch-push* pipeline, not the
    tag push. With `publish-image-tag` deleted, those pipelines contain no jobs.
-   They are debris to be cleaned up in a later phase; nothing depends on them.
+   They are inert, nothing depends on them, and the class is a deferred residual
+   tracked as §6 item 3.
 2. **`makeLatest: false` is inert on the pinned plugin** (§2, layer 2). The
    effective controls are the maintenance-branch shape (`make_latest: "false"`)
    and the CI assertion. If a future pin implements the option, the declaration
    starts working with no further change; if a future pin *rejects* unknown
    options, the failure surfaces at the pin bump, which is rehearsed before
    merge.
-3. **`/releases/latest` currently points at `v3.10.6`**, as a side effect of the
-   Phase 1 rehearsal's create/delete cycle (§2) — not because any release was
-   created with `make_latest: "true"`. This change mutates no release state; the
-   repair is the one-off PATCH in §2, and until it is applied layer 3 fails every
-   `v3` release *after* publishing its image, on purpose.
+3. **The `/releases/latest` pointer deviates from the policy**, as a side effect
+   of the Phase 1 rehearsal's create/delete cycle (§2) — not because any release
+   was created with `make_latest: "true"`. Read the current value with §2's
+   command instead of assuming a tag; nothing in this repo mutates release state,
+   the repair is the one-off PATCH in §2, it is **deferred by the user**
+   (§6 item 1), and until it is applied layer 3 fails every `v3` release *after*
+   publishing its image, on purpose.
 4. **`HD_VERSION` is inert on `v3`.** The build passes
    `--build-arg HD_VERSION=$RELEASE_TAG` for parity with `main`, but `v3`'s
    `build/docker/Dockerfile` declares no `ARG HD_VERSION` and the `v3` Go tree
@@ -251,18 +272,119 @@ Known and accepted at the time of this change:
    `semantic-release-v3` can leave a pushed tag without a release. That state is
    repairable (§3) but not impossible; `[skip ci]` only removes the *automatic*
    cancellation window.
-7. **The legacy Codefresh release trigger** (`.codefresh/honeydipper-release.yml`)
-   must still be disabled once the CircleCI path is accepted; a late Codefresh
-   build could overwrite an image CircleCI already published.
-8. **`dev` and `main` still have the old shape.** Their tag-triggered
-   `publish-image-tag` job and the separate `publish_release_image` publish path
-   remain until the later phases of this rollout; the `v3` line is the pilot.
-   Reusing the shared `publish-image-steps` command on `dev` additionally
-   requires scoping the stable-only rejection to `v3.*` tags, because `dev`
-   legitimately publishes `v4.0.0-dev.N`; see the Phase 3 handoff note in
-   `.circleci/config.yml`.
+7. ~~**The legacy Codefresh release trigger** (`.codefresh/honeydipper-release.yml`)
+   must still be disabled once the CircleCI path is accepted.~~ **Closed in
+   Phase 5**: the tag-triggered release spec is deleted, so no tag can start a
+   Codefresh image build from this repository any more. The Codefresh-side
+   pipeline object is an operator action, tracked as §6 item 6 (§6.1).
+8. ~~**`dev` and `main` still have the old shape.**~~ **Superseded** (kept for
+   the record, because the pilot relationship is why this line's config looks the
+   way it does): Phase 3 moved `dev` to the inline publisher and scoped the
+   stable-only rejection to `v3.*` tags, Phase 4 promoted it to `main` and added
+   `publish-image-release-main`, and Phase 5 (below) retires the legacy
+   publishers. **Leave the "Phase 3 handoff" note inside `v3`'s
+   `.circleci/config.yml` in place**: it remains accurate about why *this*
+   command is unscoped, it is not a pending task on the other line, and that line
+   no longer depends on anything this line must change. Do not port this line's
+   assumptions back the other way either — `dev` legitimately resolves
+   prerelease-shaped tags and `main` resolves stable ones.
 9. **Rehearsals must not touch the production release list.** The Phase 1
    rehearsal created and deleted releases in `honeydipper/honeydipper` itself,
    which moved the repository's "Latest" pointer (§2). Future rehearsals of this
    pipeline must run against a scratch repository or fork, and any rehearsal that
    does touch the real release list must re-check `/releases/latest` afterwards.
+
+---
+
+## 6. Phase 5: cleanup, and the deferred risk register
+
+Phase 5 is the **final** phase of this rollout, and this line is its `v3`-scoped half. It retires the
+legacy publisher, re-verifies the debris sweeps at this head, and makes this document stop asserting
+state that drifts. It **changes no release behaviour**: the job graph, `'v3.*'` as the tag glob, the
+pinned semantic-release toolchain and `build/ci/write-release-tag.sh` (13 cases) are untouched, and no
+tag or release was created, moved, re-flagged or deleted. `.circleci/config.yml` on this branch is
+**not modified at all** by this phase.
+
+The `dev`/`main` line carries its own copy of this register (`docs/release-process.md` there, §16),
+because the two lines' configs have diverged by design (§4) and one PR cannot span both.
+
+### 6.1 What the cleanup changed
+
+| Change | Result |
+|---|---|
+| `.codefresh/honeydipper-release.yml` **deleted** | no in-repo definition of a tag-triggered `honeydipper/honeydipper` image build remains. A triggered Codefresh run on a `v3.*` tag is then *expected* to fail at config resolution, before its `dockerPushRelease` step — only a guarantee once the pipeline object no longer holds its own copy of the config (§6.2 item 6, `docs/releasing.md`) |
+| Codefresh documented as **retired** | this line's docs no longer describe a Codefresh pipeline as a publisher of release images (§5 item 7) |
+| `CIRCLE_TAG` sweep (re-verified at this head) | the publish path never read it here: at this head the name appeared **nowhere** in `v3`'s tree — not in `.circleci/config.yml`, not in `build/ci/*`, not in a doc. Phase 2 established this; Phase 5 re-verified it and found **nothing to fix**, so no edit was invented. This row is now the only place the name occurs on this line, and it exists to record that |
+| deleted-job sweep (re-verified) | **no** executable reference to `publish-image-tag`, `approve-v3-image` or `approve-dev-image` here. The remaining mentions (§1, §5 item 1, `docs/releasing.md`) are prose that *records the deletion* |
+| glob sweep (re-verified) | `v3` resolves with `'v3.*'` only. **No `v*-*` and no branch-scoped glob** exists in this line's config or docs outside the shared guard's own test fixtures (T8/T9 in `build/ci/write-release-tag.test.sh`, identical to `dev`'s copy, fixed at 13 cases and deliberately not touched) |
+| guard blobs | `build/ci/write-release-tag.sh` = `e3d9710…`, `write-release-tag.test.sh` = `b02a4a7…` — byte-identical to `dev`/`main`, unchanged |
+| GitHub "Latest" claims | §2 and §5 item 3 now state the invariant and the read command, not a tag. **Nothing here claims the pointer was repaired** |
+
+### 6.2 Deferred residuals (risk register)
+
+Every item is **open by decision, not by oversight**. "Deferred by user" means the operator chose to
+leave release state alone during this rollout — do not "finish" one of these on your own, and do not
+manufacture a commit to force a release that would resolve one incidentally.
+
+1. **`PATCH {"make_latest":"true"}` on `v4.0.0` — DEFERRED BY USER.**
+   *Owner*: repository admin / release operator. *Reason*: it mutates live release state, which this
+   phase was explicitly told not to touch; read the current value with §2's command. **Consequences
+   while open:** (a) on this line, layer 3 keeps failing every `v3` release *after* it publishes its
+   image, which is the intended prompt rather than a publication failure; (b) on the stable channel,
+   the only automated Latest check is `v3.*`-scoped, so it **skips silently** on a stable `v4.0.x`
+   release from `main` — `case "$RELEASE_TAG" in v3.*)` matches nothing and the step exits green. The
+   stable channel therefore has **no automated tripwire** on the pointer; the manual promotion check in
+   the `dev`/`main` release process is the only control that remains.
+2. **The stable-channel build/push/evidence path has never executed — DEFERRED BY USER.**
+   *Owner*: release operator. Only the **halt** path has ever run on `main` (pipeline 4888: no
+   releasing commit in the promotion range ⇒ `no release created in this pipeline; nothing to publish`
+   ⇒ green halt). Everything after that halt — exact-tag checkout, GitHub-release existence tripwire,
+   Docker Hub no-overwrite probe, `docker build`, `docker push`, digest evidence, credential logout —
+   has run from the inline publisher on **no** channel. *Reason*: deferred at the user's request, to
+   keep this phase free of any CI run that touches release state. That is a policy choice, **not** a
+   prohibition the rehearsal would violate: the rehearsal is **non-mutating in the state the
+   repository is actually in**. `v4.0.0`'s image already exists on Docker Hub, so a
+   `release_tag=v4.0.0` recovery run (§3) red-ends at `Refuse to overwrite a published tag` — a
+   read-only Docker Hub probe that runs *before* `Build release image` and `Publish release image` —
+   and publishes nothing. It remains the recommended first de-risk before the first real stable
+   release, for whoever owns this residual. (*If* the `4.0.0` tag were ever absent from Docker Hub,
+   the same run would instead get past the probe and build and push — which is exactly what makes it
+   a meaningful test of the path, and exactly why running it is the release operator's call, not this
+   cleanup's.) *Until then*: verify the `release-evidence` artifact, never job colour.
+3. **The empty-tag-pipelines class.** `[skip ci]` suppresses *branch-push* pipelines, not *tag* pushes,
+   so a tag pushed onto a release commit still creates a CircleCI pipeline — and, with no tag-triggered
+   job left in `publish_release_image`, that pipeline is **jobless** (§5 item 1). *Owner*: CircleCI
+   project admin (a project setting, not a commit). *Reason*: removing the class changes no release
+   behaviour and cannot be done from this repository.
+4. **Historical `v3.10.1`–`v3.10.5` are flagged `prerelease: true`.** Confirmed from the Releases API:
+   they are completed 3.x patches, so the flag is wrong for them, but it is **presentation only** and
+   changes no tag, commit or image digest. *Owner*: release operator, optional. *Reason*: re-flagging
+   is a release-state mutation — this phase **documents it and takes no action**, and none of those
+   releases was touched.
+5. **The `sort -V` tie-break favours a prerelease over its stable counterpart.** `sort -V` ranks
+   `v4.0.1-dev.1` **above** `v4.0.1`, so a general `v*` glob would hand a prerelease tag to the
+   publisher if a prerelease tag and a stable tag ever pointed at the same release commit. This line
+   never uses that glob — `v3` resolves `'v3.*'` and rejects prerelease-shaped tags before building —
+   so the hazard belongs to `dev`/`main`'s config. It is **unreachable under merge-commit-only
+   promotion** (main's pre-release HEAD is always the promotion merge commit; the release commit is
+   created *by* the release, so no earlier tag can already sit on it). *Owner*: release-process
+   maintainers. *Reason*: hardening a state the current mechanics cannot produce needs its own guard
+   test cases, and this line's guard is a fixed 13-case suite that must not change. **Revisit the
+   tie-break only if promotion mechanics ever change (fast-forward promotion or manual stable
+   tagging).** The same sentence sits in the `.circleci/config.yml` "Determine published tag" comment
+   on `dev`/`main`, so a search finds all three.
+6. **The Codefresh pipeline object and its Git-tag trigger still exist in the Codefresh UI.**
+   *Owner*: Codefresh account admin. *Reason*: the pipeline and its trigger live outside this
+   repository, so no commit can remove them. A tag push still starts a Codefresh run; the in-repo
+   deletion removes the release spec, and such a run is **expected** to fail at config resolution
+   before any `build`/`push` step.
+   **That is an expectation, not a guarantee, and no safety argument may rest on it.** It holds only
+   if the pipeline object references its spec by repository path. A *classic* Codefresh pipeline
+   stores its config in the pipeline object's own database, so for that shape deleting the repo file
+   changes nothing about what a triggered run executes — it would still build and push
+   `honeydipper/honeydipper:$CF_RELEASE_TAG` from the tagged revision, racing the inline
+   `publish-image-release`. And do not count a downstream failure as protection either: what would be
+   relied on is a run dying *early*, not an image staying unbuilt.
+   The item therefore closes in the Codefresh UI — delete the pipeline object, or at minimum disable
+   its Git-tag trigger once you have confirmed which shape it is — and that must happen **before the
+   next stable tag**.
