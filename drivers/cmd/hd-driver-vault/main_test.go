@@ -86,6 +86,28 @@ func TestErrSecretKeyNotFound(t *testing.T) {
 	assert.Equal(t, "secret key not found in the secret", ErrSecretKeyNotFound.Error())
 }
 
+func TestSecretString(t *testing.T) {
+	// The shape a credential is *supposed* to be stored in: one JSON string.
+	text, err := secretString("credentials", `{"username":"alice","password":"hunter2"}`)
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"username":"alice","password":"hunter2"}`, text)
+
+	// The shape a KV v2 object is actually stored in, and the one that used to panic the
+	// driver: an unchecked value.(string) on a native map.  It has to be an error the caller
+	// can read, not a crash and not "secret key not found".
+	_, err = secretString("credentials", map[string]interface{}{"username": "alice"})
+	assert.ErrorIs(t, err, ErrSecretValueNotString)
+	assert.Contains(t, err.Error(), "map[string]interface {}")
+	assert.Contains(t, err.Error(), "credentials")
+	assert.Contains(t, err.Error(), "JSON string")
+
+	// Anything else that is not a string fails the same way, never silently coerced.
+	for _, value := range []interface{}{nil, 42, true, []interface{}{"a"}} {
+		_, err = secretString("credentials", value)
+		assert.ErrorIs(t, err, ErrSecretValueNotString)
+	}
+}
+
 func TestParsePathEdgeCases(t *testing.T) {
 	t.Run("empty path defaults to secret mount", func(t *testing.T) {
 		server, mount, path := parsePath("")
