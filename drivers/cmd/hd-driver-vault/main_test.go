@@ -7,6 +7,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,6 +86,54 @@ func TestParsePath(t *testing.T) {
 func TestErrSecretKeyNotFound(t *testing.T) {
 	assert.NotNil(t, ErrSecretKeyNotFound)
 	assert.Equal(t, "secret key not found in the secret", ErrSecretKeyNotFound.Error())
+}
+
+func TestSecretString(t *testing.T) {
+	// The shape a credential is *supposed* to be stored in: one JSON string.
+	text, err := secretString("credentials", `{"username":"alice","password":"hunter2"}`)
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"username":"alice","password":"hunter2"}`, text)
+
+	// The shape a KV v2 object is actually stored in, and the one that used to panic the
+	// driver: an unchecked value.(string) on a native map.  It has to be an error the caller
+	// can read, not a crash and not "secret key not found".
+	_, err = secretString("credentials", map[string]interface{}{"username": "alice"})
+	assert.ErrorIs(t, err, ErrSecretValueNotString)
+	assert.Contains(t, err.Error(), "map[string]interface {}")
+	assert.Contains(t, err.Error(), "credentials")
+	assert.Contains(t, err.Error(), "JSON string")
+
+	// Anything else that is not a string fails the same way, never silently coerced.
+	for _, value := range []interface{}{nil, 42, true, []interface{}{"a"}} {
+		_, err = secretString("credentials", value)
+		assert.ErrorIs(t, err, ErrSecretValueNotString)
+	}
+}
+
+func TestFirstRealError(t *testing.T) {
+	shape := fmt.Errorf("%w: %q holds %T", ErrSecretValueNotString, "credentials",
+		map[string]interface{}{})
+	permission := errors.New("1 error occurred: * permission denied")
+
+	// The defect this function exists for: an earlier shape error followed by a later miss.
+	// Keeping the last error reported "secret key not found" for a secret that was found and
+	// was simply the wrong shape -- the one message the checked assertion was added to remove.
+	assert.ErrorIs(t, firstRealError([]error{shape, ErrSecretKeyNotFound}), ErrSecretValueNotString)
+
+	// Same for a permission denial on an earlier path: the chain continues on any error, so it
+	// must not swallow the reason behind a later miss.
+	assert.Equal(t, permission, firstRealError([]error{permission, ErrSecretKeyNotFound}))
+
+	// Every query was a genuine miss: the caller keeps the old, query-naming message.
+	assert.NoError(t, firstRealError([]error{ErrSecretKeyNotFound, ErrSecretKeyNotFound}))
+	assert.NoError(t, firstRealError(nil))
+
+	// A miss before a real error still reports the real error, and nil entries are skipped.
+	assert.ErrorIs(t, firstRealError([]error{ErrSecretKeyNotFound, nil, shape}),
+		ErrSecretValueNotString)
+
+	// The first real error wins when there is more than one: it is the one nearest the cause.
+	assert.Equal(t, permission, firstRealError([]error{permission, shape}))
 }
 
 func TestParsePathEdgeCases(t *testing.T) {

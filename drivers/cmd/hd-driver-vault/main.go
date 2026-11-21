@@ -27,6 +27,14 @@ import (
 // ErrSecretKeyNotFound means the secret is found but the key is not found.
 var ErrSecretKeyNotFound = errors.New("secret key not found in the secret")
 
+// ErrSecretValueNotString means the key is found but holds something other than a string.
+//
+// A KV v2 value is whatever was stored, and a JSON object is stored as a native map -- which is
+// exactly what a credential written as an object looks like.  This used to be an unchecked
+// `value.(string)`, so such a secret panicked the driver, and the recovered panic was reported
+// as `secret key not found`: the one message that sends an operator looking at the wrong thing.
+var ErrSecretValueNotString = errors.New("secret value is not a string")
+
 const (
 	scopedPlaceholder = "{SCOPED}"
 	scopedPrefixEnv   = "SECRET_PREFIX_"
@@ -206,7 +214,20 @@ func lookupSinglePath(ctx context.Context, client *vault.Client, singleQuery str
 		return "", ErrSecretKeyNotFound
 	}
 
-	return value.(string), nil
+	return secretString(key, value)
+}
+
+// secretString turns one secret value into the string a driver returns, or an error naming the
+// shape it found instead.  One function, so the type assertion is checked in one place and can be
+// tested without a Vault server.
+func secretString(key string, value interface{}) (string, error) {
+	text, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("%w: %q holds %T; store the credential as a JSON string",
+			ErrSecretValueNotString, key, value)
+	}
+
+	return text, nil
 }
 
 func getScopedPrefixes() []string {
@@ -284,6 +305,7 @@ func lookup(msg *dipper.Message) {
 	defer cancel()
 
 	clients := map[string]*vault.Client{}
+	errs := make([]error, 0, len(queries))
 
 	// Try each query path in order, return the first one found
 	for _, singleQuery := range queries {
@@ -305,10 +327,37 @@ func lookup(msg *dipper.Message) {
 
 			return
 		}
+
+		errs = append(errs, err)
+	}
+
+	// A shape or permission problem is not "not found": report what actually happened, because
+	// the recovered panic is the error the caller reads.  A genuine miss keeps the old message,
+	// which names the query.
+	if err := firstRealError(errs); err != nil {
+		panic(err)
 	}
 
 	// No valid secret found in any of the paths
 	panic(fmt.Errorf("%w: %s", ErrSecretKeyNotFound, queryStr))
+}
+
+// firstRealError returns the first error that is not a miss, or nil when every query was one.
+//
+// The FIRST, not the last, and that is the whole point of the function.  A fallback chain whose
+// earlier query found the secret in the wrong shape and whose later query simply missed it must
+// report the shape problem: keeping the last error made the two indistinguishable, so the shape
+// error the checked assertion exists to surface was masked by the miss that followed it and the
+// caller read "secret key not found" for a secret that was found.  Same for a permission denial
+// on an earlier path -- the chain continues on any error, and it must not swallow the reason.
+func firstRealError(errs []error) error {
+	for _, err := range errs {
+		if err != nil && !errors.Is(err, ErrSecretKeyNotFound) {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func set(msg *dipper.Message) {
