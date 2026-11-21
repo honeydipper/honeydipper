@@ -305,7 +305,7 @@ func lookup(msg *dipper.Message) {
 	defer cancel()
 
 	clients := map[string]*vault.Client{}
-	var lastErr error
+	errs := make([]error, 0, len(queries))
 
 	// Try each query path in order, return the first one found
 	for _, singleQuery := range queries {
@@ -328,18 +328,36 @@ func lookup(msg *dipper.Message) {
 			return
 		}
 
-		lastErr = err
+		errs = append(errs, err)
 	}
 
 	// A shape or permission problem is not "not found": report what actually happened, because
 	// the recovered panic is the error the caller reads.  A genuine miss keeps the old message,
 	// which names the query.
-	if lastErr != nil && !errors.Is(lastErr, ErrSecretKeyNotFound) {
-		panic(lastErr)
+	if err := firstRealError(errs); err != nil {
+		panic(err)
 	}
 
 	// No valid secret found in any of the paths
 	panic(fmt.Errorf("%w: %s", ErrSecretKeyNotFound, queryStr))
+}
+
+// firstRealError returns the first error that is not a miss, or nil when every query was one.
+//
+// The FIRST, not the last, and that is the whole point of the function.  A fallback chain whose
+// earlier query found the secret in the wrong shape and whose later query simply missed it must
+// report the shape problem: keeping the last error made the two indistinguishable, so the shape
+// error the checked assertion exists to surface was masked by the miss that followed it and the
+// caller read "secret key not found" for a secret that was found.  Same for a permission denial
+// on an earlier path -- the chain continues on any error, and it must not swallow the reason.
+func firstRealError(errs []error) error {
+	for _, err := range errs {
+		if err != nil && !errors.Is(err, ErrSecretKeyNotFound) {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func set(msg *dipper.Message) {
